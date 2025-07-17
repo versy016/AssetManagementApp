@@ -43,7 +43,7 @@ async function main() {
       let id = await generateUniqueId(usedIds);
       usedIds.add(id);
       // Build the URL for the asset's check-in page
-      const url = `http://${config.HOST}:${config.PORT}/check-in/${id}`; // Now uses AWS EC2 DNS from config.js
+      const url = `https://${config.HOST}:${config.PORT}/check-in/${id}`; // Now uses AWS EC2 DNS from config.js
       // Determine the file path for the QR image
       const filePath = path.join(qrFolder, `${id}.png`);
       // Generate and save the QR code image

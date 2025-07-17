@@ -42,7 +42,7 @@ export default function CheckInScreen() {
         }
 
         // Fetch asset details from backend
-        const res = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/${id}`);
+        const res = await fetch(`https://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com/assets/${id}`);
         if (!res.ok) throw new Error('Asset not found');
         const data = await res.json();
 
@@ -69,7 +69,7 @@ export default function CheckInScreen() {
     if (type === 'checkin') {
       // For check-in, assign asset to admin user
       // Fetch all users and find the admin
-      const response = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/users`);
+      const response = await fetch(`https://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com/users`);
       const users = await response.json();
       console.log(users);
 
