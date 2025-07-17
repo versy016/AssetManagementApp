@@ -17,7 +17,10 @@ app.use('/users', usersRouter);
 app.get('/', (req, res) => {
   res.send('Inventory API is running');
 });
-
+app.get('/check-in/:id', (req, res) => {
+  const assetId = req.params.id;
+  res.json({ message: `Check-in endpoint for asset ${assetId}` });
+});
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
 });

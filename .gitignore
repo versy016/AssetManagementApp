@@ -2,7 +2,7 @@
 
 # dependencies
 node_modules/
-
+config/
 # Expo
 .expo/
 dist/
@@ -35,5 +35,7 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json
+
 app-example
-"config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json" 
+config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json
