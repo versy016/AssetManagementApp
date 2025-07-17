@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model asset_logs {
+  id       String    @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id String?
+  message  String?
+  date     DateTime? @default(now()) @db.Timestamp(6)
+  user_id  String?
+  assets   assets?   @relation(fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users    users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model asset_types {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()"))
+  name      String
+  image_url String?
+  assets    assets[]
+}
+
+model assets {
+  type_id           String?
+  serial_number     String?
+  model             String?
+  description       String?
+  assigned_to_id    String?
+  status            String?
+  checked_out       Boolean?     @default(false)
+  return_date       DateTime?    @db.Date
+  next_service_date DateTime?    @db.Date
+  documentation_url String?
+  image_url         String?
+  last_updated      DateTime?    @default(now()) @db.Timestamp(6)
+  last_changed_by   String?
+  metadata          Json?
+  location          String?
+  id                String       @id @default(uuid())
+  asset_logs        asset_logs[]
+  users             users?       @relation(fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset_types       asset_types? @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model users {
+  id         String       @id @default(dbgenerated("uuid_generate_v4()"))
+  name       String
+  userassets String[]
+  useremail  String?
+  asset_logs asset_logs[]
+  assets     assets[]
+}
