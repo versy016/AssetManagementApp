@@ -36,3 +36,4 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+"config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json" 
