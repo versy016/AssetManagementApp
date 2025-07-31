@@ -27,6 +27,9 @@ jobs:
       - name: Build Expo Web
         run: npx expo export --platform web
 
+      - name: List build output
+        run: ls -l dist/web
+
       - name: Deploy to EC2 via SSH
         uses: appleboy/scp-action@v0.1.7
         with:
