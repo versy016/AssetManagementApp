@@ -11,6 +11,9 @@ import {
 // Import Firebase Auth for user authentication
 import { getAuth } from 'firebase/auth';
 
+import { useRouter } from 'expo-router';
+const router = useRouter();
+
 // Main component for asset check-in and transfer actions
 export default function CheckInScreen() {
   const { id } = useLocalSearchParams(); // Get asset ID from route params
@@ -107,6 +110,7 @@ export default function CheckInScreen() {
           ? 'Asset checked in to Office Admin.'
           : `Asset transferred to ${user.displayName || 'you'}`
       );
+      router.replace('/dashboard');
     } catch (err) {
       alert(err.message);
     }
@@ -160,6 +164,11 @@ export default function CheckInScreen() {
           title={asset.assigned_to_id === user?.uid ? 'Transfer Asset' : 'Transfer to Me'}
           onPress={() => handleAction('transfer')}
           color={'blue'}
+        />
+        <Button
+          title="Go Back to Dashboard"
+          onPress={() => router.replace('/dashboard')}
+          color={'gray'}
         />
       </View>
     </View>

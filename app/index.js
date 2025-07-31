@@ -1,7 +1,9 @@
 // app/index.js
-import { auth } from '../firebaseConfig'; // Adjust the path if needed
+import { auth } from '../firebaseConfig'; 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 
 export default function Index() {
   const [user, setUser] = useState(null);
@@ -49,6 +51,30 @@ export default function Index() {
     // Cleanup: unsubscribe from auth changes when effect unmounts
     return unsubscribe;
   }, [router]);
+
+  // Handle incoming universal/app links for check-in
+  useEffect(() => {
+    const handleDeepLink = ({ url }) => {
+      const { path } = Linking.parse(url);
+      // path might be 'check-in/D8SLN5EZ'
+      if (path && path.startsWith('check-in/')) {
+        const assetId = path.split('/')[1];
+        if (user) {
+          router.replace(`/check-in/${assetId}`);
+        } else {
+          router.replace('/(auth)/login');
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [user]);
 
   // You can render a splash or null while authentication is in process
   return null;

@@ -5,8 +5,8 @@ import { Tabs } from 'expo-router';
 
 // Optional settings for the router (unstable, may change in future Expo versions)
 export const unstable_settings = {
-  initialRouteName: 'index', // Set the initial route when the app loads
-  showDebugTools: false, // Hide the route bar at the bottom for end users
+  initialRouteName: 'dashboard',
+  showDebugTools: false,
 };
 
 // TabsLayout defines the bottom tab navigation for the app
@@ -21,7 +21,7 @@ export default function TabsLayout() {
       />
       {/* Inventory tab */}
       <Tabs.Screen
-        name="inventory"
+        name="Inventory"
         options={{ title: 'Inventory' }}
       />
     </Tabs>
