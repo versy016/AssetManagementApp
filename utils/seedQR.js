@@ -4,6 +4,7 @@ const path = require('path');
 const { PrismaClient } = require('../inventory-api/generated/prisma');
 const QRCode = require('qrcode');
 const prisma = new PrismaClient();
+const { PROD_API_URL } = require('../inventory-api/config');
 
 // Helper to generate 8-character alphanumeric IDs
 function generateId(length = 8) {
@@ -43,7 +44,7 @@ async function main() {
       let id = await generateUniqueId(usedIds);
       usedIds.add(id);
       // Build the URL for the asset's check-in page
-      const url = `https://${config.HOST}:${config.PORT}/check-in/${id}`; // Now uses AWS EC2 DNS from config.js
+      const url = `${PROD_API_URL}/check-in/${id}`;
       // Determine the file path for the QR image
       const filePath = path.join(qrFolder, `${id}.png`);
       // Generate and save the QR code image
@@ -80,4 +81,3 @@ async function main() {
 }
 
 main();
-
