@@ -26,7 +26,7 @@ export default function MyAssets() {
 
       try {
         // Fetch assets assigned to the user from backend API
-        const res = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/assigned/${user.uid}`);
+        const res = await fetch(`http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/assigned/${user.uid}`);
         const data = await res.json(); // Parse JSON response
         setAssets(data); // Store assets in state
       } catch (err) {

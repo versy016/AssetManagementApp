@@ -8,8 +8,8 @@ export async function fetchDropdownOptions() {
   try {
     // Fetch dropdown options and assets in parallel
     const [dropdownRes, assetsRes] = await Promise.all([
-      fetch('http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-options'),
-      fetch('http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets'),
+      fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-options'),
+      fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets'),
     ]);
 
     // Parse JSON responses

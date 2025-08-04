@@ -1,7 +1,7 @@
 // test-users.js
 const axios = require('axios');
 
-const BASE_URL = 'http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/users';
+const BASE_URL = 'http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/users';
 
 const tests = [
   {

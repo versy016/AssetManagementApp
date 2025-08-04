@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-axios.get('http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/asset_types')
+axios.get('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/asset_types')
   .then(res => {
     console.log('✅ Asset Types:\n', res.data);
   })

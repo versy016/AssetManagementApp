@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Button, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 // Main component for handling QR actions
 export default function QRActionScreen() {
@@ -29,7 +30,7 @@ export default function QRActionScreen() {
         if (!currentUser) throw new Error('Not logged in');
 
         // Fetch asset details from backend using the scanned ID
-        const assetRes = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/${id}`);
+        const assetRes = await fetch(`${API_BASE_URL}/assets/${id}`);
         if (!assetRes.ok) throw new Error('Asset not found');
         const assetData = await assetRes.json();
 
@@ -56,7 +57,7 @@ export default function QRActionScreen() {
     setUpdating(true); // Start loading state for update
 
     try {
-      const res = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/${asset.id}`, {
+      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,7 +91,7 @@ export default function QRActionScreen() {
     setUpdating(true); // Start loading state
     try {
       // Make a PUT request to update the asset as checked out
-      const res = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/${asset.id}`, {
+      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

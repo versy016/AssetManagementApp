@@ -32,7 +32,7 @@ const AssetTypesTab = () => {
   useEffect(() => {
     const fetchAssetTypes = async () => {
       try {
-        const res = await fetch('http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-types-summary');
+        const res = await fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-types-summary');
         const data = await res.json();
         console.log('Asset types response:', data);
         setAssetTypes(data || []);
@@ -91,7 +91,7 @@ const AllAssetsTab = () => {
   useEffect(() => {
     const fetchAssets = async () => {
       try {
-        const res = await fetch('http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets');
+        const res = await fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets');
         const data = await res.json();
         // Exclude assets marked as QR reserved
         const filtered = data.filter(asset => asset.description?.toLowerCase() !== 'qr reserved asset');
