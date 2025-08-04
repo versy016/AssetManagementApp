@@ -14,6 +14,8 @@ import { getAuth } from 'firebase/auth';
 import { useRouter } from 'expo-router';
 const router = useRouter();
 
+import { API_BASE_URL } from '../../inventory-api/apiBase';
+
 // Main component for asset check-in and transfer actions
 export default function CheckInScreen() {
   const { id } = useLocalSearchParams(); // Get asset ID from route params
@@ -45,7 +47,7 @@ export default function CheckInScreen() {
         }
 
         // Fetch asset details from backend
-        const res = await fetch(`https://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com/assets/${id}`);
+        const res = await fetch(`${API_BASE_URL}/assets/${id}`);
         if (!res.ok) throw new Error('Asset not found');
         const data = await res.json();
 
@@ -72,7 +74,7 @@ export default function CheckInScreen() {
     if (type === 'checkin') {
       // For check-in, assign asset to admin user
       // Fetch all users and find the admin
-      const response = await fetch(`https://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com/users`);
+      const response = await fetch(`${API_BASE_URL}/users`);
       const users = await response.json();
       console.log(users);
 
@@ -96,7 +98,7 @@ export default function CheckInScreen() {
 
     try {
       // Send PUT request to update asset
-      const res = await fetch(`http://ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com:3000/assets/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
