@@ -12,12 +12,14 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.10.1",
+    "aws-sdk": "^2.1692.0",
     "axios": "^1.10.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "form-data": "^4.0.2",
+    "multer": "^2.0.2",
     "rsync": "^0.6.1"
   },
   "devDependencies": {
