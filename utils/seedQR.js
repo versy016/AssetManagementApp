@@ -42,7 +42,8 @@ async function main() {
       let id = await generateUniqueId(usedIds);
       usedIds.add(id);
       // Build the URL for the asset's check-in page
-      const url = `${config.PROD_API_URL}/check-in/${id}`;
+      const baseUrl = config.PROD_API_URL.startsWith('http') ? config.PROD_API_URL : `http://${config.PROD_API_URL}`;
+      const url = `${baseUrl}/check-in/${id}`;
       // Determine the file path for the QR image
       const filePath = path.join(qrFolder, `${id}.png`);
       // Generate and save the QR code image
