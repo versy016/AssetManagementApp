@@ -88,7 +88,7 @@ export default function NewAsset() {
 
     // If coming from asset copy, fetch the asset and prefill form fields
     if (fromAssetId) {
-      fetch(`http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/${fromAssetId}`)
+      fetch(`http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/${fromAssetId}`)
         .then(res => res.json())
         .then(data => {
           setForm(f => ({
@@ -154,7 +154,7 @@ export default function NewAsset() {
     try {
       // Make a POST request to the backend API to create the asset
       // The endpoint expects multipart/form-data (including files)
-      const res = await fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets', {
+      const res = await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets', {
         method: 'POST',
         body: data,
       });

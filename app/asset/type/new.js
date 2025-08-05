@@ -51,7 +51,7 @@ export default function NewAssetType() {
 
     try {
       // Send POST request to backend API to create asset type
-      const res = await fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-types', {
+      const res = await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-types', {
         method: 'POST',
         body: formData,
       });

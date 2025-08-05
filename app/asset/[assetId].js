@@ -18,7 +18,7 @@ export default function AssetDetailPage() {
   // Fetch asset details from backend when assetId changes
   useEffect(() => {
     if (!assetId) return;
-    fetch(`http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets/${assetId}`)
+    fetch(`http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/${assetId}`)
       .then(res => res.json())
       .then(setAsset)
       .catch(console.error);

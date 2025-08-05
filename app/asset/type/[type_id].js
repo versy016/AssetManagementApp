@@ -29,7 +29,7 @@ export default function AssetsType() {
     if (!type_id) return; // Guard: do nothing if no type_id
 
     // Fetch all assets from backend API
-    fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets')
+    fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets')
       .then(res => res.json()) // Parse JSON response
       .then(data => {
         // Filter assets to those matching the current type_id

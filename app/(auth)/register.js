@@ -83,7 +83,7 @@ export default function Register() {
       await updateProfile(userCredential.user, { displayName: name });
 
       // Register user in backend API
-      await fetch('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/users', {
+      await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json', // ← this is required

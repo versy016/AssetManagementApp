@@ -20,7 +20,7 @@ form.append('next_service_date', '2025-08-01');
 form.append('image', fs.createReadStream(path.join(__dirname, 'test-image.jpg')));
 form.append('document', fs.createReadStream(path.join(__dirname, 'test-doc.pdf')));
 
-axios.post('http://ec2-13-239-139-73.ap-southeast-2.compute.amazonaws.com:3000/assets', form, {
+axios.post('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets', form, {
   headers: form.getHeaders()
 })
 .then(res => {
