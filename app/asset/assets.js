@@ -3,7 +3,7 @@
 // Import React and hooks for state and effect management
 import React, { useEffect, useState } from 'react'; // React core and hooks
 // Import UI components from React Native
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native'; // Core UI components
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, SafeAreaView } from 'react-native'; // Core UI components
 // Import Firebase Auth to get current user
 import { auth } from '../../firebaseConfig'; // Firebase authentication instance
 // Import router for navigation
@@ -43,53 +43,59 @@ export default function MyAssets() {
 
   // Render the assigned assets UI
   return (
-    // ScrollView allows scrolling if asset list is long
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header with back button and screen title */}
-      <View style={styles.header}>
-        {/* Back button to return to previous screen */}
-        <TouchableOpacity onPress={() => router.back()}>
-          <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
-        </TouchableOpacity>
-        {/* Title for the screen */}
-        <Text style={styles.title}>My Assigned Assets</Text>
-      </View>
-
-      {/* Show loading spinner, no-assets message, or asset cards */}
-      {loading ? (
-        <Text>Loading...</Text>
-      ) : assets.length === 0 ? (
-        <Text style={styles.noAssets}>No assets assigned.</Text>
-      ) : (
-        // Map through assets and render a card for each
-        assets.map((asset) => (
-          <TouchableOpacity
-            key={asset.id}
-            style={styles.card}
-            onPress={() => router.push(`/asset/${asset.id}`)} // Navigate to asset details
-          >
-            {/* Asset image (fallback to placeholder if missing) */}
-            <Image
-              source={{ uri: asset.image_url || 'https://via.placeholder.com/50' }}
-              style={styles.image}
-            />
-            {/* Asset info: name/type and serial number */}
-            <View style={styles.info}>
-              <Text style={styles.name}>{asset.asset_types?.name || asset.model || 'Unnamed'}</Text>
-              <Text style={styles.serial}>Serial: {asset.serial_number || 'N/A'}</Text>
-            </View>
+    <SafeAreaView style={styles.safeArea}>
+      {/* ScrollView allows scrolling if asset list is long */}
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Header with back button and screen title */}
+        <View style={styles.header}>
+          {/* Back button to return to previous screen */}
+          <TouchableOpacity onPress={() => router.back()}>
+            <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
           </TouchableOpacity>
-        ))
-      )}
-    </ScrollView>
+          {/* Title for the screen */}
+          <Text style={styles.title}>My Assigned Assets</Text>
+        </View>
+
+        {/* Show loading spinner, no-assets message, or asset cards */}
+        {loading ? (
+          <Text>Loading...</Text>
+        ) : assets.length === 0 ? (
+          <Text style={styles.noAssets}>No assets assigned.</Text>
+        ) : (
+          // Map through assets and render a card for each
+          assets.map((asset) => (
+            <TouchableOpacity
+              key={asset.id}
+              style={styles.card}
+              onPress={() => router.push(`/asset/${asset.id}`)} // Navigate to asset details
+            >
+              {/* Asset image (fallback to placeholder if missing) */}
+              <Image
+                source={{ uri: asset.image_url || 'https://via.placeholder.com/50' }}
+                style={styles.image}
+              />
+              {/* Asset info: name/type and serial number */}
+              <View style={styles.info}>
+                <Text style={styles.name}>{asset.asset_types?.name || asset.model || 'Unnamed'}</Text>
+                <Text style={styles.serial}>Serial: {asset.serial_number || 'N/A'}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 // Styles for the MyAssets screen
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f9f9f9',
+  },
   container: {
-    padding: 20,      // Outer padding for content
-    paddingTop: 10,   // Extra space at the top
+
+    backgroundColor: '#f9f9f9', // Light gray background
   },
   header: {
     flexDirection: 'row', // Row layout for back button and title

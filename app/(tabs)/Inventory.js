@@ -12,6 +12,7 @@ import {
   Image,
   ScrollView,
   Dimensions,
+  SafeAreaView,
 } from 'react-native';
 // Import MaterialIcons for icons
 import { MaterialIcons } from '@expo/vector-icons';
@@ -153,66 +154,72 @@ const Inventory = () => {
 
   // Render the tab view and floating action button
   return (
-    <View style={{ flex: 1 }}>
-      {/* Header with search and quick action icons */}
-      <View style={styles.header}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search Inventory"
-          placeholderTextColor="#888"
+    <SafeAreaView style={styles.safeArea}>
+      <View style={{ flex: 1 }}>
+        {/* Header with search and quick action icons */}
+        <View style={styles.header}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search Inventory"
+            placeholderTextColor="#888"
+          />
+          <TouchableOpacity style={styles.iconButton}>
+            <MaterialIcons name="filter-list" size={24} color="#1E90FF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton}>
+            <MaterialIcons name="qr-code-scanner" size={24} color="#1E90FF" />
+          </TouchableOpacity>
+        </View>
+        {/* Tab view for switching between asset types and all assets */}
+        <TabView
+          navigationState={{ index, routes }}
+          renderScene={renderScene}
+          onIndexChange={setIndex}
+          initialLayout={initialLayout}
+          renderTabBar={props => (
+            <TabBar
+              {...props}
+              indicatorStyle={{ backgroundColor: '#1E90FF' }}
+              style={{ backgroundColor: '#fff' }}
+              activeColor="#000"
+              inactiveColor="#555"
+              labelStyle={{ fontWeight: 'bold' }}
+              renderLabel={({ route, focused }) => (
+                <Text
+                  style={{
+                    color: focused ? '#000' : '#555',
+                    fontWeight: focused ? 'bold' : 'normal',
+                    fontSize: 14,
+                  }}
+                >
+                  {route.title}
+                </Text>
+              )}
+            />
+          )}
         />
-        <TouchableOpacity style={styles.iconButton}>
-          <MaterialIcons name="filter-list" size={24} color="#1E90FF" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton}>
-          <MaterialIcons name="qr-code-scanner" size={24} color="#1E90FF" />
+        {/* Floating action button to add new asset or asset type */}
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() =>
+            index === 0
+              ? router.push('/asset/type/new')   // Add new asset type
+              : router.push('/asset/new')        // Add new asset
+          }
+        >
+          <MaterialIcons name="add" size={28} color="#fff" />
         </TouchableOpacity>
       </View>
-      {/* Tab view for switching between asset types and all assets */}
-      <TabView
-        navigationState={{ index, routes }}
-        renderScene={renderScene}
-        onIndexChange={setIndex}
-        initialLayout={initialLayout}
-        renderTabBar={props => (
-          <TabBar
-            {...props}
-            indicatorStyle={{ backgroundColor: '#1E90FF' }}
-            style={{ backgroundColor: '#fff' }}
-            activeColor="#000"
-            inactiveColor="#555"
-            labelStyle={{ fontWeight: 'bold' }}
-            renderLabel={({ route, focused }) => (
-              <Text
-                style={{
-                  color: focused ? '#000' : '#555',
-                  fontWeight: focused ? 'bold' : 'normal',
-                  fontSize: 14,
-                }}
-              >
-                {route.title}
-              </Text>
-            )}
-          />
-        )}
-      />
-      {/* Floating action button to add new asset or asset type */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() =>
-          index === 0
-            ? router.push('/asset/type/new')   // Add new asset type
-            : router.push('/asset/new')        // Add new asset
-        }
-      >
-        <MaterialIcons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 };
 
 // Styles for the inventory screen
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   header: {
     flexDirection: 'row',
     padding: 10,

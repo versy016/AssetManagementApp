@@ -237,7 +237,9 @@ export default function NewAsset() {
                 onPress={() => update('id', String(item.id))}
 
               >
+              <View style={{ width: 80, height: 80 }}>
                 <QRCode value={item.id} size={80} />
+              </View>
                 <Text style={s.qrLabel}>{item.id}</Text>
               </TouchableOpacity>
               ))}

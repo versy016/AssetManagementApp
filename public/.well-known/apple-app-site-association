@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.com.engsurveys.assetmanager",
+        "paths": [
+          "/check-in/*"
+        ]
+      }
+    ]
+  }
+}

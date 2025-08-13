@@ -2,7 +2,7 @@
   "expo": {
     "name": "AssetManagementApp",
     "slug": "AssetManagementApp",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "scheme": "assetmanager",
     "userInterfaceStyle": "automatic",
@@ -11,14 +11,23 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.engsurveys.assetmanager",
       "associatedDomains": [
-        "applinks:ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com",
-        "applinks:ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com"
+        "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "This app uses the camera to scan QR codes for asset check-in.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "com.apple.developer.associated-domains": [
+          "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
+        ]
       }
     },
     "android": {
@@ -33,7 +42,7 @@
           "data": [
             {
               "scheme": "https",
-              "host": "ec2-13-238-161-9.ap-southeast-2.compute.amazonaws.com",
+              "host": "ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com",
               "pathPrefix": "/check-in"
             }
           ],
@@ -62,7 +71,24 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow the app to access your camera",
+          "microphonePermission": "Allow the app to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": []
+        }
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

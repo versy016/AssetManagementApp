@@ -3,7 +3,7 @@
 // Import hooks and components for navigation, state, and UI
 import { useLocalSearchParams } from 'expo-router'; // For route parameters
 import { useEffect, useState } from 'react'; // React state/effect
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native'; // Core UI
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking } from 'react-native'; // Core UI
 import { MaterialIcons } from '@expo/vector-icons'; // Icon library
 import { useRouter } from 'expo-router'; // Navigation
 import { SafeAreaView } from 'react-native-safe-area-context'; // Handles device safe areas
@@ -25,7 +25,26 @@ export default function AssetDetailPage() {
   }, [assetId]);
 
   // Show loading state until asset is fetched
-  if (!asset) return <Text>Loading...</Text>;
+  if (!asset) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Handle back button press to go back to previous screen or inventory
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back(); // Go back to the previous screen if possible
+    } else {
+      // Fallback to inventory tab if there's no previous screen
+      router.push({
+        pathname: '/(tabs)/Inventory',
+        params: { screen: 'assets' }
+      });
+    }
+  };
 
   // Render the asset detail UI
   return (
@@ -34,20 +53,10 @@ export default function AssetDetailPage() {
       {/* ScrollView allows content to be scrollable if needed */}
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         {/* Header with back button and title */}
+       
         <View style={styles.header}>
           {/* Back button: go back if possible, else go to Inventory */}
-          <TouchableOpacity
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back(); // Go back to the previous screen
-              } else {
-                router.push({
-                  pathname: '/Inventory',
-                  params: { tab: 'all' }
-                }); // Fallback route
-              }
-            }}
-          >
+          <TouchableOpacity onPress={handleBack}>
             <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
           </TouchableOpacity>
           {/* Title for the asset detail screen */}
@@ -77,8 +86,9 @@ export default function AssetDetailPage() {
             <TouchableOpacity
               onPress={() => {
                 // Open the document in the browser
-                import('react-native').then(({ Linking }) => {
-                  Linking.openURL(asset.documentation_url);
+                Linking.openURL(asset.documentation_url).catch(err => {
+                  console.error('Error opening URL:', err);
+                  alert('Could not open the document');
                 });
               }}
               style={styles.documentButton}
@@ -173,5 +183,17 @@ const styles = StyleSheet.create({
   documentText: {
     color: '#1E90FF',
     fontWeight: 'bold',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 8,
+    alignSelf: 'flex-start',
+  },
+  backButtonText: {
+    color: '#1E90FF',
+    marginLeft: 8,
+    fontSize: 16,
   },
 });

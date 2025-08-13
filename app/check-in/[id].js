@@ -6,19 +6,21 @@ import { useLocalSearchParams } from 'expo-router'; // For route parameters
 import React, { useEffect, useState } from 'react';
 // Import core React Native UI components
 import {
-  View, Text, ActivityIndicator, Button, StyleSheet
+  View, Text, ActivityIndicator, Button, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, FlatList, SafeAreaView
 } from 'react-native';
 // Import Firebase Auth for user authentication
 import { getAuth } from 'firebase/auth';
-
 import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+
 const router = useRouter();
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 // Main component for asset check-in and transfer actions
 export default function CheckInScreen() {
-  const { id } = useLocalSearchParams(); // Get asset ID from route params
+  const { id, returnTo } = useLocalSearchParams(); // Get asset ID and return URL from route params
+  const router = useRouter();
 
   // State for loading spinner
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,11 @@ export default function CheckInScreen() {
   const [asset, setAsset] = useState(null);
   // State for error messages
   const [error, setError] = useState(null);
+  // State for user selection modal
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch user and asset data when component mounts
   useEffect(() => {
@@ -47,12 +54,45 @@ export default function CheckInScreen() {
         }
 
         // Fetch asset details from backend
-        const res = await fetch(`${API_BASE_URL}/assets/${id}`);
-        if (!res.ok) throw new Error('Asset not found');
-        const data = await res.json();
+        if (!id) {
+          setError("Invalid asset ID");
+          setLoading(false);
+          return;
+        }
 
-        console.log("📦 Asset data:", data);
-        setAsset(data); // Store asset info
+        // Fetch asset details
+        const assetRes = await fetch(`${API_BASE_URL}/assets/${id}`);
+        const contentType = assetRes.headers.get('content-type');
+        if (!assetRes.ok || !contentType?.includes('application/json')) {
+          const text = await assetRes.text();
+          throw new Error(`Unexpected response: ${text}`);
+        }
+        const assetData = await assetRes.json();
+        
+        // If asset has an assigned user, use the nested user data
+        if (assetData.assigned_to_id && assetData.users) {
+          // Use the nested user data if available
+          assetData.assigned_user_name = assetData.users.name || 
+                                       assetData.users.useremail || 
+                                       `User ${assetData.assigned_to_id}`;
+        } else if (assetData.assigned_to_id) {
+          // Fallback to fetching user details if not in the nested data
+          try {
+            const userRes = await fetch(`${API_BASE_URL}/users/${assetData.assigned_to_id}`);
+            if (userRes.ok) {
+              const userData = await userRes.json();
+              assetData.assigned_user_name = userData.name || 
+                                           userData.useremail || 
+                                           `User ${assetData.assigned_to_id}`;
+            }
+          } catch (userError) {
+            console.error('Error fetching user details:', userError);
+            assetData.assigned_user_name = `User ${assetData.assigned_to_id}`;
+          }
+        }
+
+        console.log("📦 Asset data:", assetData);
+        setAsset(assetData); // Store asset info with user name
       } catch (err) {
         // Handle fetch or network errors
         console.error("❌ Error in Check-In screen:", err);
@@ -63,64 +103,203 @@ export default function CheckInScreen() {
     };
 
     fetchData(); // Run on mount
-  }, []);
+    // Fetch all users when component mounts
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/users`);
+        if (response.ok) {
+          const userList = await response.json();
+          setUsers(userList);
+          setFilteredUsers(userList);
+        }
+      } catch (err) {
+        console.error('Error fetching users:', err);
+      }
+    };
+
+    fetchUsers();
+  }, [id]);
+
+  // Filter users based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredUsers(users);
+    } else {
+      const filtered = users.filter(user => 
+        user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.useremail?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredUsers(filtered);
+    }
+  }, [searchQuery, users]);
+
+  // Handle transfer to selected user
+  const handleTransferToUser = async (selectedUser) => {
+    try {
+      setLoading(true);
+      
+      const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assigned_to_id: selectedUser.id,
+          status: 'In Use',
+          checked_out: true,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(errorText || 'Failed to transfer asset');
+      }
+
+      setShowUserModal(false);
+      Alert.alert('Success', `Asset transferred to ${selectedUser.name || selectedUser.useremail} successfully`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            if (returnTo) {
+              router.replace(returnTo);
+            } else {
+              router.replace('/(tabs)/Inventory');
+            }
+          },
+        },
+      ]);
+    } catch (err) {
+      console.error('Error in transfer:', err);
+      Alert.alert('Error', err.message || 'Failed to transfer asset');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle check-in or transfer button actions
   const handleAction = async (type) => {
     if (!asset || !user) return; // Guard: must have asset and user
 
     let assignedToId = null; // Will hold the user ID to assign asset to
-
-    if (type === 'checkin') {
-      // For check-in, assign asset to admin user
-      // Fetch all users and find the admin
-      const response = await fetch(`${API_BASE_URL}/users`);
-      const users = await response.json();
-      console.log(users);
-
-      const adminUser = users.find(u => u.useremail === 'admin@engsurveys.com.au');
-      if (!adminUser) {
-        alert('Admin user not found');
-        return;
-      }
-      assignedToId = adminUser.id;
-    } else if (type === 'transfer') {
-      // For transfer, assign asset to current user
-      assignedToId = user?.uid;
-    }
-
-    // Prepare payload for asset update
-    const payload = {
-      status: type === 'checkin' ? 'Available' : 'In Use', // Set status
-      assigned_to_id: assignedToId,                        // Assign to user/admin
-      checked_out: type === 'checkin' ? false : true,      // Checked out flag
-    };
+    let status = '';
+    let successMessage = '';
 
     try {
-      // Send PUT request to update asset
-      const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
+      setLoading(true);
+
+      if (type === 'checkin') {
+        // For check-in, assign asset to admin user
+        const response = await fetch(`${API_BASE_URL}/users`);
+        const users = await response.json();
+        const adminUser = users.find(u => u.useremail === 'admin@engsurveys.com.au');
+        if (!adminUser) {
+          alert('Admin user not found');
+          return;
+        }
+        assignedToId = adminUser.id;
+        status = 'Available';
+        successMessage = 'Asset checked in successfully';
+      } else if (type === 'transfer') {
+        // For transfer, assign asset to current user
+        assignedToId = user?.uid;
+        status = 'In Use';
+        successMessage = 'Asset transferred to you successfully';
+      }
+
+      // Update the asset
+      const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          assigned_to_id: assignedToId,
+          status: status,
+          checked_out: type === 'transfer',
+        }),
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(errorText || 'Failed to update asset');
+      }
 
-      // Show confirmation alert
-      alert(
-        type === 'checkin'
-          ? 'Asset checked in to Office Admin.'
-          : `Asset transferred to ${user.displayName || 'you'}`
-      );
-      router.replace('/dashboard');
+      // Show success message and navigate back
+      Alert.alert('Success', successMessage, [
+        {
+          text: 'OK',
+          onPress: () => {
+            if (returnTo) {
+              // If returnTo is provided, navigate there
+              router.replace(returnTo);
+            } else {
+              // Otherwise, go to inventory
+              router.replace('/(tabs)/Inventory');
+            }
+          },
+        },
+      ]);
     } catch (err) {
-      alert(err.message);
+      console.error('Error in handleAction:', err);
+      Alert.alert('Error', err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Render user selection modal
+  const renderUserModal = () => (
+    <Modal
+      visible={showUserModal}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={() => setShowUserModal(false)}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select User</Text>
+            <TouchableOpacity onPress={() => setShowUserModal(false)}>
+              <MaterialIcons name="close" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.searchContainer}>
+            <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search users..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+          </View>
+
+          <FlatList
+            data={filteredUsers}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity 
+                style={styles.userItem}
+                onPress={() => handleTransferToUser(item)}
+                disabled={loading}
+              >
+                <View>
+                  <Text style={styles.userName}>{item.name || 'No Name'}</Text>
+                  <Text style={styles.userEmail}>{item.useremail}</Text>
+                </View>
+                {loading && <ActivityIndicator size="small" />}
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text>No users found</Text>
+              </View>
+            }
+          />
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
 
   // Show loading spinner while fetching data
-  if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" />;
+  if (loading && !showUserModal) return <ActivityIndicator style={{ flex: 1 }} size="large" />;
 
   // Show error message if fetch failed
   if (error) {
@@ -143,47 +322,71 @@ export default function CheckInScreen() {
 
   // Main UI for check-in/transfer actions
   return (
-    <View style={styles.container}>
-      {/* Screen title */}
-      <Text style={styles.title}>Check-In / Transfer</Text>
-      {/* Asset info */}
-      <Text style={styles.subtext}>Asset ID: {asset.id}</Text>
-      <Text style={styles.subtext}>Model: {asset.model || '—'}</Text>
-      <Text style={styles.subtext}>Assigned To: {asset.assigned_to_id || 'None'}</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {/* Screen title */}
+        <Text style={styles.title}>Check-In / Transfer</Text>
+        {/* Asset info */}
+        <Text style={styles.subtext}>Asset ID: {asset.id}</Text>
+        <Text style={styles.subtext}>Model: {asset.model || '—'}</Text>
+        {asset.assigned_to_id && (
+          <Text style={styles.subtext}>
+            Assigned to: {asset.assigned_user_name || `User ${asset.assigned_to_id}`}
+          </Text>
+        )}
+        {/* Action buttons */}
+        <View style={{ marginTop: 30 }}>
+          <Text style={styles.optionTitle}>Choose an action:</Text>
+          {/* Button to check in asset to admin */}
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: 'green' }]}
+            onPress={() => handleAction('checkin')}
+          >
+            <Text style={styles.buttonText}>Check In to Office</Text>
+          </TouchableOpacity>
 
-      {/* Action buttons */}
-      <View style={{ marginTop: 30 }}>
-        <Text style={styles.optionTitle}>Choose an action:</Text>
-        {/* Button to check in asset to admin */}
-        <Button
-          title="Check In to Office"
-          onPress={() => handleAction('checkin')}
-          color={'green'}
-        />
-        <View style={{ height: 10 }} />
-        {/* Button to transfer asset to self or another user */}
-        <Button
-          title={asset.assigned_to_id === user?.uid ? 'Transfer Asset' : 'Transfer to Me'}
-          onPress={() => handleAction('transfer')}
-          color={'blue'}
-        />
-        <Button
-          title="Go Back to Dashboard"
-          onPress={() => router.replace('/dashboard')}
-          color={'gray'}
-        />
+          {asset.assigned_to_id === user?.uid ? (
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: 'blue' }]}
+              onPress={() => setShowUserModal(true)}
+            >
+              <Text style={styles.buttonText}>Transfer Asset</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: 'blue' }]}
+              onPress={() => handleAction('transfer')}
+            >
+              <Text style={styles.buttonText}>Transfer to Me</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: 'gray' }]}
+            onPress={() => router.replace('/dashboard')}
+          >
+            <Text style={styles.buttonText}>Go Back to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+
+        {renderUserModal()}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
-
 // Styles for the check-in/transfer screen
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   container: {
     flex: 1,                   // Take full height
     padding: 20,               // Padding around content
     justifyContent: 'center',  // Center content vertically
+    backgroundColor: '#ffffff', // White background
+
   },
   title: {
     fontSize: 22,              // Large font for title
@@ -198,5 +401,72 @@ const styles = StyleSheet.create({
     fontSize: 18,              // Font size for action title
     marginBottom: 8,           // Space below action title
     fontWeight: '600',         // Semi-bold
+  },
+  button: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginVertical: 5,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    fontSize: 16,
+  },
+  userItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
 });

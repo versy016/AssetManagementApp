@@ -104,14 +104,26 @@ export default function QRActionScreen() {
       // If the response is not OK, throw an error with the server's response text
       if (!res.ok) throw new Error(await res.text());
 
-      // Show a success message to the user
-      Alert.alert('Success', `${asset.model} has been checked out to ${user.displayName || 'you'} successfully`);
-      // Navigate back to the Inventory screen
-      router.replace('/Inventory');
+      // Show success message
+      Alert.alert('Success', `${asset.model} has been checked out to you`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            // If there's a returnTo parameter, navigate there
+            if (router.params?.returnTo) {
+              router.replace(router.params.returnTo);
+            } else {
+              // Otherwise, go back to the inventory
+              router.replace('/Inventory');
+            }
+          }
+        }
+      ]);
     } catch (err) {
       // Show an error alert if anything goes wrong
       Alert.alert('Error', err.message);
     } finally {
+      // Always stop the loading/updating state
       setUpdating(false);
     }
   };

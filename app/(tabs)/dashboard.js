@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 // Import core UI components from React Native
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 // Import MaterialIcons for icons
 import { MaterialIcons } from '@expo/vector-icons';
 // Import Firebase Auth instance
@@ -64,7 +65,8 @@ const Dashboard = ({ isAdmin }) => {
 
   // Main dashboard UI
   return (
-    <View style={styles.dashboard}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.dashboard}>
       {/* Main scrollable dashboard area */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header with greeting and user avatar */}
@@ -125,14 +127,14 @@ const Dashboard = ({ isAdmin }) => {
         <View style={styles.quickActions}>
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => router.push('/(app)/scan')}
+            onPress={() => router.push('/qr-scanner')}  // Updated to use the new QR scanner
           >
             <MaterialIcons name="qr-code-scanner" size={35} color="#1E90FF" />
             <Text style={styles.actionText}>Scan</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => router.push('/(app)/multi-scan')}
+            onPress={() => router.push('/qr-scanner?mode=multi')} 
           >
             <MaterialIcons name="sync-alt" size={30} color="#1E90FF" />
             <Text style={styles.actionText}>Multi-Scan</Text>
@@ -193,6 +195,7 @@ const Dashboard = ({ isAdmin }) => {
         </View>
       </ScrollView>
     </View>
+  </SafeAreaView>
   );
 };
 
@@ -207,6 +210,10 @@ Dashboard.defaultProps = {
 
 // Styles for the dashboard screen and components
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   dashboard: {
     flex: 1,
     backgroundColor: '#f5f5f5',
