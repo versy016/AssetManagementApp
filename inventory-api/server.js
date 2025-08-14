@@ -13,6 +13,8 @@ app.use(bodyParser.json());
 
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
+app.use('/qr', express.static('/home/ec2-user/deploy/AssetManagementApp/utils/qr'));
+
 
 app.get('/', (req, res) => {
   res.send('Inventory API is running');
