@@ -1,76 +1,40 @@
-// test-users.js
+// testUpdateAsset.js
 const axios = require('axios');
 
-const BASE_URL = 'http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/users';
+const assetId = 'CNP3AFJG'; // The pre-generated ID we want to update
+const assetData = {
+  type_id: '9c442d04-faf7-48cd-b54c-a970b34a1d36',
+  serial_number: 'SN-TEST1235',
+  model: 'Model Y Test',
+  description: 'This is a test asset from script',
+  location: 'Test Location',
+  assigned_to_id: 'SenCHBrcN0aTswEBbsqo0o7obD73',
+  status: 'Available',
+  next_service_date: '2025-08-01'
+};
 
-const tests = [
-  {
-    name: 'GET all users',
-    run: async () => {
-      const res = await axios.get(`${BASE_URL}/list`);
-      console.log('✅ GET users:', res.data);
-    },
-  },
-  {
-    name: 'POST new user - valid',
-    run: async () => {
-      const res = await axios.post(BASE_URL, {
-        id: 'U10001',
-        name: 'Test User',
-        useremail: 'test@example.com',
-      });
-      console.log('✅ User created:', res.data);
-    },
-  },
-  {
-    name: 'POST new user - missing name',
-    run: async () => {
-      try {
-        await axios.post(BASE_URL, {
-          id: 'U10002',
-          useremail: 'fail@example.com',
-        });
-      } catch (err) {
-        console.log('✅ Expected failure (missing name):', err.response.data);
-      }
-    },
-  },
-  {
-    name: 'GET specific user - valid ID',
-    run: async () => {
-      const res = await axios.get(`${BASE_URL}/U10001`);
-      console.log('✅ Fetched user:', res.data);
-    },
-  },
-  {
-    name: 'GET specific user - invalid ID',
-    run: async () => {
-      try {
-        await axios.get(`${BASE_URL}/nonexistent`);
-      } catch (err) {
-        console.log('✅ Expected failure (invalid ID):', err.response.data);
-      }
-    },
-  },
-  {
-    name: 'PUT update user',
-    run: async () => {
-      const res = await axios.put(`${BASE_URL}/U10001`, {
-        name: 'Updated User',
-        useremail: 'updated@example.com',
-      });
-      console.log('✅ User updated:', res.data);
-    },
-  },
-];
+console.log(`Updating asset ${assetId} with data:`, JSON.stringify(assetData, null, 2));
 
-(async () => {
-  for (const test of tests) {
-    try {
-      console.log(`\n🔹 Running test: ${test.name}`);
-      await test.run();
-    } catch (err) {
-      console.error(`❌ Test failed: ${test.name}`, err.message);
+axios.put(`http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/${assetId}`, 
+  assetData,
+  {
+    headers: {
+      'Content-Type': 'application/json'
     }
   }
-})();
+)
+.then(res => {
+  console.log('✅ Asset updated:', res.data);
+})
+.catch(err => {
+  console.error('❌ Error:', {
+    message: err.message,
+    response: {
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      data: err.response?.data,
+      headers: err.response?.headers
+    },
+    stack: err.stack
+  });
+});

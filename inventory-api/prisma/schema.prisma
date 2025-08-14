@@ -49,6 +49,7 @@ model assets {
   field_values      asset_field_values[]
   asset_logs        asset_logs[]
   asset_types       asset_types? @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigned_to       users?       @relation("AssetAssignment", fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model asset_field_values {
@@ -111,6 +112,7 @@ model users {
   created_at DateTime?    @default(now()) @db.Timestamptz(6)
   updated_at DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
   asset_logs asset_logs[]
+  assets     assets[]     @relation("AssetAssignment")
 }
 
 enum UserRole {
