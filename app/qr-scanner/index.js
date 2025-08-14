@@ -38,7 +38,7 @@ export default function QRScannerScreen() {
       if (data.startsWith('http')) {
         const match = data.match(/\/check-in\/([A-Z0-9]+)/i);
         if (!match || !match[1]) throw new Error('Invalid QR format');
-        assetId = match[1];
+        assetId = match[1].toUpperCase();
       } else {
         if (!/^[A-Z0-9]{6,10}$/i.test(data)) throw new Error('Invalid asset ID format');
         assetId = data.toUpperCase();
@@ -64,8 +64,8 @@ export default function QRScannerScreen() {
       const assetId = processScannedItem(data);
       if (!assetId) return;
 
-      // Check for duplicates in multi-scan mode
-      if (scanMode === 'multi' && scannedItems.includes(assetId)) {
+      // Check for duplicates in multi-scan mode (case-insensitive check)
+      if (scanMode === 'multi' && scannedItems.some(id => id.toUpperCase() === assetId.toUpperCase())) {
         throw new Error('This asset has already been scanned.');
       }
 
@@ -73,7 +73,14 @@ export default function QRScannerScreen() {
 
       if (scanMode === 'multi') {
         // Use functional update to ensure we have the latest state
-        setScannedItems(prev => [...prev, assetId]);
+        setScannedItems(prev => {
+          // Double-check for duplicates to be extra safe
+          if (prev.some(id => id.toUpperCase() === assetId.toUpperCase())) {
+            return prev;
+          }
+          return [...prev, assetId];
+        });
+        
         setLastScanned(assetId);
         
         // Auto-reset after 1 second

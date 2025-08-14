@@ -6,16 +6,33 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     },
     "preview": {
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {
+        "enterpriseProvisioning": "universal"
+      }
     }
   },
   "submit": {
+    "development": {
+      "ios": {
+        "appleId": "shivamverma78698@gmail.com",
+        "ascAppId": "6749434013",
+        "appleTeamId": "7QSCBJMSR3"
+      },
+      "android": {
+        "track": "internal"
+      }
+    },
     "production": {}
   }
 }

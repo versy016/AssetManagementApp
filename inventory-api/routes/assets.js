@@ -8,13 +8,23 @@ require('dotenv').config({ path: '../.env' }); // Adjust path if .env is outside
 
 // GET all assets
 router.get('/', async (req, res) => {
-  const assets = await prisma.assets.findMany({
-    include: {
-      asset_types: true,
-      users: true,
-    },
-  });
-  res.json(assets);
+  try {
+    console.log('Fetching all assets...');
+    const assets = await prisma.assets.findMany({
+      include: {
+        asset_types: true,
+        users: true,
+      },
+    });
+    console.log('Assets fetched successfully');
+    res.json(assets);
+  } catch (error) {
+    console.error('Error fetching assets:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch assets',
+      details: error.message 
+    });
+  }
 });
 router.get('/asset-options', async (req, res) => {
   try {

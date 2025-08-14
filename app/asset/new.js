@@ -238,7 +238,11 @@ export default function NewAsset() {
 
               >
               <View style={{ width: 80, height: 80 }}>
-                <QRCode value={item.id} size={80} />
+                <Image
+                  source={{ uri: `http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/qr/${item.id}.png` }}
+                  style={{ width: 80, height: 80 }}
+                  resizeMode="contain"
+                />
               </View>
                 <Text style={s.qrLabel}>{item.id}</Text>
               </TouchableOpacity>

@@ -19,10 +19,13 @@ model asset_logs {
 }
 
 model asset_types {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()"))
-  name      String
-  image_url String?
-  assets    assets[]
+  id         String              @id @default(dbgenerated("uuid_generate_v4()"))
+  name       String
+  image_url  String?
+  created_at DateTime            @default(now()) @db.Timestamp(6)
+  updated_at DateTime?           @updatedAt
+  fields     asset_type_fields[]
+  assets     assets[]
 }
 
 model assets {
@@ -31,27 +34,86 @@ model assets {
   model             String?
   description       String?
   assigned_to_id    String?
-  status            String?
-  checked_out       Boolean?     @default(false)
-  return_date       DateTime?    @db.Date
-  next_service_date DateTime?    @db.Date
+  status            String
+  next_service_date DateTime?            @db.Date
   documentation_url String?
   image_url         String?
-  last_updated      DateTime?    @default(now()) @db.Timestamp(6)
+  last_updated      DateTime?            @default(now()) @db.Timestamp(6)
   last_changed_by   String?
-  metadata          Json?
   location          String?
-  id                String       @id @default(uuid())
+  id                String               @id @default(dbgenerated("uuid_generate_v4()"))
+  date_purchased    DateTime?            @db.Date
+  notes             String?
+  field_values      asset_field_values[]
   asset_logs        asset_logs[]
-  users             users?       @relation(fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  asset_types       asset_types? @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users             users?               @relation(fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset_types       asset_types?         @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model asset_field_values {
+  id                  String            @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id            String
+  asset_type_field_id String
+  value               String?
+  created_at          DateTime          @default(now()) @db.Timestamp(6)
+  updated_at          DateTime          @updatedAt
+  asset               assets            @relation(fields: [asset_id], references: [id], onDelete: Cascade)
+  asset_type_field    asset_type_fields @relation(fields: [asset_type_field_id], references: [id], onDelete: NoAction)
+
+  @@unique([asset_id, asset_type_field_id])
+  @@index([asset_id])
+  @@index([asset_type_field_id])
+}
+
+model asset_type_fields {
+  id               String               @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_type_id    String
+  field_type_id    String
+  name             String
+  slug             String
+  description      String?
+  is_required      Boolean              @default(false)
+  default_value    String?
+  options          Json?
+  validation_rules Json?
+  display_order    Int                  @default(0)
+  created_at       DateTime             @default(now()) @db.Timestamp(6)
+  updated_at       DateTime             @updatedAt
+  field_values     asset_field_values[]
+  asset_type       asset_types          @relation(fields: [asset_type_id], references: [id], onDelete: Cascade)
+  field_type       field_types          @relation(fields: [field_type_id], references: [id], onDelete: NoAction)
+
+  @@unique([asset_type_id, slug])
+  @@index([asset_type_id])
+}
+
+model field_types {
+  id                String              @id @default(dbgenerated("gen_random_uuid()"))
+  name              String
+  slug              String              @unique
+  description       String?
+  has_options       Boolean             @default(false)
+  validation_rules  Json?
+  created_at        DateTime            @default(now()) @db.Timestamp(6)
+  updated_at        DateTime            @updatedAt
+  asset_type_fields asset_type_fields[]
+
+  @@map("field_types")
 }
 
 model users {
   id         String       @id @default(dbgenerated("uuid_generate_v4()"))
   name       String
   userassets String[]
-  useremail  String?
+  useremail  String?      @unique
+  role       UserRole     @default(USER)
+  created_at DateTime?    @default(now()) @db.Timestamptz(6)
+  updated_at DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
   asset_logs asset_logs[]
   assets     assets[]
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "AssetManagementApp",
     "slug": "AssetManagementApp",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "scheme": "assetmanager",
     "userInterfaceStyle": "automatic",
@@ -28,7 +28,8 @@
         "com.apple.developer.associated-domains": [
           "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
         ]
-      }
+      },
+      "runtimeVersion": "1.0.4"
     },
     "android": {
       "package": "com.engsurveys.assetmanager",
@@ -53,8 +54,10 @@
         }
       ],
       "permissions": [
-        "android.permission.CAMERA"
-      ]
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
@@ -98,6 +101,9 @@
       "eas": {
         "projectId": "7635902a-7b88-48ef-9e6a-dccbe71980d4"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7635902a-7b88-48ef-9e6a-dccbe71980d4"
     }
   }
 }
