@@ -10,19 +10,46 @@ require('dotenv').config({ path: '../.env' }); // Adjust path if .env is outside
 router.get('/', async (req, res) => {
   try {
     console.log('Fetching all assets...');
+    
+    // First, verify database connection
+    await prisma.$connect();
+    console.log('Database connection successful');
+    
+    // Get all assets with related data
     const assets = await prisma.assets.findMany({
       include: {
         asset_types: true,
-        users: true,
+        users: {
+          select: {
+            id: true,
+            name: true,
+            useremail: true
+          }
+        },
       },
     });
-    console.log('Assets fetched successfully');
+    
+    console.log(`Successfully fetched ${assets.length} assets`);
     res.json(assets);
+    
   } catch (error) {
-    console.error('Error fetching assets:', error);
+    console.error('❌ Error in /assets route:', {
+      message: error.message,
+      stack: error.stack,
+      error: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    
+    // Check if headers have already been sent
+    if (res.headersSent) {
+      return console.error('Headers already sent, cannot send error response');
+    }
+    
     res.status(500).json({ 
+      success: false,
       error: 'Failed to fetch assets',
-      details: error.message 
+      message: error.message,
+      // Only include stack trace in development
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   }
 });
