@@ -20,7 +20,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { LogBox } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { useLocalSearchParams } from 'expo-router';
 
 registerTranslation('en', en);
 LogBox.ignoreLogs(['VirtualizedLists should never be nested']);

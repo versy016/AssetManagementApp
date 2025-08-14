@@ -85,10 +85,6 @@ router.get('/asset-options', async (req, res) => {
   }
 });
 
-
-
-
-
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -167,8 +163,6 @@ router.post('/', upload, async (req, res) => {
         location: data.location,
         assigned_to_id: data.assigned_to_id || null,
         status: data.status || 'Available',
-        checked_out: data.checked_out === 'true',
-        return_date: data.return_date ? new Date(data.return_date) : null,
         next_service_date: data.next_service_date ? new Date(data.next_service_date) : null,
         documentation_url: docUpload?.Location || null,
         image_url: imageUpload?.Location || null,

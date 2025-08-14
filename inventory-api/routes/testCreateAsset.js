@@ -1,29 +1,37 @@
 // testCreateAsset.js
 const axios = require('axios');
-const FormData = require('form-data');
-const fs = require('fs');
-const path = require('path');
 
-const form = new FormData();
+const assetData = {
+  id: 'CNP3AFJG',
+  type_id: '9c442d04-faf7-48cd-b54c-a970b34a1d36',
+  serial_number: 'SN-TEST1235',
+  model: 'Model Y Test',
+  description: 'This is a test asset from script',
+  location: 'Test Location',
+  assigned_to_id: 'SenCHBrcN0aTswEBbsqo0o7obD73',
+  status: 'Available',
+  next_service_date: '2025-08-01'
+};
 
-form.append('type_id', 'e4572645-3b92-41aa-bacc-19a663acc05c'); // From asset_types.csv
-form.append('serial_number', 'SN-TEST1235');
-form.append('model', 'Model Y Test');
-form.append('description', 'This is a test asset from script');
-form.append('location', 'Test Location');
-form.append('assigned_to_id', '0deef46c-abef-4d90-9f11-8dc6550a67e8'); // From users.csv
-form.append('status', 'Available');
-form.append('next_service_date', '2025-08-01');
+console.log('Sending request with data:', JSON.stringify(assetData, null, 2));
 
-form.append('image', fs.createReadStream(path.join(__dirname, 'test-image.jpg')));
-form.append('document', fs.createReadStream(path.join(__dirname, 'test-doc.pdf')));
-
-axios.post('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets', form, {
-  headers: form.getHeaders()
+axios.post('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets', assetData, {
+  headers: {
+    'Content-Type': 'application/json'
+  }
 })
 .then(res => {
   console.log('✅ Asset created:', res.data);
 })
 .catch(err => {
-  console.error('❌ Error:', err.response?.data || err.message);
+  console.error('❌ Error:', {
+    message: err.message,
+    response: {
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      data: err.response?.data,
+      headers: err.response?.headers
+    },
+    stack: err.stack
+  });
 });
