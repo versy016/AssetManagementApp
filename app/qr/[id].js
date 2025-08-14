@@ -95,8 +95,7 @@ export default function QRActionScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: user.uid, // Assign asset to current user
-          status: 'In Use', // Set asset status to In Use
-          checked_out: true, // Mark asset as checked out
+          status: 'In Use' // Set asset status to In Use
         }),
       });
 

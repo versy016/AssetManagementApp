@@ -6,13 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Switch,
   Alert,
   Platform,
 } from 'react-native';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
@@ -47,8 +46,6 @@ export default function NewAsset() {
   const [image, setImage] = useState(null);
   // State for storing the attached document (e.g., PDF, manual)
   const [document, setDocument] = useState(null);
-  // State for toggling the return date picker modal
-  const [showReturnPicker, setShowReturnPicker] = useState(false);
   // State for toggling the next service date picker modal
   const [showServicePicker, setShowServicePicker] = useState(false);
   // Dropdown options fetched from backend (asset types, models, users, statuses, asset IDs)
@@ -98,8 +95,6 @@ export default function NewAsset() {
             location: data.location || '',
             assigned_to_id: data.assigned_to_id || '',
             status: data.status || '',
-            checked_out: false,
-            return_date: data.return_date?.split('T')[0] || '',
             next_service_date: data.next_service_date?.split('T')[0] || '',
           }));
         })
@@ -320,34 +315,12 @@ export default function NewAsset() {
           />
         </View>
 
-        <View style={s.row}>
-          <Text>Checked Out</Text>
-          <Switch value={form.checked_out} onValueChange={v => update('checked_out', v)} />
-        </View>
-
-        <TouchableOpacity style={s.input} onPress={() => setShowReturnPicker(true)}>
-          <Text style={{ color: form.return_date ? '#000' : '#888' }}>
-            {form.return_date || 'Select Return Date'}
-          </Text>
-        </TouchableOpacity>
-
         <TouchableOpacity style={s.input} onPress={() => setShowServicePicker(true)}>
           <Text style={{ color: form.next_service_date ? '#000' : '#888' }}>
             {form.next_service_date || 'Select Next Service Date'}
           </Text>
         </TouchableOpacity>
 
-        <DatePickerModal
-          locale="en"
-          mode="single"
-          visible={showReturnPicker}
-          date={form.return_date ? new Date(form.return_date) : undefined}
-          onDismiss={() => setShowReturnPicker(false)}
-          onConfirm={({ date }) => {
-            update('return_date', date.toISOString().split('T')[0]);
-            setShowReturnPicker(false);
-          }}
-        />
         <DatePickerModal
           locale="en"
           mode="single"

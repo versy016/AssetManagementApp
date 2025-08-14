@@ -13,8 +13,6 @@ form.append('description', 'This is a test asset from script');
 form.append('location', 'Test Location');
 form.append('assigned_to_id', '0deef46c-abef-4d90-9f11-8dc6550a67e8'); // From users.csv
 form.append('status', 'Available');
-form.append('checked_out', 'true');
-form.append('return_date', '2025-07-01');
 form.append('next_service_date', '2025-08-01');
 
 form.append('image', fs.createReadStream(path.join(__dirname, 'test-image.jpg')));
