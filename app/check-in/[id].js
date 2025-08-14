@@ -143,8 +143,7 @@ export default function CheckInScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: selectedUser.id,
-          status: 'In Use',
-          checked_out: true,
+          status: 'In Use'
         }),
       });
 
@@ -210,8 +209,7 @@ export default function CheckInScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: assignedToId,
-          status: status,
-          checked_out: type === 'transfer',
+          status: status
         }),
       });
 

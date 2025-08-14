@@ -39,9 +39,7 @@ export default function NewAsset() {
     description: '',       // Description of the asset
     location: '',          // Physical location
     assigned_to_id: '',    // User ID to whom the asset is assigned
-    status: '',            // Status (e.g., available, checked out)
-    checked_out: false,    // Boolean: is it checked out?
-    return_date: '',       // Expected return date (if checked out)
+    status: '',            // Status (e.g., available, in use)
     next_service_date: '', // Next scheduled service date
   });
 

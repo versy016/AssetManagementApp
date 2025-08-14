@@ -62,8 +62,7 @@ export default function QRActionScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: null,
-          status: 'Available',
-          checked_out: false,
+          status: 'Available'
         }),
       });
 
