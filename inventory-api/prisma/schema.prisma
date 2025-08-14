@@ -49,7 +49,7 @@ model assets {
   field_values      asset_field_values[]
   asset_logs        asset_logs[]
   asset_types       asset_types? @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  assigned_to       users?       @relation("AssetAssignment", fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users             users?       @relation("AssetAssignment", fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model asset_field_values {
