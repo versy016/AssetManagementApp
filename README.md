@@ -1,50 +1,116 @@
-# Welcome to your Expo app 👋
+# Asset Management App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A comprehensive asset management solution built with React Native, Expo, and Node.js. This application helps organizations track, manage, and maintain their physical assets efficiently.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 📱 Cross-platform mobile app (iOS & Android)
+- 🔍 Advanced search and filtering
+- 📊 Asset tracking and management
+- 🔐 User authentication and authorization
+- 📱 Offline support
+- 📱 Barcode/QR code scanning
+- 📊 Reporting and analytics
 
-   ```bash
-   npm install
-   ```
+## Tech Stack
 
-2. Start the app
+- **Frontend**: React Native, Expo, React Navigation
+- **Backend**: Node.js, Express, Prisma
+- **Database**: PostgreSQL
+- **Authentication**: Firebase Authentication
+- **Hosting**: AWS EC2
+- **CI/CD**: GitHub Actions
 
-   ```bash
-    npx expo start
-   ```
+## Prerequisites
 
-In the output, you'll find options to open the app in a
+- Node.js (v16+)
+- npm or yarn
+- Expo CLI
+- PostgreSQL
+- Firebase account (for authentication)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Getting Started
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### 1. Clone the repository
 
 ```bash
-npm run reset-project
+git clone https://github.com/yourusername/AssetManagementApp.git
+cd AssetManagementApp
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Install dependencies
 
-## Learn more
+```bash
+# Install root dependencies
+npm install
 
-To learn more about developing your project with Expo, look at the following resources:
+# Install API dependencies
+cd inventory-api
+npm install
+cd ..
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### 3. Set up environment variables
 
-## Join the community
+Create a `.env` file in the root directory:
 
-Join our community of developers creating universal apps.
+```bash
+cp .env.example .env
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Update the `.env` file with your configuration.
+
+### 4. Start the development server
+
+```bash
+# Start the Expo development server
+npm start
+
+# In a separate terminal, start the API server
+cd inventory-api
+npm run dev
+```
+
+## Project Structure
+
+```
+.
+├── app/                    # Expo app directory
+├── assets/                 # Static assets (images, fonts, etc.)
+├── components/             # Reusable React components
+├── constants/              # App constants
+├── hooks/                  # Custom React hooks
+├── inventory-api/          # Backend API server
+│   ├── prisma/             # Database schema and migrations
+│   ├── routes/             # API routes
+│   └── server.js           # Express server entry point
+├── scripts/                # Utility scripts
+├── utils/                  # Utility functions
+├── .env.example            # Example environment variables
+├── app.json               # Expo configuration
+└── package.json           # Project dependencies
+```
+
+## Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For support, please open an issue in the repository or contact the maintainers.
+
+---
+
+Built with ❤️ by Your Name

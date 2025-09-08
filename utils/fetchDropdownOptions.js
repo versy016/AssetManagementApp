@@ -4,12 +4,15 @@
  * Fetches dropdown data and available asset IDs from the backend API.
  * @returns {Promise<Object>} Dropdown data and available asset IDs.
  */
+
+import { API_BASE_URL } from '../inventory-api/apiBase';
+
 export async function fetchDropdownOptions() {
   try {
     // Fetch dropdown options and assets in parallel
     const [dropdownRes, assetsRes] = await Promise.all([
-      fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-options'),
-      fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets'),
+      fetch(`${API_BASE_URL}/assets/asset-options`),
+      fetch(`${API_BASE_URL}/assets`),
     ]);
 
     // Parse JSON responses

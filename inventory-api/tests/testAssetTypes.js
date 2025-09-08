@@ -1,6 +1,7 @@
 const axios = require('axios');
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
-axios.get('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/asset_types')
+axios.get(`${API_BASE_URL}/assets/asset_types`)
   .then(res => {
     console.log('✅ Asset Types:\n', res.data);
   })

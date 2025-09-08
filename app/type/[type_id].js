@@ -9,12 +9,15 @@ import {
   FlatList,           // Efficient list rendering
   Image,              // Asset image preview
   TouchableOpacity,   // Pressable UI element
-  StyleSheet,         // Style definitions
+  StyleSheet,
+  Alert,
+  Platform,// Style definitions
 } from 'react-native';
 // Import navigation helpers for routing and params
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons'; // Icon library for UI
 import { SafeAreaView } from 'react-native-safe-area-context'; // Handles device safe areas
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 // AssetsType displays all assets for a given type_id
 // Main component for displaying all assets of a specific type
@@ -23,13 +26,53 @@ export default function AssetsType() {
   const { type_id, type_name } = useLocalSearchParams();
   const router = useRouter(); // Navigation/router object
   const [assets, setAssets] = useState([]); // State: filtered assets list
+ 
+ const doDeleteType = async () => {
+  const ok = await new Promise((resolve) => {
+    // Web: use confirm if available
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      return resolve(window.confirm('Delete this asset type? This cannot be undone.'));
+    }
+    // Native fallback
+    Alert.alert(
+      'Delete asset type',
+      'This cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ],
+      { cancelable: true }
+    );
+  });
 
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/asset-types/${type_id}`, { method: 'DELETE' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || body?.error || 'Failed to delete');
+
+    // Only show native toast on native; on web the confirm was enough
+    if (Platform.OS !== 'web') {
+      Alert.alert('Deleted', 'Asset type removed.');
+    }
+
+    router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+  } catch (e) {
+    Alert.alert('Error', e.message || 'Failed to delete asset type');
+  }
+};
+
+
+  const goEditType = () => {
+    router.push({ pathname: '/type/edit', params: { id: type_id, name: type_name } });
+  };
   // Fetch and filter assets by type_id whenever type_id changes
   useEffect(() => {
     if (!type_id) return; // Guard: do nothing if no type_id
 
     // Fetch all assets from backend API
-    fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets')
+    fetch(`${API_BASE_URL}/assets`)
       .then(res => res.json()) // Parse JSON response
       .then(data => {
         // Filter assets to those matching the current type_id
@@ -97,6 +140,16 @@ export default function AssetsType() {
           />
         )}
       </View>
+      <View style={styles.headerActions}>
+        <TouchableOpacity style={[styles.chip, {backgroundColor:'#e8f1ff'}]} onPress={goEditType}>
+          <MaterialIcons name="edit" size={16} color="#1E90FF" />
+          <Text style={styles.chipText}>Edit Type</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.chip, {backgroundColor:'#ffe8ea'}]} onPress={doDeleteType}>
+          <MaterialIcons name="delete" size={16} color="#b00020" />
+          <Text style={[styles.chipText, {color:'#b00020'}]}>Delete Type</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -150,5 +203,27 @@ const styles = StyleSheet.create({
     marginTop: 50,               // Space from top
     fontSize: 16,                // Font size for no-data
     color: '#777',               // Muted color
+  },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 16,
+    borderTopColor: '#ddd',
+    borderTopWidth: 1,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  chipText: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#333',
   },
 });

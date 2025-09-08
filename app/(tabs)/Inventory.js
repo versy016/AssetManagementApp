@@ -20,6 +20,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
 // Import navigation hooks from Expo Router
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 // Set up the initial layout for the tab view
 const initialLayout = { width: Dimensions.get('window').width };
@@ -33,7 +34,7 @@ const AssetTypesTab = () => {
   useEffect(() => {
     const fetchAssetTypes = async () => {
       try {
-        const res = await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/asset-types-summary');
+const res = await fetch(`${API_BASE_URL}/assets/asset-types-summary`);
         const data = await res.json();
         console.log('Asset types response:', data);
         setAssetTypes(data || []);
@@ -47,12 +48,12 @@ const AssetTypesTab = () => {
   // Handle navigation to asset type details
   const handleAssetPress = (type) => {
     router.push({
-      pathname: '/asset/type/' + type.id,
+      pathname: '/type/' + type.id,
       params: { type_name: type.name },
     });
-    console.log('/asset/type/' + type.id);
+    console.log('/type/' + type.id);
   };
-
+  
   // Render asset type cards
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20 }}>
@@ -70,9 +71,8 @@ const AssetTypesTab = () => {
             <View style={styles.typeDetails}>
               <Text style={styles.typeName}>{type.name}</Text>
               <View style={styles.typeStatsRow}>
-                <Text style={styles.statText}>Available: {type.available}</Text>
-                <Text style={styles.statText}>In Use: {type.inUse}</Text>
-                <Text style={styles.statText}>Rented: {type.rented}</Text>
+                <Text style={[styles.statText, { color: '#1E90FF' }]}>In Service: {type.available + type.inUse + type.rented}</Text>
+                <Text style={[styles.statText, { color: '#b00020' }]}>End of Life: {type.maintenance || 0}</Text>
               </View>
             </View>
           </View>
@@ -92,7 +92,7 @@ const AllAssetsTab = () => {
   useEffect(() => {
     const fetchAssets = async () => {
       try {
-        const res = await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets');
+        const res = await fetch(`${API_BASE_URL}/assets`);
         const data = await res.json();
         // Exclude assets marked as QR reserved
         const filtered = data.filter(asset => asset.description?.toLowerCase() !== 'qr reserved asset');
@@ -116,7 +116,7 @@ const AllAssetsTab = () => {
             pathname: '/asset/[assetId]',
             params: { assetId: asset.id },
           })}
-        >
+        > 
           <View style={styles.typeInfo}>
             <Image
               source={{ uri: asset.image_url || 'https://via.placeholder.com/50' }}
@@ -203,7 +203,7 @@ const Inventory = () => {
           style={styles.fab}
           onPress={() =>
             index === 0
-              ? router.push('/asset/type/new')   // Add new asset type
+              ? router.push('/type/new')   // Add new asset type
               : router.push('/asset/new')        // Add new asset
           }
         >

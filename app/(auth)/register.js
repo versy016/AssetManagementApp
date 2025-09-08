@@ -22,6 +22,7 @@ import {
 } from 'react-native'; // React Native UI components
 // Import Expo Router for navigation
 import { useRouter } from 'expo-router'; // Expo Router for navigation
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 // Initialize Firestore database
 const db = getFirestore(); // Firestore database instance
@@ -83,7 +84,7 @@ export default function Register() {
       await updateProfile(userCredential.user, { displayName: name });
 
       // Register user in backend API
-      await fetch('http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/users', {
+      await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json', // ← this is required

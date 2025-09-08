@@ -1,84 +1,91 @@
-// assets.js - Screen showing assets assigned to the current user
+// app/(tabs)/assets.js — Screen showing assets assigned to the current user
 
-// Import React and hooks for state and effect management
-import React, { useEffect, useState } from 'react'; // React core and hooks
-// Import UI components from React Native
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, SafeAreaView } from 'react-native'; // Core UI components
-// Import Firebase Auth to get current user
-import { auth } from '../../firebaseConfig'; // Firebase authentication instance
-// Import router for navigation
-import { useRouter } from 'expo-router'; // Navigation hook
-// Import MaterialIcons for icons
-import { MaterialIcons } from '@expo/vector-icons'; // Icon library for UI
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { auth } from '../../firebaseConfig';
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
-// MyAssets displays all assets assigned to the logged-in user
-// Main component that displays all assets assigned to the logged-in user
 export default function MyAssets() {
-  const [assets, setAssets] = useState([]); // State: list of user's assets
-  const [loading, setLoading] = useState(true); // State: loading indicator
-  const router = useRouter(); // Navigation/router object
+  const [assets, setAssets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const navigation = useNavigation();
 
-  // Fetch assets assigned to the current user on mount
   useEffect(() => {
     const fetchAssets = async () => {
-      const user = auth.currentUser; // Get current logged-in user
-      if (!user) return; // Guard: do nothing if not logged in
-
+      const user = auth.currentUser;
+      if (!user) {
+        setAssets([]);
+        setLoading(false);
+        return;
+      }
       try {
-        // Fetch assets assigned to the user from backend API
-        const res = await fetch(`http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/assigned/${user.uid}`);
-        const data = await res.json(); // Parse JSON response
-        setAssets(data); // Store assets in state
+        const res = await fetch(`${API_BASE_URL}/assets/assigned/${user.uid}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setAssets(Array.isArray(data) ? data : []);
       } catch (err) {
-        // Handle network or parsing errors
         console.error('Failed to fetch user assets:', err);
-        setAssets([]); // Set empty if error
+        setAssets([]);
       } finally {
-        setLoading(false); // Hide loading indicator
+        setLoading(false);
       }
     };
-
-    fetchAssets(); // Call fetch on mount
+    fetchAssets();
   }, []);
 
-  // Render the assigned assets UI
+  const goBack = () => {
+    if (navigation?.canGoBack?.()) {
+      router.back();
+    } else {
+      // Fallback: go to Assets tab (Inventory/all) if there’s no history (e.g., deep link)
+      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+    }
+  };
+
+  const openAsset = (id) => {
+    // Navigate to the updated detail route
+    router.push({ pathname: '/asset/[assetId]', params: { assetId: String(id) } });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* ScrollView allows scrolling if asset list is long */}
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Header with back button and screen title */}
+        {/* Header */}
         <View style={styles.header}>
-          {/* Back button to return to previous screen */}
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={goBack}>
             <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
           </TouchableOpacity>
-          {/* Title for the screen */}
           <Text style={styles.title}>My Assigned Assets</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        {/* Show loading spinner, no-assets message, or asset cards */}
+        {/* Content */}
         {loading ? (
-          <Text>Loading...</Text>
+          <View style={styles.center}>
+            <ActivityIndicator size="large" />
+            <Text style={{ marginTop: 8, color: '#666' }}>Loading…</Text>
+          </View>
         ) : assets.length === 0 ? (
           <Text style={styles.noAssets}>No assets assigned.</Text>
         ) : (
-          // Map through assets and render a card for each
           assets.map((asset) => (
-            <TouchableOpacity
-              key={asset.id}
-              style={styles.card}
-              onPress={() => router.push(`/asset/${asset.id}`)} // Navigate to asset details
-            >
-              {/* Asset image (fallback to placeholder if missing) */}
+            <TouchableOpacity key={asset.id} style={styles.card} onPress={() => openAsset(asset.id)}>
               <Image
                 source={{ uri: asset.image_url || 'https://via.placeholder.com/50' }}
                 style={styles.image}
               />
-              {/* Asset info: name/type and serial number */}
               <View style={styles.info}>
-                <Text style={styles.name}>{asset.asset_types?.name || asset.model || 'Unnamed'}</Text>
+                <Text style={styles.name}>
+                  {asset.asset_types?.name || asset.model || 'Unnamed'}
+                </Text>
                 <Text style={styles.serial}>Serial: {asset.serial_number || 'N/A'}</Text>
               </View>
+              <MaterialIcons name="chevron-right" size={22} color="#bbb" />
             </TouchableOpacity>
           ))
         )}
@@ -87,54 +94,35 @@ export default function MyAssets() {
   );
 }
 
-// Styles for the MyAssets screen
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f9f9f9',
-  },
-  container: {
-
-    backgroundColor: '#f9f9f9', // Light gray background
-  },
+  safeArea: { flex: 1, backgroundColor: '#f9f9f9' },
+  container: { padding: 16, backgroundColor: '#f9f9f9' },
   header: {
-    flexDirection: 'row', // Row layout for back button and title
-    alignItems: 'center', // Vertically center header items
-    marginBottom: 15,     // Space below header
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10,
   },
-  title: {
-    fontSize: 18,         // Large font for title
-    fontWeight: 'bold',   // Bold font
-    marginLeft: 12,       // Space between icon and title
-    color: '#1E90FF',     // Blue color for title
-  },
-  noAssets: {
-    textAlign: 'center',  // Centered text for no-assets message
-    color: '#666',        // Muted gray color
-  },
+  title: { fontSize: 18, fontWeight: 'bold', marginLeft: 12, color: '#1E90FF', flex: 1 },
+  center: { alignItems: 'center', paddingVertical: 24 },
+  noAssets: { textAlign: 'center', color: '#666', marginTop: 12 },
   card: {
-    flexDirection: 'row', // Row layout for asset card
-    backgroundColor: '#fff', // White card background
-    padding: 15,          // Card padding
-    borderRadius: 10,     // Rounded corners
-    marginBottom: 10,     // Space between cards
-    elevation: 2,         // Shadow for Android
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
   },
-  image: {
-    width: 50,            // Asset image width
-    height: 50,           // Asset image height
-    borderRadius: 5,      // Slightly rounded image
-    marginRight: 10,      // Space between image and info
-  },
-  info: {
-    justifyContent: 'center', // Center info vertically
-  },
-  name: {
-    fontWeight: 'bold',   // Bold asset name/type
-    fontSize: 16,         // Larger font
-  },
-  serial: {
-    fontSize: 14,         // Serial number font size
-    color: '#555',        // Muted serial color
-  },
+  image: { width: 50, height: 50, borderRadius: 5, marginRight: 10, backgroundColor: '#eee' },
+  info: { flex: 1, justifyContent: 'center' },
+  name: { fontWeight: 'bold', fontSize: 16, color: '#111' },
+  serial: { fontSize: 14, color: '#555', marginTop: 2 },
 });

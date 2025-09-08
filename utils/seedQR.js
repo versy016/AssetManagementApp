@@ -1,4 +1,4 @@
-// scripts/seedQR.js
+// utisl/seedQR.js
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('../inventory-api/generated/prisma');
@@ -8,13 +8,6 @@ const config = require('./config');
 const logger = require('./logger');
 
 // Helper to generate 8-character alphanumeric IDs
-function generateId(length = 8) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let id = '';
-  for (let i = 0; i < length; i++) id += chars[Math.floor(Math.random() * chars.length)];
-  return id;
-}
-
 async function generateUniqueId(usedIds, length = 8) {
   // Characters allowed in the generated ID
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

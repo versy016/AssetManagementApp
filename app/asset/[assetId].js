@@ -1,94 +1,385 @@
-// [assetId].js - Asset detail page for viewing a single asset
+// app/(tabs)/asset/[assetId].js
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Linking,
+  Alert,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
+import * as LinkingExpo from 'expo-linking';
+import * as Clipboard from 'expo-clipboard';
+import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
+import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_BASE_URL } from '../../inventory-api/apiBase';
 
-// Import hooks and components for navigation, state, and UI
-import { useLocalSearchParams } from 'expo-router'; // For route parameters
-import { useEffect, useState } from 'react'; // React state/effect
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking } from 'react-native'; // Core UI
-import { MaterialIcons } from '@expo/vector-icons'; // Icon library
-import { useRouter } from 'expo-router'; // Navigation
-import { SafeAreaView } from 'react-native-safe-area-context'; // Handles device safe areas
+const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
-// AssetDetailPage displays detailed info for a specific asset
-// Main component for displaying details of a single asset
+const STATUS_CONFIG = {
+  available: { label: 'Available', bg: '#dcfce7', fg: '#166534', icon: 'check-circle' },
+  rented: { label: 'Checked Out', bg: '#ffedd5', fg: '#9a3412', icon: 'assignment-return' },
+  reserved: { label: 'Reserved', bg: '#fef9c3', fg: '#854d0e', icon: 'event' },
+  in_service: { label: 'In Service', bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
+  lost: { label: 'Lost', bg: '#fee2e2', fg: '#991b1b', icon: 'report' },
+  retired: { label: 'Retired', bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+};
+
+function normalizeStatus(s) {
+  if (!s) return 'available';
+  const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  if (['checked_out', 'out', 'issued', 'rented'].includes(key)) return 'rented';
+  if (['service', 'maintenance', 'inservice'].includes(key)) return 'in_service';
+  return key in STATUS_CONFIG ? key : 'available';
+}
+
+function StatusBadge({ status }) {
+  const key = normalizeStatus(status);
+  const cfg = STATUS_CONFIG[key] || STATUS_CONFIG.available;
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+      <MaterialIcons name={cfg.icon} size={16} color={cfg.fg} style={{ marginRight: 6 }} />
+      <Text style={[styles.statusText, { color: cfg.fg }]}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+
+/* ---------- Cross-platform clipboard ---------- */
+async function copyText(text, successMsg = 'Copied to clipboard') {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // legacy fallback
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.setAttribute('readonly', '');
+        el.style.position = 'absolute';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      window.alert(successMsg);
+      return;
+    }
+    if (Clipboard?.setString) {
+      Clipboard.setString(text);
+      Alert.alert('Copied', successMsg);
+      return;
+    }
+    throw new Error('Clipboard unavailable');
+  } catch {
+    Platform.OS === 'web'
+      ? window.prompt('Copy this text:', text)
+      : Alert.alert('Copy failed', 'Could not copy to clipboard.');
+  }
+}
+
+/** Platform-aware map preview.
+ * - Web: <iframe> Google Maps embed
+ * - Native: dynamically require WebView to avoid web bundling error
+ */
+function MapPreview({ location }) {
+  const url = `https://www.google.com/maps?q=${encodeURIComponent(location)}&z=16&output=embed`;
+
+  if (Platform.OS === 'web') {
+    // Render a raw iframe on web; RNW will pass it through to the DOM.
+    return (
+      <View style={styles.mapCard}>
+        <div style={{ width: '100%', height: '100%' }}>
+          <iframe
+            title="map"
+            src={url}
+            style={{ border: 0, width: '100%', height: '100%', borderRadius: 10 }}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </div>
+      </View>
+    );
+  }
+
+  // Native (iOS/Android): use WebView without importing it on web
+  const { WebView } = require('react-native-webview');
+  return (
+    <View style={styles.mapCard}>
+      <WebView
+        source={{ uri: url }}
+        style={styles.map}
+        automaticallyAdjustContentInsets={false}
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+      />
+    </View>
+  );
+}
+
 export default function AssetDetailPage() {
-  const { assetId } = useLocalSearchParams(); // Get assetId from route params
-  const [asset, setAsset] = useState(null);   // State: asset details
-  const router = useRouter();                 // Navigation/router object
+  const { assetId } = useLocalSearchParams();
+  const [asset, setAsset] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const router = useRouter();
+  const navigation = useNavigation();
 
-  // Fetch asset details from backend when assetId changes
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!assetId) return;
-    fetch(`http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000/assets/${assetId}`)
-      .then(res => res.json())
-      .then(setAsset)
-      .catch(console.error);
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/assets/${assetId}`);
+      if (!res.ok) throw new Error(`Failed to load asset (${res.status})`);
+      const data = await res.json();
+      setAsset(data);
+    } catch (e) {
+      setErr(e.message || 'Failed to load asset');
+    } finally {
+      setLoading(false);
+    }
   }, [assetId]);
 
-  // Show loading state until asset is fetched
-  if (!asset) {
+  useEffect(() => { load(); }, [load]);
+
+  const customFieldEntries = useMemo(() => {
+    if (!asset?.fields || typeof asset.fields !== 'object') return [];
+    return Object.entries(asset.fields);
+  }, [asset]);
+
+  const linkedAssetIds = useMemo(() => {
+    if (!asset?.fields || typeof asset.fields !== 'object') return [];
+    const f = asset.fields;
+    const candidates = new Set();
+    ['linked_asset_id','related_asset_id','related_assets','parent_asset_id','child_asset_ids','paired_with']
+      .forEach((k) => {
+        const v = f[k];
+        if (!v) return;
+        if (Array.isArray(v)) v.forEach((x) => typeof x === 'string' && x !== asset?.id && candidates.add(x));
+        else if (typeof v === 'string' && v !== asset?.id) candidates.add(v);
+      });
+    return Array.from(candidates);
+  }, [asset]);
+
+  const renderValue = (v) => {
+    if (Array.isArray(v)) return v.join(', ');
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    return v ?? 'N/A';
+  };
+
+  const handleBack = () => {
+    if (navigation?.canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (Platform.OS === 'web') {
+      return window.confirm('Delete this asset? This cannot be undone.');
+    }
+    return new Promise((resolve) => {
+      Alert.alert('Delete asset', 'This cannot be undone. Continue?', [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+  };
+
+  const handleDelete = async () => {
+    const ok = await confirmDelete();
+    if (!ok) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || 'Failed to delete');
+      }
+      if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset removed.');
+      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to delete asset');
+    }
+  };
+
+  const copyId = () => copyText(asset?.id || assetId, 'Asset ID copied');
+  const copyDeepLink = () => {
+    const _app = LinkingExpo.createURL(`check-in/${asset?.id || assetId}`);
+    const web = `https://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com/check-in/${asset?.id || assetId}`;
+    copyText(web, 'Shareable link copied');
+  };
+
+  const displayLocation = (asset?.location && String(asset.location).trim()) || DEFAULT_ADDRESS;
+
+  const openMaps = () => {
+    const q = encodeURIComponent(displayLocation);
+    const url = Platform.select({
+      ios: `http://maps.apple.com/?q=${q}`,
+      android: `geo:0,0?q=${q}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${q}`,
+    });
+    Linking.openURL(url).catch(() => Alert.alert('Could not open maps'));
+  };
+
+  const statusKey = normalizeStatus(asset?.status);
+  const nextService = (() => {
+    const raw = asset?.next_service_date;
+    if (!raw) return null;
+    const d = typeof raw === 'string' ? parseISO(raw) : new Date(raw);
+    return isValid(d) ? d : null;
+  })();
+  const overdueDays = nextService ? differenceInCalendarDays(new Date(), nextService) : 0;
+  const isOverdue = nextService ? overdueDays > 0 : false;
+
+  if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading...</Text>
+      <SafeAreaView style={styles.centerWrap}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+        <Text style={{ marginTop: 12, color: '#666' }}>Loading asset…</Text>
       </SafeAreaView>
     );
   }
 
-  // Handle back button press to go back to previous screen or inventory
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back(); // Go back to the previous screen if possible
-    } else {
-      // Fallback to inventory tab if there's no previous screen
-      router.push({
-        pathname: '/(tabs)/Inventory',
-        params: { screen: 'assets' }
-      });
-    }
-  };
+  if (err) {
+    return (
+      <SafeAreaView style={styles.centerWrap}>
+        <Text style={{ color: '#b00020', marginBottom: 12 }}>{err}</Text>
+        <TouchableOpacity onPress={load} style={[styles.actionBtn, { backgroundColor: '#1E90FF', paddingHorizontal: 22 }]}>
+          <Text style={styles.actionText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
-  // Render the asset detail UI
+  if (!asset) {
+    return (
+      <SafeAreaView style={styles.centerWrap}>
+        <Text>No asset found.</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    // SafeAreaView keeps UI clear of device notches and bars
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* ScrollView allows content to be scrollable if needed */}
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        {/* Header with back button and title */}
-       
+        {/* Header */}
         <View style={styles.header}>
-          {/* Back button: go back if possible, else go to Inventory */}
           <TouchableOpacity onPress={handleBack}>
             <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
           </TouchableOpacity>
-          {/* Title for the asset detail screen */}
           <Text style={styles.title}>Asset Details</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        {/* Asset detail card with all information */}
         <View style={styles.detailCard}>
-          {/* Asset name/type and serial number */}
-          <Text style={styles.assetName}>
-            {asset.asset_types?.name || 'Asset'} - SN: {asset.serial_number}
-          </Text>
-          {/* Asset image, fallback to placeholder if missing */}
+          {/* Title Row — status badge removed to avoid duplication */}
+          <View style={styles.titleRow}>
+            <Text style={styles.assetName}>
+              {asset.asset_types?.name || 'Asset'} · SN: {asset.serial_number || 'N/A'}
+            </Text>
+          </View>
+
+          {/* Meta chips */}
+          <View style={styles.metaRow}>
+            <TouchableOpacity onPress={copyId} style={styles.metaChip}>
+              <MaterialIcons name="fingerprint" size={16} color="#1E90FF" />
+              <Text style={styles.metaChipText}>ID: {asset.id}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
+              <MaterialIcons name="link" size={16} color="#1E90FF" />
+              <Text style={styles.metaChipText}>Copy Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
+              <MaterialIcons name="place" size={16} color="#1E90FF" />
+              <Text style={styles.metaChipText}>Maps</Text>
+            </TouchableOpacity>
+          </View>
+
           <Image
             source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
             style={styles.image}
           />
-          {/* Asset details as rows */}
-          <View style={styles.detailRow}><Text style={styles.label}>Status:</Text><Text style={styles.value}>{asset.status}</Text></View>
-          <View style={styles.detailRow}><Text style={styles.label}>Assigned To:</Text><Text style={styles.value}>{asset.users?.name || 'N/A'}</Text></View>
-          <View style={styles.detailRow}><Text style={styles.label}>Location:</Text><Text style={styles.value}>{asset.location || 'N/A'}</Text></View>
-          <View style={styles.detailRow}><Text style={styles.label}>Model:</Text><Text style={styles.value}>{asset.model || 'N/A'}</Text></View>
-          <View style={styles.detailRow}><Text style={styles.label}>Next Service:</Text><Text style={styles.value}>{asset.next_service_date?.split('T')[0] || 'N/A'}</Text></View>
-          <View style={styles.detailRow}><Text style={styles.label}>Description:</Text><Text style={styles.value}>{asset.description || 'No description'}</Text></View>
-          {/* Show document link if documentation_url exists */}
+
+          {/* Core fields */}
+          <Row label="Status" value={<StatusBadge status={asset.status} />} />
+          <Row label="Assigned To" value={asset.users?.name || 'N/A'} />
+          <Row label="Location" value={displayLocation} />
+          <Row label="Model" value={asset.model || 'N/A'} />
+          <Row
+            label="Date Purchased"
+            value={asset.date_purchased ? String(asset.date_purchased).split('T')[0] : 'N/A'}
+          />
+          <Row
+            label="Next Service"
+            value={
+              nextService ? (
+                <Text style={{ color: isOverdue ? '#b00020' : '#065f46', fontWeight: '600' }}>
+                  {format(nextService, 'yyyy-MM-dd')}
+                  {isOverdue ? `  • ${overdueDays}d overdue` : ''}
+                </Text>
+              ) : (
+                'N/A'
+              )
+            }
+            rightAlign={false}
+          />
+          <Row label="Description" value={asset.description || 'No description'} rightAlign={false} />
+          <Row label="Notes" value={asset.notes || '—'} rightAlign={false} />
+
+          {/* Dynamic fields */}
+          {customFieldEntries.length > 0 && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 16 }]}>Additional Fields</Text>
+              {customFieldEntries.map(([slug, value]) => (
+                <Row
+                  key={slug}
+                  label={slug.replace(/_/g, ' ')}
+                  value={renderValue(value)}
+                  rightAlign={false}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Linked assets */}
+          {linkedAssetIds.length > 0 && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 18 }]}>Linked Assets</Text>
+              <View style={styles.linkedWrap}>
+                {linkedAssetIds.map((id) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.linkedChip}
+                    onPress={() =>
+                      router.push({ pathname: '/(tabs)/asset/[assetId]', params: { assetId: id } })
+                    }
+                  >
+                    <MaterialIcons name="link" size={16} color="#1E90FF" />
+                    <Text style={styles.linkedChipText}>{id}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* Docs */}
           {asset.documentation_url && (
             <TouchableOpacity
               onPress={() => {
-                // Open the document in the browser
-                Linking.openURL(asset.documentation_url).catch(err => {
+                Linking.openURL(asset.documentation_url).catch((err) => {
                   console.error('Error opening URL:', err);
-                  alert('Could not open the document');
+                  Alert.alert('Could not open the document');
                 });
               }}
               style={styles.documentButton}
@@ -96,83 +387,221 @@ export default function AssetDetailPage() {
               <Text style={styles.documentText}>📄 View Attached Document</Text>
             </TouchableOpacity>
           )}
-          {/* Button to copy asset (pre-fill new asset form) */}
-          <TouchableOpacity
-            style={{
-              marginTop: 20,
-              padding: 12,
-              backgroundColor: '#1E90FF',
-              borderRadius: 8,
-              alignItems: 'center',
-            }}
-            onPress={() => {
-              router.push({
-                pathname: '/asset/new',
-                params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
-              });
-            }}
-          >
-            <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
-          </TouchableOpacity>
+{/* Map (works on all platforms) */}
+          <MapPreview location={displayLocation} />
+          {/* Smart actions */}
+          <View style={styles.actionsRow}>
+            {normalizeStatus(asset?.status) === 'available' ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                onPress={() =>
+                  router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
+                }
+              >
+                <Text style={styles.actionText}>✔︎ Check Out</Text>
+              </TouchableOpacity>
+            ) : normalizeStatus(asset?.status) === 'rented' ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                onPress={() => router.push(`/check-in/${asset.id}`)}
+              >
+                <Text style={styles.actionText}>↩︎ Check In</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                onPress={() => router.push(`/check-in/${asset.id}`)}
+              >
+                <Text style={styles.actionText}>Action</Text>
+              </TouchableOpacity>
+            )}
+
+            
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
+              onPress={() =>
+                router.push({ pathname: '/asset/edit', params: { assetId: asset.id } })
+              }
+            >
+              <Text style={styles.actionText}>✏️ Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
+              onPress={handleDelete}
+            >
+              <Text style={styles.actionText}>🗑 Delete</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Helpful shortcuts
+          <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap' }}>
+            <Shortcut
+              icon="search"
+              label="Search with this ID"
+              onPress={() => router.push({ pathname: '/search', params: { query: asset.id } })}
+            />
+            {asset.model ? (
+              <Shortcut
+                icon="tune"
+                label="Find same model"
+                onPress={() => router.push({ pathname: '/search', params: { model: asset.model } })}
+              />
+            ) : null}
+          </View> */}
+          
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Styles for the asset detail screen
+function Row({ label, value, rightAlign = true }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.label}>{label}:</Text>
+      {typeof value === 'string' || typeof value === 'number' ? (
+        <Text style={[styles.value, rightAlign ? { textAlign: 'right' } : null]}>{value ?? 'N/A'}</Text>
+      ) : (
+        <View style={{ flex: 1, alignItems: rightAlign ? 'flex-end' : 'flex-start' }}>{value}</View>
+      )}
+    </View>
+  );
+}
+
+function Shortcut({ icon, label, onPress }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.shortcut}>
+      <MaterialIcons name={icon} size={16} color="#1E90FF" />
+      <Text style={styles.shortcutText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/* ----------------- styles ----------------- */
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#f5f5f5', // Light background for the whole screen
+  centerWrap: {
+    flex: 1,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
-    flexDirection: 'row',         // Row layout for header
-    alignItems: 'center',         // Center items vertically
-    backgroundColor: '#fff',      // White background for header
-    borderBottomColor: '#ddd',    // Light gray border
-    borderBottomWidth: 1,         // Border thickness
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderBottomColor: '#ddd',
+    borderBottomWidth: 1,
+    paddingBottom: 12,
   },
   title: {
-    fontSize: 20,                 // Large font for title
-    fontWeight: 'bold',           // Bold font
-    marginLeft: 12,               // Space between icon and title
-    color: '#1E90FF',             // Blue color for title
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 12,
+    color: '#1E90FF',
   },
   detailCard: {
-    backgroundColor: '#fff',      // White card background
-    padding: 20,                  // Card padding
-    margin: 16,                   // Margin around card
-    borderRadius: 10,             // Rounded corners
-    elevation: 2,                 // Shadow for Android
+    backgroundColor: '#fff',
+    padding: 20,
+    margin: 16,
+    borderRadius: 10,
+    elevation: 2,
   },
   image: {
-    height: 200,                  // Asset image height
-    borderRadius: 10,             // Rounded image corners
-    marginBottom: 20,             // Space below image
-    resizeMode: 'contain',        // Contain image aspect
-    backgroundColor: '#eee',      // Placeholder background
+    height: 200,
+    borderRadius: 10,
+    marginBottom: 14,
+    resizeMode: 'contain',
+    backgroundColor: '#eee',
+  },
+  mapCard: {
+    height: 220,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#eee',
+    marginBottom: 16,
+  },
+  map: {
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 8,
   },
   assetName: {
-    fontSize: 18,                 // Font size for asset name
-    fontWeight: 'bold',           // Bold font
-    marginBottom: 15,             // Space below name
-    color: '#333',                // Dark text
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginRight: 8,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  statusText: { fontWeight: '700', fontSize: 12 },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 14,
+  },
+  metaChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
   detailRow: {
-    flexDirection: 'row',         // Row layout for detail rows
-    justifyContent: 'space-between', // Space between label and value
-    marginVertical: 8,            // Vertical spacing between rows
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginVertical: 8,
+    gap: 12,
   },
   label: {
-    fontWeight: '600',            // Semi-bold for labels
-    color: '#555',                // Muted label color
-    width: '45%',                 // Label width
+    fontWeight: '700',
+    color: '#555',
+    width: '40%',
   },
   value: {
-    color: '#000',                // Value text color
-    width: '55%',                 // Value width
+    color: '#111',
+    width: '60%',
     textAlign: 'right',
   },
+  sectionH: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  linkedWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  linkedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#eef6ff',
+    borderRadius: 14,
+  },
+  linkedChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
   documentButton: {
     marginTop: 16,
     padding: 12,
@@ -184,16 +613,34 @@ const styles = StyleSheet.create({
     color: '#1E90FF',
     fontWeight: 'bold',
   },
-  backButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    elevation: 2,
+  },
+  actionText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  shortcut: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    padding: 8,
-    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#eef6ff',
+    borderRadius: 14,
+    marginRight: 8,
+    marginBottom: 8,
   },
-  backButtonText: {
-    color: '#1E90FF',
-    marginLeft: 8,
-    fontSize: 16,
-  },
+  shortcutText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
 });

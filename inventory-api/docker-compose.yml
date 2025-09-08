@@ -1,0 +1,49 @@
+# docker-compose.yml (fixed)
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: asset_management_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: asset_management
+    ports:
+      - "5433:5432"         # publish to host on 5433 (avoid clashes with any local PG)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    image: node:18
+    container_name: asset_backend
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # IMPORTANT: keep service host here
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/asset_management?schema=public
+      NODE_ENV: development
+      PORT: 3000
+    command: npm run start
+
+volumes:
+  postgres_data:
