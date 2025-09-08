@@ -8,7 +8,7 @@ const {
   createField,
   updateField,
   deleteField,
-} = require('../controllers/assetTypeFields.Controller');
+} = require('../controllers/assetTypeFields.controller.js');
 
 // GET /:assetTypeId/fields
 router.get('/:assetTypeId/fields', listFields);
