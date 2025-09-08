@@ -53,6 +53,8 @@ const res = await fetch(`${API_BASE_URL}/assets/asset-types-summary`);
     });
     console.log('/type/' + type.id);
   };
+
+  
   
   // Render asset type cards
   return (
@@ -71,8 +73,8 @@ const res = await fetch(`${API_BASE_URL}/assets/asset-types-summary`);
             <View style={styles.typeDetails}>
               <Text style={styles.typeName}>{type.name}</Text>
               <View style={styles.typeStatsRow}>
-                <Text style={[styles.statText, { color: '#1E90FF' }]}>In Service: {type.available + type.inUse + type.rented}</Text>
-                <Text style={[styles.statText, { color: '#b00020' }]}>End of Life: {type.maintenance || 0}</Text>
+                <Text style={[styles.statText, { color: '#1E90FF' }]}>In Service: {type.inService ?? 0}</Text>
+                <Text style={[styles.statText, { color: '#b00020' }]}>End of Life: {type.endOfLife ?? 0}</Text>
               </View>
             </View>
           </View>

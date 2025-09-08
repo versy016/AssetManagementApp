@@ -97,31 +97,35 @@ export default function AdminConsole() {
   };
 
   // 🎯 Generate by sheets: sheets × 65 (no prefix, no length, no format)
-  const generateQRCodes = async () => {
-    const sheets = Number(sheetCount);
-    if (!Number.isFinite(sheets) || sheets < 1 || sheets > MAX_SHEETS) {
-      return Alert.alert('Validation', `Sheets must be between 1 and ${MAX_SHEETS}.`);
-    }
-    const total = sheets * SHEET_SIZE;
+ const generateQRCodes = async () => {
+  const sheets = Number(sheetCount);
+  if (!Number.isFinite(sheets) || sheets < 1 || sheets > MAX_SHEETS) {
+    return Alert.alert('Validation', `Sheets must be between 1 and ${MAX_SHEETS}.`);
+  }
+  const total = sheets * SHEET_SIZE;
 
-    setWorking(true);
-    try {
-      const headers = await authHeader();
-      const res = await fetch(`${API_BASE_URL}/qr/generate`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ count: total }), // only pages → count
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to generate QR codes');
-      setQrResults(data?.codes || []);
-      Alert.alert('Success', `Generated ${data?.codes?.length || 0} QR codes (${sheets} × ${SHEET_SIZE}).`);
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setWorking(false);
-    }
-  };
+  setWorking(true);
+  try {
+    const headers = await authHeader();
+    const res = await fetch(`${API_BASE_URL}/users/qr/generate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ count: total }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Failed to generate QR codes');
+    setQrResults(data?.codes || []);
+    Alert.alert(
+      'Success',
+      `Generated ${data?.codes?.length || 0} QR codes (${sheets} × ${SHEET_SIZE}).`
+    );
+  } catch (e) {
+    Alert.alert('Error', e.message);
+  } finally {
+    setWorking(false);
+  }
+};
+
 
   if (loading) {
     return (

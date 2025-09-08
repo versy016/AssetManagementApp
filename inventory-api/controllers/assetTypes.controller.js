@@ -1,12 +1,35 @@
 // controllers/assetTypes.controller.js
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+const SERVICE_STATUSES = new Set(['In Service', 'Available', 'available', 'in service']);
+const EOL_STATUSES     = new Set(['End of Life', 'end of life', 'eol', 'retired', 'maintenance']);
 
 // Small utility so we don’t repeat pagination math
 function getPagination({ page = 1, pageSize = 20 }) {
   const p = Math.max(1, parseInt(page, 10));
   const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10)));
   return { page: p, pageSize: ps, skip: (p - 1) * ps, take: ps };
+
+}
+
+async function buildStatusCountsByType(prisma) {
+  const grouped = await prisma.assets.groupBy({
+    by: ['type_id', 'status'],
+    _count: { _all: true },
+  });
+
+  const map = new Map();
+  for (const row of grouped) {
+    const id = row.type_id;
+    const status = String(row.status || '');
+    const count = row._count._all;
+
+    const acc = map.get(id) || { inService: 0, endOfLife: 0 };
+    if (SERVICE_STATUSES.has(status)) acc.inService += count;
+    if (EOL_STATUSES.has(status))     acc.endOfLife += count;
+    map.set(id, acc);
+  }
+  return map;
 }
 
 exports.list = async (req, res, next) => {
@@ -15,11 +38,13 @@ exports.list = async (req, res, next) => {
     const { skip, take, page: p, pageSize: ps } = getPagination({ page, pageSize });
     const flags = include.split(',').map(s => s.trim().toLowerCase());
     const includeFields = flags.includes('fields');
-    const includeCounts = flags.includes('counts');
+    const includeCounts = flags.includes('counts');            // your _count (total)
+    const includeStatus = flags.includes('statuscounts')       // NEW: per-status counts
+                      || flags.includes('countsbystatus');
 
     const where = q ? { name: { contains: q, mode: 'insensitive' } } : undefined;
 
-    const [total, data] = await Promise.all([
+    const [total, data, statusMap] = await Promise.all([
       prisma.asset_types.count({ where }),
       prisma.asset_types.findMany({
         where, skip, take,
@@ -29,11 +54,20 @@ exports.list = async (req, res, next) => {
           ...(includeCounts && { _count: { select: { assets: true, fields: true } } }),
         },
       }),
+      includeStatus ? buildStatusCountsByType(prisma) : null,
     ]);
 
-    res.json({ status: 'success', total, page: p, pageSize: ps, data });
+    const shaped = includeStatus
+      ? data.map(t => {
+          const counts = statusMap.get(t.id) || { inService: 0, endOfLife: 0 };
+          return { ...t, ...counts };
+        })
+      : data;
+
+    res.json({ status: 'success', total, page: p, pageSize: ps, data: shaped });
   } catch (err) { next(err); }
 };
+
 
 exports.get = async (req, res, next) => {
   try {
@@ -145,25 +179,22 @@ exports.createWithImage = async (req, res, next) => {
 // Optional convenience summaries
 exports.summary = async (_req, res, next) => {
   try {
-    const [types, assets] = await Promise.all([
-      prisma.asset_types.findMany(),
-      prisma.assets.findMany({ select: { type_id: true, status: true } }),
+    const [types, statusMap] = await Promise.all([
+      prisma.asset_types.findMany({ orderBy: { name: 'asc' } }),
+      buildStatusCountsByType(prisma),
     ]);
 
     const out = types.map(t => {
-      const grouped = assets.filter(a => a.type_id === t.id);
-      const count = (k) => grouped.filter(a => (a.status || '').toLowerCase() === k).length;
+      const counts = statusMap.get(t.id) || { inService: 0, endOfLife: 0 };
       return {
         id: t.id,
         name: t.name,
         image_url: t.image_url,
-        available: count('available'),
-        inUse: count('in use'),
-        rented: count('rented'),
-        maintenance: count('maintenance'),
+        inService: counts.inService,
+        endOfLife: counts.endOfLife,
       };
     });
 
-    res.json(out);
+    res.json({ status: 'success', data: out });
   } catch (err) { next(err); }
 };

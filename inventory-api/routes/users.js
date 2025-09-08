@@ -27,17 +27,24 @@ function ensureAdminInit() {
   if (!admin || adminInitialized) return;
   if (!admin.apps.length) {
     try {
-      if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        admin.initializeApp(); // uses env path
+      // In production, we MUST use environment variables.
+      if (process.env.NODE_ENV === 'production') {
+        if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+          admin.initializeApp();
+        } else {
+          throw new Error('GOOGLE_APPLICATION_CREDENTIALS environment variable is not set in production.');
+        }
       } else {
-        // Fallback to the checked-in service credential
-        // (safe only for dev; do not ship this to public repos)
-        // eslint-disable-next-line global-require
-        const svc = require('../assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json');
-        admin.initializeApp({ credential: admin.credential.cert(svc) });
+        // In development, we can fall back to a local file.
+        try {
+          const serviceAccount = require('../../config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json');
+          admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+        } catch (devError) {
+          console.warn('Could not find local Firebase credentials, relying on GOOGLE_APPLICATION_CREDENTIALS for development.');
+          admin.initializeApp(); // Try initializing from env var as a last resort for dev
+        }
       }
       adminInitialized = true;
-      // console.log('[users] firebase-admin initialized');
     } catch (e) {
       console.error('Failed to init firebase-admin:', e);
       adminInitialized = false;
@@ -49,19 +56,17 @@ function ensureAdminInit() {
  * Auth middleware:
  * - If firebase-admin is available: verify the Bearer ID token and set req.user to decoded token
  * - Else, support a secure fallback using X-Admin-Api-Key == process.env.ADMIN_API_KEY
- *   (This lets you call admin-only endpoints for now without firebase-admin present.)
  */
 async function authRequired(req, res, next) {
   ensureAdminInit();
 
-  // Primary path: Firebase Admin available → verify ID token
   if (admin && adminInitialized) {
     try {
       const header = req.headers.authorization || '';
       const [, token] = header.split(' ');
       if (!token) return res.status(401).json({ error: 'Missing Authorization Bearer token' });
       const decoded = await admin.auth().verifyIdToken(token);
-      req.user = decoded; // contains uid, email, and any custom claims
+      req.user = decoded;
       return next();
     } catch (e) {
       console.error('Auth error:', e);
@@ -69,10 +74,8 @@ async function authRequired(req, res, next) {
     }
   }
 
-  // Fallback path: API key header for server-to-server/admin calls
   const apiKey = req.header('X-Admin-Api-Key') || req.header('x-admin-api-key');
   if (apiKey && process.env.ADMIN_API_KEY && apiKey === process.env.ADMIN_API_KEY) {
-    // Synthetic admin user for this request
     req.user = { uid: 'api-key', admin: true, email: 'api@local' };
     return next();
   }
@@ -85,15 +88,13 @@ async function authRequired(req, res, next) {
 
 /**
  * Admin gate:
- * - If req.user.admin === true (Firebase custom claim or API-key fallback), allow.
- * - Otherwise, try DB role check: find users.id === req.user.uid and require role === 'ADMIN'.
- *   This solves the “role shows ADMIN in DB but custom claim not set” mismatch.
+ * - Allow if req.user.admin === true
+ * - Else fall back to DB role check (users.role === 'ADMIN')
  */
 async function adminOnly(req, res, next) {
   try {
     if (req.user?.admin === true) return next();
 
-    // DB role gate (works even if custom claim isn't present)
     const uid = req.user?.uid;
     if (!uid) return res.status(403).json({ error: 'Admin privilege required' });
 
@@ -162,20 +163,16 @@ router.post('/:userId/assign-asset', async (req, res) => {
     const asset = await prisma.assets.findUnique({ where: { id: assetId } });
     if (!asset) return res.status(404).json({ error: 'Asset not found' });
 
-    // Update the asset's assigned user
     await prisma.assets.update({
       where: { id: assetId },
       data: { assigned_to_id: userId },
     });
 
-    // Update the user's userassets array if needed
     const has = Array.isArray(user.userassets) && user.userassets.includes(assetId);
     if (!has) {
       await prisma.users.update({
         where: { id: userId },
-        data: {
-          userassets: { push: assetId },
-        },
+        data: { userassets: { push: assetId } },
       });
     }
 
@@ -210,6 +207,88 @@ router.get('/lookup/by-email', authRequired, adminOnly, async (req, res) => {
 });
 
 /**
+ * NEW: Generate QR codes & seed placeholder assets
+ * POST /qr/generate      ← if this router is mounted at "/", client calls /qr/generate
+ *                         ← if mounted at "/users", client calls /users/qr/generate
+ * Body: { count: number }   (default 65)
+ * Admin-only
+ *
+ * Response:
+ * { count: number, codes: [{ id: string, url: string }] }
+ */
+router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
+  const count = Math.min(Math.max(Number(req.body?.count || 65), 1), 500); // 1..500 hard limit
+
+  // Where should the /check-in link point?
+  const base =
+    process.env.CHECKIN_BASE_URL ||
+    req.get('X-External-Base-Url') ||
+    // Try to reconstruct from the request
+    `${req.protocol}://${req.get('host')}`;
+
+  // Helper to make 8-char ID (A–Z, 0–9)
+  const makeId = () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let out = '';
+    for (let i = 0; i < 8; i += 1) {
+      out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return out;
+  };
+
+  const codes = [];
+  const used = new Set();
+
+  try {
+    for (let i = 0; i < count; i += 1) {
+      // ensure unique id (avoid collisions within this batch and DB)
+      let id;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        id = makeId();
+        if (used.has(id)) continue;
+        const existing = await prisma.assets.findUnique({ where: { id } });
+        if (!existing) break;
+      }
+      used.add(id);
+
+      // Seed a minimal asset row
+      try {
+        await prisma.assets.create({
+          data: {
+            id,
+            serial_number: null,
+            model: null,
+            description: 'QR reserved asset',
+            location: null,
+            assigned_to_id: null,
+            type_id: null,
+            status: 'available', // normalized
+          },
+        });
+      } catch (e) {
+        // Unique violation? Try again with a new id
+        if (e?.code === 'P2002') {
+          used.delete(id);
+          i -= 1;
+          continue;
+        }
+        console.error('Failed to insert asset', id, e);
+        return res.status(500).json({ error: 'Failed to insert asset rows' });
+      }
+
+      const url = `${base.replace(/\/+$/, '')}/check-in/${id}`;
+      codes.push({ id, url });
+    }
+
+    return res.json({ count: codes.length, codes });
+  } catch (e) {
+    console.error('QR generation failed:', e);
+    return res.status(500).json({ error: 'QR generation failed' });
+  }
+});
+
+/**
  * Promote a user to ADMIN (sets DB role + Firebase custom claim when available)
  * POST /users/:id/promote
  * Admin-only
@@ -219,13 +298,8 @@ router.post('/:id/promote', authRequired, adminOnly, async (req, res) => {
   const targetUid = req.params.id;
 
   try {
-    // 1) Update DB role
-    await prisma.users.update({
-      where: { id: targetUid },
-      data: { role: 'ADMIN' },
-    });
+    await prisma.users.update({ where: { id: targetUid }, data: { role: 'ADMIN' } });
 
-    // 2) Try to set Firebase custom claim, if available
     let firebaseClaimsUpdated = false;
     if (admin && adminInitialized) {
       try {
@@ -255,13 +329,8 @@ router.post('/:id/demote', authRequired, adminOnly, async (req, res) => {
   const targetUid = req.params.id;
 
   try {
-    // 1) Update DB role
-    await prisma.users.update({
-      where: { id: targetUid },
-      data: { role: 'USER' },
-    });
+    await prisma.users.update({ where: { id: targetUid }, data: { role: 'USER' } });
 
-    // 2) Try to update Firebase custom claims, if available
     let firebaseClaimsUpdated = false;
     if (admin && adminInitialized) {
       try {
@@ -316,13 +385,10 @@ router.get('/', async (_req, res) => {
 /**
  * Get user by ID
  * GET /users/:id
- * (Placed AFTER the more specific routes like /lookup/by-email)
  */
 router.get('/:id', async (req, res) => {
   try {
-    const user = await prisma.users.findUnique({
-      where: { id: req.params.id },
-    });
+    const user = await prisma.users.findUnique({ where: { id: req.params.id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.json(user);
   } catch (err) {

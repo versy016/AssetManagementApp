@@ -1,4 +1,4 @@
-// utisl/seedQR.js
+// utils/seedQR.js
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('../inventory-api/generated/prisma');
