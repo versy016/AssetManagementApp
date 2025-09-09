@@ -7,17 +7,68 @@ const { validationResult } = require('express-validator');
 /** shared */
 async function validateFieldPayload(data, fieldType) {
   const errors = [];
-  const { name, field_type_id, options, validation_rules } = data;
+  const {
+    name,
+    field_type_id,
+    options,
+    validation_rules,
+    is_required,
+    default_value,
+    display_order,
+  } = data;
 
-  if (!name) errors.push('Field name is required');
-  if (!field_type_id) errors.push('Field type ID is required');
-  if (fieldType?.has_options && (!options || !Array.isArray(options) || options.length === 0)) {
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    errors.push('Field name is required');
+  }
+  if (!field_type_id || typeof field_type_id !== 'string') {
+    errors.push('Field type ID is required');
+  }
+  if (is_required !== undefined && typeof is_required !== 'boolean') {
+    errors.push('is_required must be a boolean');
+  }
+  if (
+    display_order !== undefined &&
+    (!Number.isInteger(display_order) || display_order < 0)
+  ) {
+    errors.push('display_order must be a non-negative integer');
+  }
+
+  if (options !== undefined) {
+    if (!Array.isArray(options)) {
+      errors.push('Options must be an array');
+    } else {
+      const invalid = options.some(
+        (opt) => typeof opt !== 'string' || !opt.trim()
+      );
+      if (invalid) errors.push('Each option must be a non-empty string');
+      if (new Set(options).size !== options.length) {
+        errors.push('Options must be unique');
+      }
+    }
+  }
+
+  if (
+    fieldType?.has_options &&
+    (!options || !Array.isArray(options) || options.length === 0)
+  ) {
     errors.push('Options are required for this field type');
   }
-  if (options && !Array.isArray(options)) errors.push('Options must be an array');
-  if (validation_rules && typeof validation_rules !== 'object') {
+  if (
+    fieldType?.has_options &&
+    default_value !== undefined &&
+    default_value !== null &&
+    (!options || !options.includes(default_value))
+  ) {
+    errors.push('Default value must be one of the provided options');
+  }
+
+  if (
+    validation_rules !== undefined &&
+    (typeof validation_rules !== 'object' || Array.isArray(validation_rules))
+  ) {
     errors.push('Validation rules must be an object');
   }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -78,7 +129,10 @@ exports.createField = async (req, res) => {
       });
       if (!fieldType) throw { status: 400, message: 'Invalid field type' };
 
-      const validation = await validateFieldPayload(req.body, fieldType);
+      const validation = await validateFieldPayload(
+        { ...req.body, display_order: Number(display_order) },
+        fieldType
+      );
       if (!validation.valid) throw { status: 400, message: validation.errors.join(', ') };
 
       // unique slug within asset type
@@ -149,6 +203,33 @@ exports.updateField = async (req, res) => {
         throw { status: 404, message: 'Field not found for this asset type' };
       }
 
+      let fieldTypeToUse = existing.field_type;
+      if (field_type_id && field_type_id !== existing.field_type_id) {
+        fieldTypeToUse = await tx.field_types.findUnique({
+          where: { id: field_type_id },
+          select: { id: true, has_options: true },
+        });
+        if (!fieldTypeToUse) throw { status: 400, message: 'Invalid field type' };
+      }
+
+      const validation = await validateFieldPayload(
+        {
+          name: name ?? existing.name,
+          field_type_id: field_type_id ?? existing.field_type_id,
+          options: options ?? existing.options,
+          validation_rules: validation_rules ?? existing.validation_rules,
+          is_required: is_required ?? existing.is_required,
+          default_value: default_value ?? existing.default_value,
+          display_order:
+            display_order !== undefined
+              ? Number(display_order)
+              : existing.display_order,
+        },
+        fieldTypeToUse
+      );
+      if (!validation.valid)
+        throw { status: 400, message: validation.errors.join(', ') };
+
       const updateData = {};
       if (name !== undefined) updateData.name = name;
       if (field_type_id !== undefined) updateData.field_type_id = field_type_id;
@@ -158,18 +239,6 @@ exports.updateField = async (req, res) => {
       if (options !== undefined) updateData.options = options;
       if (validation_rules !== undefined) updateData.validation_rules = validation_rules;
       if (display_order !== undefined) updateData.display_order = Number(display_order);
-
-      // Change of field_type requires validation
-      if (field_type_id && field_type_id !== existing.field_type_id) {
-        const newFieldType = await tx.field_types.findUnique({
-          where: { id: field_type_id },
-          select: { id: true, has_options: true },
-        });
-        if (!newFieldType) throw { status: 400, message: 'Invalid field type' };
-        if (newFieldType.has_options && (!options || !Array.isArray(options) || options.length === 0)) {
-          throw { status: 400, message: 'Options are required for this field type' };
-        }
-      }
 
       // Rename ⇒ ensure unique slug
       if (name && name !== existing.name) {

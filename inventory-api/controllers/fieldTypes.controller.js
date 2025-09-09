@@ -1,5 +1,36 @@
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+const slugify = require('../scripts/slugify');
+
+function validatePayload(data) {
+  const errors = [];
+  const { name, slug, has_options, description, validation_rules } = data;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    errors.push('name is required');
+  }
+  if (slug !== undefined && (typeof slug !== 'string' || !slug.trim())) {
+    errors.push('slug must be a non-empty string');
+  }
+  if (has_options !== undefined && typeof has_options !== 'boolean') {
+    errors.push('has_options must be a boolean');
+  }
+  if (
+    validation_rules !== undefined &&
+    (typeof validation_rules !== 'object' || Array.isArray(validation_rules))
+  ) {
+    errors.push('validation_rules must be an object');
+  }
+  if (
+    description !== undefined &&
+    description !== null &&
+    typeof description !== 'string'
+  ) {
+    errors.push('description must be a string');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
 
 exports.list = async (_req, res, next) => {
   try {
@@ -10,15 +41,46 @@ exports.list = async (_req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { name, slug, description = null, has_options = false, validation_rules = null } = req.body || {};
-    if (!name || !slug) return res.status(400).json({ error: 'name and slug are required' });
+    const {
+      name,
+      slug: providedSlug,
+      description = null,
+      has_options = false,
+      validation_rules = null,
+    } = req.body || {};
+
+    const { valid, errors } = validatePayload({
+      name,
+      slug: providedSlug,
+      has_options,
+      description,
+      validation_rules,
+    });
+    if (!valid) return res.status(400).json({ error: errors.join(', ') });
+
+    const baseSlug = slugify(providedSlug || name);
+    let finalSlug = baseSlug;
+    let i = 1;
+    while (true) {
+      const exists = await prisma.field_types.findUnique({
+        where: { slug: finalSlug },
+        select: { id: true },
+      });
+      if (!exists) break;
+      finalSlug = `${baseSlug}-${i++}`;
+    }
 
     const row = await prisma.field_types.create({
-      data: { name, slug, description, has_options: !!has_options, validation_rules },
+      data: {
+        name: name.trim(),
+        slug: finalSlug,
+        description,
+        has_options: !!has_options,
+        validation_rules,
+      },
     });
     res.status(201).json(row);
   } catch (e) {
-    if (e.code === 'P2002') return res.status(409).json({ error: 'slug must be unique' });
     next(e);
   }
 };
