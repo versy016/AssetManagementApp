@@ -74,6 +74,27 @@ describe('Asset Type Fields API', () => {
 
       expect(res.statusCode).toEqual(400);
     });
+
+    it('should return 400 if options contain duplicates', async () => {
+      const selectType = await prisma.field_types.create({
+        data: {
+          name: 'Select With Options',
+          slug: `select-${Date.now()}`,
+          has_options: true,
+        },
+      });
+
+      const res = await request(app)
+        .post(`/assets/asset-types/${testAssetType.id}/fields`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'Bad Options Field',
+          field_type_id: selectType.id,
+          options: ['A', 'A'],
+        });
+
+      expect(res.statusCode).toEqual(400);
+    });
   });
 
   describe('GET /:assetTypeId/fields', () => {
