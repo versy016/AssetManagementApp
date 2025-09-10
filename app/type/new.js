@@ -34,16 +34,12 @@ const PRESET_LIBRARY = [
   { key: 'asset_life_years', label: 'Asset life (years)', fieldTypeSlug: 'number' },
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
   { key: 'last_serviced', label: 'Last serviced', fieldTypeSlug: 'date' },
-  { key: 'home_location', label: 'Home location', fieldTypeSlug: 'text' },
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
   // Suggestions
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
   { key: 'purchase_price', label: 'Purchase price', fieldTypeSlug: 'currency' },
   { key: 'condition', label: 'Condition', fieldTypeSlug: 'select', options: ['New', 'Good', 'Fair', 'Poor'] },
   { key: 'warranty_expiry', label: 'Warranty expiry', fieldTypeSlug: 'date' },
-  { key: 'maintenance_interval_days', label: 'Maintenance interval (days)', fieldTypeSlug: 'number' },
-  { key: 'barcode_tag', label: 'Tag / Barcode', fieldTypeSlug: 'text' },
-  { key: 'department', label: 'Department', fieldTypeSlug: 'text' },
 ];
 
 function DefaultFieldRow({ label }) {

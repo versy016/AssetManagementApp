@@ -108,6 +108,7 @@ export default function NewAsset() {
   const [nextServiceDate, setNextServiceDate] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
   const [notes, setNotes] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
 
   // dynamic schema & values
   const [fieldsSchema, setFieldsSchema] = useState([]); // backend-defined fields for the chosen type
@@ -135,6 +136,7 @@ export default function NewAsset() {
       fetch(`${API_BASE_URL}/assets/${fromAssetId}`)
         .then(res => res.json())
         .then(data => {
+          setSerialNumber(data.serial_number || '');
           setTypeId(data.type_id || '');
           setAssignedToId(data.assigned_to_id || '');
           setStatus(data.status || '');
@@ -160,7 +162,7 @@ export default function NewAsset() {
         (json || []).forEach(f => {
           const slug = f.slug || normSlug(f.name);
           if (seed[slug] === undefined || seed[slug] === null) {
-            const t = (f.field_type?.code || '').toLowerCase();
+            const t = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
             if (t === 'boolean') seed[slug] = false;
             else if (t === 'multiselect') seed[slug] = [];
             else seed[slug] = '';
@@ -283,7 +285,15 @@ export default function NewAsset() {
     setErrors(prev => ({ ...prev, document: undefined }));
     setDocument(asset);
   };
-
+  // tiny cross-platform alert helper
+  const warn = (msg, title = 'Select a date') => {
+    if (Platform.OS === 'web') {
+      // RN web Alert is sometimes inconsistent; use native window.alert
+      window.alert(`${title ? title + ': ' : ''}${msg}`);
+    } else {
+      Alert.alert(title, msg);
+    }
+  };
   // ---------- client-side validation ----------
   const validate = () => {
     const newErrors = {};
@@ -294,7 +304,7 @@ export default function NewAsset() {
       const slug = f.slug || normSlug(f.name);
       if (f.is_required) {
         const val = fieldValues[slug];
-        const t = (f.field_type?.code || '').toLowerCase();
+        const t = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
         const empty =
           (t === 'multiselect' && (!Array.isArray(val) || val.length === 0))
             ? true
@@ -303,13 +313,13 @@ export default function NewAsset() {
               : (val === undefined || val === null || String(val).trim() === '');
         if (empty) newErrors[slug] = 'Required';
       }
-      if ((f.field_type?.code || '').toLowerCase() === 'number') {
+      if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'number') {
         const v = fieldValues[slug];
         if (v !== '' && v !== undefined && v !== null && isNaN(Number(v))) {
           newErrors[slug] = 'Must be a number';
         }
       }
-      if ((f.field_type?.code || '').toLowerCase() === 'date') {
+      if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'date') {
         const v = fieldValues[slug];
         if (v && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) {
           newErrors[slug] = 'Must be YYYY-MM-DD';
@@ -343,6 +353,7 @@ export default function NewAsset() {
     if (nextServiceDate) data.append('next_service_date', nextServiceDate);
     if (datePurchased) data.append('date_purchased', datePurchased);
     if (notes) data.append('notes', notes);
+    if (serialNumber) data.append('serial_number', serialNumber);
 
     if (image?.file) data.append('image', image.file, image.file.name || 'upload.jpg');
     if (document) {
@@ -435,7 +446,7 @@ export default function NewAsset() {
   // ---------- UI pieces ----------
   const renderField = (f) => {
     const slug = f.slug || normSlug(f.name);
-    const typeCode = (f.field_type?.code || '').toLowerCase();
+    const typeCode = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
     const isReq = !!f.is_required;
 
     const Label = (
@@ -664,6 +675,22 @@ export default function NewAsset() {
 
         {/* Dynamic Fields */}
         {!!typeId && fieldsSchema.map(renderField)}
+        {/* Serial Number */}
+        <View onLayout={onLayoutFor('serial_number')}>
+          <Text style={styles.label}>Serial Number</Text>
+            <TextInput
+              ref={setInputRef('serial_number')}
+              style={styles.input}
+              placeholder="Serial Number"
+              value={serialNumber}
+              onChangeText={(t) => {
+                setSerialNumber(t);
+                setErrors(prev => ({ ...prev, serial_number: undefined }));
+              }}
+              autoCapitalize="characters" // or "none" if you prefer
+            />
+          {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
+        </View>
 
         {/* Static common fields */}
         <View onLayout={onLayoutFor('location')}>
@@ -805,8 +832,16 @@ export default function NewAsset() {
         visible={datePicker.open}
         onDismiss={() => setDatePicker({ open: false, slug: null })}
         onConfirm={({ date }) => {
+          if (!date || isNaN(new Date(date).getTime())) {
+            // keep the modal open so they can pick; just warn them
+            const label =
+              datePicker.slug === '__next_service_date' ? 'Next Service Date' :
+              datePicker.slug === '__date_purchased'   ? 'Date Purchased'     : 'Date';
+            warn(`Please choose a valid ${label} before confirming.`);
+            return;
+          }
           if (datePicker.slug) {
-            const iso = date.toISOString().split('T')[0];
+            const iso = new Date(date).toISOString().split('T')[0];
             if (datePicker.slug === '__next_service_date') setNextServiceDate(iso);
             else if (datePicker.slug === '__date_purchased') setDatePurchased(iso);
             else updateField(datePicker.slug, iso);
