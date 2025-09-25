@@ -1,8 +1,13 @@
 // routes/users.js
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+const QRCode = require('qrcode');
+const PDFDocument = require('pdfkit');
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+const apiConfig = require('../config');
 
 /**
  * Try to require firebase-admin. If it's not installed, we keep going gracefully.
@@ -40,8 +45,17 @@ function ensureAdminInit() {
           const serviceAccount = require('../../config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json');
           admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
         } catch (devError) {
-          console.warn('Could not find local Firebase credentials, relying on GOOGLE_APPLICATION_CREDENTIALS for development.');
-          admin.initializeApp(); // Try initializing from env var as a last resort for dev
+          // Only initialize from env var if GOOGLE_APPLICATION_CREDENTIALS is actually provided.
+          if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+            console.warn('Using GOOGLE_APPLICATION_CREDENTIALS for firebase-admin in development.');
+            admin.initializeApp();
+          } else {
+            console.warn(
+              'firebase-admin credentials not found in dev (no local JSON and no GOOGLE_APPLICATION_CREDENTIALS). Falling back to API key auth only.'
+            );
+            adminInitialized = false; // explicit: do not use firebase-admin path
+            return; // keep admin.apps.length === 0 so subsequent calls may retry if env changes
+          }
         }
       }
       adminInitialized = true;
@@ -54,11 +68,27 @@ function ensureAdminInit() {
 
 /**
  * Auth middleware:
- * - If firebase-admin is available: verify the Bearer ID token and set req.user to decoded token
- * - Else, support a secure fallback using X-Admin-Api-Key == process.env.ADMIN_API_KEY
+ * - Identify the caller (set req.user.uid).
+ *   Dev (NODE_ENV !== 'production'): accept X-User-Id header with the caller's UID.
+ *   Prod: verify Firebase ID token when firebase-admin is configured.
+ * - Authorization (admin access) is decided only by DB role in adminOnly.
  */
 async function authRequired(req, res, next) {
   ensureAdminInit();
+  // Dev mode: allow identifying caller via uid query param (no headers required)
+  if ((process.env.NODE_ENV || 'development') !== 'production') {
+    const uidFromQuery = req.query.uid;
+    if (uidFromQuery) {
+      req.user = { uid: String(uidFromQuery) };
+      return next();
+    }
+    // Backward-compatible: still accept X-User-Id header if present
+    const uidFromHeader = req.header('X-User-Id') || req.header('x-user-id');
+    if (uidFromHeader) {
+      req.user = { uid: String(uidFromHeader) };
+      return next();
+    }
+  }
 
   if (admin && adminInitialized) {
     try {
@@ -66,7 +96,7 @@ async function authRequired(req, res, next) {
       const [, token] = header.split(' ');
       if (!token) return res.status(401).json({ error: 'Missing Authorization Bearer token' });
       const decoded = await admin.auth().verifyIdToken(token);
-      req.user = decoded;
+      req.user = { uid: decoded.uid };
       return next();
     } catch (e) {
       console.error('Auth error:', e);
@@ -74,27 +104,20 @@ async function authRequired(req, res, next) {
     }
   }
 
-  const apiKey = req.header('X-Admin-Api-Key') || req.header('x-admin-api-key');
-  if (apiKey && process.env.ADMIN_API_KEY && apiKey === process.env.ADMIN_API_KEY) {
-    req.user = { uid: 'api-key', admin: true, email: 'api@local' };
-    return next();
-  }
-
   return res.status(401).json({
     error:
-      'Authentication unavailable. Install and configure firebase-admin or provide a valid X-Admin-Api-Key.',
+      (process.env.NODE_ENV === 'production'
+        ? 'Authentication required. Provide Bearer ID token.'
+        : 'Authentication required. Provide X-User-Id header or Bearer ID token.'),
   });
 }
 
 /**
  * Admin gate:
- * - Allow if req.user.admin === true
- * - Else fall back to DB role check (users.role === 'ADMIN')
+ * - Authorization based only on DB role (users.role === 'ADMIN').
  */
 async function adminOnly(req, res, next) {
   try {
-    if (req.user?.admin === true) return next();
-
     const uid = req.user?.uid;
     if (!uid) return res.status(403).json({ error: 'Admin privilege required' });
 
@@ -226,6 +249,20 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
     // Try to reconstruct from the request
     `${req.protocol}://${req.get('host')}`;
 
+  // Public base for serving static QR images/sheets
+  const apiBase =
+    process.env.PUBLIC_API_BASE_URL ||
+    req.get('X-External-Base-Url') ||
+    `${req.protocol}://${req.get('host')}`;
+  const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
+
+  // Output folders (project-root/utils/qrcodes and sheets)
+  const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
+  const SHEETS_DIR = path.join(QR_DIR, 'sheets');
+  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
+  ensureDir(QR_DIR);
+  ensureDir(SHEETS_DIR);
+
   // Helper to make 8-char ID (A–Z, 0–9)
   const makeId = () => {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -278,13 +315,117 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
       }
 
       const url = `${base.replace(/\/+$/, '')}/check-in/${id}`;
-      codes.push({ id, url });
+
+      // Persist PNG for this code under utils/qrcodes/<id>.png
+      try {
+        const filePath = path.join(QR_DIR, `${id}.png`);
+        await QRCode.toFile(filePath, url);
+      } catch (e) {
+        console.error('Failed to write QR PNG', id, e);
+        return res.status(500).json({ error: 'Failed to write QR images' });
+      }
+
+      // Keep both check-in URL and static PNG URL
+      const pngUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/${id}.png`;
+      codes.push({ id, url, pngUrl });
+    }
+    // Build PDF sheets (65 per page)
+    const perPage = 65;
+    const pages = Math.ceil(codes.length / perPage);
+    const a4 = { w: 595.28, h: 841.89 }; // points
+    const margin = 24;
+    const cols = 5;
+    const rows = 13;
+    const gridW = a4.w - margin * 2;
+    const gridH = a4.h - margin * 2;
+    const cellW = gridW / cols;
+    const cellH = gridH / rows;
+    const qrSize = Math.min(cellW, cellH) * 0.75;
+    const fontSize = 8;
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '')
+      .replace('T', '_')
+      .slice(0, 15);
+
+    const sheetUrls = [];
+    for (let p = 0; p < pages; p += 1) {
+      const batch = codes.slice(p * perPage, (p + 1) * perPage);
+      const filename = `qr_sheet_${timestamp}_p${p + 1}.pdf`;
+      const outPath = path.join(SHEETS_DIR, filename);
+      const doc = new PDFDocument({ size: 'A4', margin });
+      const stream = fs.createWriteStream(outPath);
+      doc.pipe(stream);
+
+      // Optional title/header
+      doc.fontSize(10).text(`Asset QR Sheet (${batch.length} codes) — Page ${p + 1} of ${pages}`, { align: 'center' });
+      doc.moveDown(0.3);
+
+      for (let i = 0; i < batch.length; i += 1) {
+        const id = batch[i].id;
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const x = margin + col * cellW + (cellW - qrSize) / 2;
+        const y = margin + 14 + row * cellH + (cellH - qrSize) / 2 - 6;
+        const pngPath = path.join(QR_DIR, `${id}.png`);
+        doc.image(pngPath, x, y, { width: qrSize, height: qrSize });
+        doc.fontSize(fontSize).text(id, x, y + qrSize + 2, { width: qrSize, align: 'center' });
+      }
+
+      doc.end();
+      // wait for file write finish
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resFinish) => stream.on('finish', resFinish));
+      const publicUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
+      sheetUrls.push(publicUrl);
     }
 
-    return res.json({ count: codes.length, codes });
+    // Response: normalize to expected payload
+    const items = codes.map(({ id, pngUrl, url: checkInUrl }) => ({ id, url: pngUrl, checkInUrl }));
+    const sheets = sheetUrls.map((url, i) => ({ index: i + 1, url }));
+    return res.json({ count: items.length, codes: items, sheets });
   } catch (e) {
     console.error('QR generation failed:', e);
     return res.status(500).json({ error: 'QR generation failed' });
+  }
+});
+
+/**
+ * List all generated QR sheet PDFs from utils/qrcodes/sheets
+ * GET /users/qr/sheets
+ * Admin-only
+ */
+router.get('/qr/sheets', authRequired, adminOnly, async (req, res) => {
+  try {
+    const apiBase =
+      process.env.PUBLIC_API_BASE_URL ||
+      req.get('X-External-Base-Url') ||
+      `${req.protocol}://${req.get('host')}`;
+    const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
+
+    const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
+    const SHEETS_DIR = path.join(QR_DIR, 'sheets');
+
+    if (!fs.existsSync(SHEETS_DIR)) return res.json({ count: 0, sheets: [] });
+
+    const files = fs.readdirSync(SHEETS_DIR).filter((f) => f.toLowerCase().endsWith('.pdf'));
+    const items = files.map((name) => {
+      const full = path.join(SHEETS_DIR, name);
+      const st = fs.statSync(full);
+      return {
+        name,
+        url: `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${name}`,
+        size: st.size,
+        mtime: st.mtime.toISOString(),
+      };
+    });
+
+    items.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    return res.json({ count: items.length, sheets: items });
+  } catch (e) {
+    console.error('List sheets failed:', e);
+    return res.status(500).json({ error: 'Failed to list sheets' });
   }
 });
 

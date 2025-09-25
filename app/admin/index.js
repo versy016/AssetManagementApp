@@ -1,8 +1,9 @@
 // app/admin/index.js
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, FlatList, Linking, Platform,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, FlatList, Linking, Platform, ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -25,10 +26,18 @@ export default function AdminConsole() {
   const SHEET_SIZE = 65;
   const MAX_SHEETS = 5;
   const [qrResults, setQrResults] = useState([]);
-
+  const [qrSheets, setQrSheets] = useState([]);
+  const [allSheets, setAllSheets] = useState([]);
   const authHeader = async () => {
-    const token = await auth.currentUser.getIdToken(true);
-    return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json' };
+    // Provide UID so backend can check DB role in dev
+    if (auth.currentUser?.uid) headers['X-User-Id'] = auth.currentUser.uid;
+    // Optionally include Bearer token (works when firebase-admin is configured)
+    try {
+      const token = await auth.currentUser?.getIdToken?.(true);
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch (_) { /* ignore */ }
+    return headers;
   };
 
   const resolveUserIdByEmail = async (email) => {
@@ -45,7 +54,7 @@ export default function AdminConsole() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
         if (!u) {
-          router.replace('/(auth)/login');
+          router.replace('/login');
           return;
         }
         setCurrentUser(u);
@@ -115,6 +124,9 @@ export default function AdminConsole() {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Failed to generate QR codes');
     setQrResults(data?.codes || []);
+    setQrSheets(data?.sheets || []);
+    // Refresh persistent sheet list after generation
+    await refreshSheets();
     Alert.alert(
       'Success',
       `Generated ${data?.codes?.length || 0} QR codes (${sheets} × ${SHEET_SIZE}).`
@@ -125,6 +137,24 @@ export default function AdminConsole() {
     setWorking(false);
   }
 };
+
+  const refreshSheets = async () => {
+    try {
+      const headers = await authHeader();
+      const res = await fetch(`${API_BASE_URL}/users/qr/sheets`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to fetch sheets');
+      setAllSheets(data?.sheets || []);
+    } catch (e) {
+      console.warn('Fetch sheets:', e?.message || e);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin && currentUser) {
+      refreshSheets();
+    }
+  }, [isAdmin, currentUser]);
 
 
   if (loading) {
@@ -154,7 +184,12 @@ export default function AdminConsole() {
   const totalCodes = sheetsNum * SHEET_SIZE;
 
   return (
-      <View style={styles.wrapper}>
+      <SafeAreaView style={styles.safe}>
+        <ScrollView
+          style={styles.wrapper}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.topbar}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
@@ -238,16 +273,57 @@ export default function AdminConsole() {
                     </TouchableOpacity>
                   </View>
                 )}
-              />
+                scrollEnabled={false}
+                nestedScrollEnabled
+                contentContainerStyle={{ paddingBottom: 8 }}
+                  />
+                  {qrSheets?.length > 0 && (
+               <View style={{ marginTop: 16 }}>
+                 <Text style={styles.subTitle}>Download Sheets (PDF, 65 per page)</Text>
+                 {qrSheets.map((s, idx) => (
+                   <View key={idx} style={styles.qrRow}>
+                     <Text style={{ fontSize: 14, color: '#333' }}>Sheet {s.index}</Text>
+                     <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
+                       <Text style={styles.link}>Download PDF</Text>
+                     </TouchableOpacity>
+                   </View>
+                 ))}
+               </View>
+             )}
             </View>
+            
           )}
+
+          {/* Persistent: All Sheets */}
+          <View style={{ marginTop: 24 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.subTitle}>All Sheets ({allSheets.length})</Text>
+              <TouchableOpacity onPress={refreshSheets} disabled={working}>
+                <Text style={styles.link}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+            {allSheets.length === 0 ? (
+              <Text style={{ color: '#666' }}>No sheets found yet.</Text>
+            ) : (
+              allSheets.map((s, idx) => (
+                <View key={`${s.name}-${idx}`} style={styles.qrRow}>
+                  <Text style={{ fontSize: 14, color: '#333' }}>{s.name}</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
+                    <Text style={styles.link}>Download PDF</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
         </View>
       )}
-    </View>
+        </ScrollView>
+      </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
   wrapper: { flex: 1, padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 22, fontWeight: '800', marginBottom: 12 },
