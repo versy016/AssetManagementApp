@@ -293,12 +293,20 @@ export default function EditAssetType() {
 
     setSaving(true);
     try {
-      // (A) Update core (name/imageUrl). If you add multipart PUT support, attach pickedImage.file here.
-      const resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), image_url: imageUrl || null }),
-      });
+      // (A) Update core (name/image)
+      let resCore;
+      if (pickedImage?.file) {
+        const fd = new FormData();
+        fd.append('name', name.trim());
+        fd.append('image', pickedImage.file, pickedImage.file.name || 'upload.jpg');
+        resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, { method: 'PUT', body: fd });
+      } else {
+        resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), image_url: imageUrl || null }),
+        });
+      }
       const coreBody = await resCore.json().catch(() => ({}));
       if (!resCore.ok) throw new Error(coreBody?.message || 'Failed to update asset type');
 

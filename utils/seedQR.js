@@ -24,9 +24,9 @@ async function main() {
   // Track used IDs to ensure uniqueness
   const usedIds = new Set();
   // Determine the folder where QR codes will be saved
-  const qrFolder = path.join(__dirname, config.QR_FOLDER);
+  const qrFolder = config.QR_FOLDER;
   // Create the folder if it doesn't exist
-  if (!fs.existsSync(qrFolder)) fs.mkdirSync(qrFolder);
+  if (!fs.existsSync(qrFolder)) fs.mkdirSync(qrFolder, { recursive: true });
 
   try {
     // Loop to generate the desired number of assets and QR codes

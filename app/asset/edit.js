@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import DropDownPicker from 'react-native-dropdown-picker';
@@ -7,6 +7,8 @@ import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import * as DocumentPicker from 'expo-document-picker';
+import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 
 registerTranslation('en', en);
 
@@ -36,6 +38,8 @@ export default function EditAsset() {
   const [nextServiceDate, setNextServiceDate] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
   const [notes, setNotes] = useState('');
+  const [image, setImage] = useState(null);       // { uri, file }
+  const [document, setDocument] = useState(null); // { uri, name, mimeType }
 
   const [datePicker, setDatePicker] = useState({ open: false, slug: null });
   const [errors, setErrors] = useState({});
@@ -157,6 +161,24 @@ export default function EditAsset() {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || body?.message || 'Failed to update');
+      }
+
+      // If files selected, upload them in a separate call
+      if (image?.file || document) {
+        const fd = new FormData();
+        if (image?.file) fd.append('image', image.file, image.file.name || 'upload.jpg');
+        if (document) {
+          fd.append('document', {
+            uri: document.uri,
+            name: document.name || 'document.pdf',
+            type: document.mimeType || 'application/pdf',
+          });
+        }
+        const resFiles = await fetch(`${API_BASE_URL}/assets/${assetId}/files`, { method: 'PUT', body: fd });
+        if (!resFiles.ok) {
+          const t = await resFiles.text();
+          throw new Error(t || 'Failed to upload files');
+        }
       }
       if (Platform.OS !== 'web') Alert.alert('Updated', 'Asset saved.');
       router.replace({ pathname: `/asset/${assetId}` });
@@ -399,12 +421,34 @@ export default function EditAsset() {
           />
         </View>
 
+        {/* Optional image/document updates */}
+        <View onLayout={onLayoutFor('image')}>
+          <Text style={styles.label}>Image</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity style={styles.btn} onPress={async () => { const res = await getImageFileFromPicker(); if (res) setImage(res); }}>
+              <Text>{image?.uri ? 'Change Image' : 'Pick Image'}</Text>
+            </TouchableOpacity>
+            {image?.uri ? <Image source={{ uri: image.uri }} style={{ width: 64, height: 64, borderRadius: 6 }} /> : null}
+          </View>
+        </View>
+
+        <View onLayout={onLayoutFor('document')}>
+          <Text style={styles.label}>Document</Text>
+          <TouchableOpacity style={styles.btn} onPress={async () => {
+            const pick = await DocumentPicker.getDocumentAsync({ multiple: false });
+            if (pick.type === 'success') setDocument(pick);
+          }}>
+            <Text>{document ? 'Change Document' : 'Attach Document'}</Text>
+          </TouchableOpacity>
+          {document && <Text style={{ marginTop: 6, fontStyle: 'italic' }}>Attached: {document.name}</Text>}
+        </View>
+
         <TouchableOpacity
           onPress={submit}
           disabled={saving}
-          style={[styles.btn, styles.submit, saving && styles.submitDisabled]}
+          style={[styles.btn, styles.btnLg, styles.submit, saving && styles.submitDisabled]}
         >
-          <Text style={{ color: '#fff' }}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+          <Text style={styles.btnTextPrimary}>{saving ? 'Saving...' : 'Save Changes'}</Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
 
@@ -432,9 +476,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 12, marginVertical: 8, color: '#000' },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  btn: { backgroundColor: '#eee', padding: 15, alignItems: 'center', borderRadius: 5, marginVertical: 8 },
+  btn: { backgroundColor: '#eee', paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: 6, marginVertical: 8, justifyContent: 'center' },
+  btnLg: { minHeight: 48, borderRadius: 10, paddingVertical: 14 },
   submit: { backgroundColor: '#1E90FF' },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },
+  btnTextPrimary: { color: '#fff', fontWeight: '700', fontSize: 16 },
   dropdown: { borderColor: '#ccc', marginBottom: 16 },
   dropdownContainer: { borderColor: '#ccc' },
   errorBelow: { marginTop: 4, color: '#b00020' },

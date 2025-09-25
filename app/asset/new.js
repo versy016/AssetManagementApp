@@ -95,12 +95,26 @@ export default function NewAsset() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredAssetIds, setFilteredAssetIds] = useState([]);
 
+  // Keep filtered list in sync with searchTerm and the available QR IDs
+  useEffect(() => {
+    const all = options.assetIds || [];
+    if (!searchTerm) { setFilteredAssetIds(all); return; }
+    const q = searchTerm.toLowerCase();
+    setFilteredAssetIds(all.filter(qrId => String(qrId).toLowerCase().includes(q)));
+  }, [searchTerm, options.assetIds]);
+
   // ---------- core form ----------
   const [id, setId] = useState('');
   const [typeId, setTypeId] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
   const [status, setStatus] = useState('');
   const [location, setLocation] = useState('');
+  const [locQuery, setLocQuery] = useState('');
+  const [locOpen, setLocOpen] = useState(false);
+  const [locLoading, setLocLoading] = useState(false);
+  const [locSuggestions, setLocSuggestions] = useState([]);
+  const [locSuggestEnabled, setLocSuggestEnabled] = useState(true);
+  const [locSuggestError, setLocSuggestError] = useState('');
 
   // classic top-level fields
   const [model, setModel] = useState('');
@@ -133,19 +147,70 @@ export default function NewAsset() {
     });
 
     if (fromAssetId) {
+      const toYMD = (v) => (v ? String(v).split('T')[0] : '');
       fetch(`${API_BASE_URL}/assets/${fromAssetId}`)
         .then(res => res.json())
         .then(data => {
-          setSerialNumber(data.serial_number || '');
+          // Top-level fields (copy everything except the target asset id)
           setTypeId(data.type_id || '');
           setAssignedToId(data.assigned_to_id || '');
           setStatus(data.status || '');
           setLocation(data.location || '');
+          setLocQuery(data.location || '');
+          setModel(data.model || '');
+          setDescription(data.description || '');
+          setNotes(data.notes || '');
+          setSerialNumber(data.serial_number || '');
+          setNextServiceDate(toYMD(data.next_service_date));
+          setDatePurchased(toYMD(data.date_purchased));
+
+          // Dynamic fields
           if (data.fields && typeof data.fields === 'object') setFieldValues(data.fields);
         })
         .catch(console.error);
     }
   }, []);
+
+  // Debounced Google Places suggestions via server proxy
+  useEffect(() => {
+    let timer;
+    if (!locSuggestEnabled) return; // disabled after a server 400 (e.g., missing API key)
+    const q = (locQuery || '').trim();
+    if (!q) {
+      setLocSuggestions([]);
+      return;
+    }
+    if (q.length < 3) {
+      setLocSuggestions([]);
+      return;
+    }
+    timer = setTimeout(async () => {
+      try {
+        setLocLoading(true);
+        const res = await fetch(`${API_BASE_URL}/places/autocomplete?q=${encodeURIComponent(q)}`);
+        if (!res.ok) {
+          let msg = '';
+          try { const j = await res.json(); msg = j?.error || j?.message || ''; } catch {}
+          // If server reports missing API key, permanently disable suggestions for this session
+          if (res.status === 400 && /GOOGLE_PLACES_API_KEY/i.test(msg)) {
+            setLocSuggestEnabled(false);
+            setLocSuggestError('Location suggestions unavailable (API key not configured).');
+            setLocSuggestions([]);
+            return;
+          }
+          setLocSuggestions([]);
+          return;
+        }
+        const json = await res.json();
+        setLocSuggestions(Array.isArray(json.predictions) ? json.predictions : []);
+      } catch (e) {
+        setLocSuggestions([]);
+      } finally {
+        setLocLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [locQuery, locSuggestEnabled]);
 
   // ---------- fetch dynamic schema when type changes ----------
   useEffect(() => {
@@ -616,10 +681,6 @@ export default function NewAsset() {
             value={searchTerm}
             onChangeText={text => {
               setSearchTerm(text);
-              const filtered = (options.assetIds || []).filter(qrId =>
-                String(qrId).toLowerCase().includes(text.toLowerCase())
-              );
-              setFilteredAssetIds(filtered);
             }}
           />
           <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
@@ -630,8 +691,11 @@ export default function NewAsset() {
           {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
         </View>
 
-        {showQRs && (
+        {(showQRs || searchTerm.length > 0) && (
           <View style={styles.qrGrid}>
+            {filteredAssetIds.length === 0 ? (
+              <Text style={{ width: '100%', textAlign: 'center', color: '#666' }}>No matching QR IDs</Text>
+            ) : null}
             {filteredAssetIds.map((qrId) => (
               <TouchableOpacity
                 key={qrId}
@@ -698,11 +762,55 @@ export default function NewAsset() {
           <TextInput
             ref={setInputRef('location')}
             style={styles.input}
-            placeholder="Location"
-            value={location}
-            onChangeText={(t)=>{ setLocation(t); setErrors(prev=>({...prev,location:undefined})); }}
+            placeholder="Enter an Address"
+            value={locQuery}
+            onFocus={() => setLocOpen(true)}
+            onChangeText={(t)=>{
+              setLocQuery(t);
+              setLocation(t);
+              setLocOpen(true);
+              setErrors(prev=>({...prev,location:undefined}));
+            }}
           />
           {!!errors.location && <Text style={styles.errorBelow}>{errors.location}</Text>}
+          {!!locSuggestError && (
+            <Text style={styles.locSuggestHint}>{locSuggestError}</Text>
+          )}
+          {(locOpen && (locLoading || locSuggestions.length > 0)) && (
+            <View style={styles.locSuggestBox}>
+              {locLoading ? (
+                <Text style={styles.locSuggestHint}>Searching…</Text>
+              ) : (
+                locSuggestions.map((s) => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={styles.locSuggestItem}
+                    onPress={async () => {
+                      // set chosen text immediately
+                      setLocation(s.description);
+                      setLocQuery(s.description);
+                      setLocOpen(false);
+                      setLocSuggestions([]);
+                      // Optional: fetch details for a cleaner formatted address
+                      try {
+                        const r = await fetch(`${API_BASE_URL}/places/details?id=${encodeURIComponent(s.id)}`);
+                        const d = await r.json();
+                        if (d.formatted_address) {
+                          setLocation(d.formatted_address);
+                          setLocQuery(d.formatted_address);
+                        }
+                      } catch {}
+                    }}
+                  >
+                    <Text numberOfLines={1} style={styles.locSuggestMain}>{s.main || s.description}</Text>
+                    {!!s.secondary && (
+                      <Text numberOfLines={1} style={styles.locSuggestSecondary}>{s.secondary}</Text>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
         </View>
 
         <View onLayout={onLayoutFor('model')}>
@@ -892,4 +1000,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  // location suggestions
+  locSuggestBox: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    paddingVertical: 6,
+    marginTop: -6,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    // shadow/elevation for native
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  locSuggestItem: { paddingHorizontal: 12, paddingVertical: 8 },
+  locSuggestMain: { color: '#111', fontWeight: '600' },
+  locSuggestSecondary: { color: '#666', fontSize: 12 },
+  locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: '#666', fontStyle: 'italic' },
 });

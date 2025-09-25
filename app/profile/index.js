@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
@@ -125,7 +126,8 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.container}>
       <View style={styles.topbar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
@@ -175,11 +177,13 @@ export default function ProfileScreen() {
           <Text style={styles.buttonGhostText}>Admin Controls</Text>
         </TouchableOpacity>
       )}
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 20 },
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   heading: { fontSize: 22, fontWeight: '700', marginBottom: 16 },

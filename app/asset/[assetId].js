@@ -24,20 +24,33 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
 const STATUS_CONFIG = {
-  available: { label: 'Available', bg: '#dcfce7', fg: '#166534', icon: 'check-circle' },
-  rented: { label: 'Checked Out', bg: '#ffedd5', fg: '#9a3412', icon: 'assignment-return' },
-  reserved: { label: 'Reserved', bg: '#fef9c3', fg: '#854d0e', icon: 'event' },
-  in_service: { label: 'In Service', bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
-  lost: { label: 'Lost', bg: '#fee2e2', fg: '#991b1b', icon: 'report' },
-  retired: { label: 'Retired', bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+  in_service:        { label: 'In Service',         bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
+  end_of_life:       { label: 'End of Life',        bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+  repair:      { label: 'Repair',       bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
+  maintenance: { label: 'Maintenance',  bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
 };
-
 function normalizeStatus(s) {
-  if (!s) return 'available';
+  if (!s) return 'in_service';
   const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
-  if (['checked_out', 'out', 'issued', 'rented'].includes(key)) return 'rented';
-  if (['service', 'maintenance', 'inservice'].includes(key)) return 'in_service';
-  return key in STATUS_CONFIG ? key : 'available';
+
+  // Back-compat / synonyms mapping
+  const alias = {
+    // exact new set
+    in_service: 'in_service',
+    end_of_life: 'end_of_life',
+    repair: 'repair',
+    maintenance: 'maintenance',
+
+    // legacy/common variants
+    available: 'in_service',
+    checked_out: 'repair', // or pick 'in_service' if you prefer
+    rented: 'repair',
+    reserved: 'in_service',
+    lost: 'end_of_life',
+    retired: 'end_of_life',
+  };
+
+  return alias[key] || 'in_service';
 }
 
 function StatusBadge({ status }) {
@@ -110,17 +123,39 @@ function MapPreview({ location }) {
     );
   }
 
-  // Native (iOS/Android): use WebView without importing it on web
+  // Native (iOS/Android): render an iframe inside WebView.
+  // Google requires the embed URL to be used within an iframe; loading it directly in WebView triggers an error.
   const { WebView } = require('react-native-webview');
+  const html = `<!doctype html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <style>html, body, .wrap { height: 100%; margin: 0; padding: 0; }</style>
+      </head>
+      <body>
+        <div class="wrap">
+          <iframe
+            src="${url}"
+            width="100%"
+            height="100%"
+            style="border:0;"
+            allowfullscreen
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+        </div>
+      </body>
+    </html>`;
   return (
     <View style={styles.mapCard}>
       <WebView
-        source={{ uri: url }}
+        originWhitelist={["*"]}
+        source={{ html, baseUrl: 'https://www.google.com' }}
         style={styles.map}
         automaticallyAdjustContentInsets={false}
-        originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
+        setSupportMultipleWindows={false}
       />
     </View>
   );
@@ -387,7 +422,7 @@ export default function AssetDetailPage() {
               <Text style={styles.documentText}>📄 View Attached Document</Text>
             </TouchableOpacity>
           )}
-{/* Map (works on all platforms) */}
+          {/* Map (works on all platforms) */}
           <MapPreview location={displayLocation} />
           {/* Smart actions */}
           <View style={styles.actionsRow}>
@@ -410,13 +445,16 @@ export default function AssetDetailPage() {
             ) : (
               <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                onPress={() => router.push(`/check-in/${asset.id}`)}
+                onPress={() => {
+                  router.push({
+                    pathname: '/asset/new',
+                    params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
+                  });
+                }}
               >
-                <Text style={styles.actionText}>Action</Text>
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
               </TouchableOpacity>
             )}
-
-            
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
               onPress={() =>
@@ -502,12 +540,12 @@ const styles = StyleSheet.create({
   },
   detailCard: {
     backgroundColor: '#fff',
-    padding: 20,
+    padding: 10,
     margin: 16,
     borderRadius: 10,
     elevation: 2,
   },
-  image: {
+  image: { 
     height: 200,
     borderRadius: 10,
     marginBottom: 14,
@@ -519,6 +557,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#eee',
+    marginTop: 16,
     marginBottom: 16,
   },
   map: {
@@ -602,9 +641,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   linkedChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
+
   documentButton: {
     marginTop: 16,
-    padding: 12,
+    marginBottom: 16,
+    padding: 2,
     backgroundColor: '#f0f8ff',
     borderRadius: 8,
     alignItems: 'center',
@@ -614,22 +655,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-    gap: 8,
+    flexDirection: 'row', justifyContent: 'center', gap: 8,
+    padding: 16, borderTopColor: '#ddd', borderTopWidth: 1, backgroundColor: '#fff',
   },
   actionBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
+    minHeight: 50,
+    minWidth: 120,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     elevation: 2,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 3, height: 3 } },
+      android: { elevation: 3 },
+      default: {},
+    }),
   },
   actionText: {
     color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 15,
+    fontWeight: '700',
+    fontSize: 16,
   },
   shortcut: {
     flexDirection: 'row',

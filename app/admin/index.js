@@ -29,20 +29,22 @@ export default function AdminConsole() {
   const [qrSheets, setQrSheets] = useState([]);
   const [allSheets, setAllSheets] = useState([]);
   const authHeader = async () => {
-    const headers = { 'Content-Type': 'application/json' };
-    // Provide UID so backend can check DB role in dev
-    if (auth.currentUser?.uid) headers['X-User-Id'] = auth.currentUser.uid;
-    // Optionally include Bearer token (works when firebase-admin is configured)
-    try {
-      const token = await auth.currentUser?.getIdToken?.(true);
-      if (token) headers.Authorization = `Bearer ${token}`;
-    } catch (_) { /* ignore */ }
-    return headers;
+    const u = auth.currentUser;
+    if (!u) throw new Error('No current user');
+    const token = await u.getIdToken(true);
+    console.log('[Admin] using idToken len=', token?.length);
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      // Help the dev server auth middleware when running locally
+      'X-User-Id': u.uid,
+    };
   };
 
   const resolveUserIdByEmail = async (email) => {
     const headers = await authHeader();
-    const url = `${API_BASE_URL}/users/lookup/by-email?email=${encodeURIComponent(email)}`;
+    const uidParam = currentUser?.uid ? `&uid=${encodeURIComponent(currentUser.uid)}` : '';
+    const url = `${API_BASE_URL}/users/lookup/by-email?email=${encodeURIComponent(email)}${uidParam}`;
     const res = await fetch(url, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || 'Lookup failed');
@@ -77,7 +79,8 @@ export default function AdminConsole() {
     try {
       const uid = await resolveUserIdByEmail(targetEmail.trim().toLowerCase());
       const headers = await authHeader();
-      const res = await fetch(`${API_BASE_URL}/users/${uid}/promote`, { method: 'POST', headers });
+      const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
+      const res = await fetch(`${API_BASE_URL}/users/${uid}/promote${uidParam}`, { method: 'POST', headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to promote');
       Alert.alert('Success', 'User promoted to ADMIN.');
@@ -94,7 +97,8 @@ export default function AdminConsole() {
     try {
       const uid = await resolveUserIdByEmail(targetEmail.trim().toLowerCase());
       const headers = await authHeader();
-      const res = await fetch(`${API_BASE_URL}/users/${uid}/demote`, { method: 'POST', headers });
+      const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
+      const res = await fetch(`${API_BASE_URL}/users/${uid}/demote${uidParam}`, { method: 'POST', headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to demote');
       Alert.alert('Success', 'User demoted to USER.');
@@ -116,7 +120,8 @@ export default function AdminConsole() {
   setWorking(true);
   try {
     const headers = await authHeader();
-    const res = await fetch(`${API_BASE_URL}/users/qr/generate`, {
+    const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
+    const res = await fetch(`${API_BASE_URL}/users/qr/generate${uidParam}`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ count: total }),
@@ -138,17 +143,27 @@ export default function AdminConsole() {
   }
 };
 
-  const refreshSheets = async () => {
+    // const refreshSheets = async () => {
+    // const headers = await authHeader();
+    // const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
+  // const url = `${API_BASE_URL}/users/qr/sheets${uidParam}`;
+    const refreshSheets = async () => {
+    const url = `${API_BASE_URL}/users/qr/sheets`;
+    const t0 = Date.now();
     try {
-      const headers = await authHeader();
-      const res = await fetch(`${API_BASE_URL}/users/qr/sheets`, { headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to fetch sheets');
-      setAllSheets(data?.sheets || []);
-    } catch (e) {
-      console.warn('Fetch sheets:', e?.message || e);
-    }
-  };
+        console.log('[Admin] refreshSheets →', url);
+        const res = await fetch(url); // public; no headers
+        const raw = await res.text();
+        console.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
+        console.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
+        const data = JSON.parse(raw);
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        console.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
+        setAllSheets(data?.sheets || []);
+      } catch (e) {
+        console.warn('[Admin] refreshSheets error:', e?.message || e);
+      }
+    };
 
   useEffect(() => {
     if (isAdmin && currentUser) {

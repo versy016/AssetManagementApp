@@ -19,27 +19,36 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 /* ---- status mapping & badge (aligned with assetId screen) ---- */
 const STATUS_CONFIG = {
-  available:   { label: 'Available',    bg: '#dcfce7', fg: '#166534', icon: 'check-circle' },
-  rented:      { label: 'Checked Out',  bg: '#ffedd5', fg: '#9a3412', icon: 'assignment-return' },
-  reserved:    { label: 'Reserved',     bg: '#fef9c3', fg: '#854d0e', icon: 'event' },
-  in_service:  { label: 'In Service',   bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
-  lost:        { label: 'Lost',         bg: '#fee2e2', fg: '#991b1b', icon: 'report' },
-  retired:     { label: 'End of Life',  bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
-  end_of_life: { label: 'End of Life',  bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+  in_service:        { label: 'In Service',         bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
+  end_of_life:       { label: 'End of Life',        bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+  repair:      { label: 'Repair',       bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
+  maintenance: { label: 'Maintenance',  bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
 };
 
 function normalizeStatus(s) {
-  if (!s) return 'available';
+  if (!s) return 'in_service';
   const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
-  if (['checked_out', 'out', 'issued', 'rented'].includes(key)) return 'rented';
-  if (['service', 'maintenance', 'inservice'].includes(key))     return 'in_service';
-  if (['eol', 'end', 'endoflife'].includes(key))                 return 'end_of_life';
-  return STATUS_CONFIG[key] ? key : 'available';
+
+  // Back-compat / synonyms mapping
+  const alias = {
+    // exact new set
+    in_service: 'in_service',
+    end_of_life: 'end_of_life',
+    repair: 'repair',
+    maintenance: 'maintenance',
+    rented: 'rented',
+
+    // legacy/common variants
+    lost: 'end_of_life',
+    retired: 'end_of_life',
+  };
+
+  return alias[key] || 'in_service';
 }
 
 function StatusBadge({ status }) {
   const k = normalizeStatus(status);
-  const cfg = STATUS_CONFIG[k] || STATUS_CONFIG.available;
+  const cfg = STATUS_CONFIG[k] || STATUS_CONFIG.in_service;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
       <MaterialIcons name={cfg.icon} size={16} color={cfg.fg} style={{ marginRight: 6 }} />
@@ -101,27 +110,44 @@ export default function AssetsType() {
     return () => { alive = false; };
   }, [type_id]);
 
-  /* compute counts for this type */
-  const { inServiceCount, endOfLifeCount, totalCount } = useMemo(() => {
-    const IN_SERVICE = new Set(['available', 'in_service']);
-    const EOL        = new Set(['retired', 'end_of_life']);
-    let svc = 0, eol = 0;
+  /* compute counts for this type (proper per-status buckets) */
+  const counts = useMemo(() => {
+    const c = {
+      in_service: 0,
+      end_of_life: 0,
+      repair: 0,
+      maintenance: 0,
+      rented: 0,
+    };
     for (const a of assets) {
       const k = normalizeStatus(a?.status);
-      if (IN_SERVICE.has(k)) svc++;
-      if (EOL.has(k))        eol++;
+      if (k in c) c[k] += 1;
     }
-    return { inServiceCount: svc, endOfLifeCount: eol, totalCount: assets.length };
+    return { ...c, total: assets.length };
   }, [assets]);
+
+  /* small helper to render a color-coded chip from STATUS_CONFIG */
+  const StatChip = ({ code, count }) => {
+    const cfg = STATUS_CONFIG[code];
+    if (!cfg) return null;
+    return (
+      <View style={[styles.metaChip, { backgroundColor: cfg.bg }]}>
+        <MaterialIcons name={cfg.icon} size={16} color={cfg.fg} />
+        <Text style={[styles.metaChipText, { color: cfg.fg }]}>
+          {cfg.label}: {count}
+        </Text>
+      </View>
+    );
+  };
 
   /* row renderer */
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: item.id } })}
+      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id) } })}
     >
       <Image
-        source={{ uri: item.image_url?.trim() || 'https://via.placeholder.com/80' }}
+        source={{ uri: (item.image_url || 'https://via.placeholder.com/80').trim() }}
         style={styles.image}
       />
       <View style={styles.details}>
@@ -159,23 +185,16 @@ export default function AssetsType() {
           <Text style={styles.title}>{type_name} Assets</Text>
         </View>
 
-        {/* stats chips */}
+        {/* stats chips (now color-coded by status config) */}
         <View style={styles.metaRow}>
-          <View style={[styles.metaChip, { backgroundColor: '#e0f2fe' }]}>
-            <MaterialIcons name="build-circle" size={16} color="#075985" />
-            <Text style={[styles.metaChipText, { color: '#075985' }]}>
-              In Service: {inServiceCount}
-            </Text>
-          </View>
-          <View style={[styles.metaChip, { backgroundColor: '#ede9fe' }]}>
-            <MaterialIcons name="block" size={16} color="#5b21b6" />
-            <Text style={[styles.metaChipText, { color: '#5b21b6' }]}>
-              End of Life: {endOfLifeCount}
-            </Text>
-          </View>
+          <StatChip code="in_service"        count={counts.in_service} />
+          <StatChip code="repair"            count={counts.repair} />
+          <StatChip code="maintenance"       count={counts.maintenance} />
+          <StatChip code="rented"            count={counts.rented} />
+          <StatChip code="end_of_life"       count={counts.end_of_life} />
           <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
             <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
-            <Text style={styles.metaChipText}>Total: {totalCount}</Text>
+            <Text style={[styles.metaChipText, { color: '#1E90FF' }]}>Total: {counts.total}</Text>
           </View>
         </View>
 
@@ -185,7 +204,7 @@ export default function AssetsType() {
         ) : (
           <FlatList
             data={assets}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => String(item.id)}
             contentContainerStyle={{ padding: 20 }}
             renderItem={renderItem}
           />

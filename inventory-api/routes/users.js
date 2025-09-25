@@ -67,26 +67,32 @@ function ensureAdminInit() {
 }
 
 /**
- * Auth middleware:
- * - Identify the caller (set req.user.uid).
- *   Dev (NODE_ENV !== 'production'): accept X-User-Id header with the caller's UID.
- *   Prod: verify Firebase ID token when firebase-admin is configured.
- * - Authorization (admin access) is decided only by DB role in adminOnly.
+ * Auth middleware (DB-first):
+ * - Identify the caller via uid passed explicitly: `?uid=...` or `X-User-Id`.
+ * - If no uid is provided, optionally fall back to verifying a Bearer token
+ *   when firebase-admin is configured. Otherwise, return 401.
+ * - Admin authorization is decided only by DB role in adminOnly.
  */
 async function authRequired(req, res, next) {
+  // Public exception: allow listing sheets with no auth
+  if (req.baseUrl === '/users' && req.path === '/qr/sheets') return next();
   ensureAdminInit();
   // Dev mode: allow identifying caller via uid query param (no headers required)
+  console.log('[authRequired] NODE_ENV=', process.env.NODE_ENV, 'query.uid=', req.query?.uid, 'hasAuthHeader=', !!req.headers.authorization, 'adminInitialized=', adminInitialized);
+
   if ((process.env.NODE_ENV || 'development') !== 'production') {
     const uidFromQuery = req.query.uid;
     if (uidFromQuery) {
+      console.log('[authRequired] DEV: using uid from query');
       req.user = { uid: String(uidFromQuery) };
       return next();
     }
     // Backward-compatible: still accept X-User-Id header if present
     const uidFromHeader = req.header('X-User-Id') || req.header('x-user-id');
     if (uidFromHeader) {
+      console.log('[authRequired] DEV: using uid from header');
       req.user = { uid: String(uidFromHeader) };
-      return next();
+    return next();
     }
   }
 
@@ -94,7 +100,10 @@ async function authRequired(req, res, next) {
     try {
       const header = req.headers.authorization || '';
       const [, token] = header.split(' ');
-      if (!token) return res.status(401).json({ error: 'Missing Authorization Bearer token' });
+      if (!token) {
+        console.warn('[authRequired] adminInitialized=true but missing Bearer token');
+        return res.status(401).json({ error: 'Missing Authorization Bearer token' });
+      }
       const decoded = await admin.auth().verifyIdToken(token);
       req.user = { uid: decoded.uid };
       return next();
@@ -103,6 +112,7 @@ async function authRequired(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
   }
+  console.warn('[authRequired] No dev uid, no admin token: rejecting');
 
   return res.status(401).json({
     error:
@@ -396,7 +406,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
  * GET /users/qr/sheets
  * Admin-only
  */
-router.get('/qr/sheets', authRequired, adminOnly, async (req, res) => {
+ router.get('/qr/sheets', async (req, res) => {
   try {
     const apiBase =
       process.env.PUBLIC_API_BASE_URL ||

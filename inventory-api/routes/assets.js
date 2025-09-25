@@ -50,14 +50,18 @@ const safeS3Key = (folder, original) => {
 
 const uploadToS3 = (file, folder) => {
   const Key = safeS3Key(folder, file.originalname);
-  return s3
-    .upload({
-      Bucket: process.env.S3_BUCKET,
-      Key,
-      Body: file.buffer,
-      ContentType: file.mimetype || 'application/octet-stream',
-    })
-    .promise();
+  const params = {
+    Bucket: process.env.S3_BUCKET,
+    Key,
+    Body: file.buffer,
+    ContentType: file.mimetype || 'application/octet-stream',
+    ACL: 'public-read',
+  };
+  // Prefer inline viewing for PDFs
+  if (folder === 'documents' && /^application\/pdf$/i.test(file.mimetype || '')) {
+    params.ContentDisposition = 'inline';
+  }
+  return s3.upload(params).promise();
 };
 
 // ------------------------------------------------------
@@ -116,7 +120,7 @@ const slugify = (s) =>
 const isISODate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 const isQRId = (s) => typeof s === 'string' && /^[A-Z0-9]{6,12}$/i.test(s); // your QR short-id style
-const ALLOWED_STATUSES = new Set(['In Service', 'End of Life']);
+const ALLOWED_STATUSES = new Set(['In Service', 'End of Life','Repair', 'Maintenance' ]);
 
 // Encode/Decode dynamic values to/from DB text
 const encodeValue = (codeOrSlug, val) => {
@@ -279,7 +283,7 @@ router.get('/asset-options', async (req, res) => {
   try {
     const assetTypes = await prisma.asset_types.findMany();
     const users      = await prisma.users.findMany();
-    const statuses   = ['In Service', 'End of Life'];
+    const statuses   = ['In Service', 'End of Life','Repair', 'Maintenance' ];
 
     const placeholders = await prisma.assets.findMany({
       where: {
@@ -333,6 +337,8 @@ router.get('/asset-types-summary', async (_req, res) => {
         image_url: type.image_url,
         inService: filtered.filter(a => lower(a.status) === 'in service').length,
         endOfLife: filtered.filter(a => lower(a.status) === 'end of life').length,
+        repair: filtered.filter(a => lower(a.status) === 'repair').length,
+        maintenance: filtered.filter(a => lower(a.status) === 'maintenance').length,
       };
     });
 
@@ -701,6 +707,39 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ---------------------------------------------
+// PUT /assets/:id/files — update image/document
+// ---------------------------------------------
+router.put('/:id/files', (req, res) => {
+  upload(req, res, async (err) => {
+    if (err) return errJson(res, 400, err.message || 'Upload failed');
+    const assetId = req.params.id;
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+
+    const img = req.files?.image?.[0];
+    const doc = req.files?.document?.[0];
+    if (!img && !doc) return errJson(res, 400, 'No files uploaded');
+    if (img && img.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 5MB)');
+    if (doc && doc.size > MAX_DOC_BYTES)   return errJson(res, 400, 'Document too large (max 10MB)');
+
+    try {
+      const [imgUp, docUp] = await Promise.all([
+        img ? uploadToS3(img, 'images') : null,
+        doc ? uploadToS3(doc, 'documents') : null,
+      ]);
+
+      const patch = {};
+      if (imgUp) patch.image_url = imgUp.Location;
+      if (docUp) patch.documentation_url = docUp.Location;
+
+      const updated = await prisma.assets.update({ where: { id: assetId }, data: patch });
+      res.json({ success: true, asset: updated });
+    } catch (e) {
+      errJson(res, 500, e.message || 'Failed to update files');
+    }
+  });
+});
+
 // ------------------------------------------------------
 // POST /assets/asset-types — create asset type (image)
 // ------------------------------------------------------
@@ -795,3 +834,4 @@ router.get('/assigned/:userId', async (req, res) => {
 });
 
 module.exports = router;
+

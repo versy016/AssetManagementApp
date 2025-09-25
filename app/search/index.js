@@ -56,8 +56,7 @@ export default function SearchScreen() {
   const [sort, setSort] = useState({
     field: 'updated_at',
     dir: 'desc',
-    secondaryField: 'name',
-    secondaryDir: 'asc',
+    nullsLast: true,
   });
   const [sortOpen, setSortOpen] = useState(false);
 
@@ -179,13 +178,15 @@ export default function SearchScreen() {
     params.set('limit', String(pageSize));
     params.set('per_page', String(pageSize));
     params.set('offset', String((p - 1) * pageSize));
-    params.set('sort', `${sort.field}:${sort.dir}`);
-    params.set('order', `${sort.field}:${sort.dir}`);
-    params.set('sort_field', sort.field);
+    // Map virtual fields to real query fields where possible
+    const primaryFieldForServer = sort.field === 'relevance' || sort.field === 'service_due'
+      ? (sort.field === 'service_due' ? 'next_service_date' : 'updated_at')
+      : sort.field;
+    params.set('sort', `${primaryFieldForServer}:${sort.dir}`);
+    params.set('order', `${primaryFieldForServer}:${sort.dir}`);
+    params.set('sort_field', primaryFieldForServer);
     params.set('sort_dir', sort.dir);
-    if (sort.secondaryField) {
-      params.set('secondary_sort', `${sort.secondaryField}:${sort.secondaryDir}`);
-    }
+    // single-field sorting only (server may still do its own tiebreakers)
     if (__DEV__) {
       const obj = {};
       for (const [k, v] of params.entries()) obj[k] = v;
@@ -243,10 +244,24 @@ export default function SearchScreen() {
       const keywordOk = tokens.length === 0 || tokens.every((t) => hay.includes(t));
 
       const normStatus = (s) => {
-        const t = String(s || '').toLowerCase();
-        if (['in use', 'checked_out', 'available', 'rented', 'in service'].includes(t)) return 'in service';
-        if (['maintenance', 'end of life'].includes(t)) return 'end of life';
-        return t;
+        const t = String(s || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+        const map = {
+          'in service': 'in service',
+          available: 'in service',
+          reserved: 'in service',
+
+          'repair': 'repair',
+
+          'maintenance': 'maintenance',
+
+          'checked out': 'checked out',
+          rented: 'rented',
+
+          'end of life': 'end of life',
+          lost: 'end of life',
+          retired: 'end of life',
+        };
+        return map[t] || t;
       };
 
       const typeOk = !filters.type || norm(type) === norm(filters.type);
@@ -288,9 +303,10 @@ export default function SearchScreen() {
       const bvRaw = getVal(b, field);
       const aNull = avRaw == null || avRaw === '';
       const bNull = bvRaw == null || bvRaw === '';
-      if (aNull && bNull) return 0;
-      if (aNull) return 1;
-      if (bNull) return -1;
+      if (aNull || bNull) {
+        if (aNull && bNull) return 0;
+        return sort.nullsLast ? (aNull ? 1 : -1) : (aNull ? -1 : 1);
+      }
 
       let av = avRaw, bv = bvRaw;
       if (isISODate(av) && isISODate(bv)) {
@@ -306,10 +322,66 @@ export default function SearchScreen() {
       if (av > bv) return dir === 'asc' ? 1 : -1;
       return 0;
     };
+    // Custom comparators for virtual fields
+    const computeRelevance = (it) => {
+      if (!tokens.length) return 0;
+      const name = (it?.name || it?.asset_name || '').toLowerCase();
+      const id = String(it?.id || '').toLowerCase();
+      const serial = String(it?.serial_number ?? it?.fields?.serial_number ?? '').toLowerCase();
+      const model = String(it?.model ?? it?.fields?.model ?? '').toLowerCase();
+      const loc = String(it?.location ?? it?.fields?.location ?? '').toLowerCase();
+      const type = String(it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '').toLowerCase();
+      let score = 0;
+      // strong boosts
+      if (tokens.includes(id)) score += 1000;
+      tokens.forEach(t => {
+        if (name.startsWith(t)) score += 300;
+        if (name.includes(t)) score += 150;
+        if (serial.includes(t)) score += 120;
+        if (model.includes(t)) score += 90;
+        if (type.includes(t)) score += 60;
+        if (loc.includes(t)) score += 40;
+      });
+      return score;
+    };
+
+    const daysUntilService = (it) => {
+      const iso = it?.next_service_date ?? it?.fields?.next_service_date;
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (Number.isNaN(+d)) return null;
+      const today = new Date();
+      return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+    };
+
+    const cmp = (a, b, field, dir) => {
+      if (!field) return 0;
+      if (field === 'relevance') {
+        const av = computeRelevance(a);
+        const bv = computeRelevance(b);
+        if (av !== bv) return dir === 'asc' ? av - bv : bv - av;
+        // tie-breaker by name
+        return cmpCore(a, b, 'name', 'asc');
+      }
+      if (field === 'service_due') {
+        const ad = daysUntilService(a);
+        const bd = daysUntilService(b);
+        const aNull = ad === null;
+        const bNull = bd === null;
+        if (aNull || bNull) {
+          if (aNull && bNull) return 0;
+          return sort.nullsLast ? (aNull ? 1 : -1) : (aNull ? -1 : 1);
+        }
+        return dir === 'asc' ? ad - bd : bd - ad;
+      }
+      return cmpCore(a, b, field, dir);
+    };
+
     filtered.sort((a, b) => {
-      const primary = cmpCore(a, b, sort.field, sort.dir);
-      if (primary !== 0) return primary;
-      return cmpCore(a, b, sort.secondaryField || 'name', sort.secondaryDir || 'asc');
+      const p = cmp(a, b, sort.field, sort.dir);
+      if (p !== 0) return p;
+      // deterministic fallback by name
+      return cmpCore(a, b, 'name', 'asc');
     });
 
     return filtered;
@@ -367,7 +439,8 @@ export default function SearchScreen() {
       if (!ok) throw new Error(lastErr || 'Search failed');
 
       const { arr: rawItems, total: serverTotal } = extractItems(data);
-      const processed = activeFilterFlag ? clientFilterAndSort(rawItems) : rawItems;
+      // Always apply client processing so selected sort is honored even without filters
+      const processed = clientFilterAndSort(rawItems);
       const pageSlice = processed.slice(0, p * PAGE_SIZE);
       const newPageChunk = pageSlice.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
 
@@ -376,10 +449,7 @@ export default function SearchScreen() {
       setPage(p);
 
       const tookMs = Date.now() - start;
-      setMetrics({
-        total: activeFilterFlag ? processed.length : (serverTotal || processed.length),
-        tookMs
-      });
+      setMetrics({ total: processed.length, tookMs });
 
       if (p === 1) saveRecent();
     } catch (e) {
@@ -711,6 +781,8 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply }) {
   const statusOptions = [
     { label: 'Any status', value: null },
     { label: 'In Service', value: 'in service' },
+    { label: 'Repair', value: 'repair' },
+    { label: 'Maintenance', value: 'maintenance' },
     { label: 'End of Life', value: 'end of life' },
   ];
 
@@ -774,9 +846,10 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply }) {
 
 function SortModal({ visible, onClose, sort, setSort, onApply }) {
   const FIELDS = [
+    { label: 'Relevance', value: 'relevance' },
     { label: 'Updated', value: 'updated_at' },
     { label: 'Name', value: 'name' },
-    { label: 'Service Due', value: 'next_service_date' },
+    { label: 'Service Due', value: 'service_due' },
     { label: 'Status', value: 'status' },
     { label: 'Type', value: 'type' },
     { label: 'Location', value: 'location' },
@@ -806,6 +879,8 @@ function SortModal({ visible, onClose, sort, setSort, onApply }) {
     </View>
   );
 
+  // no presets
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose} />
@@ -815,35 +890,18 @@ function SortModal({ visible, onClose, sort, setSort, onApply }) {
           <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={COLORS.text} /></TouchableOpacity>
         </View>
 
-        <Row label="Primary field">
-          <ChipRow
-            value={sort.field}
-            onChange={v => setSort(s => ({ ...s, field: v }))}
-            options={FIELDS}
-          />
+        
+
+        <Row label="Sort by">
+          <ChipRow value={sort.field} onChange={v => setSort(s => ({ ...s, field: v }))} options={FIELDS} />
         </Row>
-        <Row label="Primary order">
-          <ChipRow
-            value={sort.dir}
-            onChange={v => setSort(s => ({ ...s, dir: v }))}
-            options={DIRS}
-          />
+        <Row label="Order">
+          <ChipRow value={sort.dir} onChange={v => setSort(s => ({ ...s, dir: v }))} options={DIRS} />
         </Row>
 
-        <Row label="Secondary field (optional)">
-          <ChipRow
-            value={sort.secondaryField || ''}
-            onChange={v => setSort(s => ({ ...s, secondaryField: v || null }))}
-            options={[{ label: 'None', value: '' }, ...FIELDS]}
-          />
-        </Row>
-        <Row label="Secondary order">
-          <ChipRow
-            value={sort.secondaryDir}
-            onChange={v => setSort(s => ({ ...s, secondaryDir: v }))}
-            options={DIRS}
-          />
-        </Row>
+        <View style={styles.switchRow}>
+          <Toggle label="Nulls last" value={!!sort.nullsLast} onChange={() => setSort(s => ({ ...s, nullsLast: !s.nullsLast }))} />
+        </View>
 
         <View style={styles.modalActions}>
           <TouchableOpacity style={[styles.modalBtn, styles.secondary]} onPress={onClose}>
@@ -922,27 +980,54 @@ function EmptyState() {
 const truncate = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
 const prettyStatus = (s) => {
   if (!s) return '—';
-  const t = String(s).toLowerCase();
-  if (['in use', 'checked_out', 'available', 'rented', 'in service'].includes(t)) return 'In Service';
-  if (['maintenance', 'end of life'].includes(t)) return 'End of Life';
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  const t = String(s).toLowerCase().replace(/[_-]+/g, ' ').trim();
+  switch (t) {
+    case 'available':
+    case 'in service':
+    case 'reserved':
+      return 'In Service';
+    case 'repair':
+      return 'Repair';
+    case 'maintenance':
+    case 'checked out':
+    case 'rented':
+    case 'end of life':
+    case 'lost':
+    case 'retired':
+      return 'End of Life';
+    default:
+      return s.charAt(0).toUpperCase() + s.slice(1);
+  }
 };
 const statusToColor = (s) => {
+  const base = { bg: '#F0F4F8', fg: COLORS.sub, bd: '#E6EDF3' };
   if (!s) return { bg: COLORS.primaryLight, fg: COLORS.primaryDark, bd: '#D6E8FF' };
-  const t = String(s).toLowerCase();
-  if (['in use', 'checked_out', 'available', 'rented', 'in service'].includes(t)) {
-    return { bg: COLORS.primaryLight, fg: COLORS.primaryDark, bd: '#D6E8FF' };
+  const t = String(s).toLowerCase().replace(/[_-]+/g, ' ').trim();
+  switch (t) {
+    case 'available':
+    case 'in service':
+    case 'reserved':
+      return { bg: COLORS.primaryLight, fg: COLORS.primaryDark, bd: '#D6E8FF' };
+    case 'repair':
+      return { bg: '#FFE5E7', fg: '#C62828', bd: '#F8B7BE' };
+    case 'maintenance':
+    case 'checked out':
+    case 'rented':
+      return { bg: '#FFF9C4', fg: '#8D6E00', bd: '#FFF59D' };
+    case 'end of life':
+    case 'lost':
+    case 'retired':
+      return { bg: COLORS.dangerBg, fg: COLORS.dangerFg, bd: '#F9C7CD' };
+    default:
+      return base;
   }
-  if (['maintenance', 'end of life'].includes(t)) {
-    return { bg: COLORS.dangerBg, fg: COLORS.dangerFg, bd: '#F9C7CD' };
-  }
-  return { bg: '#F0F4F8', fg: COLORS.sub, bd: '#E6EDF3' };
 };
 const prettySortLabel = (s) => {
   const labelFor = {
+    relevance: 'Relevance',
     updated_at: 'Updated',
     name: 'Name',
-    next_service_date: 'Service Due',
+    service_due: 'Service Due',
     status: 'Status',
     type: 'Type',
     location: 'Location',
@@ -950,10 +1035,7 @@ const prettySortLabel = (s) => {
     id: 'ID',
   };
   const primary = `${labelFor[s.field] || s.field} · ${s.dir.toUpperCase()}`;
-  const secondary = s.secondaryField
-    ? `, then ${labelFor[s.secondaryField] || s.secondaryField} · ${s.secondaryDir.toUpperCase()}`
-    : '';
-  return primary + secondary;
+  return primary + (s.nullsLast ? ' · nulls last' : '');
 };
 
 // ---- styles ----

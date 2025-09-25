@@ -25,6 +25,7 @@ function uploadToS3(file, folder) {
     Key: key,
     Body: file.buffer,
     ContentType: file.mimetype,
+    ACL: 'public-read',
   }).promise();
 }
 
@@ -33,7 +34,43 @@ function uploadToS3(file, folder) {
 // List, Get, Update, Delete (existing behavior)
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.get);
-router.put('/:id', ctrl.update);
+// Update (supports JSON or multipart with `image`)
+router.put('/:id', (req, res, next) => {
+  const ct = String(req.headers['content-type'] || '');
+  if (ct.includes('multipart/form-data')) {
+    upload.single('image')(req, res, async (err) => {
+      if (err) return next(err);
+      try {
+        // If a file was uploaded, push to S3 and then update with URL
+        let image_url;
+        if (req.file) {
+          try {
+            const result = await uploadToS3(req.file, 'asset-type-images');
+            image_url = result?.Location;
+          } catch (e) {
+            console.error('[asset-types] S3 upload failed:', e?.message || e);
+            return res.status(500).json({ status: 'error', message: 'Image upload failed', error: e?.message || String(e) });
+          }
+        }
+
+        const { name } = req.body || {};
+        const patch = {};
+        if (name !== undefined) patch.name = String(name).trim();
+        if (image_url !== undefined) patch.image_url = image_url || null;
+
+        const { PrismaClient } = require('../generated/prisma');
+        const prisma = new PrismaClient();
+        if (!Object.keys(patch).length) {
+          return res.status(400).json({ status: 'error', message: 'No fields to update' });
+        }
+        const row = await prisma.asset_types.update({ where: { id: req.params.id }, data: patch });
+        return res.json({ status: 'success', data: row });
+      } catch (e) { return next(e); }
+    });
+  } else {
+    return ctrl.update(req, res, next);
+  }
+});
 router.delete('/:id', ctrl.remove);
 
 // Create (supports BOTH JSON and multipart)
