@@ -127,9 +127,20 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/check-in/:id', (req, res) => {
-  res.json({
+  const id = req.params.id;
+  const targetBase = (process.env.CHECKIN_WEB_BASE_URL || process.env.CHECKIN_BASE_URL || '').trim();
+  const currentBase = `${req.protocol}://${req.get('host')}`;
+  const normalize = (s) => String(s || '').replace(/\/+$/, '');
+
+  if (targetBase && normalize(targetBase) !== normalize(currentBase)) {
+    const url = `${normalize(targetBase)}/check-in/${encodeURIComponent(id)}`;
+    return res.redirect(302, url);
+  }
+
+  // Fallback: simple JSON to show the endpoint is alive
+  return res.json({
     status: 'success',
-    message: `Check-in endpoint for asset ${req.params.id}`,
+    message: `Check-in endpoint for asset ${id}`,
     timestamp: new Date().toISOString(),
   });
 });
