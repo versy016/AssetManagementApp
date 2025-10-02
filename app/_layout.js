@@ -4,6 +4,7 @@ import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -29,12 +30,34 @@ export default function RootLayout() {
     }
   }, [user, layoutReady]);
 
-  // 3) still loading?
+  // 3) Web-only: ensure global scrolling is enabled (guard against hidden overflow)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-scroll-fix', 'true');
+    styleEl.innerHTML = `
+      html, body, #root { min-height: 100vh !important; height: auto !important; overflow-y: auto !important; }
+      body { overscroll-behavior-y: auto !important; }
+    `;
+    document.head.appendChild(styleEl);
+    // Also clear any inline overflow locks
+    const prevHtml = document.documentElement.style.overflowY;
+    const prevBody = document.body.style.overflowY;
+    document.documentElement.style.overflowY = 'auto';
+    document.body.style.overflowY = 'auto';
+    return () => {
+      try { document.head.removeChild(styleEl); } catch {}
+      document.documentElement.style.overflowY = prevHtml;
+      document.body.style.overflowY = prevBody;
+    };
+  }, []);
+
+  // 4) still loading?
   if (user === undefined) {
     return null; // or your splash
   }
 
-  // 4) wrap everything in PaperProvider
+  // 5) wrap everything in PaperProvider
   return (
     <SafeAreaProvider>
       <PaperProvider>

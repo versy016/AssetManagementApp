@@ -20,6 +20,8 @@ import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
@@ -169,6 +171,7 @@ export default function AssetDetailPage() {
   const [err, setErr] = useState('');
   const router = useRouter();
   const navigation = useNavigation();
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const load = useCallback(async () => {
     if (!assetId) return;
@@ -197,6 +200,21 @@ export default function AssetDetailPage() {
       setLoading(false);
     }
   }, [assetId]);
+
+  // Determine DB admin role
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) { setIsAdmin(false); return; }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(dbUser?.role === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -258,7 +276,9 @@ export default function AssetDetailPage() {
     const ok = await confirmDelete();
     if (!ok) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, { method: 'DELETE' });
+      const uid = auth.currentUser?.uid;
+      const headers = uid ? { 'X-User-Id': uid } : {};
+      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, { method: 'DELETE', headers });
       if (!res.ok) {
         const body = await res.text();
         throw new Error(body || 'Failed to delete');
@@ -500,17 +520,19 @@ export default function AssetDetailPage() {
                 <Text style={styles.actionText}>↩︎ Check In</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                onPress={() => {
-                  router.push({
-                    pathname: '/asset/new',
-                    params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
-                  });
-                }}
-              >
-                <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
-              </TouchableOpacity>
+              isAdmin ? (
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/asset/new',
+                      params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
+                    });
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
+                </TouchableOpacity>
+              ) : null
             )}
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
@@ -521,12 +543,14 @@ export default function AssetDetailPage() {
               <Text style={styles.actionText}>✏️ Edit</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
-              onPress={handleDelete}
-            >
-              <Text style={styles.actionText}>🗑 Delete</Text>
-            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
+                onPress={handleDelete}
+              >
+                <Text style={styles.actionText}>🗑 Delete</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Helpful shortcuts

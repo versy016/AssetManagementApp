@@ -17,6 +17,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { TabView, TabBar } from 'react-native-tab-view';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 const initialLayout = { width: Dimensions.get('window').width };
@@ -380,7 +382,7 @@ const AllAssetsTab = ({ query }) => {
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.9}
-        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id) } })}
+        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/Inventory?tab=all' } })}
         onLongPress={() => toggleExpand(item.id)}
       >
         <View style={styles.cardLeft}>
@@ -458,11 +460,27 @@ const Inventory = () => {
   const { tab } = useLocalSearchParams();
   const [index, setIndex] = useState(tab === 'all' ? 1 : 0);
   const [headerQuery, setHeaderQuery] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [routes] = useState([
     { key: 'types', title: 'Asset Types' },
     { key: 'all', title: 'All Assets' },
   ]);
+
+  // Determine admin from DB role (users.role === 'ADMIN')
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) { setIsAdmin(false); return; }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(dbUser?.role === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   // renderScene with props so we can pass the live query down
   const renderScene = ({ route }) => {
@@ -522,13 +540,15 @@ const Inventory = () => {
           )}
         />
 
-        {/* FAB */}
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => (index === 0 ? router.push('/type/new') : router.push('/asset/new'))}
-        >
-          <MaterialIcons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
+        {/* FAB (admin only) */}
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => (index === 0 ? router.push('/type/new') : router.push('/asset/new'))}
+          >
+            <MaterialIcons name="add" size={28} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

@@ -221,7 +221,7 @@ export default function CheckInScreen() {
 
     const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(user?.uid ? { 'X-User-Id': user.uid } : {}) },
       body: JSON.stringify({
         assigned_to_id: selectedUser.id,
         status: 'In Service', // allowed value
@@ -287,7 +287,7 @@ const handleAction = async (type) => {
 
     const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(user?.uid ? { 'X-User-Id': user.uid } : {}) },
       body: JSON.stringify(payload),
     });
 
@@ -672,6 +672,7 @@ const postActionAlert = ({
             asset={asset}
             action={actionsFormType}
             apiBaseUrl={API_BASE_URL}
+            users={users}
             onSubmitted={(updatedPartial, meta) => {
               // Optimistic UI update
               if (updatedPartial && Object.keys(updatedPartial).length) {

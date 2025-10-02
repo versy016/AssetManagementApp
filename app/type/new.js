@@ -5,6 +5,8 @@ import {
   Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
@@ -75,6 +77,8 @@ function SquareCheckbox({ checked }) {
 
 export default function NewAssetType() {
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   // Type basics
   const [name, setName] = useState('');
@@ -100,6 +104,23 @@ export default function NewAssetType() {
   const [editingOpen, setEditingOpen] = useState(false);
   const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '' });
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Admin gate via DB role
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) { setIsAdmin(false); setChecking(false); return; }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(dbUser?.role === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      } finally {
+        setChecking(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -195,7 +216,9 @@ export default function NewAssetType() {
       const form = new FormData();
       form.append('name', name.trim());
       if (image?.file) form.append('image', image.file);
-      const createTypeRes = await fetch(`${API_BASE_URL}/asset-types`, { method: 'POST', body: form });
+      const uid = auth.currentUser?.uid;
+      const headers = uid ? { 'X-User-Id': uid } : {};
+      const createTypeRes = await fetch(`${API_BASE_URL}/asset-types`, { method: 'POST', body: form, headers });
       if (!createTypeRes.ok) throw new Error(await createTypeRes.text() || 'Failed to create asset type');
       const created = await createTypeRes.json();
       const newType = created?.data || created?.assetType || created;
@@ -246,7 +269,7 @@ export default function NewAssetType() {
       for (const payload of toCreate) {
         const r = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
           body: JSON.stringify(payload),
         });
         if (!r.ok) {
@@ -268,6 +291,26 @@ export default function NewAssetType() {
       setSubmitting(false);
     }
   };
+
+  if (checking) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Checking access…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
+        <TouchableOpacity onPress={() => router.replace('/Inventory')} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>

@@ -105,6 +105,9 @@ const upload = multer({ storage, fileFilter, limits }).fields([
 
 const multerSingle = multer({ storage, fileFilter, limits });
 
+// Auth middleware (DB role)
+const { authRequired, adminOnly } = require('../middleware/auth');
+
 // -----------------------------
 // Helpers & validation guards
 // -----------------------------
@@ -121,6 +124,9 @@ const isISODate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 const isQRId = (s) => typeof s === 'string' && /^[A-Z0-9]{6,12}$/i.test(s); // your QR short-id style
 const ALLOWED_STATUSES = new Set(['In Service', 'End of Life','Repair', 'Maintenance' ]);
+const ACTION_TYPES = new Set([
+  'REPAIR','MAINTENANCE','HIRE','END_OF_LIFE','LOST','STOLEN','CHECK_IN','CHECK_OUT','TRANSFER','STATUS_CHANGE'
+]);
 
 // Encode/Decode dynamic values to/from DB text
 const encodeValue = (codeOrSlug, val) => {
@@ -149,6 +155,108 @@ const decodeValue = (codeOrSlug, raw) => {
     default:            return String(raw);
   }
 };
+
+// --------------------------------------------------
+// Action helpers
+// --------------------------------------------------
+function getActor(req) {
+  return (
+    req.header('X-User-Id') ||
+    req.header('x-user-id') ||
+    req.query.uid ||
+    null
+  );
+}
+
+async function recordAction(reqId, assetId, type, { note, data, from_user_id, to_user_id, performed_by, details } = {}) {
+  try {
+    const created = await prisma.asset_actions.create({
+      data: {
+        asset_id: assetId,
+        type,
+        note: note || null,
+        data: data || undefined,
+        from_user_id: from_user_id || null,
+        to_user_id: to_user_id || null,
+        performed_by: performed_by || null,
+      },
+    });
+    // Optional structured details
+    if (details && typeof details === 'object') {
+      const d = normalizeDetails(type, details);
+      await prisma.asset_action_details.create({
+        data: {
+          action_id: created.id,
+          action_type: type,
+          ...d,
+        },
+      });
+    }
+    // Human-readable trail
+    const msg = `[${type}] ${note || ''}`.trim();
+    await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: performed_by || null, message: msg } });
+    log(reqId, 'INFO', 'record-action-ok', { assetId, type, actionId: created.id });
+    return created;
+  } catch (e) {
+    log(reqId, 'ERROR', 'record-action-failed', { assetId, type, message: e.message });
+    throw e;
+  }
+}
+
+function toDateOrUndef(v) {
+  return v ? new Date(v) : undefined;
+}
+
+function toDecimalish(v) {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  if (Number.isNaN(n)) return undefined;
+  return n;
+}
+
+function toPriorityEnum(p) {
+  if (!p) return undefined;
+  const m = String(p).toUpperCase();
+  return ['LOW','NORMAL','HIGH','CRITICAL'].includes(m) ? m : undefined;
+}
+
+function normalizeDetails(type, src = {}) {
+  const t = String(type);
+  const base = {
+    date: toDateOrUndef(src.date),
+    notes: src.notes || undefined,
+  };
+  if (t === 'REPAIR' || t === 'MAINTENANCE') {
+    return {
+      ...base,
+      summary: src.summary || undefined,
+      estimated_cost: toDecimalish(src.cost ?? src.estimated_cost),
+      priority: toPriorityEnum(src.priority),
+    };
+  }
+  if (t === 'HIRE') {
+    return {
+      ...base,
+      hire_to: src.hireTo || src.hire_to || undefined,
+      hire_start: toDateOrUndef(src.hireStart || src.hire_start),
+      hire_end: toDateOrUndef(src.hireEnd || src.hire_end),
+      hire_rate: toDecimalish(src.hireRate || src.hire_rate),
+      hire_project: src.project || src.hire_project || undefined,
+      hire_client: src.client || src.hire_client || undefined,
+    };
+  }
+  if (t === 'END_OF_LIFE') {
+    return { ...base, eol_reason: src.eolReason || src.eol_reason || undefined };
+  }
+  if (t === 'LOST' || t === 'STOLEN') {
+    return {
+      ...base,
+      where_location: src.where || src.where_location || undefined,
+      police_report: t === 'STOLEN' ? (src.policeReport || src.police_report || undefined) : undefined,
+    };
+  }
+  return base;
+}
 
 // Validate the dynamic fields payload against the schema (presence + type + options)
 async function validateDynamicFields(reqId, typeId, fieldsObj) {
@@ -369,7 +477,7 @@ router.get('/asset-types/:id/fields', async (req, res) => {
 // POST /assets/asset-types/:id/fields — create field for a type
 // Guardrails: slug uniqueness, cap fields per type, 409 on conflict
 // -------------------------------------------------------------------
-router.post('/asset-types/:id/fields', async (req, res) => {
+router.post('/asset-types/:id/fields', authRequired, adminOnly, async (req, res) => {
   const reqId = rid();
   try {
     const asset_type_id = req.params.id;
@@ -428,7 +536,7 @@ router.post('/asset-types/:id/fields', async (req, res) => {
 // ---------------------------------------------
 // POST /assets — create from placeholder + files
 // ---------------------------------------------
-router.post('/', upload, async (req, res) => {
+router.post('/', authRequired, adminOnly, upload, async (req, res) => {
   const reqId = rid();
   try {
     // Per-file size limits (multer can't do per-field sizes by default)
@@ -589,12 +697,21 @@ router.put('/:id', async (req, res) => {
       return errJson(res, 400, 'Invalid asset id');
     }
 
-    // Resolve target assignee
-    let newUserId = assigned_to_id || null;
-    if (assign_to_admin) {
-      const adminUser = await prisma.users.findUnique({ where: { useremail: 'admin@engsurveys.com.au' } });
-      if (!adminUser) return errJson(res, 400, 'Admin user not found');
-      newUserId = adminUser.id;
+    // Resolve target assignee — change only when explicitly requested
+    const hasAssignedProp = Object.prototype.hasOwnProperty.call(req.body, 'assigned_to_id');
+    const unassignRequested = hasAssignedProp && req.body.assigned_to_id === null && (req.body.allow_unassign === true || req.body.allow_unassign === '1');
+    const hasAssignedField = (hasAssignedProp && req.body.assigned_to_id !== null) || !!assign_to_admin || unassignRequested;
+    let newUserId = undefined; // undefined means: do not change assignment
+    if (hasAssignedField) {
+      if (assign_to_admin) {
+        const adminUser = await prisma.users.findUnique({ where: { useremail: 'admin@engsurveys.com.au' } });
+        if (!adminUser) return errJson(res, 400, 'Admin user not found');
+        newUserId = adminUser.id;
+      } else if (unassignRequested) {
+        newUserId = null;
+      } else if (hasAssignedProp) {
+        newUserId = assigned_to_id || null; // null only possible with allow_unassign
+      }
     }
 
     const existingAsset = await prisma.assets.findUnique({
@@ -610,21 +727,24 @@ router.put('/:id', async (req, res) => {
     const prevUserId = existingAsset.assigned_to_id;
     const ops = [];
 
-    // userassets removal
-    if (prevUserId && prevUserId !== newUserId) {
-      const prevUser = await prisma.users.findUnique({ where: { id: prevUserId } });
-      if (prevUser) {
-        const filtered = (prevUser.userassets || []).filter(a => a !== assetId);
-        ops.push(prisma.users.update({ where: { id: prevUserId }, data: { userassets: { set: filtered } } }));
+    // Update userassets arrays only when assignment change is requested
+    if (hasAssignedField) {
+      // userassets removal
+      if (prevUserId && prevUserId !== newUserId) {
+        const prevUser = await prisma.users.findUnique({ where: { id: prevUserId } });
+        if (prevUser) {
+          const filtered = (prevUser.userassets || []).filter(a => a !== assetId);
+          ops.push(prisma.users.update({ where: { id: prevUserId }, data: { userassets: { set: filtered } } }));
+        }
       }
-    }
 
-    // userassets add
-    if (newUserId) {
-      const newUser = await prisma.users.findUnique({ where: { id: newUserId } });
-      if (!newUser) return errJson(res, 400, 'Target user not found');
-      if (!(newUser.userassets || []).includes(assetId)) {
-        ops.push(prisma.users.update({ where: { id: newUserId }, data: { userassets: { push: assetId } } }));
+      // userassets add
+      if (newUserId) {
+        const newUser = await prisma.users.findUnique({ where: { id: newUserId } });
+        if (!newUser) return errJson(res, 400, 'Target user not found');
+        if (!(newUser.userassets || []).includes(assetId)) {
+          ops.push(prisma.users.update({ where: { id: newUserId }, data: { userassets: { push: assetId } } }));
+        }
       }
     }
 
@@ -651,7 +771,8 @@ router.put('/:id', async (req, res) => {
       // do NOT include `fields` here
     ]);
 
-      const patch = { assigned_to_id: newUserId || null };
+      const patch = {};
+      if (hasAssignedField) patch.assigned_to_id = newUserId || null;
       for (const [k, v] of Object.entries(assetData)) {
         if (allowedKeys.has(k)) patch[k] = v;
       }
@@ -687,6 +808,57 @@ router.put('/:id', async (req, res) => {
       }
 
     const result = await prisma.$transaction(ops);
+
+    // After successful update, record actions for assignment/status changes
+    const actor = getActor(req);
+    const postOps = [];
+
+    if (hasAssignedField && prevUserId !== newUserId) {
+      if (prevUserId && newUserId && prevUserId !== newUserId) {
+        postOps.push(
+          recordAction(reqId, assetId, 'TRANSFER', {
+            performed_by: actor,
+            from_user_id: prevUserId,
+            to_user_id: newUserId,
+            note: `Transfer ${assetId} from ${prevUserId} to ${newUserId}`,
+            data: { prevUserId, newUserId },
+          })
+        );
+      } else if (prevUserId && !newUserId) {
+        postOps.push(
+          recordAction(reqId, assetId, 'CHECK_IN', {
+            performed_by: actor,
+            from_user_id: prevUserId,
+            note: `Check-in ${assetId} from ${prevUserId}`,
+            data: { prevUserId },
+          })
+        );
+      } else if (!prevUserId && newUserId) {
+        postOps.push(
+          recordAction(reqId, assetId, 'CHECK_OUT', {
+            performed_by: actor,
+            to_user_id: newUserId,
+            note: `Check-out ${assetId} to ${newUserId}`,
+            data: { newUserId },
+          })
+        );
+      }
+    }
+
+    if (assetData.status && assetData.status !== existingAsset.status) {
+      postOps.push(
+        recordAction(reqId, assetId, 'STATUS_CHANGE', {
+          performed_by: actor,
+          note: `Status: ${existingAsset.status} → ${assetData.status}`,
+          data: { prevStatus: existingAsset.status, newStatus: assetData.status },
+        })
+      );
+    }
+
+    if (postOps.length) {
+      try { await Promise.all(postOps); } catch (e) { /* already logged */ }
+    }
+
     log(reqId, 'INFO', 'update-asset-ok', { id: assetId, ops: result.length });
     res.json({ success: true, updated: result });
   } catch (err) {
@@ -695,10 +867,66 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ---------------------------------------------
+// GET /assets/:id/actions — list structured actions
+// ---------------------------------------------
+router.get('/:id/actions', async (req, res) => {
+  const assetId = req.params.id;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const actions = await prisma.asset_actions.findMany({
+      where: { asset_id: assetId },
+      orderBy: { occurred_at: 'desc' },
+      include: { details: true },
+    });
+    res.json({ count: actions.length, actions });
+  } catch (e) {
+    errJson(res, 500, e.message || 'Failed to fetch actions');
+  }
+});
+
+// ---------------------------------------------
+// POST /assets/:id/actions — record an action
+// ---------------------------------------------
+router.post('/:id/actions', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const { type, note, data, performed_by, from_user_id, to_user_id, occurred_at, details } = req.body || {};
+    if (!type || !ACTION_TYPES.has(String(type))) return errJson(res, 400, 'Invalid action type');
+    const actor = performed_by || getActor(req) || null;
+    const created = await prisma.asset_actions.create({
+      data: {
+        asset_id: assetId,
+        type: String(type),
+        note: note || null,
+        data: data || undefined,
+        performed_by: actor,
+        from_user_id: from_user_id || null,
+        to_user_id: to_user_id || null,
+        occurred_at: occurred_at ? new Date(occurred_at) : undefined,
+      },
+    });
+    // optional structured details
+    if (details || data) {
+      const src = details || data || {};
+      const norm = normalizeDetails(String(type), src);
+      await prisma.asset_action_details.create({ data: { action_id: created.id, action_type: String(type), ...norm } });
+    }
+    await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: actor, message: `[${type}] ${note || ''}`.trim() } });
+    log(reqId, 'INFO', 'create-action-ok', { assetId, type, actionId: created.id });
+    res.status(201).json({ action: created });
+  } catch (e) {
+    log(reqId, 'ERROR', 'create-action-failed', { assetId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to create action');
+  }
+});
+
 // -----------------------------
 // DELETE /assets/:id
 // -----------------------------
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authRequired, adminOnly, async (req, res) => {
   try {
     await prisma.assets.delete({ where: { id: req.params.id } });
     res.json({ message: 'Asset deleted' });
@@ -743,7 +971,7 @@ router.put('/:id/files', (req, res) => {
 // ------------------------------------------------------
 // POST /assets/asset-types — create asset type (image)
 // ------------------------------------------------------
-router.post('/asset-types', multerSingle.single('image'), async (req, res) => {
+router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'), async (req, res) => {
   try {
     const { name } = req.body;
     const imageFile = req.file;

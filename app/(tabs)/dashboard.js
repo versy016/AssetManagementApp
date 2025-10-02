@@ -19,6 +19,7 @@ const Dashboard = ({ isAdmin }) => {
   const [adminClaim, setAdminClaim] = useState(false); // <-- derived from Firebase custom claims
   const [summary, setSummary] = useState({ total: 0, in_service: 0, repair: 0, maintenance: 0, end_of_life: 0 });
   const [recent, setRecent] = useState({ items: [], loading: true });
+  const SHOW_RECENT = false;
 
   // Auth state + fetch custom claims (admin)
   useEffect(() => {
@@ -72,6 +73,7 @@ const Dashboard = ({ isAdmin }) => {
 
   // Recent activity (best-effort, lightweight aggregation)
   useEffect(() => {
+    if (!SHOW_RECENT) return;
     let cancelled = false;
     (async () => {
       try {
@@ -222,10 +224,6 @@ const Dashboard = ({ isAdmin }) => {
               <MaterialIcons name="inventory" size={20} color="#2563EB" />
               <Text style={styles.quickText}>My Assets</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickCard} onPress={() => router.push('/(tabs)/Inventory?tab=types')}>
-              <MaterialIcons name="category" size={20} color="#2563EB" />
-              <Text style={styles.quickText}>Asset Types</Text>
-            </TouchableOpacity>
             {canAdmin ? (
               <TouchableOpacity style={styles.quickCard} onPress={() => router.push('/admin')}>
                 <MaterialIcons name="qr-code-2" size={20} color="#2563EB" />
@@ -255,32 +253,34 @@ const Dashboard = ({ isAdmin }) => {
             </View>
           </View>
 
-          {/* Recent Activity */}
-          <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
-            {recent.loading ? (
-              <ActivityIndicator color="#2563EB" />
-            ) : recent.items.length === 0 ? (
-              <Text style={{ color: '#666' }}>No recent actions.</Text>
-            ) : (
-              recent.items.map((it, idx) => (
-                <View key={`${it.asset?.id}-${idx}`} style={styles.recentRow}>
-                  <View style={styles.recentIconWrap}>
-                    <MaterialIcons name={iconForType(it.action?.type)} size={18} color="#2563EB" />
+          {/* Recent Activity (hidden for now) */}
+          {SHOW_RECENT && (
+            <View style={styles.recentSection}>
+              <Text style={styles.sectionTitle}>Recent Activity</Text>
+              {recent.loading ? (
+                <ActivityIndicator color="#2563EB" />
+              ) : recent.items.length === 0 ? (
+                <Text style={{ color: '#666' }}>No recent actions.</Text>
+              ) : (
+                recent.items.map((it, idx) => (
+                  <View key={`${it.asset?.id}-${idx}`} style={styles.recentRow}>
+                    <View style={styles.recentIconWrap}>
+                      <MaterialIcons name={iconForType(it.action?.type)} size={18} color="#2563EB" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recentTitle} numberOfLines={1}>
+                        {it.action?.type?.replace(/_/g, ' ')} · {it.asset?.name || it.asset?.model || it.asset?.id}
+                      </Text>
+                      <Text style={styles.recentSub} numberOfLines={2}>
+                        {it.action?.details?.summary || it.action?.note || '—'}
+                      </Text>
+                    </View>
+                    <Text style={styles.recentWhen}>{prettyWhen(it.action?.occurred_at)}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recentTitle} numberOfLines={1}>
-                      {it.action?.type?.replace(/_/g, ' ')} · {it.asset?.name || it.asset?.model || it.asset?.id}
-                    </Text>
-                    <Text style={styles.recentSub} numberOfLines={2}>
-                      {it.action?.details?.summary || it.action?.note || '—'}
-                    </Text>
-                  </View>
-                  <Text style={styles.recentWhen}>{prettyWhen(it.action?.occurred_at)}</Text>
-                </View>
-              ))
-            )}
-          </View>
+                ))
+              )}
+            </View>
+          )}
 
           {/* To Do */}
           <View style={styles.toDoList}>

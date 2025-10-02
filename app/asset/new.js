@@ -6,6 +6,8 @@ import {
 import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 import * as DocumentPicker from 'expo-document-picker';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +34,8 @@ const normSlug = (s = '') =>
 export default function NewAsset() {
   const router = useRouter();
   const { fromAssetId } = useLocalSearchParams();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   // ---------- scroll & focus helpers (web-safe) ----------
   const scrollRef = useRef(null);
@@ -71,6 +75,23 @@ export default function NewAsset() {
     const keys = Object.keys(errs).filter((k) => k !== '__form' && errs[k]);
     if (keys.length) scrollAndFocus(keys[0]);
   };
+
+  // Admin gate via DB user role
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) { setIsAdmin(false); setChecking(false); return; }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(dbUser?.role === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      } finally {
+        setChecking(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   // ---------- static / non-dynamic fields ----------
   const [image, setImage] = useState(null);
@@ -470,6 +491,8 @@ export default function NewAsset() {
         await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', `${API_BASE_URL}/assets`);
+          const uid = auth.currentUser?.uid;
+          if (uid) xhr.setRequestHeader('X-User-Id', uid);
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
               const pct = Math.round((e.loaded / e.total) * 100);
@@ -491,7 +514,9 @@ export default function NewAsset() {
           xhr.send(data);
         });
       } else {
-        const res = await fetch(`${API_BASE_URL}/assets`, { method: 'POST', body: data });
+        const uid = auth.currentUser?.uid;
+        const headers = uid ? { 'X-User-Id': uid } : {};
+        const res = await fetch(`${API_BASE_URL}/assets`, { method: 'POST', body: data, headers });
         if (!res.ok) {
           await handleServerFailure(res);
           throw new Error('upload-failed');
@@ -641,6 +666,26 @@ export default function NewAsset() {
         );
     }
   };
+
+  if (checking) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Checking access…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
+        <TouchableOpacity onPress={() => router.replace('/Inventory')} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>

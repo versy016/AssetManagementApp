@@ -4,6 +4,7 @@ import { auth } from '../firebaseConfig';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 
 export default function Index() {
   const [user, setUser] = useState(null);
@@ -19,6 +20,14 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
+    // On web, default to Search as home
+    if (Platform.OS === 'web') {
+      router.replace('/search');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return; // skip auth-driven redirect on web
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (!isMountedRef.current) return; // Exit if unmounted
 

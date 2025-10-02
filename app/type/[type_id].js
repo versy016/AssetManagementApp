@@ -16,6 +16,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 
 /* ---- status mapping & badge (aligned with assetId screen) ---- */
 const STATUS_CONFIG = {
@@ -64,6 +66,22 @@ export default function AssetsType() {
 
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Determine admin via DB role
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) { setIsAdmin(false); return; }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(dbUser?.role === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   /* delete type (same logic, nicer feedback) */
   const doDeleteType = async () => {
@@ -79,7 +97,8 @@ export default function AssetsType() {
     if (!ok) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/asset-types/${type_id}`, { method: 'DELETE' });
+      const headers = auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {};
+      const res = await fetch(`${API_BASE_URL}/asset-types/${type_id}`, { method: 'DELETE', headers });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message || body?.error || 'Failed to delete');
       if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset type removed.');
@@ -144,7 +163,7 @@ export default function AssetsType() {
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id) } })}
+      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: `/type/${String(type_id)}` } })}
     >
       <Image
         source={{ uri: (item.image_url || 'https://via.placeholder.com/80').trim() }}
@@ -216,9 +235,11 @@ export default function AssetsType() {
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FFA500' }]} onPress={goEditType}>
           <Text style={styles.actionText}>✏️ Edit Type</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b00020' }]} onPress={doDeleteType}>
-          <Text style={styles.actionText}>🗑 Delete Type</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b00020' }]} onPress={doDeleteType}>
+            <Text style={styles.actionText}>🗑 Delete Type</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

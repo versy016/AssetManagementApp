@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList,
-  ActivityIndicator, Platform, Image, Modal, Pressable
+  ActivityIndicator, Platform, Image, Modal, Pressable, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -13,8 +13,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
 
-const PAGE_SIZE = 20;
-const FIRST_PAGE_BOOST = 120;
+const DEFAULT_PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const RECENT_KEY = 'asset_search_recents_v1';
 
 // 🔵 Brand palette
@@ -63,7 +63,9 @@ export default function SearchScreen() {
   // Data state
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [allItems, setAllItems] = useState([]); // processed full result set for current filters
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(allItems.length / pageSize)), [allItems.length, pageSize]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState({ total: 0, tookMs: 0 });
@@ -71,6 +73,22 @@ export default function SearchScreen() {
   // UX helpers
   const [recents, setRecents] = useState([]);
   const [expandedIds, setExpandedIds] = useState(() => new Set()); // 👈 expanded cards
+  const [viewMode, setViewMode] = useState(Platform.OS === 'web' ? 'grid' : 'list'); // 'list' | 'grid'
+  const { width } = useWindowDimensions();
+  const columns = useMemo(() => {
+    if (viewMode !== 'grid') return 1;
+    if (Platform.OS === 'web') return Math.max(2, Math.min(6, Math.floor((width || 800) / 260)));
+    return 2;
+  }, [viewMode, width]);
+  const GRID_GAP = 12;
+  const GRID_HPAD = 32; // 16 left + 16 right from content padding
+  const itemWidth = useMemo(() => {
+    if (viewMode !== 'grid') return width || 360;
+    const totalGaps = GRID_GAP * (columns - 1);
+    const usable = Math.max(220, (width || 800) - totalGaps - GRID_HPAD);
+    return Math.floor(usable / columns);
+  }, [viewMode, width, columns]);
+  const gridImageHeight = useMemo(() => Math.max(100, Math.round(itemWidth * 0.56)), [itemWidth]);
 
   // Preload from deep-link params
   useEffect(() => {
@@ -105,12 +123,19 @@ export default function SearchScreen() {
 
   // Trigger fetch when deps change
   useEffect(() => {
+    // Reset pagination and fetch the full filtered set once
     setPage(1);
     setItems([]);
-    setHasMore(true);
-    fetchPage(1, true);
+    fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, filters, sort, me.uid, me.email]);
+
+  // Re-slice when page or pageSize changes
+  useEffect(() => {
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    setItems(allItems.slice(start, end));
+  }, [page, pageSize, allItems]);
 
   // ---- helpers used in multiple places ----
   const prettyDate = (d) => {
@@ -377,7 +402,17 @@ export default function SearchScreen() {
       return cmpCore(a, b, field, dir);
     };
 
+    // Assigned-first weighting
+    const isAssigned = (it) => {
+      const uid = it?.assigned_to_id || it?.assigned_to_uid || it?.assigned_to_user_id;
+      const name = it?.assigned_to || it?.users?.name || it?.users?.useremail || it?.users?.email;
+      return !!(uid || name);
+    };
+
     filtered.sort((a, b) => {
+      const aAss = isAssigned(a);
+      const bAss = isAssigned(b);
+      if (aAss !== bAss) return aAss ? -1 : 1; // assigned first
       const p = cmp(a, b, sort.field, sort.dir);
       if (p !== 0) return p;
       // deterministic fallback by name
@@ -402,79 +437,56 @@ export default function SearchScreen() {
     try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
   }, [debouncedQuery, filters, sort, recents]);
 
-  const fetchPage = useCallback(async (p, replace = false) => {
-    if (loading || (!hasMore && !replace)) return;
+  const fetchAll = useCallback(async () => {
+    if (loading) return;
     if (filters.onlyMine && !me.uid && !me.email) return;
 
     setLoading(true);
     setError(null);
 
-    const start = Date.now();
-    const effectiveSize = p === 1 ? Math.max(PAGE_SIZE, FIRST_PAGE_BOOST) : PAGE_SIZE;
+    const perfNow = () => (typeof performance !== 'undefined' && performance?.now ? performance.now() : Date.now());
+    const t0 = perfNow();
 
     try {
-      const qs = buildQueryParams(p, effectiveSize);
+      const qs = buildQueryParams(1, 10000); // request many; server may ignore, we still post-filter
 
       const endpoints = [
         `${API_BASE_URL}/assets?${qs}`,
         `${API_BASE_URL}/assets/search?${qs}`,
       ];
 
-      let data = null, ok = false, lastErr = null, usedUrl = null, lastStatus = null;
-
+      let data = null, ok = false, lastErr = null;
       for (const url of endpoints) {
-        usedUrl = url;
         try {
           const res = await fetch(url);
-          lastStatus = res.status;
           if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
           data = await res.json();
-          ok = true;
-          break;
-        } catch (e) {
-          lastErr = e?.message || 'Network error';
-        }
+          ok = true; break;
+        } catch (e) { lastErr = e?.message || 'Network error'; }
       }
-
       if (!ok) throw new Error(lastErr || 'Search failed');
 
-      const { arr: rawItems, total: serverTotal } = extractItems(data);
-      // Always apply client processing so selected sort is honored even without filters
+      const { arr: rawItems } = extractItems(data);
       const processed = clientFilterAndSort(rawItems);
-      const pageSlice = processed.slice(0, p * PAGE_SIZE);
-      const newPageChunk = pageSlice.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
-
-      setItems(prev => (replace ? newPageChunk : [...prev, ...newPageChunk]));
-      setHasMore(pageSlice.length > p * PAGE_SIZE - newPageChunk.length);
-      setPage(p);
-
-      const tookMs = Date.now() - start;
+      setAllItems(processed);
+      // first slice
+      const start = 0; const end = pageSize;
+      setItems(processed.slice(start, end));
+      setPage(1);
+      const tookMs = Math.max(0, Math.round(perfNow() - t0));
       setMetrics({ total: processed.length, tookMs });
-
-      if (p === 1) saveRecent();
+      saveRecent();
     } catch (e) {
       setError(e.message);
+      setAllItems([]);
+      setItems([]);
+      setMetrics({ total: 0, tookMs: 0 });
     } finally {
       setLoading(false);
     }
-  }, [
-    buildQueryParams,
-    hasMore,
-    loading,
-    activeFilterFlag,
-    clientFilterAndSort,
-    filters.onlyMine,
-    me.uid,
-    me.email,
-    debouncedQuery,
-    filters,
-    sort,
-    saveRecent
-  ]);
+  }, [loading, filters.onlyMine, me.uid, me.email, buildQueryParams, clientFilterAndSort, pageSize, saveRecent]);
 
-  const onEndReached = () => {
-    if (!loading && hasMore) fetchPage(page + 1);
-  };
+  const onEndReached = () => {};
 
   const quickToggle = (key) => setFilters(f => ({ ...f, [key]: !f[key] }));
 
@@ -490,7 +502,7 @@ export default function SearchScreen() {
   ].filter(Boolean).length;
 
   // ---------- Card ----------
-  const ResultCard = ({ item }) => {
+  const ResultCard = React.memo(({ item, isExpanded, onToggleExpand }) => {
     const name = item?.name || item?.asset_name || item?.id;
     const serial = item?.serial_number ?? item?.fields?.serial_number;
     const model = item?.model ?? item?.fields?.model;
@@ -508,23 +520,14 @@ export default function SearchScreen() {
       .join(' • ');
 
     const statusColor = statusToColor(item?.status);
-    const isExpanded = expandedIds.has(String(item.id));
-
-    const toggleExpand = () => {
-      setExpandedIds(prev => {
-        const next = new Set(prev);
-        const key = String(item.id);
-        next.has(key) ? next.delete(key) : next.add(key);
-        return next;
-      });
-    };
+    // isExpanded + onToggleExpand provided by parent to minimize re-renders
 
     return (
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.9}
-        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id) } })}
-        onLongPress={toggleExpand}
+        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/search' } })}
+        onLongPress={onToggleExpand}
       >
         <View style={styles.cardLeft}>
           {item?.image_url ? (
@@ -578,7 +581,7 @@ export default function SearchScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.cardRight} onPress={toggleExpand} hitSlop={8}>
+        <TouchableOpacity style={styles.cardRight} onPress={onToggleExpand} hitSlop={8}>
           <MaterialIcons
             name={isExpanded ? 'expand-less' : 'expand-more'}
             size={24}
@@ -587,7 +590,72 @@ export default function SearchScreen() {
         </TouchableOpacity>
       </TouchableOpacity>
     );
-  };
+  });
+
+  // ---------- Grid Card (compact) ----------
+  const GridCard = React.memo(({ item }) => {
+    const title = item?.name || item?.asset_name || item?.model || item?.id;
+    const subtitle = item?.asset_types?.name || item?.asset_type || item?.type || '';
+    const statusColor = statusToColor(item?.status);
+    const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
+    const loc = item?.location ?? item?.fields?.location;
+    const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
+    return (
+      <TouchableOpacity
+        style={[styles.gridCard, { width: itemWidth }]}
+        activeOpacity={0.9}
+        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/search' } })}
+      >
+        {item?.image_url ? (
+          <Image source={{ uri: item.image_url }} style={[styles.gridImage, { height: gridImageHeight }]} resizeMode="cover" />
+        ) : (
+          <View style={[styles.gridImage, { height: gridImageHeight, alignItems: 'center', justifyContent: 'center' }] }>
+            <Ionicons name="image-outline" size={24} color={COLORS.sub2} />
+          </View>
+        )}
+        <View style={{ paddingHorizontal: 10, paddingVertical: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+            <Text style={styles.gridTitle} numberOfLines={1}>{title}</Text>
+          </View>
+          {!!subtitle && <Text style={styles.gridSub} numberOfLines={1}>{subtitle}</Text>}
+          {/* status row */}
+          <View style={styles.gridStatusRow}>
+            <View style={[styles.badge, { alignSelf: 'flex-start', backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
+              <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+            </View>
+          </View>
+
+          {/* next line: two items horizontally (assigned, location) */}
+          {(assignedTo || loc) && (
+            <View style={styles.gridRowTwo}>
+              {assignedTo ? (
+                <View style={[styles.metaChip, styles.gridChipHalf]}>
+                  <Feather name="user" size={12} color={COLORS.sub} />
+                  <Text style={styles.metaText} numberOfLines={1}>{truncate(String(assignedTo), 18)}</Text>
+                </View>
+              ) : <View style={[styles.gridChipHalf, { opacity: 0 }]} />}
+              {loc ? (
+                <View style={[styles.metaChip, styles.gridChipHalf]}>
+                  <Feather name="map-pin" size={12} color={COLORS.sub} />
+                  <Text style={styles.metaText} numberOfLines={1}>{truncate(String(loc), 18)}</Text>
+                </View>
+              ) : <View style={[styles.gridChipHalf, { opacity: 0 }]} />}
+            </View>
+          )}
+
+          {/* then vertically (stack any remaining like service due) */}
+          {nextService ? (
+            <View style={{ marginTop: 6 }}>
+              <View style={styles.metaChip}>
+                <Feather name="tool" size={12} color={COLORS.sub} />
+                <Text style={styles.metaText} numberOfLines={1}>Service {daysUntil(nextService)}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -621,7 +689,7 @@ export default function SearchScreen() {
               )}
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => fetchPage(1, true)}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => { setPage(1); fetchAll(); }}>
             <Feather name="refresh-ccw" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
@@ -639,7 +707,7 @@ export default function SearchScreen() {
           autoCorrect={false}
           style={styles.searchInput}
           returnKeyType="search"
-          onSubmitEditing={() => fetchPage(1, true)}
+          onSubmitEditing={() => { setPage(1); fetchAll(); }}
         />
         {query?.length > 0 && (
           <TouchableOpacity onPress={() => setQuery('')}>
@@ -665,10 +733,16 @@ export default function SearchScreen() {
         <Text style={styles.metaBarText}>
           {metrics.total} results {metrics.tookMs ? `· ${metrics.tookMs} ms` : ''}
         </Text>
-        <TouchableOpacity style={styles.sortBtn} onPress={() => setSortOpen(true)}>
-          <Feather name="arrow-up-down" size={14} color={COLORS.primary} />
-          <Text style={styles.sortText}>{prettySortLabel(sort)}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity style={styles.sortBtn} onPress={() => setSortOpen(true)}>
+            <Feather name="bar-chart-2" size={14} color={COLORS.primary} />
+            <Text style={styles.sortText}>{prettySortLabel(sort)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sortBtn} onPress={() => setViewMode(m => (m === 'grid' ? 'list' : 'grid'))}>
+            <Feather name={viewMode === 'grid' ? 'list' : 'grid'} size={14} color={COLORS.primary} />
+            <Text style={styles.sortText}>{viewMode === 'grid' ? 'List' : 'Grid'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Recents */}
@@ -679,26 +753,86 @@ export default function SearchScreen() {
             key: r.ts.toString(),
             label: r.label,
             onPress: () => { setQuery(r.query || ''); setFilters(r.filters || {}); setSort(r.sort || sort); },
+             onRemove: async () => {
+              try {
+                const next = recents.filter(x => x.ts !== r.ts);
+                setRecents(next);
+                await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next));
+              } catch {}
+            },
           }))}
         />
       )}
 
       {/* Results list */}
       {error ? (
-        <ErrorState message={error} onRetry={() => fetchPage(1, true)} />
+        <ErrorState message={error} onRetry={() => { setPage(1); fetchAll(); }} />
       ) : items.length === 0 && !loading ? (
         <EmptyState />
       ) : (
         <FlatList
           data={items}
+          // Changing numColumns on the fly is not supported; use key to force remount
+          key={viewMode === 'grid' ? `grid-${columns}` : 'list'}
+          numColumns={viewMode === 'grid' ? columns : 1}
           keyExtractor={(item, idx) => String(item?.id ?? idx)}
-          renderItem={({ item }) => <ResultCard item={item} />}
+          renderItem={({ item }) => (
+            viewMode === 'grid'
+              ? <GridCard item={item} />
+              : (
+                  <ResultCard
+                    item={item}
+                    isExpanded={expandedIds.has(String(item.id))}
+                    onToggleExpand={() =>
+                      setExpandedIds(prev => {
+                        const next = new Set(prev);
+                        const key = String(item.id);
+                        next.has(key) ? next.delete(key) : next.add(key);
+                        return next;
+                      })
+                    }
+                  />
+                )
+          )}
           onEndReachedThreshold={0.4}
           onEndReached={onEndReached}
           ListFooterComponent={loading ? <ListLoading /> : null}
-          contentContainerStyle={{ paddingBottom: 28 }}
+          contentContainerStyle={{ paddingBottom: 28, paddingHorizontal: viewMode === 'grid' ? 16 : 0, alignItems: viewMode === 'grid' ? 'stretch' : undefined }}
+          columnWrapperStyle={viewMode === 'grid' ? { gap: GRID_GAP, justifyContent: 'center' } : undefined}
+          removeClippedSubviews={Platform.OS !== 'web'}
+          disableVirtualization={Platform.OS === 'web'}
+          initialNumToRender={viewMode === 'grid' ? Math.min(items.length, columns * 30) : Math.min(items.length, 30)}
+          maxToRenderPerBatch={viewMode === 'grid' ? columns * 30 : 30}
+          windowSize={10}
         />
       )}
+
+      {/* Pagination controls */}
+      <View style={{ alignItems: 'center', marginTop: 8, paddingHorizontal: 12 }}>
+        <View style={styles.paginationRow}>
+          <TouchableOpacity style={styles.sortBtn} onPress={() => setPage(p => Math.max(1, p - 1))}>
+            <Feather name="chevron-left" size={14} color={COLORS.primary} />
+            <Text style={styles.sortText}>Prev</Text>
+          </TouchableOpacity>
+          <Text style={styles.metaBarText}>Page {page} / {pageCount}</Text>
+          <TouchableOpacity style={styles.sortBtn} onPress={() => setPage(p => Math.min(pageCount, p + 1))}>
+            <Text style={styles.sortText}>Next</Text>
+            <Feather name="chevron-right" size={14} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.perPageRow}>
+          <Text style={styles.metaBarText}>Per page:</Text>
+          {PAGE_SIZE_OPTIONS.map(sz => (
+            <TouchableOpacity
+              key={sz}
+              style={[styles.sortBtn, pageSize === sz && { borderColor: COLORS.primary }]}
+              onPress={() => { setPageSize(sz); setPage(1); }}
+            >
+              <Text style={styles.sortText}>{sz}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {/* Filters modal */}
       <FiltersModal
@@ -758,9 +892,18 @@ function HorizontalChips({ title, items }) {
         data={items}
         keyExtractor={(i) => i.key}
         renderItem={({ item }) => (
-          <TouchableOpacity onPress={item.onPress} style={styles.chip}>
-            <Text style={styles.chipText} numberOfLines={1}>{item.label}</Text>
-          </TouchableOpacity>
+          <View style={styles.chipRow}>
+            <View style={styles.chip}>
+              <TouchableOpacity onPress={item.onPress}>
+                <Text style={styles.chipText} numberOfLines={1}>{item.label}</Text>
+              </TouchableOpacity>
+              {item.onRemove ? (
+                <TouchableOpacity onPress={item.onRemove} style={styles.chipRemove} hitSlop={10}>
+                  <Feather name="x-circle" size={16} color={COLORS.primaryDark} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
         )}
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -899,9 +1042,7 @@ function SortModal({ visible, onClose, sort, setSort, onApply }) {
           <ChipRow value={sort.dir} onChange={v => setSort(s => ({ ...s, dir: v }))} options={DIRS} />
         </Row>
 
-        <View style={styles.switchRow}>
-          <Toggle label="Nulls last" value={!!sort.nullsLast} onChange={() => setSort(s => ({ ...s, nullsLast: !s.nullsLast }))} />
-        </View>
+        {/* Removed: Nulls last toggle (not required) */}
 
         <View style={styles.modalActions}>
           <TouchableOpacity style={[styles.modalBtn, styles.secondary]} onPress={onClose}>
@@ -1087,14 +1228,32 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#D6E8FF'
   },
   sortText: { fontSize: 13, color: COLORS.primaryDark, fontWeight: '700' },
+  paginationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  perPageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
 
   sectionTitle: { marginLeft: 16, marginBottom: 6, color: COLORS.text, fontWeight: '700' },
+  chipRow: { flexDirection: 'row', alignItems: 'center' },
   chip: {
-    marginHorizontal: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-    backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#D6E8FF'
+    marginHorizontal: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: 1,
+    borderColor: '#D6E8FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  chipText: { color: COLORS.primaryDark, fontWeight: '600' },
-
+  chipText: { color: COLORS.primaryDark, fontWeight: '700' },
+  chipRemove: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D6E8FF',
+  },
   card: {
     flexDirection: 'row', alignItems: 'flex-start',
     paddingHorizontal: 12, paddingVertical: 12,
@@ -1120,6 +1279,25 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E2EEFF'
   },
   metaText: { fontSize: 12, color: COLORS.sub },
+
+  // Grid
+  gridCard: {
+    borderRadius: 14,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: '#E9F1FF',
+    overflow: 'hidden',
+    shadowColor: '#0B63CE', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
+    marginVertical: 6,
+  },
+  gridImage: { width: '100%', backgroundColor: '#EFF6FF' },
+  gridTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: COLORS.text },
+  gridSub: { color: COLORS.sub2, fontSize: 12 },
+  gridMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  gridStatusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  gridMetaInline: { flexDirection: 'row', flex: 1, flexWrap: 'wrap', gap: 6 },
+  gridRowTwo: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  gridChipHalf: { flex: 1 },
 
   moreWrap: {
     marginTop: 10,

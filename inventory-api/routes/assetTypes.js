@@ -34,8 +34,9 @@ function uploadToS3(file, folder) {
 // List, Get, Update, Delete (existing behavior)
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.get);
+const { authRequired, adminOnly } = require('../middleware/auth');
 // Update (supports JSON or multipart with `image`)
-router.put('/:id', (req, res, next) => {
+router.put('/:id', authRequired, adminOnly, (req, res, next) => {
   const ct = String(req.headers['content-type'] || '');
   if (ct.includes('multipart/form-data')) {
     upload.single('image')(req, res, async (err) => {
@@ -71,12 +72,12 @@ router.put('/:id', (req, res, next) => {
     return ctrl.update(req, res, next);
   }
 });
-router.delete('/:id', ctrl.remove);
+router.delete('/:id', authRequired, adminOnly, ctrl.remove);
 
 // Create (supports BOTH JSON and multipart)
 // - JSON: {name, image_url?} handled by ctrl.create
 // - multipart/form-data with `image` handled by ctrl.createWithImage
-router.post('/', (req, res, next) => {
+router.post('/', authRequired, adminOnly, (req, res, next) => {
   const ct = req.headers['content-type'] || '';
   if (ct.includes('multipart/form-data')) {
     // Run multer, then upload to S3, then hand off to controller

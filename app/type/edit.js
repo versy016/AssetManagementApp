@@ -9,6 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { auth } from '../../firebaseConfig';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 
 // ---- Presets (must match how you created them originally) ----
@@ -299,11 +300,11 @@ export default function EditAssetType() {
         const fd = new FormData();
         fd.append('name', name.trim());
         fd.append('image', pickedImage.file, pickedImage.file.name || 'upload.jpg');
-        resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, { method: 'PUT', body: fd });
+        resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, { method: 'PUT', body: fd, headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) } });
       } else {
         resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
           body: JSON.stringify({ name: name.trim(), image_url: imageUrl || null }),
         });
       }
@@ -331,7 +332,7 @@ export default function EditAssetType() {
           if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
           const r = await fetch(`${API_BASE_URL}/asset-types/${id}/fields`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
             body: JSON.stringify(payload),
           });
           if (!r.ok) presetErrors.push(`${p.label}: ${await r.text() || 'Failed to create'}`);
@@ -343,7 +344,7 @@ export default function EditAssetType() {
           if (!!old.is_required !== !!state.required) {
             const r = await fetch(`${API_BASE_URL}/asset-types/${id}/fields/${old.id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
               body: JSON.stringify({ is_required: !!state.required }),
             });
             if (!r.ok) presetErrors.push(`${p.label}: ${await r.text() || 'Failed to update'}`);
@@ -353,7 +354,7 @@ export default function EditAssetType() {
         // DELETE if not selected but existed
         if (!state.selected && exists) {
           const old = existingBySlug[p.key];
-          const r = await fetch(`${API_BASE_URL}/asset-types/${id}/fields/${old.id}`, { method: 'DELETE' });
+          const r = await fetch(`${API_BASE_URL}/asset-types/${id}/fields/${old.id}`, { method: 'DELETE', headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) } });
           if (!r.ok) presetErrors.push(`${p.label}: ${await r.text() || 'Failed to delete (may have values)'}`);
         }
       }
@@ -373,7 +374,7 @@ export default function EditAssetType() {
         }
         const r = await fetch(`${API_BASE_URL}/asset-types/${id}/fields`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
           body: JSON.stringify(payload),
         });
         if (!r.ok) newErrors.push(`${q.name}: ${await r.text() || 'Failed to create'}`);
@@ -404,7 +405,7 @@ export default function EditAssetType() {
     const ok = await confirmDeleteType();
     if (!ok) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/asset-types/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/asset-types/${id}`, { method: 'DELETE', headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) } });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message || body?.error || 'Delete failed');
       if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset type removed');

@@ -11,6 +11,28 @@ datasource db {
   extensions = [uuid_ossp(map: "uuid-ossp")]
 }
 
+// Types of actions recorded against an asset
+enum AssetActionType {
+  REPAIR
+  MAINTENANCE
+  HIRE
+  END_OF_LIFE
+  LOST
+  STOLEN
+  CHECK_IN
+  CHECK_OUT
+  TRANSFER
+  STATUS_CHANGE
+}
+
+// Priority for service actions
+enum ActionPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
 model asset_logs {
   id       String    @id @default(dbgenerated("uuid_generate_v4()"))
   asset_id String?
@@ -51,6 +73,7 @@ model assets {
   asset_logs        asset_logs[]
   users             users?               @relation("AssetAssignment", fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   asset_types       asset_types?         @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actions           asset_actions[]
 }
 
 model asset_field_values {
@@ -114,9 +137,64 @@ model users {
   updated_at DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
   asset_logs asset_logs[]
   assets     assets[]     @relation("AssetAssignment")
+
+  // Backrefs for action relations
+  performed_actions asset_actions[] @relation("ActionPerformer")
+  actions_from      asset_actions[] @relation("ActionFrom")
+  actions_to        asset_actions[] @relation("ActionTo")
 }
 
 enum UserRole {
   USER
   ADMIN
+}
+
+// Structured record of actions performed on an asset
+model asset_actions {
+  id           String           @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id     String
+  type         AssetActionType
+  data         Json?
+  note         String?
+  performed_by String?
+  from_user_id String?
+  to_user_id   String?
+  occurred_at  DateTime         @default(now()) @db.Timestamp(6)
+
+  asset     assets   @relation(fields: [asset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  performer users?   @relation("ActionPerformer", fields: [performed_by], references: [id])
+  from_user users?   @relation("ActionFrom", fields: [from_user_id], references: [id])
+  to_user   users?   @relation("ActionTo", fields: [to_user_id], references: [id])
+  details   asset_action_details?
+
+  @@index([asset_id, occurred_at])
+  @@index([type])
+}
+
+// Optional structured details per action (1:1) to enable reporting
+model asset_action_details {
+  id              String           @id @default(dbgenerated("uuid_generate_v4()"))
+  action_id       String           @unique
+  action_type     AssetActionType
+  // Common
+  date            DateTime?        @db.Date
+  notes           String?
+  // Service (Repair/Maintenance)
+  summary         String?
+  estimated_cost  Decimal?         @db.Decimal(10, 2)
+  priority        ActionPriority?
+  // Hire
+  hire_to         String?
+  hire_start      DateTime?        @db.Date
+  hire_end        DateTime?        @db.Date
+  hire_rate       Decimal?         @db.Decimal(10, 2)
+  hire_project    String?
+  hire_client     String?
+  // End of Life
+  eol_reason      String?
+  // Lost / Stolen
+  where_location  String?
+  police_report   String?
+
+  action asset_actions @relation(fields: [action_id], references: [id], onDelete: Cascade)
 }
