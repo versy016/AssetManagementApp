@@ -162,8 +162,9 @@ function MapPreview({ location }) {
 }
 
 export default function AssetDetailPage() {
-  const { assetId } = useLocalSearchParams();
+  const { assetId, returnTo } = useLocalSearchParams();
   const [asset, setAsset] = useState(null);
+  const [actions, setActions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const router = useRouter();
@@ -178,6 +179,18 @@ export default function AssetDetailPage() {
       if (!res.ok) throw new Error(`Failed to load asset (${res.status})`);
       const data = await res.json();
       setAsset(data);
+      // fetch related actions for detail display
+      try {
+        const ar = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`);
+        if (ar.ok) {
+          const json = await ar.json();
+          setActions(Array.isArray(json?.actions) ? json.actions : []);
+        } else {
+          setActions([]);
+        }
+      } catch {
+        setActions([]);
+      }
     } catch (e) {
       setErr(e.message || 'Failed to load asset');
     } finally {
@@ -213,11 +226,20 @@ export default function AssetDetailPage() {
   };
 
   const handleBack = () => {
+    // Prefer explicit return target (preserves tab/query)
+    if (returnTo) {
+      try {
+        router.replace(String(returnTo));
+        return;
+      } catch {}
+    }
+    // Otherwise use history when available
     if (navigation?.canGoBack?.()) {
       router.back();
-    } else {
-      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+      return;
     }
+    // Fallback to All Assets tab with explicit query param
+    router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
   };
 
   const confirmDelete = async () => {
@@ -242,7 +264,7 @@ export default function AssetDetailPage() {
         throw new Error(body || 'Failed to delete');
       }
       if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset removed.');
-      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+      router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to delete asset');
     }
@@ -268,6 +290,14 @@ export default function AssetDetailPage() {
   };
 
   const statusKey = normalizeStatus(asset?.status);
+  const latestMatchingAction = useMemo(() => {
+    const map = { repair: 'REPAIR', maintenance: 'MAINTENANCE', end_of_life: 'END_OF_LIFE' };
+    const want = map[statusKey];
+    if (!want) return null;
+    const found = (actions || []).find(a => a?.type === want);
+    return found || null;
+  }, [actions, statusKey]);
+  const currentDetails = latestMatchingAction?.details || null;
   const nextService = (() => {
     const raw = asset?.next_service_date;
     if (!raw) return null;
@@ -306,8 +336,11 @@ export default function AssetDetailPage() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', ...(Platform.OS === 'web' ? { minHeight: '100vh' } : {}) }}>
+      <ScrollView
+        style={{ flex: 1, ...(Platform.OS === 'web' ? { height: '100vh', overflow: 'auto' } : {}) }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 160, flexGrow: 1 }}
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack}>
@@ -371,6 +404,30 @@ export default function AssetDetailPage() {
           />
           <Row label="Description" value={asset.description || 'No description'} rightAlign={false} />
           <Row label="Notes" value={asset.notes || '—'} rightAlign={false} />
+
+          {currentDetails && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
+              {currentDetails.date && (
+                <Row label="Date" value={String(currentDetails.date).split('T')[0]} rightAlign={false} />
+              )}
+              {currentDetails.summary && (
+                <Row label="Summary" value={currentDetails.summary} rightAlign={false} />
+              )}
+              {currentDetails.priority && (
+                <Row label="Priority" value={String(currentDetails.priority)} rightAlign={false} />
+              )}
+              {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
+                <Row label="Estimated Cost" value={`$${Number(currentDetails.estimated_cost).toFixed(2)}`} rightAlign={false} />
+              )}
+              {currentDetails.eol_reason && (
+                <Row label="Reason" value={currentDetails.eol_reason} rightAlign={false} />
+              )}
+              {currentDetails.notes && (
+                <Row label="Notes" value={currentDetails.notes} rightAlign={false} />
+              )}
+            </>
+          )}
 
           {/* Dynamic fields */}
           {customFieldEntries.length > 0 && (
