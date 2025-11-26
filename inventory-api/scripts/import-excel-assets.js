@@ -2,7 +2,7 @@
   import-excel-assets.js — Import assets from an Excel workbook into the DB.
 
   Usage:
-    node scripts/import-excel-assets.js [path/to/file.xlsx]
+    node scripts/import-excel-assets.js [path/to/file.xlsx] [--types-only|--assets-only]
 
   Behavior:
   - Reads the first worksheet by default.
@@ -10,17 +10,31 @@
   - Skips rows with an Asset Type equal to "Blank Asset" (case-insensitive).
   - Does NOT assign/override `id` (lets DB default UUID be generated).
   - Tries to map type by name (case-insensitive) to existing `asset_types`.
-  - If asset type not found, skips that row.
+  - If asset type not found, auto-creates it (deduped) before inserting assets and
+    attempts to attach a matching image from `assets/images`, ignoring case/spacing.
+  - Flags:
+      --types-only   run the asset-type phase only (imports no assets)
+      --assets-only  skip the asset-type phase (expects all types to exist)
 */
 
 /* eslint-disable no-console */
 const path = require('path');
 const fs = require('fs');
+const AWS = require('aws-sdk');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const XLSX = require('xlsx');
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+
+const PROJECT_ROOT = path.join(__dirname, '..', '..');
+const IMAGES_DIR = path.join(PROJECT_ROOT, 'assets', 'images');
+const IMAGE_BASE_URL = (process.env.ASSET_TYPE_IMAGE_BASE_URL || '').trim().replace(/\/+$/, '');
+const hasS3Config = Boolean(process.env.S3_BUCKET && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+const s3 = hasS3Config ? new AWS.S3({ region: process.env.AWS_REGION }) : null;
+const S3_PREFIX = process.env.ASSET_TYPE_IMAGE_S3_PREFIX || 'asset-type-images';
+const imageIndex = loadImageIndex();
+const imageUrlCache = new Map();
 
 function normalizeHeader(h) {
   return String(h || '')
@@ -92,8 +106,104 @@ function headerMapOf(keys) {
   return map;
 }
 
+function parseArgs() {
+  const input = process.argv.slice(2);
+  const firstFileIdx = input.findIndex((arg) => !arg.startsWith('--'));
+  const filePathArg = firstFileIdx >= 0 ? input[firstFileIdx] : null;
+  const flags = new Set(input.filter((arg) => arg.startsWith('--')));
+
+  const options = {
+    typesOnly: flags.has('--types-only'),
+    assetsOnly: flags.has('--assets-only'),
+  };
+
+  if (options.typesOnly && options.assetsOnly) {
+    console.error('Cannot use --types-only and --assets-only together.');
+    process.exit(1);
+  }
+
+  return { filePathArg, options };
+}
+
+function canonicalKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function loadImageIndex() {
+  const map = new Map();
+  try {
+    if (!fs.existsSync(IMAGES_DIR)) return map;
+    const entries = fs.readdirSync(IMAGES_DIR, { withFileTypes: true });
+    entries.forEach((entry) => {
+      if (!entry.isFile()) return;
+      const base = path.parse(entry.name).name;
+      const key = canonicalKey(base);
+      if (!key) return;
+      map.set(key, {
+        fileName: entry.name,
+        fullPath: path.join(IMAGES_DIR, entry.name),
+      });
+    });
+    console.log(`[images] Indexed ${map.size} image(s) from ${IMAGES_DIR}`);
+  } catch (err) {
+    console.warn('[images] Unable to read images directory:', err?.message || err);
+  }
+  return map;
+}
+
+function guessContentType(fileName) {
+  const ext = path.extname(fileName || '').toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+
+async function uploadImageToS3(match, slug) {
+  if (!s3) return null;
+  const buffer = fs.readFileSync(match.fullPath);
+  const ext = path.extname(match.fileName) || '';
+  const safeSlug = slug || canonicalKey(match.fileName) || String(Date.now());
+  const key = `${S3_PREFIX}/${safeSlug}-${Date.now()}${ext}`;
+  const params = {
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: guessContentType(match.fileName),
+  };
+  if (String(process.env.S3_USE_ACL || '').toLowerCase() === 'true') {
+    params.ACL = process.env.S3_ACL || 'public-read';
+  }
+  const result = await s3.upload(params).promise();
+  return result?.Location || null;
+}
+
+async function resolveImageUrlForType(typeName) {
+  const slug = canonicalKey(typeName);
+  if (!slug || !imageIndex.size) return null;
+  if (imageUrlCache.has(slug)) return imageUrlCache.get(slug);
+
+  const match = imageIndex.get(slug);
+  if (!match) return null;
+
+  let url = null;
+  if (IMAGE_BASE_URL) {
+    url = `${IMAGE_BASE_URL}/${encodeURIComponent(match.fileName)}`;
+  } else if (s3) {
+    url = await uploadImageToS3(match, slug);
+  } else {
+    console.warn(`[images] No ASSET_TYPE_IMAGE_BASE_URL or S3 config; skipping image for type "${typeName}"`);
+  }
+
+  if (url) imageUrlCache.set(slug, url);
+  return url;
+}
+
 async function main() {
-  const argPath = process.argv[2];
+  const { filePathArg: argPath, options } = parseArgs();
   const defaultPath = path.join(__dirname, '..', '..', 'assets', 'Sheets', 'GoCodes.xlsx');
   const filePath = path.resolve(argPath || defaultPath);
 
@@ -145,9 +255,65 @@ async function main() {
   };
   const hNotes = Object.keys(lookup).find((h) => ['notes','note','comment','comments'].includes(h));
 
+  const normalizeTypeName = (value) => {
+    const raw = coerceString(value);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed || /^blank asset$/i.test(trimmed)) return null;
+    return trimmed;
+  };
+
   // Cache asset_type name -> id (lowercased)
-  const types = await prisma.asset_types.findMany({ select: { id: true, name: true } });
-  const typeByName = new Map(types.map((t) => [String(t.name || '').trim().toLowerCase(), t.id]));
+  async function loadTypeMap() {
+    const list = await prisma.asset_types.findMany({ select: { id: true, name: true } });
+    return new Map(list.map((t) => [String(t.name || '').trim().toLowerCase(), t.id]));
+  }
+
+  async function ensureAssetTypes() {
+    const seenKeys = new Set();
+    const missing = [];
+
+    for (const row of rows) {
+      const typeName = normalizeTypeName(hType ? row[lookup[hType]] : null);
+      if (!typeName) continue;
+      const key = typeName.toLowerCase();
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      if (!typeByName.has(key)) {
+        missing.push({ key, name: typeName });
+      }
+    }
+
+    if (!missing.length) return;
+
+    console.log(`Creating ${missing.length} new asset type(s) from spreadsheet...`);
+    for (const item of missing) {
+      let image_url = null;
+      try {
+        image_url = await resolveImageUrlForType(item.name);
+      } catch (err) {
+        console.warn(`[images] Failed to resolve image for "${item.name}":`, err?.message || err);
+      }
+      const created = await prisma.asset_types.create({
+        data: {
+          name: item.name,
+          ...(image_url ? { image_url } : {}),
+        },
+      });
+      typeByName.set(item.key, created.id);
+      console.log(`  • ${item.name}${image_url ? ' (image attached)' : ''}`);
+    }
+  }
+
+  const typeByName = await loadTypeMap();
+
+  if (!options.assetsOnly) {
+    await ensureAssetTypes();
+  }
+  if (options.typesOnly) {
+    console.log('Types-only run complete.');
+    return;
+  }
 
   const results = { created: 0, skipped_blank_type: 0, skipped_missing_type: 0, skipped_unknown_type: 0, errors: 0 };
   const createdIds = [];
@@ -155,14 +321,14 @@ async function main() {
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx];
     try {
-      const rawType = coerceString(row[lookup[hType]]);
+      const rawType = hType ? row[lookup[hType]] : null;
       if (!rawType) {
         results.skipped_missing_type++;
         continue;
       }
 
-      const typeName = String(rawType).trim();
-      if (/^blank asset$/i.test(typeName)) {
+      const typeName = normalizeTypeName(rawType);
+      if (!typeName) {
         results.skipped_blank_type++;
         continue;
       }

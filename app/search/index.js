@@ -108,6 +108,7 @@ export default function SearchScreen(props = {}) {
     dueSoon: false,
     includeQRReserved: false,
     onlyUnassigned: false,
+    awaitingQROnly: false,
   });
 
   // Sort
@@ -195,10 +196,10 @@ export default function SearchScreen(props = {}) {
       const reservedOk = !!filters.includeQRReserved || !isQRReserved;
       const unassignedOk = !(String(assigned).trim()) && !assignedUid;
 
-      // Hide imported assets (UUID id) until a QR is assigned
-      const importedHidden = !isUUID(it.id) || false;
+      const awaitingQR = isUUID(String(it.id || ''));
+      const awaitingOk = filters.awaitingQROnly ? awaitingQR : !awaitingQR;
 
-      const baseOk = keywordOk && typeOk && statusOk && locOk && assignedOk && dueOk && onlyMineOk && reservedOk && importedHidden;
+      const baseOk = keywordOk && typeOk && statusOk && locOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
       return filters.onlyUnassigned ? (baseOk && unassignedOk) : baseOk;
     });
 
@@ -395,6 +396,7 @@ export default function SearchScreen(props = {}) {
     if (filters.status) labelParts.push(`Status:${filters.status}`);
     if (filters.type) labelParts.push(`Type:${filters.type}`);
     if (filters.dueSoon) labelParts.push('Due soon');
+    if (filters.awaitingQROnly) labelParts.push('QR awaiting');
     const label = labelParts.join(' · ');
     if (!label) return;
     const entry = { label, query: debouncedQuery, filters, sort, ts: Date.now() };
@@ -463,6 +465,7 @@ export default function SearchScreen(props = {}) {
       dueSoon: false,
       includeQRReserved: false,
       onlyUnassigned: false,
+      awaitingQROnly: false,
     });
   };
 
@@ -475,6 +478,7 @@ export default function SearchScreen(props = {}) {
     !!filters.assignedTo,
     !!filters.onlyMine,
     !!filters.dueSoon,
+    !!filters.awaitingQROnly,
   ].filter(Boolean).length;
 
   const hideHeader = !!embed;
@@ -531,16 +535,16 @@ export default function SearchScreen(props = {}) {
     { key: 'qr', label: '', width: 50 },
     { key: 'image', label: '', width: 80 },
     { key: 'id', label: 'Asset Id', width: 100 },
-    { key: 'other_id', label: 'Other Id', width: 120 },
-    { key: 'type', label: 'Asset type', width: 140 },
-    { key: 'serial', label: 'SERIAL NUMBER', width: 160 },
-    { key: 'description', label: 'Description', flex: 2, minWidth: 220 },
-    { key: 'model', label: 'Model', flex: 1, minWidth: 140 },
-    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 140 },
-    { key: 'status', label: 'Status', width: 120 },
-    { key: 'purchased', label: 'Date Purchased', width: 150 },
-    { key: 'updated', label: 'Last Updated', flex: 1.2, minWidth: 160 },
-    { key: 'updated_by', label: 'Last updated By', width: 160 },
+    { key: 'other_id', label: 'Other Id', width: 110 },
+    { key: 'type', label: 'Asset type', width: 120 },
+    { key: 'serial', label: 'SERIAL NUMBER', width: 140 },
+    { key: 'description', label: 'Description', flex: 0.45, minWidth: 60 },
+    { key: 'model', label: 'Model', flex: 0.375, minWidth: 53 },
+    { key: 'assigned', label: 'Assigned To', flex: 0.3, minWidth: 46 },
+    { key: 'status', label: 'Status', width: 105 },
+    { key: 'purchased', label: 'Date Purchased', width: 125 },
+    { key: 'updated', label: 'Last Updated', width: 140 },
+    { key: 'updated_by', label: 'Last updated By', width: 145 },
   ]), []);
 
   const dynamicColumns = useMemo(() => {
@@ -565,12 +569,14 @@ export default function SearchScreen(props = {}) {
     return map;
   }, [columns]);
 
-  const columnStyle = (key) => {
+  const lastColumnKey = useMemo(() => (columns.length ? columns[columns.length - 1].key : null), [columns]);
+
+  const columnStyle = useCallback((key) => {
     const col = columnMap[key];
     if (!col) return {};
-    if (col.width) return { width: col.width };
-    return { flex: col.flex || 1, minWidth: col.minWidth || 120 };
-  };
+    const size = col.width ? { width: col.width } : { flex: col.flex || 1, minWidth: col.minWidth || 120 };
+    return size;
+  }, [columnMap, lastColumnKey]);
 
   const tableMinWidth = useMemo(() => {
     return columns.reduce((sum, col) => {
@@ -727,6 +733,7 @@ export default function SearchScreen(props = {}) {
             <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
             <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
             <Chip label="In Service" icon="check-circle" active={filters.status === 'In Service'} onPress={() => setFilters(f => ({ ...f, status: f.status === 'In Service' ? null : 'In Service' }))} />
+            <Chip label="QR awaiting" icon="alert-circle" active={filters.awaitingQROnly} onPress={() => setFilters(f => ({ ...f, awaitingQROnly: !f.awaitingQROnly }))} />
           </View>
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -913,21 +920,23 @@ export default function SearchScreen(props = {}) {
           </ScrollView>
         ) : (
           /* Desktop Table View */
-          <View style={styles.tableWrap}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator
-              contentContainerStyle={{ flexGrow: 1 }}
-            >
-              <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
+          <View style={styles.tableContainer}>
+            <View style={styles.tableWrap}>
+            <View style={styles.tableScrollWrapper}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator
+                contentContainerStyle={{ flexGrow: 1 }}
+              >
+                <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
                 <View style={styles.tableHeader}>
                   {columns.map((c) => (
                     <View key={c.key} style={[styles.th, columnStyle(c.key)]}>
-                      <Text style={styles.thText} numberOfLines={1}>{c.label}</Text>
+                      <Text style={styles.thText} numberOfLines={1} ellipsizeMode="tail">{c.label}</Text>
                     </View>
                   ))}
                 </View>
-                <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
+                <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator={false}>
                   {paginatedItems.map((item, idx) => {
                     const statusColor = statusToColor(item?.status);
                     const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
@@ -969,9 +978,18 @@ export default function SearchScreen(props = {}) {
                     </View>
                     {/* Asset Id */}
                     <View style={[styles.td, columnStyle('id')]}>
-                      <TouchableOpacity onPress={() => goToAsset(item.id)} activeOpacity={0.7} style={styles.assetLink}>
-                        <Text style={[styles.tdText, styles.linkText]} numberOfLines={1}>{item.id}</Text>
-                      </TouchableOpacity>
+                      {isUUID(String(item.id || '')) ? (
+                        <View style={styles.awaitingIdWrap}>
+                          <Text style={[styles.tdText, styles.awaitingIdLabel]} numberOfLines={1}>
+                            {(otherId && otherId !== '—') ? otherId : 'QR awaiting'}
+                          </Text>
+                          <Text style={styles.awaitingIdSub}>Awaiting QR</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity onPress={() => goToAsset(item.id)} activeOpacity={0.7} style={styles.assetLink}>
+                          <Text style={[styles.tdText, styles.linkText]} numberOfLines={1}>{item.id}</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                     {/* Other Id */}
                     <View style={[styles.td, columnStyle('other_id')]}>
@@ -986,12 +1004,14 @@ export default function SearchScreen(props = {}) {
                       <Text style={styles.tdText} numberOfLines={1}>{serial || '—'}</Text>
                     </View>
                     {/* Description */}
-                    <View style={[styles.td, columnStyle('description')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{description || '—'}</Text>
+                    <View style={[styles.td, styles.tdTall, columnStyle('description')]}>
+                      <Text style={[styles.tdText, styles.tdTextSmall]} numberOfLines={3}>
+                        {description || '—'}
+                      </Text>
                     </View>
                     {/* Model */}
-                    <View style={[styles.td, columnStyle('model')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{model || '—'}</Text>
+                    <View style={[styles.td, styles.tdTall, columnStyle('model')]}>
+                      <Text style={styles.tdText} numberOfLines={2}>{model || '—'}</Text>
                     </View>
                     {/* Assigned To */}
                     <View style={[styles.td, columnStyle('assigned')]}>
@@ -1030,6 +1050,7 @@ export default function SearchScreen(props = {}) {
                 </ScrollView>
               </View>
             </ScrollView>
+            </View>
 
             {/* Desktop Pagination Controls */}
             {items.length > 0 && (
@@ -1080,6 +1101,7 @@ export default function SearchScreen(props = {}) {
                 </View>
               </View>
             )}
+            </View>
           </View>
         )
       )}
@@ -1171,12 +1193,16 @@ export default function SearchScreen(props = {}) {
                     <Text style={styles.switchLabel}>Include QR reserved assets</Text>
                     <Switch value={filters.includeQRReserved} onValueChange={(v) => setFilters(f => ({ ...f, includeQRReserved: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
                   </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Only QR awaiting assets</Text>
+                    <Switch value={filters.awaitingQROnly} onValueChange={(v) => setFilters(f => ({ ...f, awaitingQROnly: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
+                  </View>
                 </View>
               </View>
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
               <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
-                setFilters({ type: null, status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false });
+                setFilters({ type: null, status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
                 setFilterModalOpen(false);
               }}>
                 <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>
@@ -1276,6 +1302,12 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, color: '#64748B', fontWeight: '600', marginHorizontal: 16, marginBottom: 8 },
 
   // Table Styles (Desktop)
+  tableContainer: {
+    flex: 1,
+    position: 'relative',
+    marginLeft: 12,
+    marginRight: 12,
+  },
   tableWrap: {
     flex: 1,
     alignSelf: 'stretch',
@@ -1284,27 +1316,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     overflow: 'hidden',
-    marginLeft: 12,
-    marginRight: 12,
     shadowColor: '#000',
     shadowOpacity: 0.03,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  tableScrollWrapper: { flex: 1 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', alignItems: 'stretch' },
   tableContent: { flex: 1 },
-  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  th: { paddingVertical: 10, paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center' },
   thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' },
   tableBodyScroll: { flex: 1 },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff', alignItems: 'center' },
+  tableBodyContent: { paddingRight: 0 },
+  tr: { flexDirection: 'row', backgroundColor: '#fff', alignItems: 'stretch' },
   rowAlt: { backgroundColor: '#FAFAFA' },
   rowHover: { backgroundColor: '#F0F9FF' },
-  td: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  td: { paddingVertical: 10, paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center' },
   tdText: { fontSize: 14, color: '#334155', fontWeight: '600', textAlign: 'center' },
+  tdTextSmall: { fontSize: 13, lineHeight: 18 },
+  tdTall: { minHeight: 72, justifyContent: 'center' },
   assetLink: { paddingVertical: 4, paddingHorizontal: 4 },
   linkText: { color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
   tableThumb: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F1F5F9', overflow: 'hidden' },
   tableThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  awaitingIdWrap: { alignItems: 'center', justifyContent: 'center' },
+  awaitingIdLabel: { color: '#0F172A', fontWeight: '700' },
+  awaitingIdSub: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
 
   // Mobile Card Styles
   mobileScroll: { flex: 1 },
@@ -1347,7 +1384,7 @@ const styles = StyleSheet.create({
   mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 
   // Shared / Utils
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, alignSelf: 'flex-start' },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, alignSelf: 'center' },
   badgeText: { fontSize: 11, fontWeight: '700' },
   btn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, backgroundColor: '#0B63CE', alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '700' },
