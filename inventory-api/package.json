@@ -50,7 +50,6 @@
                          "pdf-lib":  "^1.17.1",
                          "docx":  "^8.5.0",
                          "docxtemplater":  "^3.41.0",
-                         "docxtemplater-image-module-free":  "^1.2.3",
                          "pizzip":  "^3.1.7",
                          "pg":  "^8.16.3",
                          "qrcode":  "^1.5.4",
