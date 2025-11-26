@@ -1,4 +1,4 @@
-// app/components/ActionsForm.js
+﻿// app/components/ActionsForm.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
@@ -11,7 +11,9 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { DatePickerModal } from 'react-native-paper-dates';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { ALGOLIA_INDEX_CLIENTS, ALGOLIA_INDEX_PROJECTS, algoliaSearch } from '../config/algolia';
 import { getAuth } from 'firebase/auth';
 
@@ -70,13 +72,19 @@ export default function ActionsForm({
   const [submitting, setSubmitting] = useState(false);
 
   // Common fields across forms
-  const [date, setDate] = useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
+  const [date, setDate] = useState(new Date().toISOString().slice(0,10)); // ISO (YYYY-MM-DD)
   const [notes, setNotes] = useState('');
 
   // Repair / Maintenance only
   const [priority, setPriority] = useState('Normal'); // Low | Normal | High | Critical
   const [summary, setSummary] = useState('');
   const [cost, setCost] = useState('');
+  const [odometer, setOdometer] = useState('');
+  const [serviceImages, setServiceImages] = useState([]); // web: File[]
+  const [serviceReport, setServiceReport] = useState(null); // single report attachment
+  const [nextServiceDate, setNextServiceDate] = useState(''); // ISO YYYY-MM-DD
+  const [hasDynamicNextService, setHasDynamicNextService] = useState(false);
+  const [nextServiceRequired, setNextServiceRequired] = useState(false);
 
   // Hire only
   const [hireTo, setHireTo] = useState('');
@@ -158,6 +166,64 @@ export default function ActionsForm({
     }
   }, [action]);
 
+  const isVehicleAsset = useMemo(() => {
+    const typeName = String(asset?.asset_types?.name || asset?.type || '').toLowerCase();
+    const model = String(asset?.model || asset?.description || '').toLowerCase();
+    const keywords = ['vehicle','car','truck','ute','van','bus','lorry','tractor','hilux'];
+    return keywords.some((kw) => typeName.includes(kw) || model.includes(kw));
+  }, [asset]);
+  const allowOdometerInput = fields === 'service' && isVehicleAsset && (action === 'Maintenance' || action === 'Repair');
+
+  useEffect(() => {
+    if (!allowOdometerInput) {
+      setOdometer('');
+    }
+  }, [allowOdometerInput, visible]);
+
+  // Lookup if this asset type defines a dynamic 'next_service_date' field and if it's required
+  useEffect(() => {
+    let cancel = false;
+    if (!visible) return;
+    try {
+      const typeId = asset?.asset_types?.id || asset?.type_id;
+      if (!apiBaseUrl || !typeId) { setHasDynamicNextService(false); setNextServiceRequired(false); return; }
+      (async () => {
+        try {
+          const res = await fetch(`${apiBaseUrl}/assets/asset-types/${typeId}/fields`);
+          const j = await res.json();
+          const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : (Array.isArray(j?.items) ? j.items : []));
+          const match = (arr || []).find(d => {
+            const slug = String(d?.slug || '').toLowerCase();
+            const name = String(d?.name || '').toLowerCase();
+            const t = String(d?.field_type?.slug || d?.field_type?.name || '').toLowerCase();
+            return t === 'date' && (slug === 'next_service_date' || name.includes('next service'));
+          });
+          if (!cancel) {
+            const has = !!match;
+            const req = !!(match?.is_required);
+            setHasDynamicNextService(has);
+            setNextServiceRequired(req);
+          }
+        } catch {
+          if (!cancel) { setHasDynamicNextService(false); setNextServiceRequired(false); }
+        }
+      })();
+    } catch {
+      setHasDynamicNextService(false); setNextServiceRequired(false);
+    }
+    return () => { cancel = true; };
+  }, [visible, apiBaseUrl, asset?.asset_types?.id, asset?.type_id]);
+
+  const actionLabel =
+    action === 'Repair'
+      ? 'Repair Required'
+      : action === 'Maintenance'
+        ? 'Log Service'
+        : action;
+  const summaryLabel = action === 'Repair' ? 'Type of Repair *' : 'Type of Service *';
+  const summaryPlaceholder = action === 'Repair' ? 'e.g. Screen replacement' : 'e.g. Scheduled maintenance';
+  const summaryAlertText = action === 'Repair' ? 'Please add the type of repair.' : 'Please add the type of service.';
+
   const validate = () => {
     if (!action || !ACTIONS.includes(action)) {
       Alert.alert('Invalid', 'Please choose a valid action.'); 
@@ -165,7 +231,7 @@ export default function ActionsForm({
     }
     if (fields === 'service') {
       if (!summary.trim()) {
-        Alert.alert('Missing info', 'Please add a short summary.');
+        Alert.alert('Missing info', summaryAlertText);
         return false;
       }
     } else if (fields === 'hire') {
@@ -197,12 +263,28 @@ export default function ActionsForm({
 
     setSubmitting(true);
     try {
+      const odometerNumeric = Number(odometer);
+      const odometerValue = (allowOdometerInput && String(odometer || '').trim())
+        ? (Number.isFinite(odometerNumeric) ? odometerNumeric : String(odometer).trim())
+        : null;
       // Build a metadata record for parent logging or future POST /asset-actions
       const meta = {
         action,
         date,
         notes,
-        ...(fields === 'service' ? { summary, priority, cost: Number(cost) || 0 } : {}),
+        ...(fields === 'service'
+          ? {
+              summary,
+              ...(action === 'Repair'
+                ? {
+                    priority,
+                    ...(nextServiceDate ? { estimatedRepairDate: nextServiceDate } : {}),
+                  }
+                : {}),
+              cost: Number(cost) || 0,
+              ...(odometerValue ? { odometer: odometerValue } : {}),
+            }
+          : {}),
         ...(fields === 'hire' ? {
           hireTo: hireMode === 'user' ? (selectedHireUser?.name || selectedHireUser?.useremail || selectedHireUser?.id) : (hireMode === 'manual' ? hireTo : undefined),
           hireStart,
@@ -223,11 +305,21 @@ export default function ActionsForm({
       // Optionally update asset status (only for API-accepted statuses)
       let updated = {};
       const newStatus = statusMap[action]; // may be undefined
-      if (submitToBackend && newStatus) {
+        if (submitToBackend && newStatus) {
+      const auth = getAuth();
+      const current = auth?.currentUser;
+      // Build update payload; Next Service Date is now captured at review/sign‑off time,
+      // so we only update the status here.
+      const bodyPatch = { status: newStatus };
         const res = await fetch(`${apiBaseUrl}/assets/${asset?.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(current?.uid ? { 'X-User-Id': current.uid } : {}),
+            ...(current?.displayName ? { 'X-User-Name': current.displayName } : {}),
+            ...(current?.email ? { 'X-User-Email': current.email } : {}),
+          },
+          body: JSON.stringify(bodyPatch),
         });
         if (!res.ok) {
           const t = await res.text();
@@ -240,24 +332,88 @@ export default function ActionsForm({
       const enumType = ACTION_ENUM[action];
       if (submitToBackend && enumType) {
         const auth = getAuth();
-        const actor = auth?.currentUser?.uid;
-        const headers = { 'Content-Type': 'application/json' };
-        if (actor) headers['X-User-Id'] = actor;
+        const current = auth?.currentUser;
+        // If we have service/repair images, send multipart to /actions/upload
+        const hasImages = (fields === 'service') && (['REPAIR','MAINTENANCE'].includes(enumType)) && Array.isArray(serviceImages) && serviceImages.length > 0;
+        if (hasImages) {
+          const form = new FormData();
+          form.append('type', enumType);
+          form.append('note', summary || '');
+          form.append('occurred_at', date);
+          form.append('details', JSON.stringify(meta));
+          // data flags for sign-off
+          form.append('data', JSON.stringify({ requires_signoff: true, completed: false }));
+          serviceImages.forEach((f) => form.append('images', f));
+          const headers = {};
+          if (current?.uid) headers['X-User-Id'] = current.uid;
+          if (current?.displayName) headers['X-User-Name'] = current.displayName;
+          if (current?.email) headers['X-User-Email'] = current.email;
+          const post = await fetch(`${apiBaseUrl}/assets/${asset?.id}/actions/upload`, {
+            method: 'POST',
+            headers,
+            body: form,
+          });
+          if (!post.ok) {
+            const t = await post.text();
+            throw new Error(t || 'Failed to save action images');
+          }
+        } else {
+          const headers = { 'Content-Type': 'application/json' };
+          if (current?.uid) headers['X-User-Id'] = current.uid;
+          if (current?.displayName) headers['X-User-Name'] = current.displayName;
+          if (current?.email) headers['X-User-Email'] = current.email;
+          const body = {
+            type: enumType,
+            note: fields === 'service' ? summary : (notes || undefined),
+            details: meta,
+            occurred_at: date,
+            data: (fields === 'service' || enumType === 'HIRE') ? { requires_signoff: true, completed: false } : undefined,
+          };
+          const post = await fetch(`${apiBaseUrl}/assets/${asset?.id}/actions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+          if (!post.ok) {
+            const t = await post.text();
+            throw new Error(t || 'Failed to save action');
+          }
+        }
 
-        const body = {
-          type: enumType,
-          note: fields === 'service' ? summary : (notes || undefined),
-          details: meta,
-          occurred_at: date,
-        };
-        const post = await fetch(`${apiBaseUrl}/assets/${asset?.id}/actions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-        });
-        if (!post.ok) {
-          const t = await post.text();
-          throw new Error(t || 'Failed to save action');
+        // Optional service / repair file upload
+        if (serviceReport) {
+          try {
+            let fileObj;
+            if (Platform.OS === 'web') {
+              fileObj = serviceReport; // File from <input>
+            } else {
+              fileObj = {
+                uri: serviceReport.uri,
+                name: serviceReport.name || 'report',
+                type: serviceReport.mimeType || 'application/pdf',
+              };
+            }
+            const fd = new FormData();
+            fd.append('file', fileObj);
+            // Keep backend labels as generic "Report" for now;
+            // front-end wording is handled in the form labels/buttons.
+            const label = action === 'Repair' ? 'Repair Report' : 'Service Report';
+            fd.append('title', label);
+            fd.append('kind', label);
+            fd.append('related_date_label', label);
+            fd.append('related_date', date);
+            const docHeaders = {};
+            if (current?.uid) docHeaders['X-User-Id'] = current.uid;
+            if (current?.displayName) docHeaders['X-User-Name'] = current.displayName;
+            if (current?.email) docHeaders['X-User-Email'] = current.email;
+            await fetch(`${apiBaseUrl}/assets/${asset?.id}/documents/upload`, {
+              method: 'POST',
+              headers: docHeaders,
+              body: fd,
+            });
+          } catch (e) {
+            console.error('ActionsForm report upload failed', e);
+          }
         }
       }
 
@@ -282,7 +438,7 @@ export default function ActionsForm({
         <View style={styles.sheet}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>{action || 'Action'}</Text>
+            <Text style={styles.title}>{actionLabel || 'Action'}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialIcons name="close" size={24} color={Colors.subtle} />
             </TouchableOpacity>
@@ -290,34 +446,60 @@ export default function ActionsForm({
 
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             {/* Date */}
-            <LabeledInput label="Date (YYYY-MM-DD)">
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.muted}
-                value={date}
-                onChangeText={setDate}
-              />
-            </LabeledInput>
+            <DateField label="Date" value={date} onChange={setDate} minDate={new Date(new Date().setFullYear(new Date().getFullYear() - 10))} maxDate={new Date()} />
+
+            {/* Upload Document removed in ActionsForm */}
 
             {fields === 'service' && (
               <>
-                <LabeledInput label="Summary *">
+                <LabeledInput label={summaryLabel}>
                   <TextInput
                     style={styles.input}
-                    placeholder="Short summary"
+                    placeholder={summaryPlaceholder}
                     placeholderTextColor={Colors.muted}
                     value={summary}
                     onChangeText={setSummary}
                   />
                 </LabeledInput>
 
-                <PickerRow
-                  label="Priority"
-                  value={priority}
-                  onChange={setPriority}
-                  options={['Low','Normal','High','Critical']}
-                />
+                {action !== 'Repair' && (
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ color: Colors.subtle, fontSize: 12, marginBottom: 6 }}>
+                      Quick select
+                    </Text>
+                    <View style={styles.pillRow}>
+                      {['Regular', 'Minor', 'Major'].map((opt) => {
+                        const active = summary.trim().toLowerCase() === opt.toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={opt}
+                            onPress={() => setSummary(opt)}
+                            style={[
+                              styles.pill,
+                              {
+                                borderColor: active ? Colors.blue : Colors.border,
+                                backgroundColor: active ? '#EFF6FF' : '#FFF',
+                              },
+                            ]}
+                          >
+                            <Text style={{ color: active ? Colors.blue : Colors.text, fontWeight: '700' }}>
+                              {opt}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {action === 'Repair' && (
+                  <PickerRow
+                    label="Priority"
+                    value={priority}
+                    onChange={setPriority}
+                    options={['Low','Normal','High','Critical']}
+                  />
+                )}
 
                 <LabeledInput label="Estimated Cost (optional)">
                   <TextInput
@@ -329,6 +511,134 @@ export default function ActionsForm({
                     onChangeText={setCost}
                   />
                 </LabeledInput>
+
+                {allowOdometerInput && (
+                  <LabeledInput label="Odometer (optional)">
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. 125000"
+                      placeholderTextColor={Colors.muted}
+                      keyboardType="numeric"
+                      value={odometer}
+                      onChangeText={setOdometer}
+                    />
+                  </LabeledInput>
+                )}
+
+                {/* Estimated Repair Date (Repair). Next Service Date is now captured when signing off. */}
+                {action === 'Repair' && (
+                  <DateField
+                    label="Estimated Date of Repair (optional)"
+                    value={nextServiceDate}
+                    onChange={setNextServiceDate}
+                  />
+                )}
+
+                {/* Optional photos for Repair/Maintenance */}
+                {Platform.OS === 'web' && (
+                  <LabeledInput label={action === 'Repair' ? 'Upload Repair Images (optional)' : 'Upload Service Images (optional)'}>
+                    <View style={{ gap: 8 }}>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          setServiceImages(files);
+                        }}
+                        style={{
+                          border: '1px solid #E5E7EB',
+                          borderRadius: 10,
+                          padding: 10,
+                          background: '#fff',
+                          color: '#111827',
+                        }}
+                      />
+                      {!!serviceImages.length && (
+                        <Text style={{ color: Colors.subtle, fontSize: 12 }}>{serviceImages.length} file(s) selected</Text>
+                      )}
+                    </View>
+                  </LabeledInput>
+                )}
+
+                {/* Service / Repair attachment (labelled as photos/images in UI) */}
+                {Platform.OS === 'web' ? (
+                  <LabeledInput label={action === 'Repair' ? 'Upload Repair Photos (optional)' : 'Upload Service Images (optional)'}>
+                    <View style={{ gap: 8 }}>
+                      <input
+                        type="file"
+                        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                        onChange={(e) => {
+                          const file = (e.target.files && e.target.files[0]) || null;
+                          setServiceReport(file || null);
+                        }}
+                        style={{
+                          border: '1px solid #E5E7EB',
+                          borderRadius: 10,
+                          padding: 10,
+                          background: '#fff',
+                          color: '#111827',
+                        }}
+                      />
+                      {serviceReport && (
+                        <Text style={{ color: Colors.subtle, fontSize: 12 }}>
+                          Attached: {serviceReport.name || 'document'}
+                        </Text>
+                      )}
+                    </View>
+                  </LabeledInput>
+                ) : (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ color: Colors.subtle, fontSize: 12, marginBottom: 6 }}>
+                      {action === 'Repair' ? 'Upload Repair Photos (optional)' : 'Upload Service Images (optional)'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity
+                        style={[styles.btn, styles.btnGhost, { flex: 1 }]}
+                        onPress={async () => {
+                          try {
+                            const res = await DocumentPicker.getDocumentAsync({
+                              type: [
+                                'application/pdf',
+                                'application/msword',
+                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'image/*',
+                              ],
+                              multiple: false,
+                            });
+                            if (res.canceled) return;
+                            const asset = res.assets?.[0];
+                            if (!asset) return;
+                            setServiceReport(asset);
+                          } catch (e) {
+                            Alert.alert('Error', e.message || 'Failed to select document');
+                          }
+                        }}
+                      >
+                        <Text style={{ fontWeight: '700', color: Colors.blue }}>
+                          {serviceReport
+                            ? 'Replace File'
+                            : action === 'Repair'
+                              ? 'Upload Repair Photos'
+                              : 'Upload Service Images'}
+                        </Text>
+                      </TouchableOpacity>
+                      {serviceReport && (
+                        <TouchableOpacity
+                          style={[styles.btn, { flex: 1, backgroundColor: '#FEE2E2' }]}
+                          onPress={() => setServiceReport(null)}
+                        >
+                          <Text style={{ fontWeight: '700', color: '#B91C1C' }}>Remove</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {serviceReport && (
+                      <Text style={{ marginTop: 4, fontSize: 12, color: Colors.subtle }}>
+                        Attached: {serviceReport.name || 'document'}
+                      </Text>
+                    )}
+                  </View>
+                )}
               </>
             )}
 
@@ -506,25 +816,9 @@ export default function ActionsForm({
                   </LabeledInput>
                 )}
 
-                <LabeledInput label="Start Date * (YYYY-MM-DD)">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.muted}
-                    value={hireStart}
-                    onChangeText={setHireStart}
-                  />
-                </LabeledInput>
+                <DateField label="Start Date *" value={hireStart} onChange={setHireStart} minDate={new Date(new Date().setFullYear(new Date().getFullYear() - 1))} maxDate={new Date(new Date().setFullYear(new Date().getFullYear() + 2))} />
 
-                <LabeledInput label="End Date (optional)">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.muted}
-                    value={hireEnd}
-                    onChangeText={setHireEnd}
-                  />
-                </LabeledInput>
+                <DateField label="End Date (optional)" value={hireEnd} onChange={setHireEnd} minDate={hireStart ? new Date(hireStart) : new Date()} maxDate={new Date(new Date().setFullYear(new Date().getFullYear() + 3))} />
 
                 <LabeledInput label="Rate (per day, optional)">
                   <TextInput
@@ -594,7 +888,7 @@ export default function ActionsForm({
             <LabeledInput label="Notes (optional)">
               <TextInput
                 style={[styles.input, { height: 96, textAlignVertical: 'top' }]}
-                placeholder="Any extra details…"
+                placeholder="Any extra details..."
                 placeholderTextColor={Colors.muted}
                 value={notes}
                 onChangeText={setNotes}
@@ -613,7 +907,7 @@ export default function ActionsForm({
                 disabled={submitting}
               >
                 <MaterialIcons name="check-circle" size={18} color="#fff" />
-                <Text style={[styles.btnText, { color: '#fff' }]}>{submitting ? 'Saving…' : 'Submit'}</Text>
+                <Text style={[styles.btnText, { color: '#fff' }]}>{submitting ? 'Saving...' : 'Submit'}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -740,6 +1034,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: '#FFF',
   },
+  // (upload button styles removed)
   btnText: {
     fontWeight: '800',
   },
@@ -771,9 +1066,64 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
 });
-            {/* Algolia search effects */}
-            {(() => {
-              // inline effect-ish: we can trigger searches below in a micro way
-              // but React Native requires hooks at top level; instead use a simple debounce via setTimeout
-              return null;
-            })()}
+
+
+function formatDisplayDate(d) {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      .format(d)
+      .replace(/\u00A0/g, ' ');
+  } catch {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    return `${dd} ${m} ${d.getFullYear()}`;
+  }
+}
+
+function toISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function DateField({ label, value, onChange, minDate, maxDate }) {
+  const [open, setOpen] = React.useState(false);
+  const parsed = React.useMemo(() => {
+    try {
+      return value ? new Date(value) : new Date();
+    } catch {
+      return new Date();
+    }
+  }, [value]);
+
+  return (
+    <>
+      <LabeledInput label={label}>
+        <TouchableOpacity onPress={() => setOpen(true)}>
+          <View style={[styles.input, { justifyContent: 'center' }]}>
+            <Text style={{ color: value ? Colors.text : Colors.muted }}>
+              {value ? formatDisplayDate(parsed) : 'Select date'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </LabeledInput>
+
+      <DatePickerModal
+        locale="en-GB"
+        mode="single"
+        visible={open}
+        onDismiss={() => setOpen(false)}
+        date={parsed}
+        onConfirm={({ date }) => {
+          setOpen(false);
+          onChange(toISODate(date));
+        }}
+      />
+    </>
+  );
+}
+
+
+
+

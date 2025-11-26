@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
+import ScreenHeader from '../../components/ui/ScreenHeader';
 
 /* ---- status mapping & badge (aligned with assetId screen) ---- */
 const STATUS_CONFIG = {
@@ -61,8 +62,39 @@ function StatusBadge({ status }) {
 
 /* ---------------------------- main ---------------------------- */
 export default function AssetsType() {
-  const { type_id, type_name } = useLocalSearchParams();
+  const { type_id, type_name, returnTo } = useLocalSearchParams();
+  const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const router = useRouter();
+  const parseReturnTarget = (target) => {
+    if (!target) return null;
+    if (typeof target === 'object') return target;
+    if (typeof target === 'string') {
+      const [path, query = ''] = target.split('?');
+      if (!path) return null;
+      const params = {};
+      if (query) {
+        query.split('&').forEach((part) => {
+          if (!part) return;
+          const [rawKey, rawValue = ''] = part.split('=');
+          const key = decodeURIComponent(rawKey || '');
+          if (!key) return;
+          params[key] = decodeURIComponent(rawValue || '');
+        });
+      }
+      return { pathname: path, params };
+    }
+    return null;
+  };
+  const navigateToReturnTarget = (target) => {
+    const parsed = parseReturnTarget(target);
+    if (!parsed) return false;
+    try {
+      router.replace(parsed);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,8 +140,24 @@ export default function AssetsType() {
     }
   };
 
+  const selfReturnTarget = `/type/${String(type_id || '')}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`;
+
   const goEditType = () => {
-    router.push({ pathname: '/type/edit', params: { id: type_id, name: type_name } });
+    router.push({
+      pathname: '/type/edit',
+      params: { id: type_id, name: type_name, returnTo: selfReturnTarget },
+    });
+  };
+
+  const handleBack = () => {
+    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
+    try {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+    } catch {}
+    router.replace('/Inventory?tab=types');
   };
 
   /* fetch all assets (same endpoint), filter client-side by type_id */
@@ -121,7 +169,9 @@ export default function AssetsType() {
       .then((r) => r.json())
       .then((all) => {
         if (!alive) return;
-        const list = Array.isArray(all) ? all.filter(a => String(a.type_id) === String(type_id)) : [];
+        const list = Array.isArray(all)
+          ? all.filter(a => String(a.type_id) === String(type_id))
+          : [];
         setAssets(list);
       })
       .catch((err) => console.error('Failed to fetch filtered assets:', err))
@@ -160,17 +210,21 @@ export default function AssetsType() {
   };
 
   /* row renderer */
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }) => {
+    return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: `/type/${String(type_id)}` } })}
+      onPress={() => router.push({
+        pathname: '/asset/[assetId]',
+        params: { assetId: String(item.id), returnTo: selfReturnTarget },
+      })}
     >
       <Image
         source={{ uri: (item.image_url || 'https://via.placeholder.com/80').trim() }}
         style={styles.image}
       />
       <View style={styles.details}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={styles.titleRow}>
           <Text numberOfLines={1} style={styles.name}>{item.model || item.asset_types?.name || 'Asset'}</Text>
           <StatusBadge status={item.status} />
         </View>
@@ -181,29 +235,22 @@ export default function AssetsType() {
       <MaterialIcons name="chevron-right" size={24} color="#1E90FF" />
     </TouchableOpacity>
   );
+  };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centerWrap}>
-        <ActivityIndicator size="large" color="#1E90FF" />
-        <Text style={{ marginTop: 12, color: '#666' }}>Loading {type_name} assets…</Text>
-      </SafeAreaView>
-    );
-  }
+  // Group by QR assignment: QR‑assigned (non‑UUID id) first, then awaiting QR (UUID id)
+  const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+  const withQR = useMemo(() => assets.filter(a => !isUUID(String(a?.id || ''))), [assets]);
+  const withoutQR = useMemo(() => assets.filter(a => isUUID(String(a?.id || ''))), [assets]);
+  const grouped = useMemo(() => {
+    const rows = [];
+    rows.push(...withQR);
+    if (withoutQR.length) rows.push({ __header: 'Awaiting QR' });
+    rows.push(...withoutQR);
+    return rows;
+  }, [withQR, withoutQR]);
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={styles.container}>
-        {/* header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.push({ pathname: '/Inventory', params: { tab: 'types' } })}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
-          </TouchableOpacity>
-          <Text style={styles.title}>{type_name} Assets</Text>
-        </View>
-
+  const renderContent = () => (
+    <View style={styles.container}>
         {/* stats chips (now color-coded by status config) */}
         <View style={styles.metaRow}>
           <StatChip code="in_service"        count={counts.in_service} />
@@ -222,15 +269,20 @@ export default function AssetsType() {
           <Text style={styles.noData}>No assets found for this type.</Text>
         ) : (
           <FlatList
-            data={assets}
-            keyExtractor={(item) => String(item.id)}
+            data={grouped}
+            keyExtractor={(item, idx) => item?.__header ? `hdr-${item.__header}-${idx}` : String(item.id)}
             contentContainerStyle={{ padding: 20 }}
-            renderItem={renderItem}
+            renderItem={({ item }) => (
+              item?.__header ? (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>{item.__header}</Text>
+                </View>
+              ) : (
+                renderItem({ item })
+              )
+            )}
           />
         )}
-      </View>
-
-      {/* actions (styled like assetId’s buttons) */}
       <View style={styles.actionsRow}>
         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FFA500' }]} onPress={goEditType}>
           <Text style={styles.actionText}>✏️ Edit Type</Text>
@@ -241,6 +293,24 @@ export default function AssetsType() {
           </TouchableOpacity>
         )}
       </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <ScreenHeader
+        title={type_name ? `${type_name} Assets` : 'Asset Type'}
+        backLabel="Inventory"
+        onBack={handleBack}
+      />
+      {loading ? (
+        <View style={styles.centerWrap}>
+          <ActivityIndicator size="large" color="#1E90FF" />
+          <Text style={{ marginTop: 12, color: '#666' }}>Loading {type_name} assets…</Text>
+        </View>
+      ) : (
+        renderContent()
+      )}
     </SafeAreaView>
   );
 }
@@ -251,12 +321,6 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
   },
   container: { flex: 1, backgroundColor: '#fff' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', padding: 16,
-    borderBottomColor: '#ddd', borderBottomWidth: 1,
-  },
-  title: { fontSize: 18, fontWeight: 'bold', marginLeft: 12, color: '#1E90FF' },
-
   /* meta chips row (counts) */
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   metaChip: {
@@ -274,11 +338,12 @@ const styles = StyleSheet.create({
     width: 60, height: 60, borderRadius: 8, marginRight: 12, backgroundColor: '#eee',
   },
   details: { flex: 1 },
-  name: { fontWeight: 'bold', fontSize: 16, marginBottom: 4, color: '#333' },
+  name: { fontWeight: 'bold', fontSize: 16, marginBottom: 4, color: '#333', flex: 1, flexShrink: 1, minWidth: 0, marginRight: 8 },
   subtext: { fontSize: 13, color: '#666' },
 
   /* status badge */
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 16 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 16, flexShrink: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
   statusText: { fontWeight: '700', fontSize: 12 },
 
   /* empty state */
@@ -293,4 +358,8 @@ const styles = StyleSheet.create({
     flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', elevation: 2,
   },
   actionText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
+  /* section headers */
+  sectionHeader: { paddingVertical: 6, paddingHorizontal: 6 },
+  sectionHeaderText: { fontSize: 13, fontWeight: '800', color: '#1E90FF' },
 });

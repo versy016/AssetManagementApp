@@ -46,17 +46,23 @@ app.use(express.urlencoded({ extended: true }));
 const assetRoutes = require('./routes/assets');
 const usersRouter = require('./routes/users');
 const assetTypeFieldsRoutes = require('./routes/assetTypeFields');
-const assetTypesRoutes = require('./routes/assetTypes');       // ← NEW
-const fieldTypesRoutes = require('./routes/fieldTypes');       // ← NEW
-const placesRoutes = require('./routes/places');               // ← NEW
+const assetTypesRoutes = require('./routes/assetTypes');
+const fieldTypesRoutes = require('./routes/fieldTypes');
+const placesRoutes = require('./routes/places');
+const activityRoutes = require('./routes/activity');
+const labelsRoutes = require('./routes/labels');
+const assetDocumentsRoutes = require('./routes/assetDocuments');
 
-// mount
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
 app.use('/assets/asset-types', assetTypeFieldsRoutes);
-app.use('/asset-types', assetTypesRoutes);                     // ← NEW top-level CRUD
-app.use('/field-types', fieldTypesRoutes);                     // ← NEW top-level CRUD
-app.use('/places', placesRoutes);                              // ← Google Places proxy
+app.use('/asset-types', assetTypesRoutes);
+app.use('/field-types', fieldTypesRoutes);
+app.use('/places', placesRoutes);
+app.use('/activity', activityRoutes);
+app.use('/labels', labelsRoutes);
+app.use('/assets', assetDocumentsRoutes);
+app.use('/asset-documents', assetDocumentsRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)
@@ -188,3 +194,8 @@ if (require.main === module && NODE_ENV !== 'test') {
 
 // Export app for Supertest; optionally export prisma for tooling
 module.exports = { app, prisma };
+
+
+
+
+

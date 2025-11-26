@@ -1,69 +1,103 @@
 // ForgotPassword.js - Allows user to request a password reset email using Firebase Auth
 
 import React, { useState } from 'react';
-import { View, TextInput, Button, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet } from 'react-native';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { useRouter } from 'expo-router';
+import { useTheme } from 'react-native-paper';
+
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import AppTextInput from '../../components/ui/AppTextInput';
+import AppButton from '../../components/ui/AppButton';
 
 export default function ForgotPasswordScreen() {
-  // State to store the user's email input
-  const [email, setEmail] = useState('');
-  // State to show confirmation message
-  const [success, setSuccess] = useState(false);
-  // Router for navigation
+  const theme = useTheme();
   const router = useRouter();
 
-  // Handler for sending the reset email
+  const [email, setEmail] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   const handleReset = async () => {
-    const auth = getAuth(); // Get Firebase Auth instance
+    if (!email) return;
+
+    setLoading(true);
+    const auth = getAuth();
     try {
-      await sendPasswordResetEmail(auth, email); // Send reset email
-      setSuccess(true); // Show confirmation message
+      await sendPasswordResetEmail(auth, email);
+      setSuccess(true);
       setTimeout(() => {
-        router.replace('/(auth)/login'); // Redirect to login after 2 seconds
+        router.replace('/(auth)/login');
       }, 2000);
     } catch (error) {
-      // Show error message using Alert for mobile, and inline for web
       if (typeof window !== 'undefined' && window.alert) {
         window.alert(error.message);
       } else {
         Alert.alert('Error', error.message);
       }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Screen title */}
-      <Text style={styles.title}>Forgot Password</Text>
-      {/* Success message */}
-      {success ? (
-        <Text style={styles.successMsg}>
-          A password reset email has been sent. Redirecting to login...
-        </Text>
-      ) : (
-        <>
-          {/* Email input field */}
-          <TextInput
-            placeholder="Enter your email"
-            value={email}
-            onChangeText={setEmail}
-            style={styles.input}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-          {/* Button to send reset email */}
-          <Button title="Send Reset Email" onPress={handleReset} />
-        </>
-      )}
-    </View>
+    <ScreenWrapper style={styles.container}>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: theme.colors.primary }]}>Forgot Password</Text>
+
+        {success ? (
+          <Text style={[styles.successMsg, { color: theme.colors.primary }]}>
+            A password reset email has been sent. Redirecting to login...
+          </Text>
+        ) : (
+          <>
+            <AppTextInput
+              label="Enter your email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <AppButton
+              mode="contained"
+              onPress={handleReset}
+              loading={loading}
+            >
+              Send Reset Email
+            </AppButton>
+
+            <AppButton
+              mode="text"
+              onPress={() => router.back()}
+            >
+              Cancel
+            </AppButton>
+          </>
+        )}
+      </View>
+    </ScreenWrapper>
   );
 }
 
-// Styles for the forgot password screen
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 12, marginBottom: 20, borderRadius: 6 },
-  successMsg: { color: 'green', fontSize: 16, textAlign: 'center', marginBottom: 20 },
+  container: {
+    justifyContent: 'center',
+  },
+  content: {
+    padding: 24,
+    justifyContent: 'center',
+    flex: 1,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  successMsg: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
 });

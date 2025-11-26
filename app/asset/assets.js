@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
+import ScreenHeader from '../../components/ui/ScreenHeader';
 import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
@@ -48,22 +49,20 @@ export default function MyAssets() {
   };
 
   const openAsset = (id) => {
-    // Navigate to the updated detail route
-    router.push({ pathname: '/asset/[assetId]', params: { assetId: String(id) } });
+    router.push({
+      pathname: '/asset/[assetId]',
+      params: { assetId: String(id), returnTo: '/asset/assets' },
+    });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="My Assets"
+        backLabel="Dashboard"
+        onBack={goBack}
+      />
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={goBack}>
-            <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
-          </TouchableOpacity>
-          <Text style={styles.title}>My Assigned Assets</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
         {/* Content */}
         {loading ? (
           <View style={styles.center}>
@@ -97,15 +96,6 @@ export default function MyAssets() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#f9f9f9' },
   container: { padding: 16, backgroundColor: '#f9f9f9' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 10,
-  },
-  title: { fontSize: 18, fontWeight: 'bold', marginLeft: 12, color: '#1E90FF', flex: 1 },
   center: { alignItems: 'center', paddingVertical: 24 },
   noAssets: { textAlign: 'center', color: '#666', marginTop: 12 },
   card: {

@@ -1,62 +1,47 @@
 // Register.js - User registration screen for the app
 
-// Import Firebase authentication and Firestore utilities
-import { auth } from '../../firebaseConfig'; // Firebase authentication instance
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Firebase Auth functions
-import { doc, getDoc, getFirestore } from 'firebase/firestore'; // Firestore database functions
-// Import React and hooks for state, refs, and effects
-import React, { useState, useRef, useEffect } from 'react'; // React library
-// Import UI components from React Native
-import {
-  View,
-  TextInput,
-  Button,
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native'; // React Native UI components
-// Import Expo Router for navigation
-import { useRouter } from 'expo-router'; // Expo Router for navigation
+import { auth } from '../../firebaseConfig';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, getDoc, getFirestore } from 'firebase/firestore';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useTheme } from 'react-native-paper';
+
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import AppTextInput from '../../components/ui/AppTextInput';
+import AppButton from '../../components/ui/AppButton';
+import ErrorMessage from '../../components/ui/ErrorMessage';
 
-// Initialize Firestore database
-const db = getFirestore(); // Firestore database instance
+const db = getFirestore();
 
-// Main Register component
 export default function Register() {
-  const router = useRouter(); // Router instance for navigation
-  const isMountedRef = useRef(true); // To avoid state updates on unmounted component
+  const router = useRouter();
+  const theme = useTheme();
+  const isMountedRef = useRef(true);
 
-  // Cleanup effect to set ref false on unmount
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
     };
-  }, []); // Empty dependency array means this effect runs only once
+  }, []);
 
-  // State variables for form fields and UI feedback
-  const [name, setName] = useState(''); // User's full name
-  const [email, setEmail] = useState(''); // User's email address
-  const [password, setPassword] = useState(''); // User's password
-  const [errorMessage, setErrorMessage] = useState(''); // Error message to display
-  const [loading, setLoading] = useState(false); // Loading spinner state
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Helper function to check if the email's domain is allowed (in Firestore)
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
+    if (!domain) return false;
     const docRef = doc(db, 'allowedDomains', domain);
     const docSnap = await getDoc(docRef);
     return docSnap.exists();
-  }; // Returns true if email domain is allowed, false otherwise
+  };
 
-  // Handles registration logic when user presses the register button
   const handleRegister = async () => {
-    // Validate input
     if (!name || !email || !password) {
       if (isMountedRef.current) {
         setErrorMessage('Please enter your name, email, and password.');
@@ -64,30 +49,23 @@ export default function Register() {
       return;
     }
 
-    setLoading(true); // Show loading spinner
-    setErrorMessage(''); // Clear previous errors
-
-    // Check if email domain is allowed
-    const allowed = await isEmailAllowed(email);
-    if (!allowed) {
-      if (isMountedRef.current) {
-        setErrorMessage('Your email domain is not allowed.');
-        setLoading(false);
-      }
-      return;
-    }
+    setLoading(true);
+    setErrorMessage('');
 
     try {
-      // Create user with Firebase Auth
+      // Check if email domain is allowed
+      const allowed = await isEmailAllowed(email);
+      if (!allowed) {
+        throw new Error('Your email domain is not allowed.');
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Set user's display name
       await updateProfile(userCredential.user, { displayName: name });
 
-      // Register user in backend API
       await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json', // ← this is required
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: userCredential.user.uid,
@@ -96,121 +74,88 @@ export default function Register() {
         }),
       });
 
-      // Show success and navigate to dashboard
       if (isMountedRef.current) {
         Alert.alert('Success', 'Registration successful!');
         router.replace('/(tabs)/dashboard');
       }
     } catch (error) {
-      // Display any registration errors
       if (isMountedRef.current) {
         setErrorMessage(error.message);
       }
     } finally {
-      // Hide loading spinner
       if (isMountedRef.current) {
         setLoading(false);
       }
     }
-  }; // Handles registration logic and navigation
+  };
 
-  // Render the registration form UI
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.container}>
-          <Text style={styles.title}>Register</Text>
+    <ScreenWrapper style={styles.container} withScrollView>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: theme.colors.primary }]}>Register</Text>
 
-          {/* Name input field */}
-          <TextInput
-            style={styles.input}
-            placeholder="Full Name"
-            onChangeText={setName}
-            value={name}
-            placeholderTextColor="#888"
-          />
+        <AppTextInput
+          label="Full Name"
+          value={name}
+          onChangeText={setName}
+        />
 
-          {/* Email input field */}
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            onChangeText={setEmail}
-            value={email}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholderTextColor="#888"
-          />
+        <AppTextInput
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
 
-          {/* Password input field */}
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            onChangeText={setPassword}
-            value={password}
-            secureTextEntry
-            placeholderTextColor="#888"
-          />
+        <AppTextInput
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
-          {/* Show loading spinner or register button */}
-          {loading ? (
-            <ActivityIndicator size="large" color="#1E90FF" />
-          ) : (
-            <Button title="Register" onPress={handleRegister} color="#1E90FF" />
-          )}
+        <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
-          {/* Show error message if exists */}
-          {!!errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+        <AppButton
+          mode="contained"
+          onPress={handleRegister}
+          loading={loading}
+        >
+          Register
+        </AppButton>
 
-          {/* Link to login screen */}
-          <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
-            <Text style={styles.loginLink}>Already have an account? Login</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <TouchableOpacity
+          onPress={() => router.replace('/(auth)/login')}
+          style={styles.loginLink}
+        >
+          <Text style={{ color: theme.colors.primary, fontWeight: '500' }}>
+            Already have an account? Login
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </ScreenWrapper>
   );
 }
 
-// Styles for the registration screen
 const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
+  container: {
     justifyContent: 'center',
   },
-  container: {
-    flex: 1,
+  content: {
     padding: 20,
-    backgroundColor: '#fff',
     justifyContent: 'center',
+    flex: 1,
+    minHeight: 500,
   },
   title: {
-    fontSize: 26,
-    marginBottom: 25,
+    fontSize: 32,
+    marginBottom: 32,
     fontWeight: 'bold',
-    textAlign: 'center',
-    color: '#1E90FF',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
-    color: '#000',
-  },
-  error: {
-    color: 'red',  
-    marginTop: 10,
     textAlign: 'center',
   },
   loginLink: {
-    marginTop: 20,
-    textAlign: 'center',
-    color: '#1E90FF',
-    fontWeight: '500',
+    marginTop: 24,
+    alignItems: 'center',
   },
 });

@@ -1,18 +1,20 @@
-// components/CertsView.js (rewritten)
+// components/CertsView.js (restored with fixes)
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Alert, Modal, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Alert, Modal, Linking, useWindowDimensions, InteractionManager } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { DatePickerModal } from 'react-native-paper-dates';
-import { en, registerTranslation } from 'react-native-paper-dates';
+// import { DatePickerModal } from 'react-native-paper-dates';
+// import { en, registerTranslation } from 'react-native-paper-dates';
 import PropTypes from 'prop-types';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { formatDisplayDate } from '../utils/date';
 import { Colors } from '../constants/uiTheme';
-import PageHeader from './ui/PageHeader';
+import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
 import SearchInput from './ui/SearchInput';
+import ScreenHeader from './ui/ScreenHeader';
 
 const openDocumentLink = (url) => {
   if (!url) return;
@@ -20,25 +22,31 @@ const openDocumentLink = (url) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.open(url, '_blank', 'noopener');
     } else {
-      const { Linking } = require('react-native');
       Linking.openURL(url);
     }
-  } catch { }
+  } catch (error) {
+    console.error('Error opening document link:', error);
+  }
 };
 
-export default function CertsView({ visible }) {
-  const [state, setState] = useState({ items: [], loading: false, error: null });
-  const [assetMap, setAssetMap] = useState({}); // { assetId: { id, model, users, asset_types, ... } }
+// Ensure date translations are registered once at module load
+// try {
+//   registerTranslation('en', en);
+// } catch (error) {
+//   console.warn('Failed to register date translation:', error);
+// }
+
+export default function CertsView({ visible: initialVisible }) {
+  // All hooks must be called unconditionally at the top level
+  const [state, setState] = useState(() => ({ items: [], loading: false, error: null }));
+  const [assetMap, setAssetMap] = useState({});
   const [refreshKey, setRefreshKey] = useState(0);
-  // Horizontal sizing similar to search table
   const contentRef = useRef(null);
   const [hContentW, setHContentW] = useState(0);
   const [hViewportW, setHViewportW] = useState(0);
-  // Filters like search table
   const [filterText, setFilterText] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterAssigned, setFilterAssigned] = useState('');
-  // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [editDate, setEditDate] = useState('');
@@ -49,46 +57,86 @@ export default function CertsView({ visible }) {
   const [deleteBusyId, setDeleteBusyId] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [onlyMine, setOnlyMine] = useState(false);
-  const [filterDoc, setFilterDoc] = useState(''); // Document Type (by label)
-  const [filterExp, setFilterExp] = useState(''); // '', 'soon', 'expired'
-  const [showHistory, setShowHistory] = useState(false); // show all previous certs
+  const [filterDoc, setFilterDoc] = useState('');
+  const [filterExp, setFilterExp] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
   const [filterStartOpen, setFilterStartOpen] = useState(false);
   const [filterEndOpen, setFilterEndOpen] = useState(false);
-  const [filterRange, setFilterRange] = useState({ start: '', end: '' }); // ISO strings
+  const [filterRange, setFilterRange] = useState({ start: '', end: '' });
   const [me, setMe] = useState({ uid: null, email: null });
-  const { width } = useWindowDimensions();
-  const isCompact = Platform.OS === 'web' ? ((width || 0) < 1024) : true;
   const [hoverRowId, setHoverRowId] = useState(null);
+  const [renderReady, setRenderReady] = useState(Platform.OS === 'web');
+
+  // Use useWindowDimensions hook
+  const { width: screenWidth } = useWindowDimensions();
+
+  const isCompact = Platform.OS === 'web' ? (screenWidth < 1024) : true;
+  const isNative = Platform.OS !== 'web';
+  const docCount = Array.isArray(state.items) ? state.items.length : 0;
+  const isWeb = Platform.OS === 'web';
+  const enrichAssets = isWeb || docCount <= 200;
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+
+  // Determine if we should render anything based on visibility
+  const shouldRender = initialVisible && state !== null && renderReady;
 
   useEffect(() => {
-    if (!visible) return undefined;
+    if (Platform.OS === 'web') return undefined;
+    const task = InteractionManager.runAfterInteractions(() => setRenderReady(true));
+    return () => task.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (!initialVisible) return undefined;
     let cancelled = false;
-    (async () => {
+
+    const fetchData = async () => {
       try {
-        setState((s) => ({ ...s, loading: true, error: null }));
+        setState(prev => ({ ...prev, loading: true, error: null }));
         const res = await fetch(`${API_BASE_URL}/asset-documents/documents`);
         const j = await res.json().catch(() => ({}));
         const list = Array.isArray(j?.items) ? j.items : Array.isArray(j) ? j : [];
-        if (!cancelled) setState({ items: list, loading: false, error: null });
+
+        if (!cancelled) {
+          const trimmed = list.slice(0, 300);
+          setState({ items: trimmed, loading: false, error: null });
+        }
       } catch (e) {
-        if (!cancelled) setState({ items: [], loading: false, error: e?.message || 'Failed to load documents' });
+        if (!cancelled) {
+          setState({ items: [], loading: false, error: e?.message || 'Failed to load documents' });
+        }
       }
-    })();
-    return () => { cancelled = true; };
-  }, [visible, refreshKey]);
+    };
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialVisible, refreshKey]);
 
   // Load current user for filter chips
   useEffect(() => {
     try {
-      const u = require('../firebaseConfig').auth?.currentUser || null;
+      const u = auth?.currentUser || null;
       const email = u?.email ? String(u.email).toLowerCase() : null;
       setMe({ uid: u?.uid || null, email });
-    } catch { }
+    } catch (error) {
+      console.error('Error loading current user:', error);
+    }
   }, []);
 
   // Enrich with asset details (type, model, assigned user). Fetch unique IDs once per load.
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!initialVisible) return undefined;
+    if (!enrichAssets) {
+      setAssetMap({});
+      return undefined;
+    }
     const ids = Array.from(new Set((state.items || []).map((d) => d?.asset_id).filter(Boolean)));
     if (!ids.length) { setAssetMap({}); return undefined; }
     let cancelled = false;
@@ -114,9 +162,10 @@ export default function CertsView({ visible }) {
       } catch { setAssetMap({}); }
     })();
     return () => { cancelled = true; };
-  }, [visible, state.items]);
+  }, [initialVisible, state.items, enrichAssets]);
 
   const rows = useMemo(() => {
+    if (!state.items) return [];
     const items = Array.isArray(state.items) ? state.items : [];
     // Normalize and dedupe by assetId+url; prefer those with a related_date
     const best = new Map();
@@ -142,11 +191,15 @@ export default function CertsView({ visible }) {
       } catch { return String(s || ''); }
     };
     const arr = Array.from(best.values()).map((d, idx) => {
-      const a = assetMap[d.asset_id] || {};
-      const assigned = a?.users?.name || a?.users?.useremail || a?.assigned_to || '';
-      const model = a?.model || (a?.fields && (a.fields.model || a.fields.Model)) || '';
-      const typeName = a?.asset_types?.name || a?.type || a?.asset_type || '';
-      return ({
+      const a = enrichAssets ? (assetMap[d.asset_id] || {}) : {};
+      const assignedUser = enrichAssets ? (a?.users || null) : null;
+      const assignedName = assignedUser?.name || '';
+      const assignedEmail = assignedUser?.useremail || assignedUser?.email || '';
+      const assignedId = assignedUser?.id || a?.assigned_to_id || null;
+      const assigned = assignedName || assignedEmail || a?.assigned_to || '';
+      const model = enrichAssets ? (a?.model || (a?.fields && (a.fields.model || a.fields.Model)) || '') : '';
+      const typeName = enrichAssets ? (a?.asset_types?.name || a?.type || a?.asset_type || '') : '';
+      const entry = ({
         id: d.id || String(idx),
         assetId: d.asset_id,
         docLabel: toTitle(d.title || d.kind || 'Document'),
@@ -156,11 +209,18 @@ export default function CertsView({ visible }) {
         createdAt: d.created_at || null,
         updatedAt: d.updated_at || d.created_at || null,
         assigned,
+        assignedEmail,
+        assignedId,
         model,
         typeName,
         asset_type_field_id: d.asset_type_field_id || null,
       });
-    });
+      const needsFile = /service report|repair report/i.test(entry.docLabel || '');
+      if (needsFile && !entry.docUrl) {
+        return null;
+      }
+      return entry;
+    }).filter(Boolean);
     // Sort by date desc, then createdAt desc
     arr.sort((a, b) => {
       const ad = a.dateValue ? new Date(a.dateValue).getTime() : 0;
@@ -177,6 +237,7 @@ export default function CertsView({ visible }) {
   // When the user selects the Expired filter, we will switch to the full rows list
   // so older/expired documents become visible.
   const latestRows = useMemo(() => {
+    if (!rows || !Array.isArray(rows) || rows.length === 0) return [];
     const map = new Map();
     const keyOf = (r) => {
       const id = String(r.assetId || '');
@@ -193,6 +254,7 @@ export default function CertsView({ visible }) {
       return ac - bc;
     };
     for (const r of rows) {
+      if (!r) continue;
       const k = keyOf(r);
       const prev = map.get(k);
       if (!prev || newer(r, prev) > 0) map.set(k, r);
@@ -218,9 +280,11 @@ export default function CertsView({ visible }) {
   }, [rows]);
 
   const filteredRows = useMemo(() => {
+    try {
     // Only show latest per group by default; when Status=Expired is selected,
     // use the full dataset so older/expired docs are visible. Also allow explicit toggle.
-    const base = (showHistory || filterExp === 'expired') ? rows : latestRows;
+      const base = (showHistory || filterExp === 'expired') ? (rows || []) : (latestRows || []);
+      if (!Array.isArray(base)) return [];
     const q = filterText.trim().toLowerCase();
     const within30 = (iso) => {
       try {
@@ -233,11 +297,18 @@ export default function CertsView({ visible }) {
       } catch { return false; }
     };
     return base.filter((r) => {
+        if (!r || typeof r !== 'object') return false;
       if (filterType && r.typeName !== filterType) return false;
       if (filterAssigned && r.assigned !== filterAssigned) return false;
       if (onlyMine) {
-        const a = (r.assigned || '').toString().toLowerCase();
-        if (!(me.email && a.includes(me.email))) return false;
+        const assigneeId = String(r.assignedId || '').toLowerCase();
+        const assigneeEmail = String(r.assignedEmail || '').toLowerCase();
+        const assigneeDisplay = String(r.assigned || '').toLowerCase();
+        const myUid = me.uid ? String(me.uid).toLowerCase() : '';
+        const myEmail = me.email || '';
+        const matchesId = myUid && assigneeId && assigneeId === myUid;
+        const matchesEmail = myEmail && (assigneeEmail ? assigneeEmail === myEmail : assigneeDisplay.includes(myEmail));
+        if (!(matchesId || matchesEmail)) return false;
       }
       if (filterDoc && r.docLabel !== filterDoc) return false;
       // Date range filter
@@ -264,7 +335,65 @@ export default function CertsView({ visible }) {
         .toLowerCase();
       return hay.includes(q);
     });
+    } catch (error) {
+      console.error('Error filtering rows:', error);
+      return [];
+    }
   }, [rows, latestRows, filterText, filterType, filterAssigned, onlyMine, me.email, filterDoc, filterRange.start, filterRange.end, filterExp, showHistory]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filterText, filterType, filterAssigned, onlyMine, filterDoc, filterRange, filterExp, showHistory]);
+
+
+  // Ensure filteredRows is always an array
+  const safeFilteredRows = useMemo(() => {
+    try {
+      return Array.isArray(filteredRows) ? filteredRows : [];
+    } catch (error) {
+      console.error('Error getting filtered rows:', error);
+      return [];
+    }
+  }, [filteredRows]);
+
+  // Paginated rows
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return safeFilteredRows.slice(start, start + pageSize);
+  }, [safeFilteredRows, page, pageSize]);
+
+  const totalPages = Math.ceil(safeFilteredRows.length / pageSize);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterDoc) count += 1;
+    if (filterRange.start) count += 1;
+    if (filterRange.end) count += 1;
+    if (filterExp) count += 1;
+    if (onlyMine) count += 1;
+    return count;
+  }, [filterDoc, filterRange.start, filterRange.end, filterExp, onlyMine]);
+
+  const actionsNode = (
+    <>
+      <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterOpen(true)}>
+        <View style={{ position: 'relative' }}>
+          <Feather name="sliders" size={18} color={Colors.primary} />
+          {activeFilterCount > 0 && (
+            <View style={styles.countDot}>
+              <Text style={styles.countDotText}>{Math.min(activeFilterCount, 9)}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.iconBtn} onPress={() => setRefreshKey((v) => v + 1)}>
+        <Feather name="refresh-ccw" size={18} color={Colors.primary} />
+      </TouchableOpacity>
+    </>
+  );
+
+
 
   // Date helpers for modal
   const toISO = (d) => {
@@ -287,92 +416,8 @@ export default function CertsView({ visible }) {
       return toISO(target);
     } catch { return dateString || ''; }
   };
-  try { registerTranslation('en', en); } catch { }
 
-  // Palette via centralized tokens
-
-  const columns = [
-    { key: 'asset', label: 'Asset ID', width: 140 },
-    { key: 'type', label: 'Asset Type', width: 180 },
-    // Make these flexible to fill remaining space like search table
-    { key: 'model', label: 'Model', flex: 1, minWidth: 160 },
-    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 200 },
-    { key: 'doc', label: 'Document Type', flex: 2, minWidth: 260 },
-    { key: 'date', label: 'Related Date', width: 200 },
-    { key: 'updated', label: 'Last Updated', width: 180 },
-    { key: 'actions', label: 'Actions', width: 180 },
-  ];
-
-  const computedWidths = useMemo(() => {
-    const map = {};
-    const pad = 24; // rough gutter/padding like search
-    const base = columns.reduce((sum, c) => sum + (c.flex ? (c.minWidth || 120) : (c.width || 120)), 0);
-    const totalFlex = columns.reduce((sum, c) => sum + (c.flex || 0), 0);
-    const avail = Math.max(0, (hViewportW || 0) - pad);
-    const extra = Math.max(0, avail - base);
-    columns.forEach((c) => {
-      if (c.flex) {
-        const share = totalFlex > 0 ? (extra * (c.flex / totalFlex)) : 0;
-        map[c.key] = Math.round((c.minWidth || 120) + share);
-      } else {
-        map[c.key] = c.width || 120;
-      }
-    });
-    return map;
-  }, [columns, hViewportW]);
-
-  // Early exits AFTER all hooks to keep hook order stable
-  if (!visible) return null;
-  if (state.loading) {
-    return (
-      <View style={styles.certsWrap}><ActivityIndicator color={Colors.primary} /></View>
-    );
-  }
-  if (state.error) {
-    return (
-      <View style={styles.certsWrap}>
-        <Text style={styles.sectionTitle}>Certificates & Documents</Text>
-        <Text style={styles.errorText}>{state.error}</Text>
-        <TouchableOpacity style={[styles.btn]} onPress={() => setRefreshKey((x) => x + 1)}>
-          <MaterialIcons name="refresh" size={18} color={Colors.primaryDark} />
-          <Text style={{ marginLeft: 6, color: Colors.primaryDark, fontWeight: '700' }}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  if (!rows.length) {
-    return (
-      <View style={styles.certsWrap}>
-        <Text style={styles.sectionTitle}>Certificates & Documents</Text>
-        <Text style={styles.emptyText}>No attachments found.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.certsWrap}>
-      {/* Top surface like Search */}
-      <View style={styles.toolbarSurface}>
-        <View style={styles.toolbarRow}>
-          <SearchInput
-            placeholder="Search by asset, type, model, assigned…"
-            value={filterText}
-            onChangeText={setFilterText}
-            style={{ flex: 1 }}
-            inputStyle={{ fontSize: 16 }}
-            right={
-              <TouchableOpacity style={styles.inlineIconBtn} onPress={() => setFilterOpen((v) => !v)}>
-                <Feather name="sliders" size={18} color={Colors.primary} />
-              </TouchableOpacity>
-            }
-          />
-        </View>
-        {/* My assets quick chip under search */}
-        <View style={[styles.quickRow, { marginTop: 8 }]}>
-          <Chip label="My assets" icon="user" active={onlyMine} onPress={() => setOnlyMine(v => !v)} />
-        </View>
-      </View>
-      {/* Edit Modal */}
+  const renderEditModal = () => (
       <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -382,7 +427,6 @@ export default function CertsView({ visible }) {
                 <Text style={styles.modalLabel}>Document Type</Text>
                 <Text style={styles.modalValue}>{editRow.docLabel}</Text>
 
-                {/* Current document reference */}
                 <View style={{ marginTop: 8 }}>
                   <Text style={styles.modalLabel}>Current Document</Text>
                   {editRow.docUrl ? (
@@ -395,7 +439,6 @@ export default function CertsView({ visible }) {
                   )}
                 </View>
 
-                {/* Date picker */}
                 <Text style={[styles.modalLabel, { marginTop: 12 }]}>Related Date</Text>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 }}>
                   <TouchableOpacity style={[styles.inputLike, { flex: 1 }]} onPress={() => setEditDateOpen(true)}>
@@ -451,7 +494,6 @@ export default function CertsView({ visible }) {
                     const prevHadFile = !!editRow.docUrl;
                     try {
                       setEditBusy(true);
-                      // Fetch doc optional flag once if unknown
                       if (docOptional === null && fieldId && assetMap[assetId]) {
                         try {
                           const typeId = assetMap[assetId]?.type_id || assetMap[assetId]?.asset_types?.id;
@@ -464,13 +506,16 @@ export default function CertsView({ visible }) {
                         } catch { }
                       }
 
-                      // If only date is changing and there was a previous file, warn when optional
                       if (!editFile && prevHadFile && (docOptional === true)) {
-                        const ok = Platform.OS === 'web' ? window.confirm('You are updating the date without replacing the existing file. Continue?') : await new Promise((res) => Alert.alert('Confirm', 'Update date without replacing the existing file?', [{ text: 'Cancel', style: 'cancel', onPress: () => res(false) }, { text: 'Continue', onPress: () => res(true) }]));
+                      const ok = Platform.OS === 'web'
+                        ? window.confirm('You are updating the date without replacing the existing file. Continue?')
+                        : await new Promise((res) => Alert.alert('Confirm', 'Update date without replacing the existing file?', [
+                          { text: 'Cancel', style: 'cancel', onPress: () => res(false) },
+                          { text: 'Continue', onPress: () => res(true) },
+                        ]));
                         if (!ok) { setEditBusy(false); return; }
                       }
 
-                      // If file selected: upload new, then soft-delete old
                       if (editFile) {
                         const fd = new FormData();
                         if (Platform.OS === 'web') {
@@ -485,10 +530,8 @@ export default function CertsView({ visible }) {
                         if (editDate) fd.append('related_date', String(editDate));
                         const up = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, { method: 'POST', body: fd });
                         if (!up.ok) throw new Error(await up.text());
-                        // Soft delete previous doc
                         try { await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${docId}`, { method: 'DELETE' }); } catch { }
                       } else {
-                        // Only metadata update
                         const body = {};
                         if (editRow.dateLabel) body.related_date_label = editRow.dateLabel;
                         if (editDate) body.related_date = editDate; else body.related_date = null;
@@ -512,13 +555,132 @@ export default function CertsView({ visible }) {
           </View>
         </View>
       </Modal>
-      <DatePickerModal
+  );
+
+  // Palette via centralized tokens
+
+  const columns = [
+    { key: 'asset', label: 'Asset ID', width: 140 },
+    { key: 'type', label: 'Asset Type', width: 180 },
+    // Make these flexible to fill remaining space like search table
+    { key: 'model', label: 'Model', flex: 1, minWidth: 160 },
+    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 200 },
+    { key: 'doc', label: 'Document Type', flex: 2, minWidth: 260 },
+    { key: 'date', label: 'Related Date', width: 200 },
+    { key: 'updated', label: 'Last Updated', width: 180 },
+    { key: 'actions', label: 'Actions', width: 180 },
+  ];
+
+  const computedWidths = useMemo(() => {
+    const map = {};
+    const pad = 24; // rough gutter/padding like search
+    const base = columns.reduce((sum, c) => sum + (c.flex ? (c.minWidth || 120) : (c.width || 120)), 0);
+    const totalFlex = columns.reduce((sum, c) => sum + (c.flex || 0), 0);
+    const avail = Math.max(0, (hViewportW || 0) - pad);
+    const extra = Math.max(0, avail - base);
+    columns.forEach((c) => {
+      if (c.flex) {
+        const share = totalFlex > 0 ? (extra * (c.flex / totalFlex)) : 0;
+        map[c.key] = Math.round((c.minWidth || 120) + share);
+      } else {
+        map[c.key] = c.width || 120;
+      }
+    });
+    return map;
+  }, [columns, hViewportW]);
+
+  // Early return if not visible
+  if (!renderReady) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!shouldRender) {
+    return null;
+  }
+
+  // Handle loading and error states
+  if (state.loading) {
+    return (
+      <View style={styles.certsWrap}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (state.error) {
+    return (
+      <View style={styles.certsWrap}>
+        <Text style={styles.sectionTitle}>Certificates & Documents</Text>
+        <Text style={styles.errorText}>{String(state.error || 'An error occurred')}</Text>
+        <TouchableOpacity
+          style={[styles.btn]}
+          onPress={() => setRefreshKey((x) => x + 1)}
+        >
+          <MaterialIcons name="refresh" size={18} color={Colors.primaryDark} />
+          <Text style={{ marginLeft: 6, color: Colors.primaryDark, fontWeight: '700' }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Don't return early if we have rows - let the filtered view handle empty state
+  // This allows filters to work even when all items are filtered out
+
+  return (
+    <View style={[styles.certsWrap, (Platform.OS !== 'web' || isCompact) && styles.certsWrapMobile]}>
+      {isNative && (
+        <ScreenHeader
+          title="Certificates"
+          backLabel="Dashboard"
+          onBack={() => {
+            try {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)/dashboard');
+              }
+            } catch {
+              router.replace('/(tabs)/dashboard');
+            }
+          }}
+          style={{ marginBottom: 4 }}
+        />
+      )}
+      {/* Top surface like Search */}
+      <View style={styles.toolbarSurface}>
+        <View style={styles.toolbarRow}>
+          <SearchInput
+            placeholder="Search by asset, type, model, assigned…"
+            value={filterText}
+            onChangeText={setFilterText}
+            style={{ flex: 1 }}
+            inputStyle={{ fontSize: 16 }}
+            right={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {actionsNode}
+              </View>
+            }
+          />
+        </View>
+        {/* My documents quick chip under search */}
+        <View style={[styles.quickRow, { marginTop: 8 }]}>
+          <Chip label="My documents" icon="user" active={onlyMine} onPress={() => setOnlyMine((v) => !v)} />
+          <Chip label="Expiring soon" tone="warning" active={filterExp === 'soon'} onPress={() => setFilterExp((prev) => (prev === 'soon' ? '' : 'soon'))} />
+          <Chip label="Expired" tone="danger" active={filterExp === 'expired'} onPress={() => setFilterExp((prev) => (prev === 'expired' ? '' : 'expired'))} />
+        </View>
+      </View>
+      {renderEditModal()}
+      {/* <DatePickerModal
         locale="en"
         mode="single"
         visible={editDateOpen}
         onDismiss={() => setEditDateOpen(false)}
         onConfirm={({ date }) => { if (date) setEditDate(toISO(date)); setEditDateOpen(false); }}
-      />
+      /> */}
       {/* Filters bottom sheet */}
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -584,7 +746,7 @@ export default function CertsView({ visible }) {
         </View>
       </Modal>
       {/* Filter date pickers */}
-      <DatePickerModal
+      {/* <DatePickerModal
         locale="en"
         mode="single"
         visible={filterStartOpen}
@@ -597,12 +759,177 @@ export default function CertsView({ visible }) {
         visible={filterEndOpen}
         onDismiss={() => setFilterEndOpen(false)}
         onConfirm={({ date }) => { if (date) setFilterRange((r) => ({ ...r, end: toISO(date) })); setFilterEndOpen(false); }}
-      />
-      {/* Meta bar */}
-      <View style={[styles.metaBar, { marginHorizontal: 12 }]}>
-        <Text style={styles.metaText}>{filteredRows.length} documents</Text>
+      /> */}
+      <Text style={[styles.metaText, { marginHorizontal: 16, marginBottom: (Platform.OS !== 'web' || isCompact) ? 12 : 6 }]}>
+        {safeFilteredRows.length} document{safeFilteredRows.length === 1 ? '' : 's'}
+      </Text>
+
+      {/* Mobile Card View */}
+      {Platform.OS !== 'web' || isCompact ? (
+        <ScrollView
+          style={styles.mobileScroll}
+          contentContainerStyle={[styles.mobileScrollContent, { paddingBottom: 80 }]}
+          showsVerticalScrollIndicator
+        >
+          {safeFilteredRows.length === 0 ? (
+            <View style={styles.mobileEmptyState}>
+              <MaterialIcons name="description" size={48} color="#CBD5E1" />
+              <Text style={styles.mobileEmptyText}>No documents found</Text>
+              <Text style={styles.mobileEmptySubtext}>Try adjusting your filters</Text>
       </View>
-      {/* Table wrapper matches Search table look */}
+          ) : (
+            <View style={styles.gridContainer}>
+              {safeFilteredRows.map((r) => {
+                if (!r || typeof r !== 'object') return null;
+                let dateDisplay = '—';
+                let updatedDisplay = '—';
+                try {
+                  dateDisplay = r.dateValue ? formatDisplayDate(r.dateValue) : '—';
+                  updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
+                } catch (error) {
+                  console.warn('Error formatting dates:', error);
+                }
+                const now = new Date(); now.setHours(0, 0, 0, 0);
+                const status = (() => {
+                  try {
+                    if (!r.dateValue) return '';
+                    const d = new Date(r.dateValue);
+                    if (Number.isNaN(+d)) return '';
+                    const diff = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+                    if (d < now) return 'expired';
+                    if (diff >= 0 && diff <= 30) return 'soon';
+                    return '';
+                  } catch { return ''; }
+                })();
+
+                return (
+                  <View key={r.id} style={[styles.mobileCard, !isCompact && styles.desktopGridCard]}>
+                    <View style={styles.mobileCardHeader}>
+                      <View style={{ flexDirection: 'row', gap: 12, flex: 1 }}>
+                        <View style={styles.mobileThumb}>
+                          <MaterialIcons name="description" size={22} color={Colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.mobileCardTitle} numberOfLines={1}>{r.docLabel}</Text>
+                          <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
+                            {String(r.assetId || '')}{r.typeName ? ` • ${String(r.typeName)}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                      {status ? (
+                        <View style={[
+                          styles.mobileStatusBadge,
+                          status === 'expired' && styles.mobileStatusBadgeExpired,
+                          status === 'soon' && styles.mobileStatusBadgeSoon
+                        ]}>
+                          <Text style={[
+                            styles.mobileStatusText,
+                            status === 'expired' && styles.mobileStatusTextExpired,
+                            status === 'soon' && styles.mobileStatusTextSoon
+                          ]}>
+                            {status === 'expired' ? 'Expired' : 'Expiring Soon'}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.mobileCardDetails}>
+                      {r.model ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="cpu" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Model:</Text>
+                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{String(r.model || '')}</Text>
+                        </View>
+                      ) : null}
+                      <View style={styles.mobileDetailRow}>
+                        <Feather name="user" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Assigned:</Text>
+                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{String(r.assigned || 'Unassigned')}</Text>
+                      </View>
+                      {r.dateLabel ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="calendar" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>{String(r.dateLabel || '')}:</Text>
+                          <Text style={[
+                            styles.mobileDetailValue,
+                            status === 'soon' && styles.mobileDetailValueSoon,
+                            status === 'expired' && styles.mobileDetailValueExpired
+                          ]} numberOfLines={1}>
+                            {dateDisplay}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {updatedDisplay && updatedDisplay !== '—' ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="clock" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Updated:</Text>
+                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{updatedDisplay}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.mobileCardActions}>
+                      <TouchableOpacity
+                        onPress={() => openDocumentLink(r.docUrl)}
+                        style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}
+                      >
+                        <MaterialIcons name="open-in-new" size={18} color="#fff" />
+                        <Text style={styles.mobileActionBtnText}>Open</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setEditRow(r);
+                          setEditDate((r.dateValue ? String(r.dateValue).split('T')[0] : ''));
+                          setEditFile(null);
+                          setDocOptional(null);
+                          setEditOpen(true);
+                        }}
+                        style={[styles.mobileActionBtn, styles.mobileActionBtnEdit]}
+                      >
+                        <MaterialIcons name="edit" size={18} color="#fff" />
+                        <Text style={styles.mobileActionBtnText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          try {
+                            const proceed = await new Promise((resolve) => Alert.alert('Delete document', 'This cannot be undone. Continue?', [
+                              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+                            ]));
+                            if (!proceed) return;
+                            setDeleteBusyId(r.id);
+                            const url = `${API_BASE_URL}/assets/${encodeURIComponent(r.assetId)}/documents/${encodeURIComponent(r.id)}`;
+                            const resp = await fetch(url, { method: 'DELETE' });
+                            if (!resp.ok) {
+                              const t = await resp.text();
+                              throw new Error(t || 'Failed to delete');
+                            }
+                            setRefreshKey((x) => x + 1);
+                          } catch (e) {
+                            Alert.alert('Error', e?.message || 'Failed to delete document');
+                          } finally {
+                            setDeleteBusyId(null);
+                          }
+                        }}
+                        style={[
+                          styles.mobileActionBtn,
+                          styles.mobileActionBtnDelete,
+                          deleteBusyId === r.id && { opacity: 0.6 }
+                        ]}
+                        disabled={deleteBusyId === r.id}
+                      >
+                        <MaterialIcons name="delete" size={18} color="#fff" />
+                        <Text style={styles.mobileActionBtnText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        /* Desktop Table View */
       <View style={styles.tableWrap}>
         <ScrollView
           horizontal
@@ -624,7 +951,7 @@ export default function CertsView({ visible }) {
               ))}
             </View>
             <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
-              {filteredRows.map((r, idx) => {
+                {paginatedRows.map((r, idx) => {
                 const dateDisplay = r.dateValue ? formatDisplayDate(r.dateValue) : '—';
                 const updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
                 const now = new Date(); now.setHours(0, 0, 0, 0);
@@ -716,94 +1043,254 @@ export default function CertsView({ visible }) {
             </ScrollView>
           </View>
         </ScrollView>
+          {/* Pagination Controls */}
+          {safeFilteredRows.length > 0 && (
+            <View style={styles.paginationRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.pageText}>Rows per page:</Text>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  {[25, 50, 100].map(sz => (
+                    <TouchableOpacity key={sz} onPress={() => setPageSize(sz)} style={[styles.pageSizeBtn, pageSize === sz && styles.pageSizeBtnActive]}>
+                      <Text style={[styles.pageSizeText, pageSize === sz && styles.pageSizeTextActive]}>{sz}</Text>
+                    </TouchableOpacity>
+                  ))}
       </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={styles.pageText}>{((page - 1) * pageSize) + 1}-{Math.min(page * pageSize, safeFilteredRows.length)} of {safeFilteredRows.length}</Text>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  <TouchableOpacity disabled={page <= 1} onPress={() => setPage(p => p - 1)} style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}>
+                    <MaterialIcons name="chevron-left" size={20} color={page <= 1 ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage(p => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}>
+                    <MaterialIcons name="chevron-right" size={20} color={page >= totalPages ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
 
-CertsView.propTypes = { visible: PropTypes.bool };
-CertsView.defaultProps = { visible: false };
+CertsView.propTypes = { initialVisible: PropTypes.bool };
+CertsView.defaultProps = { initialVisible: false };
 
 const styles = StyleSheet.create({
-  certsWrap: { paddingVertical: 8, paddingHorizontal: 12 },
+  certsWrap: { flex: 1, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F7FAFF' },
+  certsWrapMobile: { flex: 1 },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
   sectionTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
   toolbarSurface: { marginBottom: 8 },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
-    paddingLeft: 34,
-    borderRadius: 12,
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: '#D6E8FF',
-    flexGrow: 1,
-  },
-  searchIcon: { position: 'absolute', left: 10, top: 10 },
-  searchInput: { flex: 1, fontSize: 17, color: '#0F172A' },
-  toolbarIconBtns: { flexDirection: 'row', gap: 8 },
-  inlineIconBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E7F3FF', borderWidth: 1, borderColor: '#D6E8FF' },
-  quickRow: { flexDirection: 'row', gap: 8 },
-  quick: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 999, backgroundColor: 'white' },
-  quickActive: { borderColor: '#0B63CE', backgroundColor: '#E7F3FF' },
-  quickText: { fontSize: 14, color: '#64748B' },
-  filterMenu: { position: 'absolute', right: 10, top: 54, backgroundColor: '#fff', borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 12, padding: 12, shadowColor: '#0B63CE', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  filterMenuTitle: { fontWeight: '800', color: '#0F172A', marginBottom: 6 },
-  filterMenuRow: { flexDirection: 'row', gap: 8 },
-  filterSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: '#D6E8FF', padding: 16 },
-  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  filterRow: { flexDirection: 'row', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' },
-  filterGroup: { gap: 6, flexDirection: 'row', alignItems: 'center' },
-  filterLabel: { color: '#64748B', fontSize: 12, fontWeight: '700' },
-  groupTitle: { color: '#0F172A', fontWeight: '800', fontSize: 14, marginBottom: 6 },
-  chipsRow: { flexWrap: 'wrap', alignItems: 'center' },
-  choiceChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#D6E8FF', backgroundColor: '#FFFFFF', marginRight: 6 },
-  choiceChipActive: { backgroundColor: '#E7F3FF', borderColor: '#D6E8FF' },
-  choiceChipText: { color: '#374151' },
-  choiceChipTextActive: { color: '#0B63CE', fontWeight: '700' },
-  metaBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  metaText: { color: '#475569', fontSize: 13 },
-  inlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#D6E8FF', backgroundColor: '#E7F3FF' },
-  inlineBtnText: { color: '#0B63CE', fontWeight: '700' },
-  errorText: { color: '#B91C1C', marginTop: 8 },
-  emptyText: { color: '#6B7280', marginTop: 8 },
-  tableWrap: { flex: 1, marginHorizontal: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#E9F1FF', overflow: 'hidden', shadowColor: '#0B63CE', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#E7F3FF', borderBottomWidth: 1, borderBottomColor: '#D6E8FF' },
-  th: { paddingVertical: 10, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: '#E6EDF3' },
-  thText: { color: '#084AA0', fontWeight: '800', fontSize: 13 },
-  tr: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F0F4F8' },
-  rowAlt: { backgroundColor: '#FAFCFF' },
-  rowHover: { backgroundColor: '#F3F9FF' },
-  td: { paddingVertical: 10, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: '#D6E8FF', justifyContent: 'center' },
-  tdText: { color: '#0F172A', fontSize: 13 },
-  tableBodyScroll: { flexGrow: 0, maxHeight: 560 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  linkText: { fontWeight: '900', color: '#0B63CE' },
-  urlText: { color: '#6B7280', fontSize: 12 },
-  dateLabel: { color: '#0F172A', fontWeight: '700', fontSize: 13 },
-  dateValue: { color: '#475569', marginTop: 2, fontSize: 13 },
-  dateValueSoon: { color: '#B45309', fontWeight: '700' },
-  dateValueExpired: { color: '#D32F2F', fontWeight: '700' },
-  btn: { backgroundColor: '#E7F3FF', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D6E8FF' },
-  btnPrimary: { backgroundColor: '#0B63CE', borderColor: '#0B63CE', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  btnGhost: { backgroundColor: '#F3F6FB', borderColor: '#E6EDF3', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  btnIcon: { borderRadius: 999, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1 },
-  btnDownload: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  btnEdit: { backgroundColor: '#B45309', borderColor: '#B45309' },
-  btnDelete: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  // modal styles
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  modalCard: { width: 520, maxWidth: '96%', backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E9F1FF', padding: 16 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
-  modalLabel: { color: '#64748B', fontWeight: '700' },
-  modalValue: { color: '#0F172A', fontWeight: '700', marginTop: 4 },
+  inlineIconBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#BFDBFE' },
+  quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  metaText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { paddingHorizontal: 12, height: 34, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  actionBtnText: { color: Colors.primary, fontWeight: '600', fontSize: 13 },
+  countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  countDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  tableWrap: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center' },
+  thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tableBodyScroll: { maxHeight: 500 },
+  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff' },
+  rowAlt: { backgroundColor: '#FAFAFA' },
+  rowHover: { backgroundColor: '#F0F9FF' },
+  td: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center' },
+  tdText: { fontSize: 13, color: '#334155', fontWeight: '500' },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  linkText: { fontSize: 13, color: '#2563EB', fontWeight: '600', textDecorationLine: 'underline' },
+  dateLabel: { fontSize: 11, color: '#94A3B8', marginBottom: 2, textTransform: 'uppercase', fontWeight: '700' },
+  dateValue: { fontSize: 13, color: '#334155', fontWeight: '600' },
+  dateValueSoon: { color: '#D97706' },
+  dateValueExpired: { color: '#DC2626' },
+  btnIcon: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  btnDownload: { backgroundColor: '#3B82F6' },
+  btnEdit: { backgroundColor: '#F59E0B' },
+  btnDelete: { backgroundColor: '#EF4444' },
+  errorText: { color: '#DC2626', fontWeight: '600', marginVertical: 10 },
+  emptyText: { color: '#64748B', fontStyle: 'italic', marginTop: 10 },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#EFF6FF' },
+  btnPrimary: { backgroundColor: '#2563EB' },
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#CBD5E1' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B', marginBottom: 16 },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 4 },
+  modalValue: { fontSize: 16, color: '#0F172A', fontWeight: '600' },
+  inlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#EFF6FF' },
+  inlineBtnText: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
+  filterSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, elevation: 20, maxHeight: '78%' },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  groupTitle: { fontSize: 14, fontWeight: '800', color: '#1E293B', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  filterMenuRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  chipsRow: { flexWrap: 'wrap' },
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  quickDateChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#D6E8FF', backgroundColor: '#FFFFFF' },
+  quickDateChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
   quickDateChipText: { color: '#374151', fontWeight: '700' },
   inputLike: { borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF' },
   inputLikeText: { color: '#0F172A', fontWeight: '600' },
+  // Mobile card view
+  mobileScroll: { flex: 1 },
+  mobileScrollContent: { paddingHorizontal: 12, paddingBottom: 24 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -8 },
+  mobileCard: {
+    width: '100%',
+    flexBasis: '100%',
+    flexGrow: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    marginHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#E9F1FF',
+    shadowColor: '#0B63CE',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  desktopGridCard: { width: '48%', minWidth: 320 },
+  mobileCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 8,
+  },
+  mobileThumb: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  mobileCardSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  mobileStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#DBEAFE',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  mobileStatusBadgeExpired: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  mobileStatusBadgeSoon: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  mobileStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  mobileStatusTextExpired: {
+    color: '#B91C1C',
+  },
+  mobileStatusTextSoon: {
+    color: '#B45309',
+  },
+  mobileCardDetails: {
+    gap: 10,
+    marginBottom: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F4F8',
+  },
+  mobileDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mobileDetailLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '700',
+    minWidth: 80,
+  },
+  mobileDetailValue: {
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '600',
+    flex: 1,
+  },
+  mobileDetailValueSoon: {
+    color: '#B45309',
+    fontWeight: '800',
+  },
+  mobileDetailValueExpired: {
+    color: '#B91C1C',
+    fontWeight: '800',
+  },
+  mobileCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F4F8',
+  },
+  mobileActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  mobileActionBtnPrimary: {
+    backgroundColor: '#0B63CE',
+  },
+  mobileActionBtnEdit: { backgroundColor: '#B45309' },
+  mobileActionBtnDelete: { backgroundColor: '#D32F2F' },
+  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  mobileEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  mobileEmptyText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#475569',
+    marginTop: 12,
+  },
+  mobileEmptySubtext: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 4,
+  },
+  // Pagination
+  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  pageText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  pageSizeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
+  pageSizeBtnActive: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  pageSizeText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  pageSizeTextActive: { color: '#2563EB' },
+  pageBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
+  pageBtnDisabled: { opacity: 0.5, backgroundColor: '#F1F5F9' },
 });

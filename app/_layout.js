@@ -4,7 +4,11 @@ import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
+import WebNavbar from '../components/WebNavbar';
+
+import ErrorBoundary from '../components/ErrorBoundary';
+import { theme } from '../constants/uiTheme';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -46,7 +50,7 @@ export default function RootLayout() {
     document.documentElement.style.overflowY = 'auto';
     document.body.style.overflowY = 'auto';
     return () => {
-      try { document.head.removeChild(styleEl); } catch {}
+      try { document.head.removeChild(styleEl); } catch { }
       document.documentElement.style.overflowY = prevHtml;
       document.body.style.overflowY = prevBody;
     };
@@ -60,10 +64,16 @@ export default function RootLayout() {
   // 5) wrap everything in PaperProvider
   return (
     <SafeAreaProvider>
-      <PaperProvider>
-        <Slot />
-      </PaperProvider>
+      <ErrorBoundary>
+        <PaperProvider theme={theme}>
+          <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            {Platform.OS === 'web' ? <WebNavbar /> : null}
+            <View style={{ flex: 1 }}>
+              <Slot />
+            </View>
+          </View>
+        </PaperProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
-
   );
 }

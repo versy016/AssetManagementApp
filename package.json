@@ -12,7 +12,10 @@
     "lint": "expo lint"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "setupFilesAfterEnv": [
+      "./jest.setup.js"
+    ]
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.1",
@@ -25,8 +28,11 @@
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@react-navigation/native": "^7.0.0",
     "@react-navigation/stack": "^7.1.0",
+    "@slosarek/docxtemplater-image-module-free": "^1.2.0",
     "aws-sdk": "^2.1692.0",
     "date-fns": "^4.1.0",
+    "docx": "^8.5.0",
+    "docxtemplater": "^3.67.1",
     "expo": "54.0.2",
     "expo-blur": "~15.0.7",
     "expo-camera": "~17.0.7",
@@ -39,6 +45,7 @@
     "expo-haptics": "~15.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-linking": "~8.0.8",
+    "expo-location": "~19.0.7",
     "expo-notifications": "~0.32.11",
     "expo-router": "~6.0.1",
     "expo-splash-screen": "~31.0.9",
@@ -59,6 +66,7 @@
     "nanoid": "^5.1.5",
     "papaparse": "^5.5.2",
     "pdfkit": "^0.17.2",
+    "pizzip": "^3.2.0",
     "qrcode": "^1.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -81,7 +89,8 @@
     "react-native-webview": "13.15.0",
     "react-test-renderer": "19.0.0",
     "upgrade": "^1.1.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

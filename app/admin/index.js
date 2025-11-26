@@ -119,23 +119,33 @@ export default function AdminConsole() {
 
   setWorking(true);
   try {
+    // Ask server to seed placeholder assets (count) and create a sheet with new IDs
     const headers = await authHeader();
-    const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
-    const res = await fetch(`${API_BASE_URL}/users/qr/generate${uidParam}`, {
+    // Step 1: request legacy seeding to preserve server-generated IDs, then take the returned codes
+    const seedRes = await fetch(`${API_BASE_URL}/users/qr/generate`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ count: total }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Failed to generate QR codes');
-    setQrResults(data?.codes || []);
-    setQrSheets(data?.sheets || []);
-    // Refresh persistent sheet list after generation
+    const seed = await seedRes.json();
+    if (!seedRes.ok) throw new Error(seed?.error || 'Failed to seed QR codes');
+    const ids = Array.isArray(seed?.codes) ? seed.codes.map((c) => c.id).slice(0, total) : [];
+    if (ids.length === 0) throw new Error('No IDs returned from server');
+
+    // Step 2: generate sheet PDF via new Python route with those IDs
+    const pdfRes = await fetch(`${API_BASE_URL}/labels/l7651`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ids, startIndex: 1, storage: 'local' }),
+    });
+    const pdf = await pdfRes.json();
+    if (!pdfRes.ok) throw new Error(pdf?.error || 'Failed to build label sheet');
+
+    // Emulate prior UI state: show latest sheet in quick list + refresh persistent list
+    setQrResults(seed?.codes || []);
+    setQrSheets([{ name: pdf?.file?.name, url: pdf?.file?.localUrl }]);
     await refreshSheets();
-    Alert.alert(
-      'Success',
-      `Generated ${data?.codes?.length || 0} QR codes (${sheets} × ${SHEET_SIZE}).`
-    );
+    Alert.alert('Success', `Generated ${ids.length} QR codes (${sheets} × ${SHEET_SIZE}).`);
   } catch (e) {
     Alert.alert('Error', e.message);
   } finally {
@@ -273,6 +283,8 @@ export default function AdminConsole() {
           <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
             <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate'}</Text>
           </TouchableOpacity>
+
+          {/* Calibration controls removed with new labels generator */}
 
           {qrResults?.length > 0 && (
             <View style={{ marginTop: 20 }}>

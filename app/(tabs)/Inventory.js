@@ -19,7 +19,11 @@ import { TabView, TabBar } from 'react-native-tab-view';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { useTheme } from 'react-native-paper';
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import SearchInput from '../../components/ui/SearchInput';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
@@ -40,10 +44,10 @@ const COLORS = {
 
 /** ---------- New unified status config ---------- */
 const STATUS_CONFIG = {
-  in_service:        { label: 'In Service',         bg: '#E7F3FF', fg: '#084AA0', bd: '#D6E8FF', icon: 'build-circle' },
-  end_of_life:       { label: 'End of Life',        bg: '#EDE9FE', fg: '#5B21B6', bd: '#E3D9FF', icon: 'block' },
-  repair:      { label: 'Repair',       bg: '#FFEDD5', fg: '#9A3412', bd: '#FFD9B5', icon: 'build' },
-  maintenance: { label: 'Maintenance',  bg: '#FEF9C3', fg: '#854D0E', bd: '#FFF3B0', icon: 'build' },
+  in_service: { label: 'In Service', bg: '#E7F3FF', fg: '#084AA0', bd: '#D6E8FF', icon: 'build-circle' },
+  end_of_life: { label: 'End of Life', bg: '#EDE9FE', fg: '#5B21B6', bd: '#E3D9FF', icon: 'block' },
+  repair: { label: 'Repair', bg: '#FFEDD5', fg: '#9A3412', bd: '#FFD9B5', icon: 'build' },
+  maintenance: { label: 'Maintenance', bg: '#FEF9C3', fg: '#854D0E', bd: '#FFF3B0', icon: 'build' },
 };
 const normalizeStatus = (s) => {
   if (!s) return 'in_service';
@@ -71,12 +75,27 @@ const statusToColor = (s) => STATUS_CONFIG[normalizeStatus(s)] ?? STATUS_CONFIG.
 const truncate = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
 const prettyDate = (d) => {
   try {
-    const dt = new Date(d);
-    if (Number.isNaN(+dt)) return '—';
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, '0');
-    const dd = String(dt.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    if (!d) return '—';
+    let dt = null;
+    if (typeof d === 'string') {
+      const s = d.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, day] = s.split('-').map(Number);
+        dt = new Date(y, m - 1, day); // local date to avoid TZ shift
+      } else {
+        const t = new Date(s);
+        dt = Number.isNaN(+t) ? null : t;
+      }
+    } else if (d instanceof Date) {
+      dt = d;
+    } else {
+      const t = new Date(d);
+      dt = Number.isNaN(+t) ? null : t;
+    }
+    if (!dt) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    }).format(dt).replace(/\u00A0/g, ' ');
   } catch { return '—'; }
 };
 const daysUntil = (isoDate) => {
@@ -119,6 +138,8 @@ const AssetTypesTab = ({ query }) => {
   const [assetTypes, setAssetTypes] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [typeSort, setTypeSort] = useState({ field: 'name', dir: 'asc' }); // 'name' | 'total'
+  const TYPES_SORT_KEY = 'inventory_types_sort_v1';
 
   // Per-type status counts derived from /assets
   const [typeCounts, setTypeCounts] = useState({}); // { [typeId]: {in_service, end_of_life, needs_repair, ... , total} }
@@ -144,6 +165,7 @@ const AssetTypesTab = ({ query }) => {
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       const acc = {};
+      const isReserved = (a) => String(a?.description || '').toLowerCase() === 'qr reserved asset';
       for (const a of list) {
         const tid = String(a?.type_id ?? a?.asset_types?.id ?? a?.asset_type_id ?? a?.typeId ?? '');
         if (!tid) continue;
@@ -157,6 +179,8 @@ const AssetTypesTab = ({ query }) => {
         }
         if (k in acc[tid]) acc[tid][k] += 1;
         acc[tid].total += 1;
+
+        // (unassigned preview removed)
       }
       setTypeCounts(acc);
     } catch (e) {
@@ -164,6 +188,27 @@ const AssetTypesTab = ({ query }) => {
       setTypeCounts({});
     }
   }, []);
+
+  // Load saved sort on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(TYPES_SORT_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const field = (parsed?.field === 'total') ? 'total' : 'name';
+        const dir = (parsed?.dir === 'desc') ? 'desc' : 'asc';
+        setTypeSort({ field, dir });
+      } catch { }
+    })();
+  }, []);
+
+  // Persist sort when it changes
+  useEffect(() => {
+    (async () => {
+      try { await AsyncStorage.setItem(TYPES_SORT_KEY, JSON.stringify(typeSort)); } catch { }
+    })();
+  }, [typeSort]);
 
   useEffect(() => { fetchTypes(); fetchTypeCounts(); }, [fetchTypes, fetchTypeCounts]);
 
@@ -178,8 +223,34 @@ const AssetTypesTab = ({ query }) => {
     return assetTypes.filter(x => String(x?.name || '').toLowerCase().includes(t));
   }, [assetTypes, query]);
 
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    const dir = typeSort.dir === 'asc' ? 1 : -1;
+    if (typeSort.field === 'total') {
+      arr.sort((a, b) => {
+        const aId = String(a?.id ?? '');
+        const bId = String(b?.id ?? '');
+        const sumA = Number(a?.inService || 0) + Number(a?.endOfLife || 0) + Number(a?.repair || 0) + Number(a?.maintenance || 0);
+        const sumB = Number(b?.inService || 0) + Number(b?.endOfLife || 0) + Number(b?.repair || 0) + Number(b?.maintenance || 0);
+        const at = (typeCounts[aId]?.total ?? sumA) || 0;
+        const bt = (typeCounts[bId]?.total ?? sumB) || 0;
+        return (at - bt) * dir;
+      });
+    } else {
+      arr.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) * dir);
+    }
+    return arr;
+  }, [filtered, typeSort, typeCounts]);
+
   const handleTypePress = (type) => {
-    router.push({ pathname: '/type/' + type.id, params: { type_name: type.name } });
+    router.push({
+      pathname: '/type/[type_id]',
+      params: {
+        type_id: String(type.id),
+        type_name: type.name,
+        returnTo: '/Inventory?tab=types',
+      },
+    });
   };
 
   const TypeChip = ({ cfg, icon, label, value }) => (
@@ -189,105 +260,126 @@ const AssetTypesTab = ({ query }) => {
     </View>
   );
 
- const TypeCard = ({ type }) => {
-  const [showExtras, setShowExtras] = useState(false);
+  const TypeCard = ({ type }) => {
+    const [showExtras, setShowExtras] = useState(false);
 
-  const id = String(type?.id ?? '');
-  const c = typeCounts[id] || {};
+    const id = String(type?.id ?? '');
+    const c = typeCounts[id] || {};
 
-  // prefer computed counts; fall back to API fields if present
-  const inService        = (c.in_service        ?? Number(type?.inService ?? 0)) || 0;
-  const endOfLife        = (c.end_of_life       ?? Number(type?.endOfLife ?? 0)) || 0;
-  const repair      = (c.repair      ?? Number(type?.repair ?? 0)) || 0;
-  const maintenance = (c.maintenance ?? Number(type?.maintenance ?? 0)) || 0;
+    // prefer computed counts; fall back to API fields if present
+    const inService = (c.in_service ?? Number(type?.inService ?? 0)) || 0;
+    const endOfLife = (c.end_of_life ?? Number(type?.endOfLife ?? 0)) || 0;
+    const repair = (c.repair ?? Number(type?.repair ?? 0)) || 0;
+    const maintenance = (c.maintenance ?? Number(type?.maintenance ?? 0)) || 0;
 
-  const extrasTotal = repair + maintenance;
-  const total = (c.total ?? Number(type?.total ?? type?.count ?? (
-    inService + endOfLife + extrasTotal
-  ))) || 0;
+    const extrasTotal = repair + maintenance;
+    const total = (c.total ?? Number(type?.total ?? type?.count ?? (
+      inService + endOfLife + extrasTotal
+    ))) || 0;
 
-  return (
-    // Make the whole card non-pressable so the "More" chip doesn't navigate.
-    // Only the header row navigates to the type screen.
-    <View style={styles.typeCard}>
-      {type?.image_url ? (
-        <Image source={{ uri: String(type.image_url).trim() }} style={styles.typeCover} />
-      ) : (
-        <View style={[styles.typeCover, styles.typeCoverPlaceholder]}>
-          <MaterialIcons name="category" size={24} color={COLORS.sub2} />
-        </View>
-      )}
-
-      <View style={styles.typeBody}>
-        {/* Header row -> navigates */}
-        <TouchableOpacity
-          style={styles.typeTitleRow}
-          activeOpacity={0.7}
-          onPress={() => handleTypePress(type)}
-        >
-          <Text style={styles.typeTitle} numberOfLines={1}>{type?.name || 'Asset Type'}</Text>
-          <MaterialIcons name="chevron-right" size={22} color={COLORS.sub2} />
-        </TouchableOpacity>
-
-        {/* Primary chips (always visible) */}
-        <View style={styles.typeChipsRow}>
-          <TypeChip
-            cfg={STATUS_CONFIG.in_service}
-            icon={STATUS_CONFIG.in_service.icon}
-            label="In Service"
-            value={inService}
-          />
-          <TypeChip
-            cfg={STATUS_CONFIG.end_of_life}
-            icon={STATUS_CONFIG.end_of_life.icon}
-            label="End of Life"
-            value={endOfLife}
-          />
-          <View style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}>
-            <MaterialIcons name="inventory-2" size={14} color={COLORS.sub} />
-            <Text style={[styles.typeChipText, { color: COLORS.sub }]}>Total: {total}</Text>
-          </View>
-
-          {/* More toggle */}
-          <TouchableOpacity
-            onPress={() => setShowExtras(v => !v)}
-            style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name={showExtras ? 'expand-less' : 'expand-more'} size={14} color={COLORS.sub} />
-            <Text style={[styles.typeChipText, { color: COLORS.sub }]}>
-              More{extrasTotal ? ` • ${extrasTotal}` : ''}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-       {/* Extras dropdown */}
-        {showExtras && (
-          <View style={styles.extrasWrap}>
-            <TypeChip
-              cfg={STATUS_CONFIG.repair}
-              icon={STATUS_CONFIG.repair.icon}
-              label="Repair"
-              value={repair}           // will show 0 if zero
-            />
-            <TypeChip
-              cfg={STATUS_CONFIG.maintenance}
-              icon={STATUS_CONFIG.maintenance.icon}
-              label="Maintenance"
-              value={maintenance}      // will show 0 if zero
-            />
+    return (
+      // Make the whole card non-pressable so the "More" chip doesn't navigate.
+      // Only the header row navigates to the type screen.
+      <View style={styles.typeCard}>
+        {type?.image_url ? (
+          <Image source={{ uri: String(type.image_url).trim() }} style={styles.typeCover} />
+        ) : (
+          <View style={[styles.typeCover, styles.typeCoverPlaceholder]}>
+            <MaterialIcons name="category" size={24} color={COLORS.sub2} />
           </View>
         )}
 
+        <View style={styles.typeBody}>
+          {/* Header row -> navigates */}
+          <TouchableOpacity
+            style={styles.typeTitleRow}
+            activeOpacity={0.7}
+            onPress={() => handleTypePress(type)}
+          >
+            <Text style={styles.typeTitle} numberOfLines={1}>{type?.name || 'Asset Type'}</Text>
+            <MaterialIcons name="chevron-right" size={22} color={COLORS.sub2} />
+          </TouchableOpacity>
+
+          {/* Primary chips (always visible) */}
+          <View style={styles.typeChipsRow}>
+            <TypeChip
+              cfg={STATUS_CONFIG.in_service}
+              icon={STATUS_CONFIG.in_service.icon}
+              label="In Service"
+              value={inService}
+            />
+            <TypeChip
+              cfg={STATUS_CONFIG.end_of_life}
+              icon={STATUS_CONFIG.end_of_life.icon}
+              label="End of Life"
+              value={endOfLife}
+            />
+            <View style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}>
+              <MaterialIcons name="inventory-2" size={14} color={COLORS.sub} />
+              <Text style={[styles.typeChipText, { color: COLORS.sub }]}>Total: {total}</Text>
+            </View>
+
+            {/* More toggle */}
+            <TouchableOpacity
+              onPress={() => setShowExtras(v => !v)}
+              style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name={showExtras ? 'expand-less' : 'expand-more'} size={14} color={COLORS.sub} />
+              <Text style={[styles.typeChipText, { color: COLORS.sub }]}>
+                More{extrasTotal ? ` • ${extrasTotal}` : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Extras dropdown */}
+          {showExtras && (
+            <View style={styles.extrasWrap}>
+              <TypeChip
+                cfg={STATUS_CONFIG.repair}
+                icon={STATUS_CONFIG.repair.icon}
+                label="Repair"
+                value={repair}           // will show 0 if zero
+              />
+              <TypeChip
+                cfg={STATUS_CONFIG.maintenance}
+                icon={STATUS_CONFIG.maintenance.icon}
+                label="Maintenance"
+                value={maintenance}      // will show 0 if zero
+              />
+            </View>
+          )}
+
+          {/* Unassigned preview removed by request */}
+
+        </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
 
 
   return (
     <FlatList
-      data={filtered}
+      ListHeaderComponent={
+        <View style={styles.sortBar}>
+          <Text style={styles.sortLabel}>Sort:</Text>
+          <TouchableOpacity
+            style={[styles.sortChip, typeSort.field === 'name' && styles.sortChipActive]}
+            onPress={() => setTypeSort((s) => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={typeSort.field === 'name' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'name' ? COLORS.primary : COLORS.sub} />
+            <Text style={[styles.sortText, typeSort.field === 'name' && styles.sortTextActive]}>Name</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortChip, typeSort.field === 'total' && styles.sortChipActive]}
+            onPress={() => setTypeSort((s) => ({ field: 'total', dir: s.field === 'total' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={typeSort.field === 'total' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'total' ? COLORS.primary : COLORS.sub} />
+            <Text style={[styles.sortText, typeSort.field === 'total' && styles.sortTextActive]}>Total</Text>
+          </TouchableOpacity>
+        </View>
+      }
+      data={sorted}
       keyExtractor={(item, idx) => String(item?.id ?? idx)}
       renderItem={({ item }) => <TypeCard type={item} />}
       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24, paddingTop: 8 }}
@@ -310,15 +402,41 @@ const AllAssetsTab = ({ query }) => {
   const [assets, setAssets] = useState([]);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [loaded, setLoaded] = useState(false);
+  const [assetSort, setAssetSort] = useState({ field: 'name', dir: 'asc' }); // 'name' | 'updated'
+  const ALL_SORT_KEY = 'inventory_allassets_sort_v1';
+
+  // Load saved sort on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(ALL_SORT_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const field = (parsed?.field === 'updated') ? 'updated' : 'name';
+        const dir = (parsed?.dir === 'desc') ? 'desc' : 'asc';
+        setAssetSort({ field, dir });
+      } catch { }
+    })();
+  }, []);
+
+  // Persist sort when it changes
+  useEffect(() => {
+    (async () => {
+      try { await AsyncStorage.setItem(ALL_SORT_KEY, JSON.stringify(assetSort)); } catch { }
+    })();
+  }, [assetSort]);
 
   useEffect(() => {
     const fetchAssets = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/assets`);
         const data = await res.json();
-        const filtered = (Array.isArray(data) ? data : []).filter(
-          a => (a?.description || '').toLowerCase() !== 'qr reserved asset'
-        );
+        const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+        const filtered = (Array.isArray(data) ? data : [])
+          // hide placeholders
+          .filter(a => (a?.description || '').toLowerCase() !== 'qr reserved asset')
+          // hide imported (UUID) until QR assigned
+          .filter(a => !isUUID(String(a?.id || '')));
         setAssets(filtered);
       } catch (err) {
         console.error('Failed to fetch assets:', err);
@@ -350,6 +468,22 @@ const AllAssetsTab = ({ query }) => {
     });
   }, [assets, query]);
 
+  const sortedAssets = useMemo(() => {
+    const arr = [...filtered];
+    const dir = assetSort.dir === 'asc' ? 1 : -1;
+    const nameOf = (it) => String(it?.name || it?.asset_name || it?.model || it?.id || '').toLowerCase();
+    if (assetSort.field === 'updated') {
+      arr.sort((a, b) => {
+        const av = new Date(a?.updated_at || a?.last_updated || 0).getTime();
+        const bv = new Date(b?.updated_at || b?.last_updated || 0).getTime();
+        return (av - bv) * dir;
+      });
+    } else {
+      arr.sort((a, b) => nameOf(a).localeCompare(nameOf(b)) * dir);
+    }
+    return arr;
+  }, [filtered, assetSort]);
+
   const toggleExpand = useCallback((id) => {
     setExpandedIds(prev => {
       const next = new Set(prev);
@@ -359,7 +493,7 @@ const AllAssetsTab = ({ query }) => {
     });
   }, []);
 
-  const ResultCard = ({ item }) => {
+  const ResultCard = ({ item, onOpen }) => {
     const name = item?.name || item?.asset_name || item?.id;
     const serial = item?.serial_number ?? item?.fields?.serial_number;
     const model = item?.model ?? item?.fields?.model;
@@ -382,7 +516,19 @@ const AllAssetsTab = ({ query }) => {
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.9}
-        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/Inventory?tab=all' } })}
+        onPress={() => {
+          if (onOpen) {
+            onOpen(item.id);
+            return;
+          }
+          router.push({
+            pathname: '/asset/[assetId]',
+            params: {
+              assetId: String(item.id),
+              returnTo: '/Inventory?tab=all',
+            },
+          });
+        }}
         onLongPress={() => toggleExpand(item.id)}
       >
         <View style={styles.cardLeft}>
@@ -406,17 +552,28 @@ const AllAssetsTab = ({ query }) => {
           {!!subtitle && <Text style={styles.cardSubtitle} numberOfLines={1}>{subtitle}</Text>}
 
           <View style={styles.metaRow}>
-            {assignedTo ? <MetaChip icon="user" text={truncate(String(assignedTo), 24)} /> : null}
-            {loc ? <MetaChip icon="map-pin" text={truncate(String(loc), 18)} /> : null}
-            {nextService ? <MetaChip icon="tool" text={`Service ${daysUntil(nextService)}`} /> : null}
+            {(() => {
+              const chips = [];
+              if (assignedTo) chips.push({ icon: 'user', text: truncate(String(assignedTo), 24) });
+              if (loc) chips.push({ icon: 'map-pin', text: truncate(String(loc), 18) });
+              if (nextService) chips.push({ icon: 'tool', text: `Service ${daysUntil(nextService)}` });
+              // Fallbacks to reach at least 3 chips
+              if (chips.length < 3 && type) chips.push({ icon: 'tag', text: truncate(String(type), 18) });
+              if (chips.length < 3 && model) chips.push({ icon: 'cpu', text: truncate(String(model), 18) });
+              if (chips.length < 3 && datePurchased) chips.push({ icon: 'calendar', text: `Purchased ${prettyDate(datePurchased)}` });
+              // Render first three
+              return chips.slice(0, 3).map((c, idx) => (
+                <MetaChip key={`chip-${idx}`} icon={c.icon} text={c.text} />
+              ));
+            })()}
           </View>
 
           {isExpanded && (
             <View style={styles.moreWrap}>
-              <DetailRow icon="fingerprint" label="ID" value={String(item.id)} />
+              <DetailRow icon="hash" label="ID" value={String(item.id)} />
               {model ? <DetailRow icon="cpu" label="Model" value={String(model)} /> : null}
               {datePurchased ? <DetailRow icon="calendar" label="Purchased" value={prettyDate(datePurchased)} /> : null}
-              {nextService ? <DetailRow icon="wrench" label="Next Service" value={prettyDate(nextService)} /> : null}
+              {nextService ? <DetailRow icon="tool" label="Next Service" value={prettyDate(nextService)} /> : null}
               {updatedAt ? <DetailRow icon="clock" label="Updated" value={prettyDate(updatedAt)} /> : null}
               {loc ? <DetailRow icon="map" label="Location" value={String(loc)} /> : null}
               {notes ? (
@@ -438,7 +595,26 @@ const AllAssetsTab = ({ query }) => {
 
   return (
     <FlatList
-      data={filtered}
+      ListHeaderComponent={
+        <View style={styles.sortBar}>
+          <Text style={styles.sortLabel}>Sort:</Text>
+          <TouchableOpacity
+            style={[styles.sortChip, assetSort.field === 'name' && styles.sortChipActive]}
+            onPress={() => setAssetSort((s) => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={assetSort.field === 'name' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'name' ? COLORS.primary : COLORS.sub} />
+            <Text style={[styles.sortText, assetSort.field === 'name' && styles.sortTextActive]}>Name</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortChip, assetSort.field === 'updated' && styles.sortChipActive]}
+            onPress={() => setAssetSort((s) => ({ field: 'updated', dir: s.field === 'updated' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={assetSort.field === 'updated' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'updated' ? COLORS.primary : COLORS.sub} />
+            <Text style={[styles.sortText, assetSort.field === 'updated' && styles.sortTextActive]}>Updated</Text>
+          </TouchableOpacity>
+        </View>
+      }
+      data={sortedAssets}
       keyExtractor={(item, idx) => String(item?.id ?? idx)}
       renderItem={({ item }) => <ResultCard item={item} />}
       contentContainerStyle={{ paddingBottom: 28, paddingTop: 10 }}
@@ -457,6 +633,7 @@ const AllAssetsTab = ({ query }) => {
 /** -------------- Main -------------- */
 const Inventory = () => {
   const router = useRouter();
+  const theme = useTheme();
   const { tab } = useLocalSearchParams();
   const [index, setIndex] = useState(tab === 'all' ? 1 : 0);
   const [headerQuery, setHeaderQuery] = useState('');
@@ -485,7 +662,7 @@ const Inventory = () => {
   // renderScene with props so we can pass the live query down
   const renderScene = ({ route }) => {
     if (route.key === 'types') return <AssetTypesTab query={headerQuery} />;
-    if (route.key === 'all')   return <AllAssetsTab  query={headerQuery} />;
+    if (route.key === 'all') return <AllAssetsTab query={headerQuery} />;
     return null;
   };
 
@@ -493,20 +670,20 @@ const Inventory = () => {
   const headerPlaceholder = isTypesTab ? 'Search asset types' : 'Search assets';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenWrapper style={styles.safeArea}>
       <View style={{ flex: 1 }}>
         {/* Header with live search */}
-        <View style={styles.header}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder={headerPlaceholder}
-            placeholderTextColor="#888"
-            value={headerQuery}
-            onChangeText={setHeaderQuery}
-            returnKeyType="search"
-          />
+        <View style={[styles.header, { backgroundColor: theme.colors.background }]}>
+          <View style={{ flex: 1, marginRight: 10 }}>
+            <SearchInput
+              placeholder={headerPlaceholder}
+              value={headerQuery}
+              onChangeText={setHeaderQuery}
+              returnKeyType="search"
+            />
+          </View>
           <TouchableOpacity style={styles.iconButton}>
-            <MaterialIcons name="filter-list" size={24} color={COLORS.primary} />
+            <MaterialIcons name="filter-list" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
           {/* No search icon / navigation */}
         </View>
@@ -550,14 +727,12 @@ const Inventory = () => {
           </TouchableOpacity>
         )}
       </View>
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 };
 
-/** -------------- Styles -------------- */
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.bg },
-
+  safeArea: { flex: 1 },
   header: { flexDirection: 'row', padding: 10, backgroundColor: '#fff' },
   searchInput: {
     flex: 1, backgroundColor: '#f5f5f5', padding: 10, borderRadius: 5,
@@ -608,6 +783,13 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   detailLabel: { color: COLORS.sub, fontWeight: '600' },
   detailValue: { color: COLORS.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12 },
+  // Sort bar (list header)
+  sortBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 8 },
+  sortLabel: { color: COLORS.sub2, fontWeight: '800' },
+  sortChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#F5F9FF' },
+  sortChipActive: { borderColor: COLORS.primary, backgroundColor: '#E7F3FF' },
+  sortText: { color: COLORS.sub, fontWeight: '800', fontSize: 12 },
+  sortTextActive: { color: COLORS.primary },
   notesRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: '#F7FBFF', borderWidth: 1, borderColor: COLORS.line,

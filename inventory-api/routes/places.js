@@ -85,4 +85,25 @@ router.get('/details', async (req, res) => {
   }
 });
 
+// Reverse geocode coordinates to a formatted address via Google Geocoding API
+router.get('/reverse-geocode', async (req, res) => {
+  try {
+    if (!API_KEY) return res.status(400).json({ error: 'GOOGLE_PLACES_API_KEY missing on server' });
+    const lat = parseFloat(String(req.query.lat || '').trim());
+    const lng = parseFloat(String(req.query.lng || '').trim());
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: 'lat and lng are required numeric values' });
+    }
+    const params = new URLSearchParams({ latlng: `${lat},${lng}`, key: API_KEY });
+    if (COUNTRY) params.set('region', COUNTRY.toLowerCase());
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
+    const json = await getJSON(url);
+    const first = Array.isArray(json.results) ? json.results[0] : null;
+    const formatted_address = first?.formatted_address || '';
+    res.json({ formatted_address, lat, lng });
+  } catch (err) {
+    res.status(500).json({ error: 'reverse-geocode-failed', message: err.message });
+  }
+});
+
 module.exports = router;

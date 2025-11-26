@@ -1,4 +1,4 @@
-// [id].js - Asset check-in/transfer screen
+﻿// [id].js - Asset check-in/transfer screen
 
 // Import navigation and parameter hooks from Expo Router
 import { useLocalSearchParams } from 'expo-router'; // For route parameters
@@ -43,13 +43,13 @@ export default function CheckInScreen() {
         // Get Firebase Auth and current user
         const auth = getAuth();
         const currentUser = auth.currentUser;
-        console.log("👤 Current user:", currentUser);
+        console.log("ðŸ‘¤ Current user:", currentUser);
 
         if (currentUser) {
           setUser(currentUser); // Set user state if logged in
         } else {
           // For development: allow preview if not logged in
-          console.warn("⚠️ Not logged in - allowing preview for dev");
+          console.warn("âš ï¸ Not logged in - allowing preview for dev");
           setUser({ uid: "guest" });
         }
 
@@ -91,11 +91,11 @@ export default function CheckInScreen() {
           }
         }
 
-        console.log("📦 Asset data:", assetData);
+        console.log("ðŸ“¦ Asset data:", assetData);
         setAsset(assetData); // Store asset info with user name
       } catch (err) {
         // Handle fetch or network errors
-        console.error("❌ Error in Check-In screen:", err);
+        console.error("âŒ Error in Check-In screen:", err);
         setError(err.message);
       } finally {
         setLoading(false); // Hide loading spinner
@@ -303,7 +303,7 @@ export default function CheckInScreen() {
   if (error) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>⚠️ Error</Text>
+        <Text style={styles.title}>âš ï¸ Error</Text>
         <Text style={{ color: 'red' }}>{error}</Text>
       </View>
     );
@@ -323,10 +323,10 @@ export default function CheckInScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Screen title */}
-        <Text style={styles.title}>Check-In / Transfer</Text>
+        <Text style={styles.title}>Transfer In / Out</Text>
         {/* Asset info */}
         <Text style={styles.subtext}>Asset ID: {asset.id}</Text>
-        <Text style={styles.subtext}>Model: {asset.model || '—'}</Text>
+        <Text style={styles.subtext}>Model: {asset.model || 'â€”'}</Text>
         {asset.assigned_to_id && (
           <Text style={styles.subtext}>
             Assigned to: {asset.assigned_user_name || `User ${asset.assigned_to_id}`}
@@ -340,7 +340,7 @@ export default function CheckInScreen() {
             style={[styles.button, { backgroundColor: 'green' }]}
             onPress={() => handleAction('checkin')}
           >
-            <Text style={styles.buttonText}>Check In to Office</Text>
+            <Text style={styles.buttonText}>Transfer In</Text>
           </TouchableOpacity>
 
           {asset.assigned_to_id === user?.uid ? (

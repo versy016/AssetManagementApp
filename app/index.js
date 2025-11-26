@@ -20,9 +20,9 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
-    // On web, default to Search as home
+    // On web, default to Dashboard (which embeds Search)
     if (Platform.OS === 'web') {
-      router.replace('/search');
+      router.replace('/(tabs)/dashboard');
     }
   }, []);
 

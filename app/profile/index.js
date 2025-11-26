@@ -9,6 +9,8 @@ import { onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'fireb
 import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { MaterialIcons } from '@expo/vector-icons';
+import PageHeader from '../../components/ui/PageHeader';
+import { Colors } from '../../constants/uiTheme';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -128,13 +130,15 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-      <View style={styles.topbar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
-        </TouchableOpacity>
-        <Text style={styles.topbarTitle}>My Profile</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <PageHeader
+        title="My Profile"
+        left={(
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+        )}
+        right={<View style={{ width: 24 }} />}
+      />
       <View style={styles.field}>
         <Text style={styles.label}>Full Name</Text>
         <TextInput
@@ -204,7 +208,7 @@ const styles = StyleSheet.create({
   buttonGhost: { padding: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd' },
   buttonGhostText: { color: '#333', fontWeight: '700', fontSize: 16 },
   note: { color: '#666', marginTop: 10 },
-  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  topbarTitle: { fontSize: 22, fontWeight: '700', color: '#111' },
+  topbar: { },
+  topbarTitle: { },
   backBtn: { padding: 6, marginRight: 6 },
 });

@@ -4,29 +4,29 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView,
   Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import ScreenHeader from '../../components/ui/ScreenHeader';
 
 // ---- Default fields (always present on assets) -----------------------------
 const DEFAULT_FIELDS = [
+  { slug: 'id',                label: 'Asset ID (system)' },
+  { slug: 'other_id',          label: 'Other ID' },
+  { slug: 'type_id',           label: 'Asset Type' },
   { slug: 'serial_number',     label: 'Serial Number' },
-  { slug: 'model',             label: 'Model' },
   { slug: 'description',       label: 'Description' },
+  { slug: 'model',             label: 'Model' },
+  { slug: 'assigned_to_id',    label: 'Assigned To' },
   { slug: 'status',            label: 'Status' },
-  { slug: 'next_service_date', label: 'Next Service Date' },
-  { slug: 'documentation_url', label: 'Documentation URL' },
   { slug: 'image_url',         label: 'Image URL' },
+  { slug: 'date_purchased',    label: 'Date Purchased' },
   { slug: 'last_updated',      label: 'Last Updated (system)' },
   { slug: 'last_changed_by',   label: 'Last Changed By (system)' },
-  { slug: 'location',          label: 'Location' },
-  { slug: 'id',                label: 'Asset ID (system)' },
-  { slug: 'date_purchased',    label: 'Date Purchased' },
-  { slug: 'notes',             label: 'Notes' },
 ];
 
 // ---- Pick-from-library presets (2-column checklist) ------------------------
@@ -37,6 +37,10 @@ const PRESET_LIBRARY = [
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
   { key: 'last_serviced', label: 'Last serviced', fieldTypeSlug: 'date' },
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
+  // Moved common fields (now optional)
+  { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
+  { key: 'documentation_url', label: 'Documentation URL', fieldTypeSlug: 'url' },
+  { key: 'location', label: 'Location', fieldTypeSlug: 'text' },
   // Suggestions
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
   { key: 'purchase_price', label: 'Purchase price', fieldTypeSlug: 'currency' },
@@ -47,7 +51,6 @@ const PRESET_LIBRARY = [
 function DefaultFieldRow({ label }) {
   return (
     <View style={s.defaultRow}>
-      <View style={s.checkboxDisabled}><Text style={s.checkboxTick}>✓</Text></View>
       <Text style={s.defaultRowLabel}>{label}</Text>
     </View>
   );
@@ -77,11 +80,14 @@ function SquareCheckbox({ checked }) {
 
 export default function NewAssetType() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams();
+  const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
 
   // Type basics
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
   const [image, setImage] = useState(null); // { uri, file }
   const [submitting, setSubmitting] = useState(false);
 
@@ -95,14 +101,14 @@ export default function NewAssetType() {
   // Preset selections: key -> { selected: boolean, required: boolean }
   const [presetState, setPresetState] = useState(
     PRESET_LIBRARY.reduce((acc, p) => {
-      acc[p.key] = { selected: false, required: false };
+      acc[p.key] = { selected: false, required: false, requiresDocSlug: '', reminderLeadDays: 0, documentRequired: false };
       return acc;
     }, {})
   );
 
-  // “Editor” state (only shown when adding)
+  // "Editor" state (only shown when adding)
   const [editingOpen, setEditingOpen] = useState(false);
-  const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '' });
+  const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '' });
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Admin gate via DB role
@@ -144,7 +150,7 @@ export default function NewAssetType() {
 
   const fieldTypeItems = useMemo(() => (
     fieldTypes.map(ft => ({
-      label: `${ft.name}${ft.has_options ? ' (options)' : ''}`,
+      label: `${ft.slug === 'url' ? 'Document' : ft.name}${ft.has_options ? ' (options)' : ''}`,
       value: ft.id,
       has_options: ft.has_options,
       slug: ft.slug,
@@ -167,21 +173,50 @@ export default function NewAssetType() {
 
   // Preset grid toggles
   const togglePresetSelected = (key) => {
-    setPresetState(prev => ({ ...prev, [key]: { ...prev[key], selected: !prev[key].selected } }));
+    setPresetState(prev => {
+      const nextSel = !prev[key]?.selected;
+      const current = prev[key] || {};
+      return {
+        ...prev,
+        [key]: {
+          selected: nextSel,
+          required: nextSel ? !!current.required : false,
+          requiresDocSlug: current.requiresDocSlug || '',
+          reminderLeadDays: Number(current.reminderLeadDays) || 0,
+          documentRequired: !!current.documentRequired,
+        },
+      };
+    });
   };
   const togglePresetRequired = (key) => {
-    setPresetState(prev => ({ ...prev, [key]: { ...prev[key], required: !prev[key].required } }));
+    setPresetState(prev => {
+      const current = prev[key] || {};
+      const nextReq = !current.required;
+      return {
+        ...prev,
+        [key]: {
+          selected: nextReq ? true : !!current.selected,
+          required: nextReq,
+          requiresDocSlug: current.requiresDocSlug || '',
+          reminderLeadDays: Number(current.reminderLeadDays) || 0,
+          documentRequired: !!current.documentRequired,
+        },
+      };
+    });
   };
 
   // Open/close editor
   const openEditor = () => {
-    setEditing({ name: '', field_type_id: null, is_required: false, optionsCsv: '' });
+    setEditing({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '', reminderLeadDays: 0, documentRequired: false });
     setPickerOpen(false);
     setEditingOpen(true);
   };
-  const cancelEditor = () => { setEditingOpen(false); setPickerOpen(false); };
+  const cancelEditor = () => { 
+    setEditingOpen(false); 
+    setPickerOpen(false); 
+  };
 
-  // Save editor → add to list, close editor
+  // Save editor - add to list, close editor
   const saveEditor = () => {
     const trimmed = editing.name.trim();
     if (!trimmed || !editing.field_type_id) {
@@ -195,6 +230,9 @@ export default function NewAssetType() {
         name: trimmed,
         field_type_id: editing.field_type_id,
         is_required: !!editing.is_required,
+        requiresDocSlug: (editing.requiresDocSlug || "").trim(),
+        reminderLeadDays: Number(editing.reminderLeadDays) || 0,
+        documentRequired: !!editing.documentRequired,
         optionsCsv: (editing.optionsCsv || '').trim(),
       }
     ]));
@@ -207,7 +245,11 @@ export default function NewAssetType() {
   const removeField = (id) => setFields(prev => prev.filter(f => f.id !== id));
 
   const handleSubmit = async () => {
-    if (!name.trim()) return Alert.alert('Missing field', 'Please enter a name.');
+    if (!name.trim()) {
+      setNameError('Required');
+      Alert.alert('Missing field', 'Asset type name is required.');
+      return;
+    }
     if (editingOpen) return Alert.alert('Finish field', 'Please save or cancel the field you are adding first.');
 
     setSubmitting(true);
@@ -228,19 +270,29 @@ export default function NewAssetType() {
       // 2) Combine preset selections (with required state) + manual fields
       const selectedPresetKeys = PRESET_LIBRARY.filter(p => presetState[p.key]?.selected).map(p => p.key);
 
-      const presetPayloads = selectedPresetKeys.map((key, i) => {
-        const p = PRESET_LIBRARY.find(x => x.key === key);
-        const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
-        if (!typeIdMapped) return null;
-        const payload = {
-          name: p.label,
-          field_type_id: typeIdMapped,
-          is_required: !!presetState[key]?.required, // <-- REQUIRED from toggle
-          display_order: i,
-        };
-        if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
-        return payload;
-      }).filter(Boolean);
+  const presetPayloads = selectedPresetKeys.map((key, i) => {
+  const p = PRESET_LIBRARY.find(x => x.key === key);
+  const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
+  if (!typeIdMapped) return null;
+  const payload = {
+    name: p.label,
+    field_type_id: typeIdMapped,
+    is_required: !!presetState[key]?.required,
+    display_order: i,
+  };
+  if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
+  if ((p.fieldTypeSlug || '').toLowerCase() === 'date') {
+    const docSlug = (presetState[key]?.requiresDocSlug || '').trim();
+    const lead = Number(presetState[key]?.reminderLeadDays) || 0;
+    const docReq = !!presetState[key]?.documentRequired;
+    const vr = {};
+    if (docSlug) vr.requires_document_slug = docSlug;
+    if (lead > 0) vr.reminder_lead_days = lead;
+    if (docSlug) vr.requires_document_required = docReq;
+    if (Object.keys(vr).length) payload.validation_rules = vr;
+  }
+  return payload;
+}).filter(Boolean);
 
       const manualPayloads = fields
         .filter(f => f.enabled && f.name && f.field_type_id)
@@ -250,8 +302,20 @@ export default function NewAssetType() {
             name: f.name,
             field_type_id: f.field_type_id,
             is_required: !!f.is_required,
-            display_order: presetPayloads.length + idx,
+            display_order: PRESET_LIBRARY.length + idx,
           };
+
+          // If date and requiresDocSlug specified, pass validation_rules
+          if ((meta?.slug || meta?.name || '').toLowerCase() === 'date') {
+            const docSlug = (f.requiresDocSlug || '').trim();
+            const lead = Number(f.reminderLeadDays) || 0;
+            const docReq = !!f.documentRequired;
+            const vr = {};
+            if (docSlug) vr.requires_document_slug = docSlug;
+            if (lead > 0) vr.reminder_lead_days = lead;
+            if (docSlug) vr.requires_document_required = docReq;
+            if (Object.keys(vr).length) payload.validation_rules = vr;
+          }
           if (meta?.has_options) {
             payload.options = (f.optionsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
           }
@@ -262,6 +326,10 @@ export default function NewAssetType() {
 
       if (toCreate.length === 0) {
         Alert.alert('Success', 'Asset type created successfully');
+        if (normalizedReturnTo) {
+          router.replace(String(normalizedReturnTo));
+          return;
+        }
         return router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
       }
 
@@ -283,7 +351,11 @@ export default function NewAssetType() {
       } else {
         Alert.alert('Success', 'Asset type and fields created successfully');
       }
-      router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+      if (normalizedReturnTo) {
+        router.replace(String(normalizedReturnTo));
+      } else {
+        router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+      }
     } catch (err) {
       console.error('Create asset type error:', err);
       Alert.alert('Error', err.message || 'Failed to create asset type');
@@ -296,7 +368,7 @@ export default function NewAssetType() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator />
-        <Text style={{ marginTop: 8 }}>Checking access…</Text>
+        <Text style={{ marginTop: 8 }}>Checking access...</Text>
       </SafeAreaView>
     );
   }
@@ -305,7 +377,16 @@ export default function NewAssetType() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
-        <TouchableOpacity onPress={() => router.replace('/Inventory')} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
+        <TouchableOpacity
+          onPress={() => {
+            if (normalizedReturnTo) {
+              router.replace(String(normalizedReturnTo));
+              return;
+            }
+            router.replace('/Inventory?tab=types');
+          }}
+          style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}
+        >
           <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -314,17 +395,30 @@ export default function NewAssetType() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <ScreenHeader
+        title="Create Asset Type"
+        backLabel="Inventory"
+        onBack={() => {
+          if (normalizedReturnTo) {
+            router.replace(String(normalizedReturnTo));
+            return;
+          }
+          router.replace('/Inventory?tab=types');
+        }}
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity onPress={() => router.replace({ pathname: '/Inventory', params: { tab: 'types' } })} style={{ marginBottom: 10 }}>
-            <Text style={{ color: '#1E90FF', fontWeight: 'bold', fontSize: 16 }}>{'< Back'}</Text>
-          </TouchableOpacity>
-
-          <Text style={s.title}>Create New Asset Type</Text>
 
           {/* Type name */}
           <Text style={s.label}>Name</Text>
-          <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Enter asset type name" autoCapitalize="words" />
+          <TextInput
+            style={[s.input, nameError ? s.inputError : null]}
+            value={name}
+            onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
+            placeholder="Enter asset type name"
+            autoCapitalize="words"
+          />
+          {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
 
           {/* Type image */}
           <TouchableOpacity style={s.btn} onPress={pickImage}>
@@ -350,18 +444,76 @@ export default function NewAssetType() {
                 const required = !!state?.required;
                 return (
                   <View key={p.key} style={s.gridItem}>
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                      onPress={() => togglePresetSelected(p.key)}
-                      activeOpacity={0.8}
-                    >
-                      <SquareCheckbox checked={checked} />
-                      <Text style={s.gridLabel}>{p.label}</Text>
-                    </TouchableOpacity>
-                    <View style={s.reqWrap}>
-                      <Text style={s.reqLabel}>Required</Text>
-                      <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                        onPress={() => togglePresetSelected(p.key)}
+                        activeOpacity={0.8}
+                      >
+                        <SquareCheckbox checked={checked} />
+                        <Text style={s.gridLabel}>{p.label}</Text>
+                      </TouchableOpacity>
+                      <View style={s.reqWrap}>
+                        <Text style={s.reqLabel}>Required</Text>
+                        <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
+                      </View>
                     </View>
+                    {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
+                      <View style={{ width: '100%', marginTop: 8 }}>
+                        <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
+                        <TextInput
+                          style={s.input}
+                          value={presetState[p.key]?.requiresDocSlug || ''}
+                          onChangeText={(t) =>
+                            setPresetState((prev) => ({
+                              ...prev,
+                              [p.key]: { ...prev[p.key], requiresDocSlug: t },
+                            }))
+                          }
+                          placeholder="e.g. documentation_url"
+                          autoCapitalize="none"
+                        />
+                        <View style={s.switchRow}>
+                          <Text style={s.subLabel}>Document required</Text>
+                          <Switch
+                            value={!!presetState[p.key]?.documentRequired}
+                            onValueChange={(v) =>
+                              setPresetState((prev) => ({
+                                ...prev,
+                                [p.key]: { ...prev[p.key], documentRequired: v },
+                              }))
+                            }
+                          />
+                        </View>
+                        <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          {[7,14,30].map((d) => (
+                            <TouchableOpacity
+                              key={`lead-${p.key}-${d}`}
+                              onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                            >
+                              <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <TextInput
+                          style={[s.input, { marginTop: 6 }]}
+                          value={(Number(presetState[p.key]?.reminderLeadDays)||0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
+                          onChangeText={(t) => {
+                            const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
+                            setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
+                          }}
+                          placeholder="No Reminder"
+                          keyboardType="numeric"
+                        />
+                        <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                          {(Number(presetState[p.key]?.reminderLeadDays)||0) > 0
+                            ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
+                            : 'No Reminder'}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}
@@ -375,7 +527,7 @@ export default function NewAssetType() {
             {loadingFieldTypes && (
               <View style={{ paddingVertical: 12 }}>
                 <ActivityIndicator />
-                <Text style={{ textAlign: 'center', marginTop: 8 }}>Loading field types…</Text>
+                <Text style={{ textAlign: 'center', marginTop: 8 }}>Loading field types...</Text>
               </View>
             )}
 
@@ -425,7 +577,7 @@ export default function NewAssetType() {
                     placeholder="Select a field type"
                     style={s.dropdown}
                     dropDownContainerStyle={s.dropdownContainer}
-                    listMode="SCROLLVIEW"
+                    listMode="MODAL"
                   />
                 </View>
 
@@ -449,7 +601,60 @@ export default function NewAssetType() {
                     />
                   </>
                 )}
-
+                {(() => {
+                  const meta = fieldTypes.find(ft => ft.id === editing.field_type_id);
+                  const isDate = (meta?.slug || meta?.name || '').toLowerCase() === 'date';
+                  if (!isDate) return null;
+                  return (
+                    <>
+                      <Text style={s.subLabel}>Requires document field name (optional)</Text>
+                      <TextInput
+                        style={s.input}
+                        value={editing.requiresDocSlug}
+                        onChangeText={(t) => setEditing(e => ({ ...e, requiresDocSlug: t }))}
+                        placeholder="e.g. documentation_url"
+                        autoCapitalize="none"
+                      />
+                      <View style={s.switchRow}>
+                        <Text style={s.subLabel}>Document required</Text>
+                        <Switch
+                          value={!!editing.documentRequired}
+                          onValueChange={(v) => setEditing(e => ({ ...e, documentRequired: v }))}
+                        />
+                      </View>
+                      <Text style={s.subLabel}>Reminder lead time (days, optional)</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        {[7,14,30].map((d) => (
+                          <TouchableOpacity
+                            key={`lead-editor-${d}`}
+                            onPress={() => setEditing(e => ({ ...e, reminderLeadDays: d }))}
+                            style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(editing.reminderLeadDays)||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                          >
+                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={[s.input, { marginTop: 6 }]}
+                        value={(Number(editing.reminderLeadDays)||0) > 0 ? String(Number(editing.reminderLeadDays)) : ''}
+                        onChangeText={(t) => {
+                          const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
+                          setEditing(e => ({ ...e, reminderLeadDays: n }));
+                        }}
+                        placeholder="No Reminder"
+                        keyboardType="numeric"
+                      />
+                      <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                        {(Number(editing.reminderLeadDays)||0) > 0
+                          ? `Reminder to be sent ${Number(editing.reminderLeadDays)} days before expiry date`
+                          : 'No Reminder'}
+                      </Text>
+                      <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10 }}>
+                        When set, saving this date will require the linked document field.
+                      </Text>
+                    </>
+                  );
+                })()}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
                   <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={cancelEditor}>
                     <Text>Cancel</Text>
@@ -482,12 +687,13 @@ export default function NewAssetType() {
 
 const s = StyleSheet.create({
   container: { padding: 20 },
-  title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginVertical: 8, justifyContent: 'center' },
+  inputError: { borderColor: '#b00020' },
   btn: { backgroundColor: '#eee', padding: 15, alignItems: 'center', borderRadius: 8, marginVertical: 8 },
   submit: { backgroundColor: '#1E90FF' },
   preview: { width: '100%', height: 200, borderRadius: 8, marginVertical: 10 },
   label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+  errorBelow: { color: '#b00020', marginTop: -4, marginBottom: 6 },
   subLabel: { fontSize: 14, fontWeight: '600', marginTop: 8, marginBottom: 4 },
   card: { borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 12, padding: 12, marginBottom: 12, backgroundColor: '#FAFAFA' },
   cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
@@ -520,7 +726,8 @@ const s = StyleSheet.create({
   gridItem: {
     width: '48%', borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 10,
     paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#FBFBFB',
-    flexDirection: 'row', alignItems: 'center',
+    // Stack content vertically when a preset reveals inline config
+    flexDirection: 'column', alignItems: 'stretch',
   },
   gridLabel: { marginLeft: 10, fontSize: 14, color: '#333', flexShrink: 1 },
   gridBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },

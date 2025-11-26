@@ -1,50 +1,104 @@
-// app/search/index.js
-// Blue-themed, powerful search page for AssetManager (now with richer per-item details)
-
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList,
-  ActivityIndicator, Platform, Image, Modal, Pressable, useWindowDimensions
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
+  Image,
+  Modal,
+  SafeAreaView,
+  useWindowDimensions,
+  Switch,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { MaterialIcons, Ionicons, Feather } from '@expo/vector-icons';
+import { Feather, MaterialIcons, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import QRCode from 'react-native-qrcode-svg';
+
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
+import SearchInput from '../../components/ui/SearchInput';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import Chip from '../../components/ui/Chip';
+import InlineButton from '../../components/ui/InlineButton';
+import { Colors as COLORS } from '../../constants/uiTheme';
+import { Colors } from '../../constants/uiTheme';
 
-const DEFAULT_PAGE_SIZE = 25;
-const PAGE_SIZE_OPTIONS = [25, 50, 100];
-const RECENT_KEY = 'asset_search_recents_v1';
+const RECENT_KEY = 'search_recents_v2';
+const ASSET_TYPE_OPTIONS = [
+  'iPad', 'Vehicle', 'UG Locating', 'Two drill set', 'Total Station',
+  'Torch', 'Target', 'Stamps', 'Staff', 'Sonar', 'Scanner', 'Satellite Phone',
+  'Radio', 'Power Tool', 'Plummet', 'Office Equipment', 'Mounting Bracket',
+  'Mobile phone', 'Metal detector', 'Magnetic Mount', 'Laptop', 'Camera',
+  'Survey Gear', 'Generator', 'Computer', 'Server Rack', 'Tablet',
+  'Handheld GPS', 'Excavator', 'Bulldozer', 'Truck', 'Trailer', 'Forklift',
+];
+const SORT_OPTIONS = [
+  { label: 'Relevance', field: 'relevance' },
+  { label: 'Last Updated', field: 'updated_at' },
+  { label: 'Name', field: 'name' },
+  { label: 'Service Due', field: 'service_due' },
+  { label: 'Status', field: 'status' },
+  { label: 'Asset Type', field: 'type' },
+  { label: 'Location', field: 'location' },
+  { label: 'Assigned To', field: 'assigned_to' },
+  { label: 'Asset ID', field: 'id' },
+];
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 'all'];
 
-// 🔵 Brand palette
-const COLORS = {
-  primary: '#0B63CE',
-  primaryDark: '#084AA0',
-  primaryLight: '#E7F3FF',
-  primaryPill: '#EAF1FF',
-  text: '#111',
-  sub: '#555',
-  sub2: '#777',
-  line: '#E5E7EB',
-  bg: '#F7FAFF',
-  card: '#FFFFFF',
-  chip: '#F2F6FD',
-  dangerBg: '#FFEBEE',
-  dangerFg: '#D32F2F',
+// Helper to extract items from API response
+const extractItems = (data) => {
+  if (Array.isArray(data)) return { arr: data, total: data.length };
+  if (data && Array.isArray(data.assets)) return { arr: data.assets, total: data.total || data.assets.length };
+  if (data && Array.isArray(data.data)) return { arr: data.data, total: data.total || data.data.length };
+  return { arr: [], total: 0 };
 };
 
-export default function SearchScreen() {
-  const DEBUG = true;
-  const log = (...args) => DEBUG && console.log('[Search]', ...args);
-  const router = useRouter();
-  const routeParams = useLocalSearchParams();
-  const [me, setMe] = useState({ uid: null, email: null });
+const isUUID = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-  // Query & filters
+export default function SearchScreen(props = {}) {
+  const { embed } = props;
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isCompact = windowWidth < 768;
+
+  // State
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [rawItems, setRawItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Modals
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [sortModalOpen, setSortModalOpen] = useState(false);
+  const [qrModalItem, setQrModalItem] = useState(null);
+
+  const [recents, setRecents] = useState([]);
+  const [metrics, setMetrics] = useState({ total: 0, tookMs: 0 });
+  const [hoverRowId, setHoverRowId] = useState(null);
+
+  // View Mode: 'list' (Table) or 'grid' (Cards). Default to list on desktop, grid on mobile.
+  const [viewMode, setViewMode] = useState(isCompact ? 'grid' : 'list');
+
+  useEffect(() => {
+    if (isCompact && viewMode !== 'grid') {
+      setViewMode('grid');
+    }
+  }, [isCompact, viewMode]);
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Filters
   const [filters, setFilters] = useState({
     type: null,
     status: null,
@@ -52,267 +106,114 @@ export default function SearchScreen() {
     assignedTo: null,
     onlyMine: false,
     dueSoon: false,
+    includeQRReserved: false,
+    onlyUnassigned: false,
   });
-  const [sort, setSort] = useState({
-    field: 'updated_at',
-    dir: 'desc',
-    nullsLast: true,
-  });
-  const [sortOpen, setSortOpen] = useState(false);
 
-  // Data state
-  const [items, setItems] = useState([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [allItems, setAllItems] = useState([]); // processed full result set for current filters
-  const pageCount = useMemo(() => Math.max(1, Math.ceil(allItems.length / pageSize)), [allItems.length, pageSize]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [metrics, setMetrics] = useState({ total: 0, tookMs: 0 });
+  // Sort
+  const [sort, setSort] = useState({ field: 'updated_at', dir: 'desc' });
 
-  // UX helpers
-  const [recents, setRecents] = useState([]);
-  const [expandedIds, setExpandedIds] = useState(() => new Set()); // 👈 expanded cards
-  const [viewMode, setViewMode] = useState(Platform.OS === 'web' ? 'grid' : 'list'); // 'list' | 'grid'
-  const { width } = useWindowDimensions();
-  const columns = useMemo(() => {
-    if (viewMode !== 'grid') return 1;
-    if (Platform.OS === 'web') return Math.max(2, Math.min(6, Math.floor((width || 800) / 260)));
-    return 2;
-  }, [viewMode, width]);
-  const GRID_GAP = 12;
-  const GRID_HPAD = 32; // 16 left + 16 right from content padding
-  const itemWidth = useMemo(() => {
-    if (viewMode !== 'grid') return width || 360;
-    const totalGaps = GRID_GAP * (columns - 1);
-    const usable = Math.max(220, (width || 800) - totalGaps - GRID_HPAD);
-    return Math.floor(usable / columns);
-  }, [viewMode, width, columns]);
-  const gridImageHeight = useMemo(() => Math.max(100, Math.round(itemWidth * 0.56)), [itemWidth]);
+  // Dynamic type-specific columns
+  const [typeFieldDefs, setTypeFieldDefs] = useState([]);
+  const [typeFieldLoading, setTypeFieldLoading] = useState(false);
+  const [typeFieldError, setTypeFieldError] = useState(null);
+  const [activeTypeId, setActiveTypeId] = useState(null);
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
-  // Preload from deep-link params
+  // User
+  const [me, setMe] = useState({ uid: null, email: null });
+
+
+  // Load User
   useEffect(() => {
-    const u = auth?.currentUser || null;
-    setMe({ uid: u?.uid ?? null, email: u?.email?.toLowerCase() ?? null });
-    const q = (routeParams?.query || routeParams?.q || routeParams?.term || '').toString();
-    const model = (routeParams?.model || '').toString();
-    if (q || model) {
-      const seed = q || model;
-      setQuery(seed);
-      setDebouncedQuery(seed);
-      log('seed from route', seed);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const u = auth.currentUser;
+    if (u) setMe({ uid: u.uid, email: u.email });
   }, []);
 
-  // Debounce keyword input
+  // Debounce Query
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), 350);
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(t);
   }, [query]);
 
-  // Load recents on mount
+  // Load Recents
   useEffect(() => {
     (async () => {
       try {
-        const r = await AsyncStorage.getItem(RECENT_KEY);
-        if (r) setRecents(JSON.parse(r));
-      } catch {}
+        const raw = await AsyncStorage.getItem(RECENT_KEY);
+        if (raw) setRecents(JSON.parse(raw));
+      } catch { }
     })();
   }, []);
 
-  // Trigger fetch when deps change
+  // Initial Fetch
   useEffect(() => {
-    // Reset pagination and fetch the full filtered set once
-    setPage(1);
-    setItems([]);
     fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, filters, sort, me.uid, me.email]);
+  }, [me.uid]); // Re-fetch when user loads
 
-  // Re-slice when page or pageSize changes
-  useEffect(() => {
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    setItems(allItems.slice(start, end));
-  }, [page, pageSize, allItems]);
-
-  // ---- helpers used in multiple places ----
-  const prettyDate = (d) => {
-    try {
-      const dt = new Date(d);
-      if (Number.isNaN(+dt)) return '—';
-      const yyyy = dt.getFullYear();
-      const mm = String(dt.getMonth() + 1).padStart(2, '0');
-      const dd = String(dt.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    } catch { return '—'; }
-  };
-
-  const daysUntil = (isoDate) => {
-    try {
-      const d = new Date(isoDate);
-      const today = new Date();
-      const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
-      if (isNaN(diff)) return '—';
-      if (diff < 0) return 'overdue';
-      if (diff === 0) return 'today';
-      if (diff === 1) return 'tomorrow';
-      return `in ${diff}d`;
-    } catch { return '—'; }
-  };
-
-  // buildQueryParams (unchanged signature)
-  const buildQueryParams = useCallback((p, pageSize) => {
+  // Build Query Params
+  const buildQueryParams = useCallback((p = 1, limit = 10000) => {
     const params = new URLSearchParams();
-
-    // send owner hints when onlyMine is on
-    if (filters.onlyMine) {
-      if (me.uid) params.set('assigned_to_uid', me.uid);
-      if (me.email) {
-        params.set('assigned_to_email', me.email);
-        params.set('assignedTo', me.email);
-      }
-    }
-
-    // keyword(s)
-    if (debouncedQuery) {
-      params.set('q', debouncedQuery);
-      params.set('query', debouncedQuery);
-      params.set('search', debouncedQuery);
-      params.set('term', debouncedQuery);
-    }
-
-    // other filters
-    if (filters.type) {
-      params.set('type', String(filters.type));
-      params.set('asset_type', String(filters.type));
-    }
-    if (filters.status) params.set('status', String(filters.status));
-    if (filters.location) params.set('location', String(filters.location));
-    if (filters.assignedTo) {
-      params.set('assignedTo', String(filters.assignedTo));
-      params.set('assigned_to', String(filters.assignedTo));
-    }
-    if (filters.onlyMine) params.set('onlyMine', '1');
-    if (filters.dueSoon) params.set('dueSoon', '1');
-
-    // sort / paging
-    params.set('page', String(p));
-    params.set('pageSize', String(pageSize));
-    params.set('limit', String(pageSize));
-    params.set('per_page', String(pageSize));
-    params.set('offset', String((p - 1) * pageSize));
-    // Map virtual fields to real query fields where possible
-    const primaryFieldForServer = sort.field === 'relevance' || sort.field === 'service_due'
-      ? (sort.field === 'service_due' ? 'next_service_date' : 'updated_at')
-      : sort.field;
-    params.set('sort', `${primaryFieldForServer}:${sort.dir}`);
-    params.set('order', `${primaryFieldForServer}:${sort.dir}`);
-    params.set('sort_field', primaryFieldForServer);
-    params.set('sort_dir', sort.dir);
-    // single-field sorting only (server may still do its own tiebreakers)
-    if (__DEV__) {
-      const obj = {};
-      for (const [k, v] of params.entries()) obj[k] = v;
-      log('params', obj);
-    }
+    params.append('page', p.toString());
+    params.append('limit', limit.toString());
     return params.toString();
-  }, [debouncedQuery, filters, sort, me.uid, me.email]);
+  }, []);
 
-  const extractItems = (data) => {
-    const arr = Array.isArray(data?.items)
-      ? data.items
-      : Array.isArray(data?.results)
-      ? data.results
-      : Array.isArray(data)
-      ? data
-      : [];
-    const total = typeof data?.total === 'number' ? data.total : arr.length;
-    return { arr, total };
-  };
+  // Client-side Filter & Sort
+  const getMaxPage = useCallback((length, size) => {
+    if (size === 'all') return 1;
+    const safeSize = typeof size === 'number' && size > 0 ? size : 1;
+    return Math.max(1, Math.ceil(Math.max(length, 1) / safeSize));
+  }, []);
 
-  const activeFilterFlag =
-    !!debouncedQuery ||
-    !!filters.type ||
-    !!filters.status ||
-    !!filters.location ||
-    !!filters.assignedTo ||
-    !!filters.onlyMine ||
-    !!filters.dueSoon;
+  const clientFilterAndSort = useCallback((raw) => {
+    const source = Array.isArray(raw) ? [...raw] : [];
+    let filtered = source.filter(it => {
+      // Keyword
+      const q = debouncedQuery.toLowerCase();
+      const keywordOk = !q || [
+        it.name, it.asset_name, it.id, it.model, it.serial_number,
+        it.asset_type, it.type, it.location, it.notes
+      ].some(v => String(v || '').toLowerCase().includes(q));
 
-  const clientFilterAndSort = (list) => {
-    const tokens = debouncedQuery
-      ? debouncedQuery.toLowerCase().split(/\s+/).filter(Boolean)
-      : [];
+      // Filters
+      const typeOk = !filters.type || (it.asset_type === filters.type || it.type === filters.type || it.asset_types?.name === filters.type);
+      const statusOk = !filters.status || (it.status === filters.status);
+      const locOk = !filters.location || String(it.location || '').toLowerCase().includes(filters.location.toLowerCase());
 
-    const isOverdue = (d) => {
-      if (!d) return false;
-      const dt = new Date(d);
-      return !Number.isNaN(+dt) && dt < new Date();
-    };
-    const norm = (v) => (v == null ? '' : String(v).toLowerCase());
+      const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email;
+      const assignedUid = it.assigned_to_id || it.assigned_to_uid || it.assigned_to_user_id;
+      const assignedOk = !filters.assignedTo || String(assigned || '').toLowerCase().includes(filters.assignedTo.toLowerCase());
 
-    let filtered = list.filter((it) => {
-      const name = it?.name ?? it?.asset_name ?? '';
-      const id = it?.id ?? '';
-      const serial = it?.serial_number ?? it?.fields?.serial_number ?? '';
-      const model = it?.model ?? it?.fields?.model ?? '';
-      const notes = it?.notes ?? '';
-      const desc = it?.description ?? '';
-      const loc = it?.location ?? it?.fields?.location ?? '';
-      const type = it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '';
-      const assigned =
-        it?.assigned_to ?? it?.users?.email ?? it?.users?.name ?? '';
+      const dueOk = !filters.dueSoon || (it.next_service_date && new Date(it.next_service_date) <= new Date(Date.now() + 7 * 86400000));
 
-      const hay = `${name} ${id} ${serial} ${model} ${notes} ${desc} ${loc} ${type} ${assigned}`.toLowerCase();
-      const keywordOk = tokens.length === 0 || tokens.every((t) => hay.includes(t));
+      const isMine = (me.uid && (assignedUid === me.uid)) || (me.email && String(assigned || '').toLowerCase().includes(me.email.toLowerCase()));
+      const onlyMineOk = !filters.onlyMine || isMine;
 
-      const normStatus = (s) => {
-        const t = String(s || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
-        const map = {
-          'in service': 'in service',
-          available: 'in service',
-          reserved: 'in service',
+      const desc = it.description || it.fields?.description || '';
+      const isQRReserved = String(desc).trim().toLowerCase() === 'qr reserved asset';
+      const reservedOk = !!filters.includeQRReserved || !isQRReserved;
+      const unassignedOk = !(String(assigned).trim()) && !assignedUid;
 
-          'repair': 'repair',
+      // Hide imported assets (UUID id) until a QR is assigned
+      const importedHidden = !isUUID(it.id) || false;
 
-          'maintenance': 'maintenance',
-
-          'checked out': 'checked out',
-          rented: 'rented',
-
-          'end of life': 'end of life',
-          lost: 'end of life',
-          retired: 'end of life',
-        };
-        return map[t] || t;
-      };
-
-      const typeOk = !filters.type || norm(type) === norm(filters.type);
-      const statusOk = !filters.status || normStatus(it?.status) === normStatus(filters.status);
-      const locOk = !filters.location || norm(loc).includes(norm(filters.location));
-      const assignedOk = !filters.assignedTo || norm(assigned).includes(norm(filters.assignedTo));
-      const dueOk = !filters.dueSoon || isOverdue(it?.next_service_date ?? it?.fields?.next_service_date);
-
-      const assignedUid =
-        it?.assigned_to_uid ?? it?.assigned_to_user_id ?? it?.assigned_to_id ?? it?.fields?.assigned_to_uid;
-      const assignedEmail = (
-        it?.assigned_to_email ?? it?.users?.useremail ?? it?.users?.email ?? it?.fields?.assigned_to_email ?? ''
-      ).toLowerCase();
-      const onlyMineOk =
-        !filters.onlyMine ||
-        (me.email && assignedEmail && assignedEmail === me.email) ||
-        (me.uid && assignedUid && assignedUid === me.uid);
-
-      return keywordOk && typeOk && statusOk && locOk && assignedOk && dueOk && onlyMineOk;
+      const baseOk = keywordOk && typeOk && statusOk && locOk && assignedOk && dueOk && onlyMineOk && reservedOk && importedHidden;
+      return filters.onlyUnassigned ? (baseOk && unassignedOk) : baseOk;
     });
 
     // robust sort
     const getVal = (it, f) => {
       if (!f) return undefined;
       switch (f) {
-        case 'updated_at': return it?.updated_at ?? it?.fields?.updated_at ?? '';
+        case 'updated_at':
+          return (
+            it?.last_updated ??
+            it?.updated_at ??
+            it?.fields?.last_updated ??
+            it?.fields?.updated_at ??
+            ''
+          );
         case 'name': return it?.name ?? it?.asset_name ?? '';
         case 'type': return it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '';
         case 'location': return it?.location ?? it?.fields?.location ?? '';
@@ -330,7 +231,7 @@ export default function SearchScreen() {
       const bNull = bvRaw == null || bvRaw === '';
       if (aNull || bNull) {
         if (aNull && bNull) return 0;
-        return sort.nullsLast ? (aNull ? 1 : -1) : (aNull ? -1 : 1);
+        return aNull ? -1 : 1;
       }
 
       let av = avRaw, bv = bvRaw;
@@ -347,8 +248,9 @@ export default function SearchScreen() {
       if (av > bv) return dir === 'asc' ? 1 : -1;
       return 0;
     };
-    // Custom comparators for virtual fields
+    // Custom comparators
     const computeRelevance = (it) => {
+      const tokens = debouncedQuery.toLowerCase().split(/\s+/).filter(Boolean);
       if (!tokens.length) return 0;
       const name = (it?.name || it?.asset_name || '').toLowerCase();
       const id = String(it?.id || '').toLowerCase();
@@ -357,7 +259,6 @@ export default function SearchScreen() {
       const loc = String(it?.location ?? it?.fields?.location ?? '').toLowerCase();
       const type = String(it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '').toLowerCase();
       let score = 0;
-      // strong boosts
       if (tokens.includes(id)) score += 1000;
       tokens.forEach(t => {
         if (name.startsWith(t)) score += 300;
@@ -385,7 +286,6 @@ export default function SearchScreen() {
         const av = computeRelevance(a);
         const bv = computeRelevance(b);
         if (av !== bv) return dir === 'asc' ? av - bv : bv - av;
-        // tie-breaker by name
         return cmpCore(a, b, 'name', 'asc');
       }
       if (field === 'service_due') {
@@ -395,7 +295,7 @@ export default function SearchScreen() {
         const bNull = bd === null;
         if (aNull || bNull) {
           if (aNull && bNull) return 0;
-          return sort.nullsLast ? (aNull ? 1 : -1) : (aNull ? -1 : 1);
+          return aNull ? -1 : 1;
         }
         return dir === 'asc' ? ad - bd : bd - ad;
       }
@@ -415,12 +315,78 @@ export default function SearchScreen() {
       if (aAss !== bAss) return aAss ? -1 : 1; // assigned first
       const p = cmp(a, b, sort.field, sort.dir);
       if (p !== 0) return p;
-      // deterministic fallback by name
       return cmpCore(a, b, 'name', 'asc');
     });
 
     return filtered;
-  };
+  }, [debouncedQuery, filters, me.email, me.uid, sort]);
+
+  useEffect(() => {
+    const processed = clientFilterAndSort(rawItems);
+    setItems(processed);
+    setMetrics((prev) => ({ ...prev, total: processed.length }));
+    setPage((prev) => Math.min(prev, getMaxPage(processed.length, pageSize)));
+  }, [rawItems, clientFilterAndSort, pageSize, getMaxPage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, filters]);
+
+  const selectedTypeInfo = useMemo(() => {
+    if (!filters.type) return null;
+    const target = String(filters.type).toLowerCase();
+    const pool = rawItems.length ? rawItems : items;
+    const match = pool.find((it) => {
+      const typeName = (it?.asset_type || it?.type || it?.asset_types?.name || '').toLowerCase();
+      return typeName === target;
+    });
+    if (!match) return { name: filters.type, id: null };
+    return {
+      name: filters.type,
+      id: match?.type_id || match?.asset_types?.id || null,
+    };
+  }, [filters.type, rawItems, items]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!filters.type) {
+      setTypeFieldDefs([]);
+      setActiveTypeId(null);
+      setTypeFieldLoading(false);
+      setTypeFieldError(null);
+      return () => { cancelled = true; };
+    }
+    const typeId = selectedTypeInfo?.id;
+    if (!typeId) {
+      setTypeFieldDefs([]);
+      setActiveTypeId(null);
+      setTypeFieldLoading(false);
+      setTypeFieldError(null);
+      return () => { cancelled = true; };
+    }
+    if (activeTypeId === typeId && typeFieldDefs.length) return () => { cancelled = true; };
+    setTypeFieldLoading(true);
+    setTypeFieldError(null);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
+        if (!res.ok) throw new Error('Failed to load fields');
+        const defs = await res.json();
+        if (cancelled) return;
+        const arr = Array.isArray(defs) ? defs : [];
+        setTypeFieldDefs(arr);
+        setActiveTypeId(typeId);
+      } catch (err) {
+        if (cancelled) return;
+        setTypeFieldDefs([]);
+        setActiveTypeId(null);
+        setTypeFieldError(err?.message || 'Failed to load fields');
+      } finally {
+        if (!cancelled) setTypeFieldLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filters.type, selectedTypeInfo?.id, activeTypeId, typeFieldDefs.length]);
 
   const saveRecent = useCallback(async () => {
     const labelParts = [];
@@ -434,7 +400,7 @@ export default function SearchScreen() {
     const entry = { label, query: debouncedQuery, filters, sort, ts: Date.now() };
     const next = [entry, ...recents.filter(r => r.label !== label)].slice(0, 10);
     setRecents(next);
-    try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+    try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { }
   }, [debouncedQuery, filters, sort, recents]);
 
   const fetchAll = useCallback(async () => {
@@ -448,7 +414,7 @@ export default function SearchScreen() {
     const t0 = perfNow();
 
     try {
-      const qs = buildQueryParams(1, 10000); // request many; server may ignore, we still post-filter
+      const qs = buildQueryParams(1, 10000);
 
       const endpoints = [
         `${API_BASE_URL}/assets?${qs}`,
@@ -467,28 +433,38 @@ export default function SearchScreen() {
       if (!ok) throw new Error(lastErr || 'Search failed');
 
       const { arr: rawItems } = extractItems(data);
+      setRawItems(rawItems);
       const processed = clientFilterAndSort(rawItems);
-      setAllItems(processed);
-      // first slice
-      const start = 0; const end = pageSize;
-      setItems(processed.slice(start, end));
-      setPage(1);
+      setItems(processed);
+
       const tookMs = Math.max(0, Math.round(perfNow() - t0));
       setMetrics({ total: processed.length, tookMs });
       saveRecent();
     } catch (e) {
       setError(e.message);
-      setAllItems([]);
+      setRawItems([]);
       setItems([]);
       setMetrics({ total: 0, tookMs: 0 });
     } finally {
       setLoading(false);
     }
-  }, [loading, filters.onlyMine, me.uid, me.email, buildQueryParams, clientFilterAndSort, pageSize, saveRecent]);
-
-  const onEndReached = () => {};
+  }, [loading, filters.onlyMine, me.uid, me.email, buildQueryParams, clientFilterAndSort, saveRecent]);
 
   const quickToggle = (key) => setFilters(f => ({ ...f, [key]: !f[key] }));
+  const clearFilters = () => {
+    setQuery('');
+    setDebouncedQuery('');
+    setFilters({
+      type: null,
+      status: null,
+      location: null,
+      assignedTo: null,
+      onlyMine: false,
+      dueSoon: false,
+      includeQRReserved: false,
+      onlyUnassigned: false,
+    });
+  };
 
   // active filter count for badge
   const activeCount = [
@@ -501,868 +477,927 @@ export default function SearchScreen() {
     !!filters.dueSoon,
   ].filter(Boolean).length;
 
-  // ---------- Card ----------
-  const ResultCard = React.memo(({ item, isExpanded, onToggleExpand }) => {
-    const name = item?.name || item?.asset_name || item?.id;
-    const serial = item?.serial_number ?? item?.fields?.serial_number;
-    const model = item?.model ?? item?.fields?.model;
-    const loc = item?.location ?? item?.fields?.location;
-    const type = item?.asset_type ?? item?.type ?? item?.asset_types?.name;
-    const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
+  const hideHeader = !!embed;
+  const computeReturnTarget = useCallback(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const current = `${window.location.pathname}${window.location.search || ''}`;
+        if (current) return current;
+      } catch {}
+    }
+    return embed ? '/(tabs)/dashboard?view=dashboard' : '/search';
+  }, [embed]);
 
-    const datePurchased = item?.date_purchased ?? item?.fields?.date_purchased;
-    const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
-    const updatedAt = item?.updated_at ?? item?.fields?.updated_at;
-    const notes = item?.notes ?? item?.fields?.notes ?? item?.description ?? '';
+  const goToAsset = useCallback((id) => {
+    if (!id) return;
+    try {
+      const returnTo = computeReturnTarget();
+      router.push({ pathname: '/asset/[assetId]', params: { assetId: String(id), returnTo } });
+    } catch (err) {
+      console.warn('Navigation error:', err);
+    }
+  }, [router, computeReturnTarget]);
 
-    const subtitle = [type ? String(type) : null, serial ? `SN ${serial}` : null, model || null]
-      .filter(Boolean)
-      .join(' • ');
-
-    const statusColor = statusToColor(item?.status);
-    // isExpanded + onToggleExpand provided by parent to minimize re-renders
-
-    return (
-      <TouchableOpacity
-        style={styles.card}
-        activeOpacity={0.9}
-        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/search' } })}
-        onLongPress={onToggleExpand}
-      >
-        <View style={styles.cardLeft}>
-          {item?.image_url ? (
-            <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
-          ) : (
-            <View style={[styles.cardImage, styles.cardImagePlaceholder]}>
-              <Ionicons name="qr-code-outline" size={22} color={COLORS.sub2} />
+  const actionsNode = (
+    <>
+      {/* Filter Button */}
+      <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterModalOpen(true)}>
+        <View style={{ position: 'relative' }}>
+          <Feather name="sliders" size={18} color={COLORS.primary} />
+          {activeCount > 0 && (
+            <View style={styles.countDot}>
+              <Text style={styles.countDotText}>{Math.min(activeCount, 9)}</Text>
             </View>
           )}
-        </View>
-
-        <View style={styles.cardBody}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{name}</Text>
-            <View style={[styles.badge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-              <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
-            </View>
-          </View>
-
-          {!!subtitle && <Text style={styles.cardSubtitle} numberOfLines={1}>{subtitle}</Text>}
-
-          {/* Primary meta chips */}
-          <View style={styles.metaRow}>
-            {assignedTo && (
-              <MetaChip icon="user" text={truncate(String(assignedTo), 24)} />
-            )}
-            {loc && (
-              <MetaChip icon="map-pin" text={truncate(String(loc), 18)} />
-            )}
-            {nextService && (
-              <MetaChip icon="tool" text={`Service ${daysUntil(nextService)}`} />
-            )}
-          </View>
-
-          {/* Expanded quick details */}
-          {isExpanded && (
-            <View style={styles.moreWrap}>
-              <DetailRow icon="fingerprint" label="ID" value={String(item.id)} />
-              {model ? <DetailRow icon="cpu" label="Model" value={String(model)} /> : null}
-              {datePurchased ? <DetailRow icon="calendar" label="Purchased" value={prettyDate(datePurchased)} /> : null}
-              {nextService ? <DetailRow icon="wrench" label="Next Service" value={prettyDate(nextService)} /> : null}
-              {updatedAt ? <DetailRow icon="clock" label="Updated" value={prettyDate(updatedAt)} /> : null}
-              {loc ? <DetailRow icon="map" label="Location" value={String(loc)} /> : null}
-              {notes ? (
-                <View style={styles.notesRow}>
-                  <Feather name="file-text" size={14} color={COLORS.sub} />
-                  <Text style={styles.notesText} numberOfLines={2}>{String(notes)}</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
-        </View>
-
-        <TouchableOpacity style={styles.cardRight} onPress={onToggleExpand} hitSlop={8}>
-          <MaterialIcons
-            name={isExpanded ? 'expand-less' : 'expand-more'}
-            size={24}
-            color={COLORS.sub2}
-          />
-        </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  });
-
-  // ---------- Grid Card (compact) ----------
-  const GridCard = React.memo(({ item }) => {
-    const title = item?.name || item?.asset_name || item?.model || item?.id;
-    const subtitle = item?.asset_types?.name || item?.asset_type || item?.type || '';
-    const statusColor = statusToColor(item?.status);
-    const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
-    const loc = item?.location ?? item?.fields?.location;
-    const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
-    return (
-      <TouchableOpacity
-        style={[styles.gridCard, { width: itemWidth }]}
-        activeOpacity={0.9}
-        onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/search' } })}
-      >
-        {item?.image_url ? (
-          <Image source={{ uri: item.image_url }} style={[styles.gridImage, { height: gridImageHeight }]} resizeMode="cover" />
-        ) : (
-          <View style={[styles.gridImage, { height: gridImageHeight, alignItems: 'center', justifyContent: 'center' }] }>
-            <Ionicons name="image-outline" size={24} color={COLORS.sub2} />
-          </View>
-        )}
-        <View style={{ paddingHorizontal: 10, paddingVertical: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-            <Text style={styles.gridTitle} numberOfLines={1}>{title}</Text>
-          </View>
-          {!!subtitle && <Text style={styles.gridSub} numberOfLines={1}>{subtitle}</Text>}
-          {/* status row */}
-          <View style={styles.gridStatusRow}>
-            <View style={[styles.badge, { alignSelf: 'flex-start', backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-              <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
-            </View>
-          </View>
-
-          {/* next line: two items horizontally (assigned, location) */}
-          {(assignedTo || loc) && (
-            <View style={styles.gridRowTwo}>
-              {assignedTo ? (
-                <View style={[styles.metaChip, styles.gridChipHalf]}>
-                  <Feather name="user" size={12} color={COLORS.sub} />
-                  <Text style={styles.metaText} numberOfLines={1}>{truncate(String(assignedTo), 18)}</Text>
-                </View>
-              ) : <View style={[styles.gridChipHalf, { opacity: 0 }]} />}
-              {loc ? (
-                <View style={[styles.metaChip, styles.gridChipHalf]}>
-                  <Feather name="map-pin" size={12} color={COLORS.sub} />
-                  <Text style={styles.metaText} numberOfLines={1}>{truncate(String(loc), 18)}</Text>
-                </View>
-              ) : <View style={[styles.gridChipHalf, { opacity: 0 }]} />}
-            </View>
-          )}
-
-          {/* then vertically (stack any remaining like service due) */}
-          {nextService ? (
-            <View style={{ marginTop: 6 }}>
-              <View style={styles.metaChip}>
-                <Feather name="tool" size={12} color={COLORS.sub} />
-                <Text style={styles.metaText} numberOfLines={1}>Service {daysUntil(nextService)}</Text>
-              </View>
-            </View>
-          ) : null}
         </View>
       </TouchableOpacity>
-    );
-  });
+
+      <TouchableOpacity style={styles.iconBtn} onPress={() => { setPage(1); fetchAll(); }}>
+        <Feather name="refresh-ccw" size={18} color={COLORS.primary} />
+      </TouchableOpacity>
+    </>
+  );
+  const Container = embed ? View : SafeAreaView;
+
+  // --- Table Columns ---
+  const normalizeFieldKey = (key) => String(key || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const formatFieldLabel = (raw) => {
+    const cleaned = String(raw || '').replace(/[_-]+/g, ' ').trim();
+    if (!cleaned) return '';
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  };
+
+  const baseColumns = useMemo(() => ([
+    { key: 'qr', label: '', width: 50 },
+    { key: 'image', label: '', width: 80 },
+    { key: 'id', label: 'Asset Id', width: 100 },
+    { key: 'other_id', label: 'Other Id', width: 120 },
+    { key: 'type', label: 'Asset type', width: 140 },
+    { key: 'serial', label: 'SERIAL NUMBER', width: 160 },
+    { key: 'description', label: 'Description', flex: 2, minWidth: 220 },
+    { key: 'model', label: 'Model', flex: 1, minWidth: 140 },
+    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 140 },
+    { key: 'status', label: 'Status', width: 120 },
+    { key: 'purchased', label: 'Date Purchased', width: 150 },
+    { key: 'updated', label: 'Last Updated', flex: 1.2, minWidth: 160 },
+    { key: 'updated_by', label: 'Last updated By', width: 160 },
+  ]), []);
+
+  const dynamicColumns = useMemo(() => {
+    if (!filters.type || !Array.isArray(typeFieldDefs) || !typeFieldDefs.length) return [];
+    return typeFieldDefs.map((def) => ({
+      key: `dyn_${def.id || def.slug}`,
+      label: def.name || formatFieldLabel(def.slug),
+      minWidth: 160,
+      flex: 1,
+      isDynamic: true,
+      field: def,
+    }));
+  }, [filters.type, typeFieldDefs]);
+
+  const columns = useMemo(() => [...baseColumns, ...dynamicColumns], [baseColumns, dynamicColumns]);
+
+  const columnMap = useMemo(() => {
+    const map = {};
+    columns.forEach((col) => {
+      map[col.key] = col;
+    });
+    return map;
+  }, [columns]);
+
+  const columnStyle = (key) => {
+    const col = columnMap[key];
+    if (!col) return {};
+    if (col.width) return { width: col.width };
+    return { flex: col.flex || 1, minWidth: col.minWidth || 120 };
+  };
+
+  const tableMinWidth = useMemo(() => {
+    return columns.reduce((sum, col) => {
+      if (col.width) return sum + col.width;
+      return sum + (col.minWidth || 140);
+    }, 0);
+  }, [columns]);
+
+  const visibleAssetTypes = useMemo(() => {
+    if (showAllTypes) return ASSET_TYPE_OPTIONS;
+    return ASSET_TYPE_OPTIONS.slice(0, 8);
+  }, [showAllTypes]);
+
+  const filterScrollMaxHeight = useMemo(() => {
+    const h = windowHeight || 800;
+    return Math.min(Math.max(h - 260, 420), 720);
+  }, [windowHeight]);
+
+  const currentSortLabel = useMemo(() => {
+    const opt = SORT_OPTIONS.find((o) => o.field === sort.field);
+    if (opt) return opt.label;
+    if (!sort.field) return 'Relevance';
+    return formatFieldLabel(sort.field);
+  }, [sort.field]);
+
+  const getDynamicFieldValue = (asset, def) => {
+    if (!asset || !def) return null;
+    const fields = asset.fields && typeof asset.fields === 'object' ? asset.fields : null;
+    if (!fields) return null;
+    const slug = def.slug ? normalizeFieldKey(def.slug) : null;
+    const label = def.name ? normalizeFieldKey(def.name) : null;
+    const candidates = new Set();
+    if (slug) candidates.add(slug);
+    if (label) candidates.add(label);
+    for (const key of Object.keys(fields)) {
+      const normKey = normalizeFieldKey(key);
+      if (candidates.has(normKey)) return fields[key];
+    }
+    if (slug && Object.prototype.hasOwnProperty.call(fields, slug)) return fields[slug];
+    if (label && Object.prototype.hasOwnProperty.call(fields, label)) return fields[label];
+    return null;
+  };
+
+  const formatDynamicValue = (def, value) => {
+    if (value === null || value === undefined || value === '') return '—';
+    const fieldType = String(def?.field_type?.slug || def?.field_type?.name || '').toLowerCase();
+    if (Array.isArray(value)) {
+      return value.length ? value.map((v) => String(v)).join(', ') : '—';
+    }
+    if (fieldType === 'boolean') {
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      const lowered = String(value).toLowerCase();
+      if (['true', 'yes', '1'].includes(lowered)) return 'Yes';
+      if (['false', 'no', '0'].includes(lowered)) return 'No';
+    }
+    if (fieldType === 'date') {
+      try {
+        const d = new Date(value);
+        if (!Number.isNaN(+d)) {
+          return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+      } catch { }
+    }
+    if (['number', 'decimal', 'currency'].includes(fieldType)) {
+      const num = Number(value);
+      if (!Number.isNaN(num)) return num.toLocaleString();
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+    return String(value);
+  };
+
+  // --- Render Helpers ---
+  const statusToColor = (s) => {
+    const t = String(s || '').toLowerCase();
+    if (['available', 'in service', 'reserved'].includes(t)) return { bg: '#DCFCE7', fg: '#166534', bd: '#BBF7D0' };
+    if (['maintenance', 'repair'].includes(t)) return { bg: '#FEF9C3', fg: '#854D0E', bd: '#FEF08A' };
+    if (['checked out', 'rented'].includes(t)) return { bg: '#DBEAFE', fg: '#1E40AF', bd: '#BFDBFE' };
+    if (['end of life', 'lost', 'retired'].includes(t)) return { bg: '#FEE2E2', fg: '#991B1B', bd: '#FECACA' };
+    return { bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
+  };
+
+  const prettyStatus = (s) => {
+    if (!s) return 'Unknown';
+    return s.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  };
+
+  const formatDaysUntil = (iso) => {
+    try {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(+d)) return '—';
+      const today = new Date();
+      const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+      if (diff === 0) return 'due today';
+      if (diff < 0) return `${Math.abs(diff)}d overdue`;
+      return `${diff}d`;
+    } catch {
+      return '—';
+    }
+  };
+
+  // Pagination Logic
+  const paginatedItems = useMemo(() => {
+    if (pageSize === 'all') return items;
+    const start = (page - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }, [items, page, pageSize]);
+
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(Math.max(items.length, 1) / pageSize));
+  const pageRangeStart = pageSize === 'all'
+    ? (items.length ? 1 : 0)
+    : (items.length ? ((page - 1) * pageSize) + 1 : 0);
+  const pageRangeEnd = pageSize === 'all'
+    ? items.length
+    : Math.min(page * pageSize, items.length);
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/(tabs)/dashboard'); // or wherever your home/tab is
-              }
-            }}
-          >
-            <Feather name="arrow-left" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
-
-          <Text style={styles.title}>Search</Text>
-        </View>
-
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setFiltersOpen(true)}>
-            <View style={{ position: 'relative' }}>
-              <Feather name="sliders" size={20} color={COLORS.primary} />
-              {activeCount > 0 && (
-                <View style={styles.countDot}>
-                  <Text style={styles.countDotText}>{Math.min(activeCount, 9)}</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => { setPage(1); fetchAll(); }}>
-            <Feather name="refresh-ccw" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
+    <Container style={embed ? styles.embedContainer : styles.container}>
+      {!hideHeader && (
+        <ScreenHeader
+          title="Search"
+          backLabel="Dashboard"
+          onBack={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/dashboard');
+            }
+          }}
+        />
+      )}
 
       {/* Search input */}
-      <View style={styles.searchRow}>
-        <Feather name="search" size={18} color={COLORS.sub2} style={{ marginRight: 8 }} />
-        <TextInput
+      <View style={styles.toolbarSurface}>
+        <SearchInput
           value={query}
           onChangeText={setQuery}
           placeholder="Search by name, ID, serial, model, notes…"
-          placeholderTextColor="#9AA6B2"
+          style={[hideHeader && styles.searchRowCompact]}
+          inputStyle={{ fontSize: 16 }}
           autoCapitalize="none"
           autoCorrect={false}
-          style={styles.searchInput}
-          returnKeyType="search"
-          onSubmitEditing={() => { setPage(1); fetchAll(); }}
+          right={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {actionsNode}
+            </View>
+          }
         />
-        {query?.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')}>
-            <Feather name="x" size={16} color={COLORS.sub2} />
-          </TouchableOpacity>
-        )}
-      </View>
+        {/* Quick filters */}
+        <View style={styles.quickRow}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
+            <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
+            <Chip label="In Service" icon="check-circle" active={filters.status === 'In Service'} onPress={() => setFilters(f => ({ ...f, status: f.status === 'In Service' ? null : 'In Service' }))} />
+          </View>
 
-      {/* Quick filters */}
-      <View style={styles.quickRow}>
-        <QuickToggle label="My assets" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} icon="user" />
-        <QuickToggle label="Needs service" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} icon="tool" />
-        <QuickToggle
-          label="In Service"
-          active={filters.status === 'in service'}
-          onPress={() => setFilters(f => ({ ...f, status: f.status === 'in service' ? null : 'in service' }))}
-          icon="check-circle"
-        />
-      </View>
-
-      {/* Metrics & sort */}
-      <View style={styles.metaBar}>
-        <Text style={styles.metaBarText}>
-          {metrics.total} results {metrics.tookMs ? `· ${metrics.tookMs} ms` : ''}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setSortOpen(true)}>
-            <Feather name="bar-chart-2" size={14} color={COLORS.primary} />
-            <Text style={styles.sortText}>{prettySortLabel(sort)}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setViewMode(m => (m === 'grid' ? 'list' : 'grid'))}>
-            <Feather name={viewMode === 'grid' ? 'list' : 'grid'} size={14} color={COLORS.primary} />
-            <Text style={styles.sortText}>{viewMode === 'grid' ? 'List' : 'Grid'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Recents */}
-      {recents?.length > 0 && (
-        <HorizontalChips
-          title="Recent"
-          items={recents.map(r => ({
-            key: r.ts.toString(),
-            label: r.label,
-            onPress: () => { setQuery(r.query || ''); setFilters(r.filters || {}); setSort(r.sort || sort); },
-             onRemove: async () => {
-              try {
-                const next = recents.filter(x => x.ts !== r.ts);
-                setRecents(next);
-                await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next));
-              } catch {}
-            },
-          }))}
-        />
-      )}
-
-      {/* Results list */}
-      {error ? (
-        <ErrorState message={error} onRetry={() => { setPage(1); fetchAll(); }} />
-      ) : items.length === 0 && !loading ? (
-        <EmptyState />
-      ) : (
-        <FlatList
-          data={items}
-          // Changing numColumns on the fly is not supported; use key to force remount
-          key={viewMode === 'grid' ? `grid-${columns}` : 'list'}
-          numColumns={viewMode === 'grid' ? columns : 1}
-          keyExtractor={(item, idx) => String(item?.id ?? idx)}
-          renderItem={({ item }) => (
-            viewMode === 'grid'
-              ? <GridCard item={item} />
-              : (
-                  <ResultCard
-                    item={item}
-                    isExpanded={expandedIds.has(String(item.id))}
-                    onToggleExpand={() =>
-                      setExpandedIds(prev => {
-                        const next = new Set(prev);
-                        const key = String(item.id);
-                        next.has(key) ? next.delete(key) : next.add(key);
-                        return next;
-                      })
-                    }
-                  />
-                )
-          )}
-          onEndReachedThreshold={0.4}
-          onEndReached={onEndReached}
-          ListFooterComponent={loading ? <ListLoading /> : null}
-          contentContainerStyle={{ paddingBottom: 28, paddingHorizontal: viewMode === 'grid' ? 16 : 0, alignItems: viewMode === 'grid' ? 'stretch' : undefined }}
-          columnWrapperStyle={viewMode === 'grid' ? { gap: GRID_GAP, justifyContent: 'center' } : undefined}
-          removeClippedSubviews={Platform.OS !== 'web'}
-          disableVirtualization={Platform.OS === 'web'}
-          initialNumToRender={viewMode === 'grid' ? Math.min(items.length, columns * 30) : Math.min(items.length, 30)}
-          maxToRenderPerBatch={viewMode === 'grid' ? columns * 30 : 30}
-          windowSize={10}
-        />
-      )}
-
-      {/* Pagination controls */}
-      <View style={{ alignItems: 'center', marginTop: 8, paddingHorizontal: 12 }}>
-        <View style={styles.paginationRow}>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setPage(p => Math.max(1, p - 1))}>
-            <Feather name="chevron-left" size={14} color={COLORS.primary} />
-            <Text style={styles.sortText}>Prev</Text>
-          </TouchableOpacity>
-          <Text style={styles.metaBarText}>Page {page} / {pageCount}</Text>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setPage(p => Math.min(pageCount, p + 1))}>
-            <Text style={styles.sortText}>Next</Text>
-            <Feather name="chevron-right" size={14} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.perPageRow}>
-          <Text style={styles.metaBarText}>Per page:</Text>
-          {PAGE_SIZE_OPTIONS.map(sz => (
-            <TouchableOpacity
-              key={sz}
-              style={[styles.sortBtn, pageSize === sz && { borderColor: COLORS.primary }]}
-              onPress={() => { setPageSize(sz); setPage(1); }}
-            >
-              <Text style={styles.sortText}>{sz}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {/* Sort Button */}
+            <TouchableOpacity style={[styles.iconBtn, styles.actionBtn, { marginRight: 0, height: 32, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' }]} onPress={() => setSortModalOpen(true)}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialIcons name="sort" size={18} color={COLORS.primary} />
+                <Text style={styles.actionBtnText}>
+                  {`${currentSortLabel} · ${(sort.dir || 'desc').toUpperCase()}`}
+                </Text>
+              </View>
             </TouchableOpacity>
-          ))}
+
+            {!isCompact && (
+              <View style={styles.viewToggleGroup}>
+                <TouchableOpacity
+                  style={[styles.viewToggleBtn, viewMode === 'grid' && styles.viewToggleBtnActive]}
+                  onPress={() => setViewMode('grid')}
+                >
+                  <Feather name="grid" size={18} color={viewMode === 'grid' ? COLORS.primary : '#64748B'} />
+                  <Text style={[styles.viewToggleText, viewMode === 'grid' && styles.viewToggleTextActive]}>Grid</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+                  onPress={() => setViewMode('list')}
+                >
+                  <Feather name="list" size={18} color={viewMode === 'list' ? COLORS.primary : '#64748B'} />
+                  <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>Table</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
-      {/* Filters modal */}
-      <FiltersModal
-        visible={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        filters={filters}
-        setFilters={setFilters}
-        onApply={() => { setFiltersOpen(false); fetchPage(1, true); }}
-      />
-      <SortModal
-        visible={sortOpen}
-        onClose={() => setSortOpen(false)}
-        sort={sort}
-        setSort={setSort}
-        onApply={() => { setSortOpen(false); fetchPage(1, true); }}
-      />
-    </SafeAreaView>
-  );
-}
-
-/* ---------- Small reusable bits ---------- */
-function MetaChip({ icon, text }) {
-  return (
-    <View style={styles.metaChip}>
-      <Feather name={icon} size={14} color={COLORS.sub} />
-      <Text style={styles.metaText} numberOfLines={1}>{text}</Text>
-    </View>
-  );
-}
-
-function DetailRow({ icon, label, value }) {
-  return (
-    <View style={styles.detailRow}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Feather name={icon} size={14} color={COLORS.sub} />
-        <Text style={styles.detailLabel}>{label}</Text>
+      {/* Content Area */}
+    {filters.type && typeFieldLoading && (
+      <View style={[styles.inlineAlert, { marginHorizontal: 12 }]}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+        <Text style={[styles.inlineAlertText, { marginLeft: 8 }]}>Loading {filters.type} fields…</Text>
       </View>
-      <Text style={styles.detailValue} numberOfLines={1}>{value || '—'}</Text>
-    </View>
-  );
-}
+    )}
+    {filters.type && typeFieldError && (
+      <View style={[styles.inlineAlert, { marginHorizontal: 12, backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+        <MaterialIcons name="error-outline" size={16} color="#B91C1C" />
+        <Text style={[styles.inlineAlertText, { marginLeft: 6, color: '#B91C1C' }]}>{typeFieldError}</Text>
+      </View>
+    )}
 
-function QuickToggle({ label, active, onPress, icon }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[styles.quick, active && styles.quickActive]}>
-      <Feather name={icon} size={14} color={active ? COLORS.primaryDark : COLORS.sub} />
-      <Text style={[styles.quickText, active && { color: COLORS.primaryDark }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+    {/* Inline Filters REMOVED per user request */}
 
-function HorizontalChips({ title, items }) {
-  return (
-    <View style={{ marginBottom: 8 }}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <FlatList
-        data={items}
-        keyExtractor={(i) => i.key}
-        renderItem={({ item }) => (
-          <View style={styles.chipRow}>
-            <View style={styles.chip}>
-              <TouchableOpacity onPress={item.onPress}>
-                <Text style={styles.chipText} numberOfLines={1}>{item.label}</Text>
-              </TouchableOpacity>
-              {item.onRemove ? (
-                <TouchableOpacity onPress={item.onRemove} style={styles.chipRemove} hitSlop={10}>
-                  <Feather name="x-circle" size={16} color={COLORS.primaryDark} />
+      {loading && !items.length ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{ marginTop: 12, color: COLORS.sub }}>Searching...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.center}>
+          <MaterialIcons name="error-outline" size={48} color={COLORS.dangerFg} />
+          <Text style={{ marginTop: 12, color: COLORS.dangerFg }}>{error}</Text>
+          <TouchableOpacity style={[styles.btn, { marginTop: 16 }]} onPress={fetchAll}>
+            <Text style={styles.btnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : items.length === 0 ? (
+        <View style={styles.center}>
+          <MaterialIcons name="search-off" size={48} color="#CBD5E1" />
+          <Text style={{ marginTop: 12, color: COLORS.sub, fontSize: 16, fontWeight: '600' }}>No assets found</Text>
+          <Text style={{ marginTop: 4, color: COLORS.sub2 }}>Try adjusting your search or filters</Text>
+        </View>
+      ) : (
+        /* Responsive View Switch */
+        (viewMode === 'grid') ? (
+          /* Mobile/Grid Card View */
+          <ScrollView style={styles.mobileScroll} contentContainerStyle={styles.mobileScrollContent}>
+            <Text style={styles.metaText}>{metrics.total} assets found • {metrics.tookMs} ms</Text>
+            <View style={styles.gridContainer}>
+              {paginatedItems.map((item) => {
+                const statusColor = statusToColor(item?.status);
+                const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
+                const loc = item?.location ?? item?.fields?.location;
+                const model = item?.model ?? item?.fields?.model;
+                const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
+
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.mobileCard, !isCompact && styles.desktopGridCard]}
+                    activeOpacity={0.8}
+                    onPress={() => goToAsset(item.id)}
+                  >
+                    <View style={styles.mobileCardHeader}>
+                      <View style={{ flexDirection: 'row', gap: 12, flex: 1 }}>
+                        {item?.image_url ? (
+                          <Image source={{ uri: item.image_url }} style={styles.mobileThumb} />
+                        ) : (
+                          <View style={[styles.mobileThumb, styles.mobileThumbPlaceholder]}>
+                            <Ionicons name="image-outline" size={20} color={COLORS.sub2} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.name || item?.asset_name || 'Unnamed Asset'}</Text>
+                          <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
+                            {item?.id} • {item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={[styles.mobileStatusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
+                        <Text style={[styles.mobileStatusText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.mobileCardDetails}>
+                      {model ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="cpu" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Model:</Text>
+                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{model}</Text>
+                        </View>
+                      ) : null}
+                      {assignedTo ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="user" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Assigned:</Text>
+                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{assignedTo}</Text>
+                        </View>
+                      ) : null}
+                      {loc ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="map-pin" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Location:</Text>
+                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{loc}</Text>
+                        </View>
+                      ) : null}
+                      {nextService ? (
+                        <View style={styles.mobileDetailRow}>
+                          <Feather name="tool" size={14} color="#64748B" />
+                          <Text style={styles.mobileDetailLabel}>Service:</Text>
+                          <Text style={[styles.mobileDetailValue, { color: '#B45309', fontWeight: '700' }]} numberOfLines={1}>
+                            {formatDaysUntil(nextService)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {filters.type && typeFieldDefs.map((def) => {
+                        const val = getDynamicFieldValue(item, def);
+                        if (val === null || val === undefined || val === '') return null;
+                        return (
+                          <View key={`mobile-${item.id}-${def.id}`} style={styles.mobileDetailRow}>
+                            <Text style={styles.mobileDetailLabel}>{formatFieldLabel(def.name || def.slug)}:</Text>
+                            <Text style={styles.mobileDetailValue} numberOfLines={1}>{formatDynamicValue(def, val)}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    <View style={styles.mobileCardActions}>
+                      <View style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}>
+                        <Text style={styles.mobileActionBtnText}>View Details</Text>
+                        <Feather name="arrow-right" size={16} color="#fff" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+
+              })}
+            </View>
+
+            {/* Mobile Pagination  */}
+
+            {items.length > 0 && (
+              <View style={styles.paginationRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
+                  <TouchableOpacity disabled={page <= 1} onPress={() => setPage(p => p - 1)} style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}>
+                    <MaterialIcons name="chevron-left" size={24} color={page <= 1 ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                  <Text style={styles.pageText}>{page} of {totalPages}</Text>
+                  <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage(p => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}>
+                    <MaterialIcons name="chevron-right" size={24} color={page >= totalPages ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+            )}
+          </ScrollView>
+        ) : (
+          /* Desktop Table View */
+          <View style={styles.tableWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              contentContainerStyle={{ flexGrow: 1 }}
+            >
+              <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
+                <View style={styles.tableHeader}>
+                  {columns.map((c) => (
+                    <View key={c.key} style={[styles.th, columnStyle(c.key)]}>
+                      <Text style={styles.thText} numberOfLines={1}>{c.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
+                  {paginatedItems.map((item, idx) => {
+                    const statusColor = statusToColor(item?.status);
+                    const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
+                    const model = item?.model ?? item?.fields?.model;
+                    const serial = item?.serial_number ?? item?.fields?.serial_number;
+                    const description = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
+                    const purchased = item?.date_purchased ?? item?.purchase_date ?? item?.fields?.date_purchased ?? item?.fields?.purchase_date;
+                    const updated = item?.last_updated ?? item?.updated_at;
+                    const updatedBy = item?.last_changed_by_name ?? item?.last_changed_by_email ?? '—';
+                    const otherId = item?.other_id ?? item?.asset_tag ?? item?.asset_name ?? item?.name ?? '—';
+                    const imageUrl = item?.image_url ?? item?.image ?? item?.fields?.image_url ?? item?.fields?.image ?? null;
+
+                    // Date formatters
+                    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+                    const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short' }) : '—';
+
+                return (
+                  <View
+                    key={item.id}
+                    style={[styles.tr, idx % 2 === 1 && styles.rowAlt, (hoverRowId === item.id) && styles.rowHover]}
+                    onMouseEnter={() => setHoverRowId(item.id)}
+                    onMouseLeave={() => setHoverRowId(null)}
+                  >
+                    {/* QR Code */}
+                    <View style={[styles.td, columnStyle('qr')]}>
+                      <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 4 }}>
+                        <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    </View>
+                    {/* Image */}
+                    <View style={[styles.td, columnStyle('image')]}>
+                      {imageUrl ? (
+                        <Image source={{ uri: imageUrl }} style={styles.tableThumb} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.tableThumb, styles.tableThumbPlaceholder]}>
+                          <Ionicons name="image-outline" size={16} color="#94A3B8" />
+                        </View>
+                      )}
+                    </View>
+                    {/* Asset Id */}
+                    <View style={[styles.td, columnStyle('id')]}>
+                      <TouchableOpacity onPress={() => goToAsset(item.id)} activeOpacity={0.7} style={styles.assetLink}>
+                        <Text style={[styles.tdText, styles.linkText]} numberOfLines={1}>{item.id}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {/* Other Id */}
+                    <View style={[styles.td, columnStyle('other_id')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{otherId}</Text>
+                    </View>
+                    {/* Type */}
+                    <View style={[styles.td, columnStyle('type')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? '—'}</Text>
+                    </View>
+                    {/* Serial */}
+                    <View style={[styles.td, columnStyle('serial')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{serial || '—'}</Text>
+                    </View>
+                    {/* Description */}
+                    <View style={[styles.td, columnStyle('description')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{description || '—'}</Text>
+                    </View>
+                    {/* Model */}
+                    <View style={[styles.td, columnStyle('model')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{model || '—'}</Text>
+                    </View>
+                    {/* Assigned To */}
+                    <View style={[styles.td, columnStyle('assigned')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '—'}</Text>
+                    </View>
+                    {/* Status */}
+                    <View style={[styles.td, columnStyle('status')]}>
+                      <View style={[styles.badge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
+                        <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+                      </View>
+                    </View>
+                    {/* Date Purchased */}
+                    <View style={[styles.td, columnStyle('purchased')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{fmtDate(purchased)}</Text>
+                    </View>
+                    {/* Last Updated */}
+                    <View style={[styles.td, columnStyle('updated')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{fmtDateTime(updated)}</Text>
+                    </View>
+                    {/* Last Updated By */}
+                    <View style={[styles.td, columnStyle('updated_by')]}>
+                      <Text style={styles.tdText} numberOfLines={1}>{updatedBy}</Text>
+                    </View>
+                        {/* Dynamic Fields */}
+                        {dynamicColumns.map((col) => {
+                          const val = formatDynamicValue(col.field, getDynamicFieldValue(item, col.field));
+                          return (
+                            <View key={`${item.id}-${col.key}`} style={[styles.td, columnStyle(col.key)]}>
+                              <Text style={styles.tdText} numberOfLines={1}>{val}</Text>
+                            </View>
+                          );
+                        })}
+                  </View>
+                );
+                  })}
+                </ScrollView>
+              </View>
+            </ScrollView>
+
+            {/* Desktop Pagination Controls */}
+            {items.length > 0 && (
+              <View style={styles.paginationRow}>
+                <View style={styles.paginationLeft}>
+                  <Text style={styles.pageText}>Rows per page:</Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {PAGE_SIZE_OPTIONS.map((sz) => {
+                      const active = pageSize === sz;
+                      const label = sz === 'all' ? 'All' : sz;
+                      return (
+                        <TouchableOpacity
+                          key={label}
+                          onPress={() => setPageSize(sz === 'all' ? 'all' : sz)}
+                          style={[styles.pageSizeBtn, active && styles.pageSizeBtnActive]}
+                        >
+                          <Text style={[styles.pageSizeText, active && styles.pageSizeTextActive]}>{label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.paginationCenter}>
+                  <Text style={styles.pageText}>
+                    {pageSize === 'all'
+                      ? `All ${items.length} assets`
+                      : `${pageRangeStart}-${pageRangeEnd} of ${items.length}`}
+                  </Text>
+                  <Text style={styles.pageNumberText}>
+                    {pageSize === 'all' ? 'Viewing all assets' : `Page ${page} of ${totalPages}`}
+                  </Text>
+                </View>
+                <View style={styles.paginationRight}>
+                  <TouchableOpacity
+                    disabled={page <= 1 || pageSize === 'all'}
+                    onPress={() => setPage(p => Math.max(1, p - 1))}
+                    style={[styles.pageBtn, (page <= 1 || pageSize === 'all') && styles.pageBtnDisabled]}
+                  >
+                    <MaterialIcons name="chevron-left" size={20} color={(page <= 1 || pageSize === 'all') ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={page >= totalPages || pageSize === 'all'}
+                    onPress={() => setPage(p => Math.min(totalPages, p + 1))}
+                    style={[styles.pageBtn, (page >= totalPages || pageSize === 'all') && styles.pageBtnDisabled]}
+                  >
+                    <MaterialIcons name="chevron-right" size={20} color={(page >= totalPages || pageSize === 'all') ? '#CBD5E1' : '#0F172A'} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        )
+      )}
+
+      {/* Advanced Filter Modal */}
+      <Modal visible={filterModalOpen} transparent animationType="fade" onRequestClose={() => setFilterModalOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={() => setFilterModalOpen(false)} />
+          <View style={styles.filterSheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.modalTitle}>Filters</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {activeCount > 0 && (
+                  <TouchableOpacity onPress={clearFilters} style={styles.clearAllBtn}>
+                    <Text style={styles.clearAllText}>Clear all</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setFilterModalOpen(false)} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
+                  <Feather name="x" size={16} color={COLORS.primary} />
                 </TouchableOpacity>
-              ) : null}
+              </View>
+            </View>
+            <ScrollView style={{ maxHeight: filterScrollMaxHeight }}>
+              <View style={{ gap: 16 }}>
+                {/* Asset Type */}
+                <View>
+                  <Text style={styles.groupTitle}>Asset Type</Text>
+                  <View style={[styles.filterMenuRow, styles.chipsRow, styles.typeChipWrap]}>
+                    <Chip label="Any type" active={!filters.type} onPress={() => setFilters(f => ({ ...f, type: null }))} />
+                    {visibleAssetTypes.map(t => (
+                      <Chip key={t} label={t} active={filters.type === t} onPress={() => setFilters(f => ({ ...f, type: t }))} />
+                    ))}
+                  </View>
+                  {ASSET_TYPE_OPTIONS.length > 8 && (
+                    <TouchableOpacity onPress={() => setShowAllTypes(v => !v)} style={styles.showMoreBtn}>
+                      <Text style={styles.showMoreText}>{showAllTypes ? 'Show less' : 'Show more'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Status */}
+                <View>
+                  <Text style={styles.groupTitle}>Status</Text>
+                  <View style={[styles.filterMenuRow, styles.chipsRow]}>
+                    <Chip label="Any status" active={!filters.status} onPress={() => setFilters(f => ({ ...f, status: null }))} />
+                    {['In Service', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                      <Chip key={s} label={s} active={filters.status === s} onPress={() => setFilters(f => ({ ...f, status: s }))} />
+                    ))}
+                  </View>
+                </View>
+
+                {/* Assigned To */}
+                <View>
+                  <Text style={styles.groupTitle}>Assigned To (email)</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    placeholder="someone@company.com"
+                    value={filters.assignedTo || ''}
+                    onChangeText={(t) => setFilters(f => ({ ...f, assignedTo: t || null }))}
+                  />
+                </View>
+
+                {/* Location */}
+                <View>
+                  <Text style={styles.groupTitle}>Location</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    placeholder="Office / Site"
+                    value={filters.location || ''}
+                    onChangeText={(t) => setFilters(f => ({ ...f, location: t || null }))}
+                  />
+                </View>
+
+                {/* Switches */}
+                <View style={{ gap: 12 }}>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Only my assets</Text>
+                    <Switch value={filters.onlyMine} onValueChange={(v) => setFilters(f => ({ ...f, onlyMine: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Only unassigned</Text>
+                    <Switch value={filters.onlyUnassigned} onValueChange={(v) => setFilters(f => ({ ...f, onlyUnassigned: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Due soon (service)</Text>
+                    <Switch value={filters.dueSoon} onValueChange={(v) => setFilters(f => ({ ...f, dueSoon: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Include QR reserved assets</Text>
+                    <Switch value={filters.includeQRReserved} onValueChange={(v) => setFilters(f => ({ ...f, includeQRReserved: v }))} trackColor={{ false: '#E2E8F0', true: COLORS.primary }} />
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
+                setFilters({ type: null, status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false });
+                setFilterModalOpen(false);
+              }}>
+                <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btn, { flex: 1 }]} onPress={() => setFilterModalOpen(false)}>
+                <Text style={styles.btnText}>Apply</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        )}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 4 }}
-      />
-    </View>
+        </View>
+      </Modal>
+
+      {/* Sort Modal */}
+      <Modal visible={sortModalOpen} transparent animationType="fade" onRequestClose={() => setSortModalOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={() => setSortModalOpen(false)} />
+          <View style={styles.filterSheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.modalTitle}>Sort</Text>
+              <TouchableOpacity onPress={() => setSortModalOpen(false)} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
+                <Feather name="x" size={16} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ gap: 16 }}>
+              <View>
+                <Text style={styles.groupTitle}>Sort by</Text>
+                <View style={[styles.filterMenuRow, styles.chipsRow]}>
+                  {['Relevance', 'Updated', 'Name', 'Service Due', 'Status', 'Type', 'Location', 'Assigned To', 'ID'].map(f => {
+                    const key = f.toLowerCase().replace(' ', '_');
+                    const active = sort.field === key || (key === 'relevance' && !sort.field);
+                    return (
+                      <Chip key={f} label={f} active={active} onPress={() => setSort(s => ({ ...s, field: key }))} />
+                    );
+                  })}
+                </View>
+              </View>
+              <View>
+                <Text style={styles.groupTitle}>Order</Text>
+                <View style={[styles.filterMenuRow, styles.chipsRow]}>
+                  <Chip label="Ascending" active={sort.dir === 'asc'} onPress={() => setSort(s => ({ ...s, dir: 'asc' }))} />
+                  <Chip label="Descending" active={sort.dir === 'desc'} onPress={() => setSort(s => ({ ...s, dir: 'desc' }))} />
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => setSortModalOpen(false)}>
+                <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btn, { flex: 1 }]} onPress={() => setSortModalOpen(false)}>
+                <Text style={styles.btnText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* QR Modal - Centered Dialog Style */}
+      <Modal visible={!!qrModalItem} transparent animationType="fade" onRequestClose={() => setQrModalItem(null)}>
+        <View style={[styles.modalBackdrop, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+          <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={() => setQrModalItem(null)} />
+          <View style={[styles.filterSheet, { width: 'auto', maxWidth: 400, borderRadius: 24, padding: 32, alignItems: 'center' }]}>
+            <Text style={[styles.modalTitle, { marginBottom: 24, fontSize: 24 }]}>{qrModalItem?.id}</Text>
+            <View style={{ padding: 16, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              {qrModalItem && (
+                <QRCode
+                  value={`${String(API_BASE_URL).replace(/\/+$/, '')}/check-in/${qrModalItem.id}`}
+                  size={220}
+                />
+              )}
+            </View>
+            <Text style={{ marginTop: 24, textAlign: 'center', color: '#64748B', fontSize: 15, lineHeight: 22 }}>
+              Scan this QR code to instantly open the asset details and perform actions.
+            </Text>
+            <TouchableOpacity style={[styles.btn, { marginTop: 32, width: '100%', height: 48 }]} onPress={() => setQrModalItem(null)}>
+              <Text style={[styles.btnText, { fontSize: 16 }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+    </Container>
   );
 }
 
-function FiltersModal({ visible, onClose, filters, setFilters, onApply }) {
-  const [nameForSave, setNameForSave] = useState('');
-  const typeOptions = [
-    { label: 'Any type', value: null },
-    { label: 'Vehicle', value: 'vehicle' },
-    { label: 'Drone', value: 'drone' },
-    { label: 'Laptop', value: 'laptop' },
-  ];
-  const statusOptions = [
-    { label: 'Any status', value: null },
-    { label: 'In Service', value: 'in service' },
-    { label: 'Repair', value: 'repair' },
-    { label: 'Maintenance', value: 'maintenance' },
-    { label: 'End of Life', value: 'end of life' },
-  ];
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose} />
-      <View style={styles.modalSheet}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Filters</Text>
-          <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={COLORS.text} /></TouchableOpacity>
-        </View>
-
-        <View style={styles.formRow}>
-          <Text style={styles.label}>Asset Type</Text>
-          <ChipSelect value={filters.type} onChange={v => setFilters(f => ({ ...f, type: v }))} options={typeOptions} />
-        </View>
-        <View style={styles.formRow}>
-          <Text style={styles.label}>Status</Text>
-          <ChipSelect value={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} options={statusOptions} />
-        </View>
-        <View style={styles.formRow}>
-          <Text style={styles.label}>Assigned To (email)</Text>
-          <TextInput
-            placeholder="someone@company.com"
-            value={filters.assignedTo || ''}
-            onChangeText={t => setFilters(f => ({ ...f, assignedTo: t || null }))}
-            style={styles.input}
-            placeholderTextColor="#9AA6B2"
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-        </View>
-        <View style={styles.formRow}>
-          <Text style={styles.label}>Location</Text>
-          <TextInput
-            placeholder="Office / Site"
-            value={filters.location || ''}
-            onChangeText={t => setFilters(f => ({ ...f, location: t || null }))}
-            style={styles.input}
-            placeholderTextColor="#9AA6B2"
-          />
-        </View>
-
-        <View style={styles.switchRow}>
-          <Toggle label="Only my assets" value={!!filters.onlyMine} onChange={() => setFilters(f => ({ ...f, onlyMine: !f.onlyMine }))} />
-          <Toggle label="Due soon (service)" value={!!filters.dueSoon} onChange={() => setFilters(f => ({ ...f, dueSoon: !f.dueSoon }))} />
-        </View>
-
-        <View style={styles.modalActions}>
-          <TouchableOpacity style={[styles.modalBtn, styles.secondary]} onPress={onClose}>
-            <Text style={styles.modalBtnTextSecondary}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modalBtn, styles.primary]} onPress={onApply}>
-            <Text style={styles.modalBtnTextPrimary}>Apply</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function SortModal({ visible, onClose, sort, setSort, onApply }) {
-  const FIELDS = [
-    { label: 'Relevance', value: 'relevance' },
-    { label: 'Updated', value: 'updated_at' },
-    { label: 'Name', value: 'name' },
-    { label: 'Service Due', value: 'service_due' },
-    { label: 'Status', value: 'status' },
-    { label: 'Type', value: 'type' },
-    { label: 'Location', value: 'location' },
-    { label: 'Assigned To', value: 'assigned_to' },
-    { label: 'ID', value: 'id' },
-  ];
-  const DIRS = [{ label: 'Ascending', value: 'asc' }, { label: 'Descending', value: 'desc' }];
-
-  const Row = ({ label, children }) => (
-    <View style={styles.formRow}>
-      <Text style={styles.label}>{label}</Text>
-      {children}
-    </View>
-  );
-
-  const ChipRow = ({ value, onChange, options }) => (
-    <View style={styles.chipSelectRow}>
-      {options.map(o => (
-        <TouchableOpacity
-          key={o.value}
-          style={[styles.choiceChip, value === o.value && styles.choiceChipActive]}
-          onPress={() => onChange(o.value)}
-        >
-          <Text style={[styles.choiceChipText, value === o.value && styles.choiceChipTextActive]}>{o.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  // no presets
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose} />
-      <View style={styles.modalSheet}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Sort</Text>
-          <TouchableOpacity onPress={onClose}><Feather name="x" size={20} color={COLORS.text} /></TouchableOpacity>
-        </View>
-
-        
-
-        <Row label="Sort by">
-          <ChipRow value={sort.field} onChange={v => setSort(s => ({ ...s, field: v }))} options={FIELDS} />
-        </Row>
-        <Row label="Order">
-          <ChipRow value={sort.dir} onChange={v => setSort(s => ({ ...s, dir: v }))} options={DIRS} />
-        </Row>
-
-        {/* Removed: Nulls last toggle (not required) */}
-
-        <View style={styles.modalActions}>
-          <TouchableOpacity style={[styles.modalBtn, styles.secondary]} onPress={onClose}>
-            <Text style={styles.modalBtnTextSecondary}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modalBtn, styles.primary]} onPress={onApply}>
-            <Text style={styles.modalBtnTextPrimary}>Apply</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function ChipSelect({ value, onChange, options }) {
-  return (
-    <View style={styles.chipSelectRow}>
-      {options.map(o => (
-        <TouchableOpacity
-          key={String(o.value)}
-          style={[styles.choiceChip, value === o.value && styles.choiceChipActive]}
-          onPress={() => onChange(o.value)}
-        >
-          <Text style={[styles.choiceChipText, value === o.value && styles.choiceChipTextActive]}>{o.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
-
-function Toggle({ label, value, onChange }) {
-  return (
-    <TouchableOpacity onPress={onChange} style={styles.toggleRow}>
-      <View style={[styles.toggleBox, value && styles.toggleBoxOn]}>
-        <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
-      </View>
-      <Text style={styles.toggleLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function ListLoading() {
-  return (
-    <View style={{ paddingVertical: 16 }}>
-      <ActivityIndicator color={COLORS.primary} />
-    </View>
-  );
-}
-
-function ErrorState({ message, onRetry }) {
-  return (
-    <View style={styles.centerState}>
-      <Feather name="alert-triangle" size={28} color={COLORS.dangerFg} />
-      <Text style={styles.centerTitle}>Something went wrong</Text>
-      <Text style={styles.centerSub}>{message}</Text>
-      <TouchableOpacity style={[styles.modalBtn, styles.primary, { marginTop: 12 }]} onPress={onRetry}>
-        <Text style={styles.modalBtnTextPrimary}>Try again</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function EmptyState() {
-  return (
-    <View style={styles.centerState}>
-      <Ionicons name="search-outline" size={28} color={COLORS.sub2} />
-      <Text style={styles.centerTitle}>No results yet</Text>
-      <Text style={styles.centerSub}>
-        Try adjusting keywords or filters.
-      </Text>
-    </View>
-  );
-}
-
-// ---- tiny helpers ----
-const truncate = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
-const prettyStatus = (s) => {
-  if (!s) return '—';
-  const t = String(s).toLowerCase().replace(/[_-]+/g, ' ').trim();
-  switch (t) {
-    case 'available':
-    case 'in service':
-    case 'reserved':
-      return 'In Service';
-    case 'repair':
-      return 'Repair';
-    case 'maintenance':
-    case 'checked out':
-    case 'rented':
-    case 'end of life':
-    case 'lost':
-    case 'retired':
-      return 'End of Life';
-    default:
-      return s.charAt(0).toUpperCase() + s.slice(1);
-  }
-};
-const statusToColor = (s) => {
-  const base = { bg: '#F0F4F8', fg: COLORS.sub, bd: '#E6EDF3' };
-  if (!s) return { bg: COLORS.primaryLight, fg: COLORS.primaryDark, bd: '#D6E8FF' };
-  const t = String(s).toLowerCase().replace(/[_-]+/g, ' ').trim();
-  switch (t) {
-    case 'available':
-    case 'in service':
-    case 'reserved':
-      return { bg: COLORS.primaryLight, fg: COLORS.primaryDark, bd: '#D6E8FF' };
-    case 'repair':
-      return { bg: '#FFE5E7', fg: '#C62828', bd: '#F8B7BE' };
-    case 'maintenance':
-    case 'checked out':
-    case 'rented':
-      return { bg: '#FFF9C4', fg: '#8D6E00', bd: '#FFF59D' };
-    case 'end of life':
-    case 'lost':
-    case 'retired':
-      return { bg: COLORS.dangerBg, fg: COLORS.dangerFg, bd: '#F9C7CD' };
-    default:
-      return base;
-  }
-};
-const prettySortLabel = (s) => {
-  const labelFor = {
-    relevance: 'Relevance',
-    updated_at: 'Updated',
-    name: 'Name',
-    service_due: 'Service Due',
-    status: 'Status',
-    type: 'Type',
-    location: 'Location',
-    assigned_to: 'Assigned To',
-    id: 'ID',
-  };
-  const primary = `${labelFor[s.field] || s.field} · ${s.dir.toUpperCase()}`;
-  return primary + (s.nullsLast ? ' · nulls last' : '');
-};
-
-// ---- styles ----
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: '#F7FAFF' },
+  embedContainer: { flex: 1, backgroundColor: '#F7FAFF', padding: 0 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  iconBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: '#EFF6FF' },
+  actionBtn: { width: 'auto', paddingHorizontal: 12 },
+  actionBtnText: { color: COLORS.primary, fontWeight: '600', fontSize: 13 },
+  countDot: { position: 'absolute', top: -2, right: -2, backgroundColor: '#D32F2F', borderRadius: 6, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  countDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  toolbarSurface: { marginBottom: 8 },
+  searchRowCompact: { marginBottom: 8, marginHorizontal: 12, marginTop: 8 },
+  quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', paddingHorizontal: 12, marginBottom: 12, marginTop: 8, justifyContent: 'space-between', alignItems: 'center' },
+  metaText: { fontSize: 13, color: '#64748B', fontWeight: '600', marginHorizontal: 16, marginBottom: 8 },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-  },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.text },
-  actions: { flexDirection: 'row', gap: 10 },
-  iconBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#D6E8FF'
-  },
-  countDot: {
-    position: 'absolute', right: -6, top: -6, backgroundColor: COLORS.primary,
-    width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center'
-  },
-  countDotText: { color: 'white', fontSize: 11, fontWeight: '800' },
-
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'white',
-    marginHorizontal: 16, paddingHorizontal: 12, borderRadius: 12, height: 46,
-    borderWidth: 1, borderColor: '#D6E8FF'
-  },
-  searchInput: { flex: 1, fontSize: 16, color: COLORS.text },
-
-  quickRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
-  quick: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 999, backgroundColor: 'white'
-  },
-  quickActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
-  quickText: { fontSize: 13, color: COLORS.sub },
-
-  metaBar: {
-    paddingHorizontal: 16, paddingVertical: 8,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'
-  },
-  metaBarText: { color: COLORS.sub, fontSize: 13 },
-  sortBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-    backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: '#D6E8FF'
-  },
-  sortText: { fontSize: 13, color: COLORS.primaryDark, fontWeight: '700' },
-  paginationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  perPageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
-
-  sectionTitle: { marginLeft: 16, marginBottom: 6, color: COLORS.text, fontWeight: '700' },
-  chipRow: { flexDirection: 'row', alignItems: 'center' },
-  chip: {
-    marginHorizontal: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.primaryLight,
+  // Table Styles (Desktop)
+  tableWrap: {
+    flex: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#fff',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#D6E8FF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginLeft: 12,
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
-  chipText: { color: COLORS.primaryDark, fontWeight: '700' },
-  chipRemove: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 999,
+  tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  tableContent: { flex: 1 },
+  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' },
+  tableBodyScroll: { flex: 1 },
+  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff', alignItems: 'center' },
+  rowAlt: { backgroundColor: '#FAFAFA' },
+  rowHover: { backgroundColor: '#F0F9FF' },
+  td: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  tdText: { fontSize: 14, color: '#334155', fontWeight: '600', textAlign: 'center' },
+  assetLink: { paddingVertical: 4, paddingHorizontal: 4 },
+  linkText: { color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' },
+  tableThumb: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F1F5F9', overflow: 'hidden' },
+  tableThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+
+  // Mobile Card Styles
+  mobileScroll: { flex: 1 },
+  mobileScrollContent: { paddingHorizontal: 12, paddingBottom: 24 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -8 },
+  mobileCard: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D6E8FF',
-  },
-  card: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 12,
-    marginHorizontal: 10, marginVertical: 6, borderRadius: 14, backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: '#E9F1FF',
-    shadowColor: '#0B63CE', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
-    elevation: 1
-  },
-  cardLeft: { marginRight: 12 },
-  cardImage: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#D6E8FF' },
-  cardImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1 },
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: COLORS.text },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
-  badgeText: { fontSize: 11, fontWeight: '800' },
-  cardSubtitle: { color: COLORS.sub2, marginTop: 2 },
-
-  metaRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
-  metaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#F5F9FF', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
-    borderWidth: 1, borderColor: '#E2EEFF'
-  },
-  metaText: { fontSize: 12, color: COLORS.sub },
-
-  // Grid
-  gridCard: {
     borderRadius: 14,
-    backgroundColor: COLORS.card,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E9F1FF',
-    overflow: 'hidden',
-    shadowColor: '#0B63CE', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
-    marginVertical: 6,
+    shadowColor: '#0B63CE',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    width: '100%',
   },
-  gridImage: { width: '100%', backgroundColor: '#EFF6FF' },
-  gridTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: COLORS.text },
-  gridSub: { color: COLORS.sub2, fontSize: 12 },
-  gridMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  gridStatusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  gridMetaInline: { flexDirection: 'row', flex: 1, flexWrap: 'wrap', gap: 6 },
-  gridRowTwo: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  gridChipHalf: { flex: 1 },
-
-  moreWrap: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#EDF4FF',
-    gap: 8
+  desktopGridCard: {
+    width: '32%', // 3 columns on desktop
+    minWidth: 300,
+    marginHorizontal: 8,
+    marginBottom: 16,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  detailLabel: { color: COLORS.sub, fontWeight: '600' },
-  detailValue: { color: COLORS.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12 },
+  mobileCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 8 },
+  mobileThumb: { width: 48, height: 48, borderRadius: 8, backgroundColor: '#F1F5F9' },
+  mobileThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  mobileCardTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 2 },
+  mobileCardSubtitle: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  mobileStatusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, alignSelf: 'flex-start' },
+  mobileStatusText: { fontSize: 11, fontWeight: '800' },
+  mobileCardDetails: { gap: 8, marginBottom: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0F4F8' },
+  mobileDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mobileDetailLabel: { fontSize: 13, color: '#64748B', fontWeight: '700', minWidth: 70 },
+  mobileDetailValue: { fontSize: 13, color: '#0F172A', fontWeight: '600', flex: 1 },
+  mobileCardActions: { flexDirection: 'row', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0F4F8' },
+  mobileActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  mobileActionBtnPrimary: { backgroundColor: '#0B63CE' },
+  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 
-  notesRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: '#F7FBFF', borderWidth: 1, borderColor: '#E2EEFF',
-    padding: 8, borderRadius: 8
-  },
-  notesText: { color: COLORS.sub, flex: 1, lineHeight: 18 },
+  // Shared / Utils
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, alignSelf: 'flex-start' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  btn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, backgroundColor: '#0B63CE', alignItems: 'center' },
+  btnText: { color: '#fff', fontWeight: '700' },
+  btnGhost: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: '#0B63CE', alignItems: 'center' },
+  btnIcon: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  btnPrimary: { backgroundColor: '#0B63CE' },
 
-  cardRight: { marginLeft: 6, paddingTop: 2 },
+  // Modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  filterSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%', width: '100%' },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
+  inlineIconBtn: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  groupTitle: { fontSize: 14, fontWeight: '800', color: '#1E293B', marginBottom: 8, textTransform: 'uppercase' },
+  filterMenuRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  chipsRow: { flexWrap: 'wrap' },
+  typeChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  switchLabel: { fontSize: 14, color: '#334155', fontWeight: '600' },
+  clearAllBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#EFF6FF' },
+  clearAllText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
+  showMoreBtn: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  showMoreText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
+  inlineAlert: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFF' },
+  inlineAlertText: { fontSize: 12, color: '#0F172A', fontWeight: '600' },
 
-  centerState: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 36 },
-  centerTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginTop: 8 },
-  centerSub: { color: COLORS.sub, textAlign: 'center', marginTop: 6 },
+  // Pagination
+  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  paginationLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  paginationCenter: { alignItems: 'center', flex: 1 },
+  paginationRight: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end', flex: 1 },
+  pageText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  pageNumberText: { fontSize: 12, color: '#94A3B8', fontWeight: '600', marginTop: 2 },
+  pageSizeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
+  pageSizeBtnActive: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  pageSizeText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  pageSizeTextActive: { color: '#2563EB' },
+  pageBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
+  pageBtnDisabled: { opacity: 0.5, backgroundColor: '#F1F5F9' },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' },
-  modalSheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16,
-    borderTopWidth: 1, borderColor: '#D6E8FF'
-  },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
-  formRow: { marginVertical: 8 },
-  label: { marginBottom: 6, color: COLORS.sub, fontWeight: '600' },
-  input: {
-    borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: Platform.select({ ios: 12, android: 10, default: 10 }),
-    fontSize: 15, color: COLORS.text, backgroundColor: '#fff'
-  },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 4 },
-  chipSelectRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  choiceChip: {
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-    borderWidth: 1, borderColor: '#D6E8FF', backgroundColor: 'white'
-  },
-  choiceChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
-  choiceChipText: { color: COLORS.sub },
-  choiceChipTextActive: { color: COLORS.primaryDark, fontWeight: '700' },
+  // Inline Filters
+  inlineFilterBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, paddingHorizontal: 16, paddingBottom: 16, flexWrap: 'wrap', backgroundColor: '#F7FAFF' },
+  filterInputGroup: { width: 140 },
+  filterLabel: { fontSize: 12, fontWeight: '600', color: '#64748B', marginBottom: 4 },
+  filterInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0F172A' },
 
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primary: { backgroundColor: COLORS.primary },
-  secondary: { backgroundColor: '#F3F6FB' },
-  modalBtnTextPrimary: { color: '#fff', fontWeight: '800' },
-  modalBtnTextSecondary: { color: COLORS.text, fontWeight: '800' },
-
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  toggleBox: { width: 52, height: 30, borderRadius: 999, backgroundColor: '#E6EEFB', padding: 3, borderWidth: 1, borderColor: '#D6E8FF' },
-  toggleBoxOn: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  toggleKnob: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff' },
-  toggleKnobOn: { marginLeft: 20, backgroundColor: '#fff', shadowColor: COLORS.primary, shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
-  toggleLabel: { color: COLORS.text, fontWeight: '600' },
+  // View Toggle
+  viewToggleGroup: { flexDirection: 'row', backgroundColor: '#EFF6FF', borderRadius: 8, padding: 2 },
+  viewToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  viewToggleBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  viewToggleText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  viewToggleTextActive: { color: COLORS.primary },
 });

@@ -94,7 +94,7 @@ export default function ScannedAssetsList() {
         <View style={styles.info}>
           <Text style={styles.name}>{item.name}</Text>
           <Text style={styles.status}>
-            Status: {checkedInAssets.includes(item.id) ? 'Checked In' : 'Pending'}
+            Status: {checkedInAssets.includes(item.id) ? 'Processed' : 'Pending'}
           </Text>
         </View>
         {checkedInAssets.includes(item.id) ? (

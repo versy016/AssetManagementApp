@@ -1,48 +1,44 @@
 // Login.js - User login screen for the app
 
-// Import authentication instance and sign-in method from Firebase
 import { auth } from '../../firebaseConfig';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-// Import React and hooks for state and effect management
-import React, { useState, useEffect } from 'react';
-// Import UI components from React Native
-import { View, TextInput, Button, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-// Import Expo Router for navigation
+import React, { useState } from 'react';
+import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTheme } from 'react-native-paper';
 
-// Main Login component
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import AppTextInput from '../../components/ui/AppTextInput';
+import AppButton from '../../components/ui/AppButton';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+
 export default function Login() {
-  const router = useRouter(); // Router instance for navigation
-  // State for user input and UI feedback
-  const [email, setEmail] = useState(''); // Stores the email input
-  const [password, setPassword] = useState(''); // Stores the password input
-  const [errorMessage, setErrorMessage] = useState(''); // Error message to display
-  const [loading, setLoading] = useState(false); // Loading spinner state
+  const router = useRouter();
+  const theme = useTheme();
 
-  // Handles navigation to Forgot Password screen
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
   const handleForgotPassword = () => {
     router.push('/(auth)/ForgotPassword');
   };
 
-  // Handles login logic when user presses the login button
   const handleLogin = async () => {
-    // Validate input
     if (!email || !password) {
       setErrorMessage('Please enter both email and password');
       return;
     }
 
-    setLoading(true); // Show loading spinner
-    setErrorMessage(''); // Clear previous errors
+    setLoading(true);
+    setErrorMessage('');
 
     try {
-      // Attempt to sign in using Firebase authentication
       await signInWithEmailAndPassword(auth, email, password);
-      Alert.alert('Login Success', 'You have logged in successfully!');
-      // Navigate to dashboard tab after successful login
+      // Alert.alert('Login Success', 'You have logged in successfully!'); // Optional: remove alert for smoother flow
       router.replace('/(tabs)/dashboard');
     } catch (error) {
-      // Handle and display specific authentication errors
       let errorMsg = 'Login failed';
       switch (error.code) {
         case 'auth/invalid-email':
@@ -53,6 +49,7 @@ export default function Login() {
           break;
         case 'auth/user-not-found':
         case 'auth/wrong-password':
+        case 'auth/invalid-credential':
           errorMsg = 'Invalid email or password';
           break;
         default:
@@ -60,106 +57,80 @@ export default function Login() {
       }
       setErrorMessage(errorMsg);
     } finally {
-      setLoading(false); // Hide loading spinner
+      setLoading(false);
     }
   };
 
-  // Render the login form UI
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+    <ScreenWrapper style={styles.container} withScrollView>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: theme.colors.primary }]}>Login</Text>
 
-      {/* Email input field */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        onChangeText={setEmail}
-        value={email}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        placeholderTextColor="#888"
-    />
+        <AppTextInput
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
 
-    <TextInput
-      style={styles.input}
-      placeholder="Password"
-      onChangeText={setPassword}
-      value={password}
-      secureTextEntry
-      placeholderTextColor="#888"
-    />
+        <AppTextInput
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
-    {/* Forgot Password link */}
-    <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: 16 }}>
-      <Text style={{ color: '#1E90FF', fontWeight: '600' }}>Forgot Password?</Text>
-    </TouchableOpacity>
+        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
+          <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>Forgot Password?</Text>
+        </TouchableOpacity>
 
-    <Button 
-      title="Login" 
-      onPress={handleLogin} 
-      color="#007BFF" 
-      disabled={loading}
-    />
+        <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
-    {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <AppButton
+          mode="contained"
+          onPress={handleLogin}
+          loading={loading}
+        >
+          Login
+        </AppButton>
 
-    <TouchableOpacity 
-      onPress={() => router.push('/(auth)/register')}
-      disabled={loading}
-    >
-      <Text style={styles.registerLink}>Don't have an account? Register</Text>
-    </TouchableOpacity>
-
-    {/* Full-screen overlay loader */}
-    {loading && (
-      <View style={styles.loaderOverlay}>
-        <ActivityIndicator size="large" color="#1E90FF" />
+        <TouchableOpacity
+          onPress={() => router.push('/(auth)/register')}
+          disabled={loading}
+          style={styles.registerLink}
+        >
+          <Text style={{ color: theme.colors.primary, fontWeight: '500' }}>
+            Don't have an account? Register
+          </Text>
+        </TouchableOpacity>
       </View>
-    )}
-  </View>
-);
-
+    </ScreenWrapper>
+  );
 }
-
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    justifyContent: 'center',
+  },
+  content: {
     padding: 20,
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    flex: 1,
+    minHeight: 500, // Ensure vertical centering on larger screens
   },
   title: {
-    fontSize: 24,
-    marginBottom: 20,
+    fontSize: 32,
+    marginBottom: 32,
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 5,
-    marginBottom: 15,
-    color: '#000',
-  },
-  error: {
-    color: 'red',
-    marginTop: 10,
-    textAlign: 'center',
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: 24,
   },
   registerLink: {
-    marginTop: 20,
-    textAlign: 'center',
-    color: '#1E90FF',
-    fontWeight: '500',
+    marginTop: 24,
+    alignItems: 'center',
   },
-  loaderOverlay: {
-  ...StyleSheet.absoluteFillObject,
-  backgroundColor: 'rgba(255,255,255,0.8)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 10,
-},
-
 });

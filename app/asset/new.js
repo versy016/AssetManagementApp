@@ -14,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { LogBox } from 'react-native';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { formatDisplayDate } from '../../utils/date';
+import ScreenHeader from '../../components/ui/ScreenHeader';
 
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
@@ -33,7 +35,8 @@ const normSlug = (s = '') =>
 
 export default function NewAsset() {
   const router = useRouter();
-  const { fromAssetId } = useLocalSearchParams();
+  const { fromAssetId, preselectId, returnTo } = useLocalSearchParams();
+  const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -96,6 +99,8 @@ export default function NewAsset() {
   // ---------- static / non-dynamic fields ----------
   const [image, setImage] = useState(null);
   const [document, setDocument] = useState(null);
+  // For custom URL fields: allow selecting a document and auto-fill with S3 URL after upload
+  const [urlDocMap, setUrlDocMap] = useState({}); // { [slug]: { uri, name, mimeType } }
 
   // UI error bag
   const [errors, setErrors] = useState({});       // { slugOrFieldName: "message" }
@@ -103,7 +108,11 @@ export default function NewAsset() {
 
   // Upload state
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0); // 0..100 (web only)
+  const [uploadProgress, setUploadProgress] = useState(0); // 0..100
+  const [uploadStartTs, setUploadStartTs] = useState(null); // Date.now()
+  const [indetTick, setIndetTick] = useState(0);
+  // Web-only: direct DOM overlay to guarantee visibility regardless of RNW Modal quirks
+  const webDomOverlayRef = useRef(null);
 
   // dropdown meta
   const [options, setOptions] = useState({ assetTypes: [], users: [], statuses: [], assetIds: [] });
@@ -128,7 +137,7 @@ export default function NewAsset() {
   const [id, setId] = useState('');
   const [typeId, setTypeId] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('In Service');
   const [location, setLocation] = useState('');
   const [locQuery, setLocQuery] = useState('');
   const [locOpen, setLocOpen] = useState(false);
@@ -141,9 +150,18 @@ export default function NewAsset() {
   const [model, setModel] = useState('');
   const [description, setDescription] = useState('');
   const [nextServiceDate, setNextServiceDate] = useState('');
-  const [datePurchased, setDatePurchased] = useState('');
+  // Default purchase date to today (YYYY-MM-DD)
+  const __today = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+  const [datePurchased, setDatePurchased] = useState(__today);
   const [notes, setNotes] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
+  const [otherId, setOtherId] = useState('');
 
   // dynamic schema & values
   const [fieldsSchema, setFieldsSchema] = useState([]); // backend-defined fields for the chosen type
@@ -165,6 +183,10 @@ export default function NewAsset() {
         assetIds:   normAssetIds,
       });
       setFilteredAssetIds(normAssetIds);
+      // If a preselected QR id is provided (from check-in), set it
+      if (preselectId && normAssetIds.includes(String(preselectId))) {
+        setId(String(preselectId));
+      }
     });
 
     if (fromAssetId) {
@@ -182,6 +204,7 @@ export default function NewAsset() {
           setDescription(data.description || '');
           setNotes(data.notes || '');
           setSerialNumber(data.serial_number || '');
+          setOtherId(data.other_id || '');
           setNextServiceDate(toYMD(data.next_service_date));
           setDatePurchased(toYMD(data.date_purchased));
 
@@ -190,7 +213,7 @@ export default function NewAsset() {
         })
         .catch(console.error);
     }
-  }, []);
+  }, [preselectId]);
 
   // Debounced Google Places suggestions via server proxy
   useEffect(() => {
@@ -286,7 +309,7 @@ export default function NewAsset() {
 
       // Known slugs
       const known = new Set([
-        'id','type_id','assigned_to_id','status','location','model','description','next_service_date','date_purchased','notes','image','document'
+        'id','type_id','assigned_to_id','status','location','model','description','other_id','next_service_date','date_purchased','notes','image','document'
       ]);
       for (const f of fieldsSchema) known.add(f.slug || normSlug(f.name));
 
@@ -391,13 +414,51 @@ export default function NewAsset() {
       if (f.is_required) {
         const val = fieldValues[slug];
         const t = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
-        const empty =
-          (t === 'multiselect' && (!Array.isArray(val) || val.length === 0))
-            ? true
-            : (t === 'boolean')
-              ? false
-              : (val === undefined || val === null || String(val).trim() === '');
+        let empty = false;
+        if (t === 'multiselect') empty = (!Array.isArray(val) || val.length === 0);
+        else if (t === 'boolean') empty = false;
+        else empty = (val === undefined || val === null || String(val).trim() === '');
+
+        // Special case: URL fields may be satisfied by an attached document for this slug
+        if (t === 'url' && empty) {
+          if (urlDocMap && urlDocMap[slug]) empty = false;
+        }
         if (empty) newErrors[slug] = 'Required';
+      }
+      // If a date field links to a document slug, and the date is set, ensure the doc exists or is attached
+      if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'date') {
+        let linkSlug = '';
+        try {
+          const vr = f.validation_rules && typeof f.validation_rules === 'object'
+            ? f.validation_rules
+            : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+          const opts = f.options && typeof f.options === 'object' ? f.options : null;
+          const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+          linkSlug = Array.isArray(l) ? (l[0] || '') : (l || '');
+          linkSlug = String(linkSlug || '').trim();
+        } catch {}
+        // Read optional requirement flag
+        let requireDoc = true;
+        try {
+          const vr = f.validation_rules && typeof f.validation_rules === 'object'
+            ? f.validation_rules
+            : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+          if (vr) {
+            const v = vr.requires_document_required ?? vr.require_document_required ?? vr.document_required ?? vr.require_document;
+            if (typeof v === 'boolean') requireDoc = v; else if (typeof v === 'string') requireDoc = v.toLowerCase() === 'true';
+          }
+        } catch {}
+        if (linkSlug && requireDoc) {
+          const dateVal = fieldValues[slug];
+          if (dateVal) {
+            const docSlug = normSlug(linkSlug);
+            const docVal = fieldValues[docSlug];
+            const hasUpload = !!(urlDocMap && urlDocMap[docSlug]);
+            if ((!docVal || String(docVal).trim() === '') && !hasUpload) {
+              newErrors[docSlug] = `Required with ${f.label || f.name}`;
+            }
+          }
+        }
       }
       if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'number') {
         const v = fieldValues[slug];
@@ -432,26 +493,39 @@ export default function NewAsset() {
     data.append('type_id', typeId);
     if (assignedToId) data.append('assigned_to_id', assignedToId);
     if (status) data.append('status', status);
-    if (location) data.append('location', location);
+    // Build dynamic fields payload (no placeholders)
     data.append('fields', JSON.stringify(fieldValues));
     if (model) data.append('model', model);
-    if (description) data.append('description', description);
-    if (nextServiceDate) data.append('next_service_date', nextServiceDate);
-    if (datePurchased) data.append('date_purchased', datePurchased);
-    if (notes) data.append('notes', notes);
-    if (serialNumber) data.append('serial_number', serialNumber);
+    if (description) data.append('description', description);    if (datePurchased) data.append('date_purchased', datePurchased);    if (serialNumber) data.append('serial_number', serialNumber);
+    if (otherId) data.append('other_id', otherId);
 
     if (image?.file) data.append('image', image.file, image.file.name || 'upload.jpg');
-    if (document) {
-      data.append('document', {
-        uri: document.uri,
-        name: document.name || 'document.pdf',
-        type: document.mimeType || 'application/pdf',
-      });
+    // We no longer bundle per-field documents in the create request.
+    // They will be uploaded to /assets/:id/documents/upload after the asset is created.
+    // Keep the legacy top-level 'document' only if user picked the generic Document picker and no URL-field docs were chosen.
+    const urlDocEntries = Object.entries(urlDocMap).filter(([, v]) => !!v);
+    const shouldSendLegacyDoc = urlDocEntries.length === 0 && !!document;
+    if (shouldSendLegacyDoc) {
+      const docToUpload = document;
+      if (Platform.OS === 'web') {
+        try {
+          const resp = await fetch(docToUpload.uri);
+          const blob = await resp.blob();
+          const file = new File([blob], docToUpload.name || 'document.pdf', { type: docToUpload.mimeType || blob.type || 'application/pdf' });
+          data.append('document', file, file.name);
+        } catch {
+          data.append('document', { uri: docToUpload.uri, name: docToUpload.name || 'document.pdf', type: docToUpload.mimeType || 'application/pdf' });
+        }
+      } else {
+        data.append('document', { uri: docToUpload.uri, name: docToUpload.name || 'document.pdf', type: docToUpload.mimeType || 'application/pdf' });
+      }
     }
 
     setUploading(true);
     setUploadProgress(0);
+    setUploadStartTs(Date.now());
+    // Yield to the UI so the modal renders before starting the upload
+    await new Promise((r) => setTimeout(r, 0));
 
     const handleServerFailure = async (errLike) => {
       try {
@@ -487,51 +561,182 @@ export default function NewAsset() {
     };
 
     try {
-      if (Platform.OS === 'web') {
-        await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', `${API_BASE_URL}/assets`);
-          const uid = auth.currentUser?.uid;
-          if (uid) xhr.setRequestHeader('X-User-Id', uid);
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-              const pct = Math.round((e.loaded / e.total) * 100);
-              setUploadProgress(pct);
-            }
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve();
-            } else {
-              handleServerFailure(xhr.responseText);
-              reject(new Error('upload-failed'));
-            }
-          };
-          xhr.onerror = () => {
-            handleServerFailure('Network error');
-            reject(new Error('network-error'));
-          };
-          xhr.send(data);
-        });
-      } else {
+      // Use XHR on all platforms to surface progress
+      let createdAsset = null;
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE_URL}/assets`);
         const uid = auth.currentUser?.uid;
-        const headers = uid ? { 'X-User-Id': uid } : {};
-        const res = await fetch(`${API_BASE_URL}/assets`, { method: 'POST', body: data, headers });
-        if (!res.ok) {
-          await handleServerFailure(res);
-          throw new Error('upload-failed');
+        if (uid) xhr.setRequestHeader('X-User-Id', uid);
+        xhr.upload.onprogress = (e) => {
+          if (e && e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(pct);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { createdAsset = JSON.parse(xhr.responseText || '{}')?.asset || null; } catch {}
+            resolve();
+          }
+          else {
+            handleServerFailure(xhr.responseText);
+            reject(new Error('upload-failed'));
+          }
+        };
+        xhr.onerror = () => {
+          handleServerFailure('Network error');
+          reject(new Error('network-error'));
+        };
+        xhr.send(data);
+      });
+
+  // After create: upload each selected per-field document to asset_documents
+  try {
+    if (createdAsset && createdAsset.id && urlDocEntries.length > 0) {
+      // Build mapping docSlug -> { dateLabel, dateValue, fieldId, fieldName }
+      const norm = (s) => String(s || '').toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const toTitle = (s) => {
+        const txt = String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+        return txt.split(' ').map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : '')).join(' ');
+      };
+      const parseJsonMaybe = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
+      const docMeta = {};
+      for (const df of (fieldsSchema || [])) {
+        const slug = df.slug || norm(df.name);
+        const typeCode = (df.field_type?.slug || df.field_type?.name || '').toLowerCase();
+            if (typeCode === 'date') {
+              const vr = parseJsonMaybe(df.validation_rules) || {};
+              const opts = parseJsonMaybe(df.options) || {};
+              const link = vr.requires_document_slug || vr.require_document_slug || opts.requires_document_slug || opts.require_document_slug;
+              let docSlug = Array.isArray(link) ? (link[0] || '') : (link || '');
+              docSlug = norm(docSlug);
+              if (!docSlug) continue;
+              const dateVal = fieldValues[slug];
+              const docField = (fieldsSchema || []).find(ff => (ff.slug || norm(ff.name)) === docSlug) || null;
+              docMeta[docSlug] = {
+                dateLabel: df.label || df.name || slug,
+                dateValue: dateVal || null,
+                fieldId: docField?.id || null,
+                fieldName: docField?.name || docSlug,
+              };
+            }
+          }
+          // Upload each picked doc
+          for (const [docSlug, picked] of urlDocEntries) {
+            try {
+          const meta = docMeta[norm(docSlug)] || {};
+          const fd = new FormData();
+          // attach file
+          if (Platform.OS === 'web') {
+            try {
+              const resp = await fetch(picked.uri);
+              const blob = await resp.blob();
+              const file = new File([blob], picked.name || 'document.pdf', { type: picked.mimeType || blob.type || 'application/pdf' });
+              fd.append('file', file, file.name);
+            } catch {
+              fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
+            }
+          } else {
+            fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
+          }
+          if (meta.fieldId) fd.append('asset_type_field_id', String(meta.fieldId));
+          const rawName = meta.fieldName || docSlug;
+          const niceName = toTitle(rawName);
+          fd.append('title', niceName);
+          fd.append('kind', niceName);
+          if (meta.dateLabel) fd.append('related_date_label', String(meta.dateLabel));
+          if (meta.dateValue) fd.append('related_date', String(meta.dateValue));
+          const resp = await fetch(`${API_BASE_URL}/assets/${createdAsset.id}/documents/upload`, { method: 'POST', body: fd });
+          if (!resp.ok) {
+            // swallow to avoid blocking creation; user can reattach later
+            continue;
+              }
+            } catch {
+              // ignore individual failures to not block the whole flow
+            }
+          }
         }
-      }
+      } catch {}
 
       Alert.alert('Success', 'Asset created!');
-      router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+      if (normalizedReturnTo) {
+        try { router.replace(String(normalizedReturnTo)); } catch { router.back(); }
+      } else {
+        router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+      }
     } catch (_e) {
       // handled above
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setUploadStartTs(null);
     }
   };
+
+  // ---------- Web DOM overlay (guaranteed) ----------
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    try {
+      if (uploading) {
+        // Create if missing
+        if (!webDomOverlayRef.current) {
+          const el = document.createElement('div');
+          el.style.position = 'fixed';
+          el.style.top = '0'; el.style.left = '0'; el.style.right = '0'; el.style.bottom = '0';
+          el.style.zIndex = '2147483647';
+          el.style.background = 'rgba(255,255,255,0.85)';
+          el.style.display = 'flex';
+          el.style.alignItems = 'center';
+          el.style.justifyContent = 'center';
+          el.innerHTML = `
+            <div style="text-align:center;font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; color:#0F172A">
+              <div class="spin" style="width:32px;height:32px;border:3px solid #D0E2FF;border-top-color:#0B63CE;border-radius:50%;margin:0 auto;animation:rnwspin 0.9s linear infinite"></div>
+              <div style="margin-top:10px">Uploading <span id="pct">0%</span></div>
+              <div style="width:260px;height:8px;background:#E6EDF3;border-radius:6px;overflow:hidden;margin:8px auto 0">
+                <div id="bar" style="height:8px;background:#0B63CE;width:0;border-radius:6px"></div>
+              </div>
+              <div id="secs" style="margin-top:6px;color:#64748B"></div>
+            </div>
+            <style>@keyframes rnwspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
+          `;
+          document.body.appendChild(el);
+          webDomOverlayRef.current = el;
+        }
+        // Update progress text and bar
+        const el = webDomOverlayRef.current;
+        const pctNode = el.querySelector('#pct');
+        const barNode = el.querySelector('#bar');
+        const secsNode = el.querySelector('#secs');
+        if (pctNode) pctNode.textContent = `${Math.max(0, Math.floor(uploadProgress || 0))}%`;
+        if (barNode) barNode.style.width = `${Math.max(0, Math.min(100, uploadProgress || 0)) * 2.6}px`;
+        if (secsNode && uploadStartTs) secsNode.textContent = `${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`;
+      } else {
+        // Remove if present
+        if (webDomOverlayRef.current) {
+          try { document.body.removeChild(webDomOverlayRef.current); } catch {}
+          webDomOverlayRef.current = null;
+        }
+      }
+    } catch {}
+    return () => {
+      if (Platform.OS !== 'web') return;
+      if (webDomOverlayRef.current) {
+        try { document.body.removeChild(webDomOverlayRef.current); } catch {}
+        webDomOverlayRef.current = null;
+      }
+    };
+  }, [uploading, uploadProgress, uploadStartTs]);
+
+  // ---------- Indeterminate animation for web/native when percent is unknown ----------
+  useEffect(() => {
+    let timer;
+    const noPct = !(typeof uploadProgress === 'number' && uploadProgress > 0);
+    if (uploading && noPct) {
+      timer = setInterval(() => setIndetTick((t) => (t + 8) % 100), 120);
+    }
+    return () => { if (timer) clearInterval(timer); };
+  }, [uploading, uploadProgress]);
 
   // ---------- UI pieces ----------
   const renderField = (f) => {
@@ -548,10 +753,67 @@ export default function NewAsset() {
     const selectItems = (f.options || []).map(o => ({ label: String(o.label ?? o), value: (o.value ?? o) }));
 
     switch (typeCode) {
+      case 'url':
+        return (
+          <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
+            {Label}
+            {(() => {
+              const picked = urlDocMap[slug];
+              const existing = fieldValues[slug];
+              const urlLike = typeof existing === 'string' && /^https?:\/\//i.test(existing);
+              const nameFromUrl = urlLike ? decodeURIComponent(existing.split('?')[0].split('#')[0].split('/').pop() || 'document') : null;
+              const name = picked?.name || nameFromUrl;
+              return name ? (
+                <Text style={{ marginTop: 6, fontStyle: 'italic', color: '#444' }}>Attached: {name}</Text>
+              ) : null;
+            })()}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <TouchableOpacity
+                style={[styles.btn, { paddingVertical: 10 }]}
+                onPress={async () => {
+                  try {
+                    const res = await DocumentPicker.getDocumentAsync({
+                      type: [
+                        'application/pdf',
+                        'application/msword',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                      ],
+                      multiple: false,
+                    });
+                    if (res.canceled) return;
+                    const asset = res.assets?.[0];
+                    if (!asset) return;
+                    setUrlDocMap((m) => ({ ...m, [slug]: asset }));
+                    // Clear any previous "Required" error for this URL field
+                    setErrors((prev) => ({ ...prev, [slug]: undefined }));
+                  } catch (e) {
+                    Alert.alert('Error', e.message || 'Failed to select document');
+                  }
+                }}
+              >
+                <Text>{urlDocMap[slug] ? 'Replace Document' : 'Upload Document'}</Text>
+              </TouchableOpacity>
+              {urlDocMap[slug] ? (
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: '#fdecea', paddingVertical: 10 }]}
+                  onPress={() => {
+                    setUrlDocMap((m) => { const n = { ...m }; delete n[slug]; return n; });
+                    // Clear error; validation will re-add if needed on submit
+                    setErrors((prev) => ({ ...prev, [slug]: undefined }));
+                  }}
+                >
+                  <Text style={{ color: '#b00020' }}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {/* filename now shown above the buttons */}
+            {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+          </View>
+        );
+
       case 'text':
       case 'textarea':
       case 'email':
-      case 'url':
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
@@ -583,18 +845,79 @@ export default function NewAsset() {
           </View>
         );
 
-      case 'date':
+      case 'date': {
+        // Try to read a linked document slug from validation_rules
+        let requiredDocSlug = '';
+        try {
+          const vr = f.validation_rules && typeof f.validation_rules === 'object'
+            ? f.validation_rules
+            : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+          const opts = f.options && typeof f.options === 'object' ? f.options : null;
+          const link = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+          requiredDocSlug = Array.isArray(link) ? (link[0] || '') : (link || '');
+          requiredDocSlug = String(requiredDocSlug || '').trim();
+        } catch {}
+
+        const docSlug = requiredDocSlug ? normSlug(requiredDocSlug) : '';
+        const docFieldExists = !!fieldsSchema.find(ff => (ff.slug || normSlug(ff.name)) === docSlug && ((ff.field_type?.slug || ff.field_type?.name || '').toLowerCase() === 'url'));
+        const pickedDoc = docSlug ? urlDocMap[docSlug] : null;
+        const docLabel = requiredDocSlug || 'document';
+
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
             <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug })}>
               <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
-                {fieldValues[slug] || `Select ${f.label || f.name}`}
+                {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
               </Text>
             </TouchableOpacity>
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+
+            {docSlug ? (
+              <View style={{ marginTop: 8 }}>
+                <Text style={[styles.subtleLabel]}>Linked document category: {docLabel}</Text>
+                {pickedDoc ? (
+                  <Text style={{ marginTop: 6, fontStyle: 'italic', color: '#444' }}>Attached: {pickedDoc.name || 'document'}</Text>
+                ) : null}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.btn, { paddingVertical: 10 }]}
+                    onPress={async () => {
+                      try {
+                        const res = await DocumentPicker.getDocumentAsync({
+                          type: ALLOWED_DOC_MIME,
+                          multiple: false,
+                        });
+                        if (res.canceled) return;
+                        const asset = res.assets?.[0];
+                        if (!asset) return;
+                        setUrlDocMap((m) => ({ ...m, [docSlug]: asset }));
+                        setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
+                      } catch (e) {
+                        Alert.alert('Error', e.message || 'Failed to select document');
+                      }
+                    }}
+                  >
+                    <Text>{pickedDoc ? 'Replace Document' : `Upload ${docLabel}`}</Text>
+                  </TouchableOpacity>
+                  {pickedDoc ? (
+                    <TouchableOpacity
+                      style={[styles.btn, { backgroundColor: '#fdecea', paddingVertical: 10 }]}
+                      onPress={() => {
+                        setUrlDocMap((m) => { const n = { ...m }; delete n[docSlug]; return n; });
+                        setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
+                      }}
+                    >
+                      <Text style={{ color: '#b00020' }}>Remove</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {!!errors[docSlug] && <Text style={styles.errorBelow}>{errors[docSlug]}</Text>}
+              </View>
+            ) : null}
           </View>
         );
+      }
 
       case 'boolean':
         return (
@@ -680,7 +1003,10 @@ export default function NewAsset() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
-        <TouchableOpacity onPress={() => router.replace('/Inventory')} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
+        <TouchableOpacity onPress={() => {
+          if (normalizedReturnTo) { try { router.replace(String(normalizedReturnTo)); } catch { router.back(); } }
+          else { router.replace('/Inventory'); }
+        }} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
           <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -689,6 +1015,17 @@ export default function NewAsset() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <ScreenHeader
+        title="Create New Asset"
+        backLabel="Inventory"
+        onBack={() => {
+          if (normalizedReturnTo) {
+            router.replace(String(normalizedReturnTo));
+            return;
+          }
+          router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+        }}
+      />
       <KeyboardAwareScrollView
         ref={scrollRef}
         contentContainerStyle={styles.container}
@@ -696,17 +1033,8 @@ export default function NewAsset() {
         extraScrollHeight={80}
         enableOnAndroid
       >
-        {/* Header */}
-        <View style={{ marginBottom: 20 }} onLayout={onLayoutFor('header')}>
-          <TouchableOpacity
-            onPress={() => router.replace({ pathname: '/Inventory', params: { tab: 'all' } })}
-            style={{ marginBottom: 10 }}
-          >
-            <Text style={{ color: '#1E90FF', fontWeight: 'bold', fontSize: 16 }}>{'< Back'}</Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginTop: 5 }}>
-            Create New Asset
-          </Text>
+        {/* Header copy */}
+        <View style={{ marginBottom: 20 }}>
           {!!formError && <Text style={styles.errorTop}>{formError}</Text>}
           {fromAssetId ? (
             <Text style={{ textAlign: 'center', marginTop: 6, color: '#888' }}>
@@ -719,21 +1047,41 @@ export default function NewAsset() {
         <View onLayout={onLayoutFor('id')}>
           {!!id && <Text style={{ marginBottom: 10, color: '#333' }}>Selected Asset ID: {id}</Text>}
           <Text style={styles.label}>Select Asset ID</Text>
-          <TextInput
-            ref={setInputRef('id')}
-            style={styles.input}
-            placeholder="Search by ID"
-            value={searchTerm}
-            onChangeText={text => {
-              setSearchTerm(text);
-            }}
-          />
-          <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
-            <Text style={{ color: '#1E90FF', fontWeight: 'bold' }}>
-              {showQRs ? 'Hide QR Options ▲' : 'Show QR Options ▼'}
-            </Text>
-          </TouchableOpacity>
-          {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
+          {Platform.OS !== 'web' ? (
+            <View style={{ alignItems: 'center' }}>
+              <TouchableOpacity
+                style={[styles.btn, styles.pickerBtn]}
+                onPress={() => {
+                  const rp = encodeURIComponent(JSON.stringify({
+                    fromAssetId: fromAssetId ? String(fromAssetId) : undefined,
+                    returnTo: normalizedReturnTo ? String(normalizedReturnTo) : undefined,
+                  }));
+                  router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
+                }}
+              >
+                <Text>Scan QR to Assign</Text>
+              </TouchableOpacity>
+              {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
+            </View>
+          ) : (
+            <>
+              <TextInput
+                ref={setInputRef('id')}
+                style={styles.input}
+                placeholder="Search by ID"
+                value={searchTerm}
+                onChangeText={text => {
+                  setSearchTerm(text);
+                }}
+              />
+              <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
+                <Text style={{ color: '#1E90FF', fontWeight: 'bold' }}>
+                  {showQRs ? 'Hide QR Options ▲' : 'Show QR Options ▼'}
+                </Text>
+              </TouchableOpacity>
+              {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
+            </>
+          )}
         </View>
 
         {(showQRs || searchTerm.length > 0) && (
@@ -775,6 +1123,11 @@ export default function NewAsset() {
             setValue={(fn) => setTypeId(fn())}
             items={(options.assetTypes || []).map(t => ({ label: t.name, value: t.id }))}
             placeholder="Select Asset Type"
+            searchable
+            searchPlaceholder="Search asset type"
+            listMode="SCROLLVIEW"
+            searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
+            searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
             style={styles.dropdown}
             dropDownContainerStyle={styles.dropdownContainer}
             nestedScrollEnabled
@@ -801,61 +1154,20 @@ export default function NewAsset() {
           {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
         </View>
 
-        {/* Static common fields */}
-        <View onLayout={onLayoutFor('location')}>
-          <Text style={styles.label}>Location</Text>
+        <View onLayout={onLayoutFor('other_id')}>
+          <Text style={styles.label}>Other ID</Text>
           <TextInput
-            ref={setInputRef('location')}
+            ref={setInputRef('other_id')}
             style={styles.input}
-            placeholder="Enter an Address"
-            value={locQuery}
-            onFocus={() => setLocOpen(true)}
-            onChangeText={(t)=>{
-              setLocQuery(t);
-              setLocation(t);
-              setLocOpen(true);
-              setErrors(prev=>({...prev,location:undefined}));
+            placeholder="Optional"
+            value={otherId}
+            onChangeText={(t) => {
+              setOtherId(t);
+              setErrors(prev => ({ ...prev, other_id: undefined }));
             }}
+            autoCapitalize="none"
           />
-          {!!errors.location && <Text style={styles.errorBelow}>{errors.location}</Text>}
-          {!!locSuggestError && (
-            <Text style={styles.locSuggestHint}>{locSuggestError}</Text>
-          )}
-          {(locOpen && (locLoading || locSuggestions.length > 0)) && (
-            <View style={styles.locSuggestBox}>
-              {locLoading ? (
-                <Text style={styles.locSuggestHint}>Searching…</Text>
-              ) : (
-                locSuggestions.map((s) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={styles.locSuggestItem}
-                    onPress={async () => {
-                      // set chosen text immediately
-                      setLocation(s.description);
-                      setLocQuery(s.description);
-                      setLocOpen(false);
-                      setLocSuggestions([]);
-                      // Optional: fetch details for a cleaner formatted address
-                      try {
-                        const r = await fetch(`${API_BASE_URL}/places/details?id=${encodeURIComponent(s.id)}`);
-                        const d = await r.json();
-                        if (d.formatted_address) {
-                          setLocation(d.formatted_address);
-                          setLocQuery(d.formatted_address);
-                        }
-                      } catch {}
-                    }}
-                  >
-                    <Text numberOfLines={1} style={styles.locSuggestMain}>{s.main || s.description}</Text>
-                    {!!s.secondary && (
-                      <Text numberOfLines={1} style={styles.locSuggestSecondary}>{s.secondary}</Text>
-                    )}
-                  </TouchableOpacity>
-                ))
-              )}
-            </View>
-          )}
+          {!!errors.other_id && <Text style={styles.errorBelow}>{errors.other_id}</Text>}
         </View>
 
         <View onLayout={onLayoutFor('model')}>
@@ -882,40 +1194,15 @@ export default function NewAsset() {
           />
           {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
         </View>
-
-        <View onLayout={onLayoutFor('next_service_date')}>
-          <Text style={styles.label}>Next Service Date</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__next_service_date' })}>
-            <Text style={{ color: nextServiceDate ? '#000' : '#888' }}>
-              {nextServiceDate || 'Select Next Service Date'}
-            </Text>
-          </TouchableOpacity>
-          {!!errors.next_service_date && <Text style={styles.errorBelow}>{errors.next_service_date}</Text>}
-        </View>
-
         <View onLayout={onLayoutFor('date_purchased')}>
           <Text style={styles.label}>Date Purchased</Text>
           <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__date_purchased' })}>
             <Text style={{ color: datePurchased ? '#000' : '#888' }}>
-              {datePurchased || 'Select Date Purchased'}
+              {datePurchased ? formatDisplayDate(datePurchased) : 'Select Date Purchased'}
             </Text>
           </TouchableOpacity>
           {!!errors.date_purchased && <Text style={styles.errorBelow}>{errors.date_purchased}</Text>}
         </View>
-
-        <View onLayout={onLayoutFor('notes')}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            ref={setInputRef('notes')}
-            style={[styles.input, { height: 80 }]}
-            placeholder="Notes"
-            value={notes}
-            onChangeText={(t)=>{ setNotes(t); setErrors(prev=>({...prev,notes:undefined})); }}
-            multiline
-          />
-          {!!errors.notes && <Text style={styles.errorBelow}>{errors.notes}</Text>}
-        </View>
-
         <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
           <Text style={styles.label}>User Assigned</Text>
           <DropDownPicker
@@ -925,6 +1212,11 @@ export default function NewAsset() {
             setValue={(fn) => setAssignedToId(fn())}
             items={(options.users || []).map(u => ({ label: u.name, value: u.id }))}
             placeholder="Select User"
+            searchable
+            searchPlaceholder="Search user"
+            listMode="SCROLLVIEW"
+            searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
+            searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
             style={styles.dropdown}
             dropDownContainerStyle={styles.dropdownContainer}
             nestedScrollEnabled
@@ -950,15 +1242,54 @@ export default function NewAsset() {
 
         {/* Attachments */}
         <View onLayout={onLayoutFor('image')}>
-          {image?.uri && <Image source={{ uri: image.uri }} style={styles.preview} />}
+          {image?.uri && (
+            <View>
+              {uploading ? (
+                <View style={[styles.preview, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF5FF', borderWidth: 1, borderColor: '#DBEAFE' }]}>
+                  <ActivityIndicator size="large" color="#1E90FF" />
+                  <Text style={{ marginTop: 8, color: '#5374a6' }}>
+                    Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
+                  </Text>
+                </View>
+              ) : (
+                <Image source={{ uri: image.uri }} style={styles.preview} />
+              )}
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
+                onPress={() => { if (!uploading) { setImage(null); setErrors(prev => ({ ...prev, image: undefined })); } }}
+                disabled={uploading}
+              >
+                <Text style={{ color: '#b00020' }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
-          <TouchableOpacity style={styles.btn} onPress={pickImage}><Text>Pick Image</Text></TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+            <TouchableOpacity style={[styles.btn, styles.pickerBtn]} onPress={pickImage} disabled={uploading}>
+              <Text>{image?.uri ? 'Replace Image' : 'Pick Image'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View onLayout={onLayoutFor('document')}>
-          {document && <Text style={{ marginTop: 10, fontStyle: 'italic' }}>Attached: {document.name}</Text>}
+          {document && (
+            <Text style={{ marginTop: 10, fontStyle: 'italic' }}>Attached: {document.name}</Text>
+          )}
           {!!errors.document && <Text style={styles.errorBelow}>{errors.document}</Text>}
-          <TouchableOpacity style={styles.btn} onPress={pickDocument}><Text>Attach Document</Text></TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <TouchableOpacity style={styles.btn} onPress={pickDocument} disabled={uploading}>
+              <Text>{document ? 'Replace Document' : 'Attach Document'}</Text>
+            </TouchableOpacity>
+            {document ? (
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
+                onPress={() => { if (!uploading) setDocument(null); }}
+                disabled={uploading}
+              >
+                <Text style={{ color: '#b00020' }}>Remove</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         {/* Submit */}
@@ -970,11 +1301,29 @@ export default function NewAsset() {
           accessibilityState={{ disabled: uploading, busy: uploading }}
         >
           {uploading ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              Creating… {uploadProgress ? `${uploadProgress}%` : ''}
+            </Text>
           ) : (
             <Text style={{ color: '#fff' }}>Create Asset</Text>
           )}
         </TouchableOpacity>
+
+        {uploading ? (
+          <View style={{ alignItems: 'center', marginTop: 8 }}>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: Math.round((typeof uploadProgress === 'number' && uploadProgress > 0 ? uploadProgress : indetTick) / 100 * 260) },
+                ]}
+              />
+            </View>
+            <Text style={{ marginTop: 4, color: '#666' }}>
+              {uploadStartTs ? `${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed` : ''}
+            </Text>
+          </View>
+        ) : null}
 
       </KeyboardAwareScrollView>
 
@@ -1008,12 +1357,68 @@ export default function NewAsset() {
         <View style={styles.modalBackdrop}>
           <ActivityIndicator size="large" />
           <Text style={{ marginTop: 12 }}>
-            Uploading {Platform.OS === 'web' && uploadProgress ? `${uploadProgress}%` : '...'}
+            Uploading{(typeof uploadProgress === 'number' && uploadProgress > 0) ? ` ${uploadProgress}%` : '…'}
           </Text>
+          <View style={styles.progressBar}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: Math.round((typeof uploadProgress === 'number' && uploadProgress > 0 ? uploadProgress : indetTick) / 100 * 260) },
+              ]}
+            />
+          </View>
+          {uploadStartTs ? (
+            <Text style={{ marginTop: 4, color: '#666' }}>
+              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`}
+            </Text>
+          ) : null}
         </View>
       </Modal>
+      {/* Web portal overlay (renders into document.body) */}
+      {Platform.OS === 'web' && (
+        <WebOverlayPortal visible={uploading}>
+          <ActivityIndicator size="large" />
+          <Text style={{ marginTop: 12 }}>
+            Uploading {uploadProgress ? `${uploadProgress}%` : ''}
+          </Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: Math.round(Math.max(0, Math.min(100, uploadProgress)) / 100 * 260) }]} />
+          </View>
+          {uploadStartTs ? (
+            <Text style={{ marginTop: 4, color: '#666' }}>
+              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`}
+            </Text>
+          ) : null}
+        </WebOverlayPortal>
+      )}
 
     </SafeAreaView>
+  );
+}
+
+function WebOverlayPortal({ visible, children }) {
+  const mountRef = React.useRef(null);
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+    if (!visible) return undefined;
+    try {
+      const el = document.createElement('div');
+      el.style.position = 'fixed';
+      el.style.top = '0'; el.style.left = '0'; el.style.right = '0'; el.style.bottom = '0';
+      el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+      el.style.background = 'rgba(255,255,255,0.85)';
+      el.style.zIndex = '2147483647';
+      document.body.appendChild(el);
+      mountRef.current = el;
+      return () => { try { document.body.removeChild(el); } catch {} mountRef.current = null; };
+    } catch { return undefined; }
+  }, [visible]);
+  if (Platform.OS !== 'web' || !visible || !mountRef.current) return null;
+  let ReactDOM;
+  try { ReactDOM = require('react-dom'); } catch { return null; }
+  return ReactDOM.createPortal(
+    <View style={styles.portalOverlayCard}>{children}</View>,
+    mountRef.current
   );
 }
 
@@ -1021,8 +1426,11 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 12, marginVertical: 8, color: '#000' },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '600' },
+  subtleLabel: { color: '#475569', fontSize: 12, marginTop: 6 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: '#eee', padding: 15, alignItems: 'center', borderRadius: 5, marginVertical: 8 },
+  // Consistent width for media pickers (image/doc) so buttons look same size
+  pickerBtn: { minWidth: 180, alignSelf: 'center' },
   submit: { backgroundColor: '#1E90FF' },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },
   preview: { width: '100%', height: 200, borderRadius: 5, marginVertical: 10 },
@@ -1045,6 +1453,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  webOverlay: { display: 'none' },
+  progressBar: { width: 260, height: 8, borderRadius: 6, backgroundColor: '#E6EDF3', marginTop: 8, overflow: 'hidden' },
+  progressFill: { height: 8, backgroundColor: '#0B63CE', borderRadius: 6 },
+  portalOverlayCard: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
 
   // location suggestions
   locSuggestBox: {
@@ -1067,3 +1479,6 @@ const styles = StyleSheet.create({
   locSuggestSecondary: { color: '#666', fontSize: 12 },
   locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: '#666', fontStyle: 'italic' },
 });
+
+
+

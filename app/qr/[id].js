@@ -6,6 +6,7 @@ import { View, Text, Button, StyleSheet, ActivityIndicator, Alert } from 'react-
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+// Avoid static import to prevent SSR/import loops on web; require dynamically when needed.
 
 // Main component for handling QR actions
 export default function QRActionScreen() {
@@ -50,6 +51,36 @@ export default function QRActionScreen() {
   }, []);
 
   // Handle checking in an asset (returning it to office)
+  const getCurrentAddress = async () => {
+    try {
+      let ExpoLocation;
+      try { ExpoLocation = require('expo-location'); } catch { return null; }
+      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return null;
+      const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy?.Balanced || 3 });
+      if (!pos?.coords) return null;
+      const { latitude, longitude } = pos.coords;
+      // Prefer server Google Geocoding endpoint for address
+      try {
+        const resp = await fetch(`${API_BASE_URL}/places/reverse-geocode?lat=${latitude}&lng=${longitude}`);
+        if (resp.ok) {
+          const j = await resp.json();
+          if (j?.formatted_address) return j.formatted_address;
+        }
+      } catch {}
+      try {
+        const geos = await ExpoLocation.reverseGeocodeAsync({ latitude, longitude });
+        const first = Array.isArray(geos) ? geos[0] : null;
+        if (first) {
+          const parts = [first.name, first.street, first.city, first.region, first.country].filter(Boolean);
+          const addr = parts.join(', ');
+          if (addr) return addr;
+        }
+      } catch {}
+      return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    } catch { return null; }
+  };
+
   const handleCheckIn = async () => {
     // If asset or user not loaded, do nothing
     if (!asset || !user) return;
@@ -57,12 +88,14 @@ export default function QRActionScreen() {
     setUpdating(true); // Start loading state for update
 
     try {
+      const loc = await getCurrentAddress();
       const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: null,
-          status: 'Available'
+          status: 'Available',
+          ...(loc ? { location: loc } : {}),
         }),
       });
 
@@ -90,12 +123,14 @@ export default function QRActionScreen() {
     setUpdating(true); // Start loading state
     try {
       // Make a PUT request to update the asset as checked out
+      const loc = await getCurrentAddress();
       const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: user.uid, // Assign asset to current user
-          status: 'In Use' // Set asset status to In Use
+          status: 'In Use', // Set asset status to In Use
+          ...(loc ? { location: loc } : {}),
         }),
       });
 
@@ -139,11 +174,11 @@ export default function QRActionScreen() {
       <Text style={styles.subtitle}>ID: {asset.id}</Text>
 
       {isAssignedToUser && (
-        <Button title="Check In to Office" onPress={handleCheckIn} disabled={updating} />
+        <Button title="Transfer In" onPress={handleCheckIn} disabled={updating} />
       )}
 
       {isUnassigned && (
-        <Button title="Check Out to Me" onPress={handleCheckOut} disabled={updating} />
+        <Button title="Transfer Out" onPress={handleCheckOut} disabled={updating} />
       )}
 
       {!isAssignedToUser && !isUnassigned && (

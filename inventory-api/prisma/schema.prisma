@@ -58,6 +58,7 @@ model assets {
   serial_number     String?
   model             String?
   description       String?
+  other_id          String?
   assigned_to_id    String?
   status            String
   next_service_date DateTime?            @db.Date
@@ -74,6 +75,7 @@ model assets {
   users             users?               @relation("AssetAssignment", fields: [assigned_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   asset_types       asset_types?         @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   actions           asset_actions[]
+  documents         asset_documents[]
 }
 
 model asset_field_values {
@@ -108,9 +110,35 @@ model asset_type_fields {
   field_values     asset_field_values[]
   asset_type       asset_types          @relation(fields: [asset_type_id], references: [id], onDelete: Cascade)
   field_type       field_types          @relation(fields: [field_type_id], references: [id], onDelete: NoAction)
+  documents        asset_documents[]
 
   @@unique([asset_type_id, slug])
   @@index([asset_type_id])
+}
+
+// New: multiple attachments per asset
+model asset_documents {
+  id                   String            @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id             String
+  title                String?
+  kind                 String?           // e.g., Service Report, Inspection Report
+  related_date_label   String?
+  related_date         DateTime?         @db.Date
+  s3_key               String
+  url                  String            // public or presigned origin URL at time of save
+  content_type         String?
+  size_bytes           Int?
+  uploaded_by          String?
+  created_at           DateTime          @default(now()) @db.Timestamp(6)
+  deleted_at           DateTime?
+  metadata             Json?
+  asset_type_field_id  String?
+
+  asset                assets            @relation(fields: [asset_id], references: [id], onDelete: Cascade)
+  asset_type_field     asset_type_fields? @relation(fields: [asset_type_field_id], references: [id])
+
+  @@index([asset_id, created_at])
+  @@index([asset_type_field_id])
 }
 
 model field_types {
@@ -197,4 +225,17 @@ model asset_action_details {
   police_report   String?
 
   action asset_actions @relation(fields: [action_id], references: [id], onDelete: Cascade)
+}
+
+// Lightweight record of hard deletions for activity feed
+model asset_deletions {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id    String
+  deleted_at  DateTime @default(now()) @db.Timestamp(6)
+  deleted_by  String?
+  asset_name  String?
+  asset_type  String?
+  image_url   String?
+
+  @@index([deleted_at])
 }

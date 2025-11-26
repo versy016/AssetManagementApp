@@ -1,8 +1,7 @@
 // _layout.js - Tab navigation layout for the app's main sections
 import { Tabs } from 'expo-router';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 
 // Optional settings for the router
 export const unstable_settings = {
@@ -13,11 +12,12 @@ export const unstable_settings = {
 
 // TabsLayout defines the bottom tab navigation for the app
 export default function TabsLayout() {
+  const isWeb = Platform.OS === 'web';
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#1E90FF',
-        tabBarStyle: { position: 'relative' },
+        tabBarStyle: isWeb ? { display: 'none' } : { position: 'relative' },
         headerShown: false,
       }}
     >

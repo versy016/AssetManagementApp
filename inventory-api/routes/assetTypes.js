@@ -20,13 +20,16 @@ const upload = multer({ storage });
 // helper
 function uploadToS3(file, folder) {
   const key = `${folder}/${Date.now()}-${file.originalname}`;
-  return s3.upload({
+  const params = {
     Bucket: process.env.S3_BUCKET,
     Key: key,
     Body: file.buffer,
     ContentType: file.mimetype,
-    ACL: 'public-read',
-  }).promise();
+  };
+  if (String(process.env.S3_USE_ACL || '').toLowerCase() === 'true') {
+    params.ACL = process.env.S3_ACL || 'public-read';
+  }
+  return s3.upload(params).promise();
 }
 
 // ---------- Routes ----------
