@@ -65,6 +65,15 @@ RIGHT_SECTION_TOP_OFFSET_MM = 1.5
 # Nudge the entire content block slightly left for more right-side breathing room
 IN_LABEL_X_NUDGE_MM = -1  # mm — global nudge for everything inside a label (negative = shift left)
 
+# Vertical offset to move printing higher (positive = move up, negative = move down)
+VERTICAL_UP_OFFSET_MM = 5.0  # mm — move all labels up by this amount
+
+# Column-specific horizontal shifts (as percentage of label width)
+# Column 1 (index 0): shift right by 6%
+# Column 2 (index 1): shift right by 4%
+# Column 3 (index 2): shift right by 2%
+COLUMN_SHIFTS_PERCENT = [0.06, 0.04, 0.02, 0.0, 0.0]  # shifts for columns 1-5
+
 # Cycle fonts across labels so you can compare visibility easily
 FONT_CANDIDATES = [
     ("Helvetica", "Helvetica-Bold"),
@@ -102,7 +111,8 @@ def compute_layout_mm():
     # Choose margins so left == right even after scaling gutters
     # A4_W = 2*m + COLS*LABEL_W + (COLS-1)*gutter_x
     margin_l = (A4_W - total_w - (COLS - 1) * gutter_x) / 2.0
-    margin_t = (A4_H - total_h) / 2.0
+    # Apply vertical offset to move printing higher
+    margin_t = (A4_H - total_h) / 2.0 - VERTICAL_UP_OFFSET_MM
     return margin_l, margin_t, gutter_x
 
 
@@ -232,6 +242,10 @@ def generate_pdf(output_pdf, logo_path, checkin_base, email, phone, ids=None, ou
             # Equal horizontal spacing: left margin = gutter_x, and
             # spacing between labels = gutter_x
             x_label_mm = margin_l + col * (LABEL_W + gutter_x)
+            # Apply column-specific horizontal shift (as percentage of label width)
+            if col < len(COLUMN_SHIFTS_PERCENT):
+                column_shift_mm = LABEL_W * COLUMN_SHIFTS_PERCENT[col]
+                x_label_mm += column_shift_mm
             # Vertically centered block; rows are stacked without extra vertical gutters
             y_top_mm = A4_H - margin_t - r * LABEL_H
             if show_grid:

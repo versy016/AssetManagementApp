@@ -377,6 +377,7 @@ export default function CheckInScreen() {
         const auth = getAuth();
         const currentUser = auth.currentUser;
         console.log("👤 Current user:", currentUser);
+        console.log("🌐 API_BASE_URL:", API_BASE_URL);
 
         if (currentUser) {
           setUser(currentUser); // Set user state if logged in
@@ -393,13 +394,51 @@ export default function CheckInScreen() {
           return;
         }
 
-        // Fetch asset details
-        const assetRes = await fetch(`${API_BASE_URL}/assets/${id}`);
-        const contentType = assetRes.headers.get('content-type');
-        if (!assetRes.ok || !contentType?.includes('application/json')) {
-          const text = await assetRes.text();
-          throw new Error(`Unexpected response: ${text}`);
+        // Fetch asset details with retry logic
+        let assetRes;
+        let retries = 3;
+        let lastError;
+        
+        while (retries > 0) {
+          try {
+            assetRes = await fetch(`${API_BASE_URL}/assets/${id}`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+            break; // Success, exit retry loop
+          } catch (fetchError) {
+            lastError = fetchError;
+            retries--;
+            if (retries > 0) {
+              console.warn(`⚠️ Fetch failed, retrying... (${retries} attempts left)`);
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+            }
+          }
         }
+
+        if (!assetRes) {
+          throw new Error(
+            lastError?.message || 
+            `Network request failed. Please check your connection and ensure the API is accessible at ${API_BASE_URL}`
+          );
+        }
+
+        const contentType = assetRes.headers.get('content-type');
+        if (!assetRes.ok) {
+          const text = await assetRes.text();
+          throw new Error(
+            `API request failed (${assetRes.status}): ${text || 'Unknown error'}\n` +
+            `URL: ${API_BASE_URL}/assets/${id}`
+          );
+        }
+        
+        if (!contentType?.includes('application/json')) {
+          const text = await assetRes.text();
+          throw new Error(`Unexpected response type: ${contentType}\nResponse: ${text}`);
+        }
+        
         const assetData = await assetRes.json();
 
         // If asset has an assigned user, use the nested user data
@@ -429,7 +468,9 @@ export default function CheckInScreen() {
       } catch (err) {
         // Handle fetch or network errors
         console.error("❌ Error in Check-In screen:", err);
-        setError(err.message);
+        const errorMessage = err.message || 'Unknown error occurred';
+        const detailedError = `${errorMessage}\n\nAPI URL: ${API_BASE_URL}\nAsset ID: ${id}`;
+        setError(detailedError);
       } finally {
         setLoading(false); // Hide loading spinner
       }
@@ -439,14 +480,46 @@ export default function CheckInScreen() {
     // Fetch all users when component mounts
     const fetchUsers = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users`);
+        let response;
+        let retries = 3;
+        let lastError;
+        
+        while (retries > 0) {
+          try {
+            response = await fetch(`${API_BASE_URL}/users`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
+            break; // Success, exit retry loop
+          } catch (fetchError) {
+            lastError = fetchError;
+            retries--;
+            if (retries > 0) {
+              console.warn(`⚠️ Users fetch failed, retrying... (${retries} attempts left)`);
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+            }
+          }
+        }
+
+        if (!response) {
+          console.error('Error fetching users:', lastError);
+          console.error(`Failed URL: ${API_BASE_URL}/users`);
+          return; // Don't set error state, just log - users list is not critical for initial load
+        }
+
         if (response.ok) {
           const userList = await response.json();
           setUsers(userList);
           setFilteredUsers(userList);
+        } else {
+          console.warn(`Users API returned ${response.status}: ${await response.text()}`);
         }
       } catch (err) {
         console.error('Error fetching users:', err);
+        console.error(`Failed URL: ${API_BASE_URL}/users`);
+        // Don't set error state - users list failure shouldn't block the screen
       }
     };
 
@@ -596,14 +669,34 @@ export default function CheckInScreen() {
   const handleAssignToPlaceholder = async (fromId) => {
     try {
       setAssignLoading(true);
+      
+      // Get Firebase auth token
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      let headers = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add Authorization Bearer token
+      try {
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          const token = await currentUser.getIdToken();
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        }
+      } catch (tokenError) {
+        console.warn('Failed to get auth token:', tokenError);
+      }
+      
+      // Add user info headers
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+      
       const resp = await fetch(`${API_BASE_URL}/assets/swap-qr`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
-          ...(user?.displayName ? { 'X-User-Name': user.displayName } : {}),
-          ...(user?.email ? { 'X-User-Email': user.email } : {}),
-        },
+        headers,
         body: JSON.stringify({ from_id: fromId, to_id: asset?.id }),
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -629,14 +722,33 @@ export default function CheckInScreen() {
   try {
     setLoading(true);
 
+    // Get Firebase auth token
+    const auth = getAuth();
+    const currentUser = auth?.currentUser;
+    let headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add Authorization Bearer token
+    try {
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (tokenError) {
+      console.warn('Failed to get auth token:', tokenError);
+    }
+    
+    // Add user info headers
+    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+
     const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
-        ...(user?.displayName ? { 'X-User-Name': user.displayName } : {}),
-        ...(user?.email ? { 'X-User-Email': user.email } : {}),
-      },
+      headers,
       body: JSON.stringify({
         assigned_to_id: selectedUser.id,
         status: 'In Service', // allowed value
@@ -738,14 +850,33 @@ const handleAction = async (type) => {
       throw new Error(`Unknown action: ${type}`);
     }
 
+    // Get Firebase auth token
+    const auth = getAuth();
+    const currentUser = auth?.currentUser;
+    let headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add Authorization Bearer token
+    try {
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (tokenError) {
+      console.warn('Failed to get auth token:', tokenError);
+    }
+    
+    // Add user info headers
+    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+
     const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
-        ...(user?.displayName ? { 'X-User-Name': user.displayName } : {}),
-        ...(user?.email ? { 'X-User-Email': user.email } : {}),
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 
@@ -812,14 +943,33 @@ const updateStatus = async (newStatus) => {
       action_note: actionNote || undefined,
     };
 
+    // Get Firebase auth token
+    const auth = getAuth();
+    const currentUser = auth?.currentUser;
+    let headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add Authorization Bearer token
+    try {
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (tokenError) {
+      console.warn('Failed to get auth token:', tokenError);
+    }
+    
+    // Add user info headers
+    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+
     const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
-        ...(user?.displayName ? { 'X-User-Name': user.displayName } : {}),
-        ...(user?.email ? { 'X-User-Email': user.email } : {}),
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
@@ -1024,9 +1174,56 @@ const postActionAlert = ({
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerBox}>
-          <MaterialIcons name="error-outline" size={28} color={Colors.red} />
-          <Text style={[styles.title, { marginTop: 8 }]}>Something went wrong</Text>
-          <Text style={{ color: Colors.subtle, textAlign: 'center' }}>{error}</Text>
+          <MaterialIcons name="error-outline" size={48} color={Colors.red} />
+          <Text style={[styles.title, { marginTop: 16, fontSize: 20, fontWeight: '700' }]}>Connection Error</Text>
+          <Text style={{ color: Colors.subtle, textAlign: 'center', marginTop: 8, marginHorizontal: 24 }}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={[styles.btnPrimary, { marginTop: 24 }]}
+            onPress={() => {
+              setError(null);
+              setLoading(true);
+              // Retry by re-running the effect
+              const fetchData = async () => {
+                try {
+                  const auth = getAuth();
+                  const currentUser = auth.currentUser;
+                  if (currentUser) setUser(currentUser);
+                  else setUser({ uid: "guest" });
+                  
+                  if (!id) {
+                    setError("Invalid asset ID");
+                    setLoading(false);
+                    return;
+                  }
+                  
+                  const assetRes = await fetch(`${API_BASE_URL}/assets/${id}`);
+                  if (!assetRes.ok) {
+                    const text = await assetRes.text();
+                    throw new Error(`API error (${assetRes.status}): ${text}`);
+                  }
+                  const assetData = await assetRes.json();
+                  setAsset(assetData);
+                  setError(null);
+                } catch (err) {
+                  setError(err.message || 'Failed to load asset');
+                } finally {
+                  setLoading(false);
+                }
+              };
+              fetchData();
+            }}
+          >
+            <MaterialIcons name="refresh" size={18} color="#fff" />
+            <Text style={styles.btnPrimaryText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.btnGhost, { marginTop: 12 }]}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.btnGhostText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

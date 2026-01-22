@@ -354,7 +354,7 @@ export default function NewAssetType() {
       if (normalizedReturnTo) {
         router.replace(String(normalizedReturnTo));
       } else {
-        router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+      router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
       }
     } catch (err) {
       console.error('Create asset type error:', err);

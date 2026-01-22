@@ -532,18 +532,18 @@ export default function SearchScreen(props = {}) {
   };
 
   const baseColumns = useMemo(() => ([
-    { key: 'qr', label: '', width: 50 },
+      { key: 'qr', label: '', width: 50 },
     { key: 'image', label: '', width: 80 },
-    { key: 'id', label: 'Asset Id', width: 100 },
+      { key: 'id', label: 'Asset Id', width: 100 },
     { key: 'other_id', label: 'Other Id', width: 110 },
-    { key: 'type', label: 'Asset type', width: 120 },
+      { key: 'type', label: 'Asset type', width: 120 },
     { key: 'serial', label: 'SERIAL NUMBER', width: 140 },
     { key: 'description', label: 'Description', flex: 0.45, minWidth: 60 },
     { key: 'model', label: 'Model', flex: 0.375, minWidth: 53 },
     { key: 'assigned', label: 'Assigned To', flex: 0.3, minWidth: 46 },
     { key: 'status', label: 'Status', width: 105 },
     { key: 'purchased', label: 'Date Purchased', width: 125 },
-    { key: 'updated', label: 'Last Updated', width: 140 },
+      { key: 'updated', label: 'Last Updated', width: 140 },
     { key: 'updated_by', label: 'Last updated By', width: 145 },
   ]), []);
 
@@ -702,12 +702,12 @@ export default function SearchScreen(props = {}) {
           title="Search"
           backLabel="Dashboard"
           onBack={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)/dashboard');
-            }
-          }}
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/dashboard');
+                }
+              }}
         />
       )}
 
@@ -730,7 +730,7 @@ export default function SearchScreen(props = {}) {
         {/* Quick filters */}
         <View style={styles.quickRow}>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
+          <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
             <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
             <Chip label="In Service" icon="check-circle" active={filters.status === 'In Service'} onPress={() => setFilters(f => ({ ...f, status: f.status === 'In Service' ? null : 'In Service' }))} />
             <Chip label="QR awaiting" icon="alert-circle" active={filters.awaitingQROnly} onPress={() => setFilters(f => ({ ...f, awaitingQROnly: !f.awaitingQROnly }))} />
@@ -783,7 +783,7 @@ export default function SearchScreen(props = {}) {
       </View>
     )}
 
-    {/* Inline Filters REMOVED per user request */}
+      {/* Inline Filters REMOVED per user request */}
 
       {loading && !items.length ? (
         <View style={styles.center}>
@@ -811,72 +811,72 @@ export default function SearchScreen(props = {}) {
           <ScrollView style={styles.mobileScroll} contentContainerStyle={styles.mobileScrollContent}>
             <Text style={styles.metaText}>{metrics.total} assets found • {metrics.tookMs} ms</Text>
             <View style={styles.gridContainer}>
-              {paginatedItems.map((item) => {
-                const statusColor = statusToColor(item?.status);
-                const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
-                const loc = item?.location ?? item?.fields?.location;
-                const model = item?.model ?? item?.fields?.model;
-                const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
+            {paginatedItems.map((item) => {
+              const statusColor = statusToColor(item?.status);
+              const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
+              const loc = item?.location ?? item?.fields?.location;
+              const model = item?.model ?? item?.fields?.model;
+              const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
 
-                return (
-                  <TouchableOpacity
-                    key={item.id}
+              return (
+                <TouchableOpacity
+                  key={item.id}
                     style={[styles.mobileCard, !isCompact && styles.desktopGridCard]}
-                    activeOpacity={0.8}
+                  activeOpacity={0.8}
                     onPress={() => goToAsset(item.id)}
-                  >
-                    <View style={styles.mobileCardHeader}>
-                      <View style={{ flexDirection: 'row', gap: 12, flex: 1 }}>
-                        {item?.image_url ? (
-                          <Image source={{ uri: item.image_url }} style={styles.mobileThumb} />
-                        ) : (
-                          <View style={[styles.mobileThumb, styles.mobileThumbPlaceholder]}>
-                            <Ionicons name="image-outline" size={20} color={COLORS.sub2} />
-                          </View>
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.name || item?.asset_name || 'Unnamed Asset'}</Text>
-                          <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
-                            {item?.id} • {item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type'}
-                          </Text>
+                >
+                  <View style={styles.mobileCardHeader}>
+                    <View style={{ flexDirection: 'row', gap: 12, flex: 1 }}>
+                      {item?.image_url ? (
+                        <Image source={{ uri: item.image_url }} style={styles.mobileThumb} />
+                      ) : (
+                        <View style={[styles.mobileThumb, styles.mobileThumbPlaceholder]}>
+                          <Ionicons name="image-outline" size={20} color={COLORS.sub2} />
                         </View>
-                      </View>
-                      <View style={[styles.mobileStatusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-                        <Text style={[styles.mobileStatusText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.name || item?.asset_name || 'Unnamed Asset'}</Text>
+                        <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
+                          {item?.id} • {item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type'}
+                        </Text>
                       </View>
                     </View>
+                    <View style={[styles.mobileStatusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
+                      <Text style={[styles.mobileStatusText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+                    </View>
+                  </View>
 
-                    <View style={styles.mobileCardDetails}>
-                      {model ? (
-                        <View style={styles.mobileDetailRow}>
-                          <Feather name="cpu" size={14} color="#64748B" />
-                          <Text style={styles.mobileDetailLabel}>Model:</Text>
-                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{model}</Text>
-                        </View>
-                      ) : null}
-                      {assignedTo ? (
-                        <View style={styles.mobileDetailRow}>
-                          <Feather name="user" size={14} color="#64748B" />
-                          <Text style={styles.mobileDetailLabel}>Assigned:</Text>
-                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{assignedTo}</Text>
-                        </View>
-                      ) : null}
-                      {loc ? (
-                        <View style={styles.mobileDetailRow}>
-                          <Feather name="map-pin" size={14} color="#64748B" />
-                          <Text style={styles.mobileDetailLabel}>Location:</Text>
-                          <Text style={styles.mobileDetailValue} numberOfLines={1}>{loc}</Text>
-                        </View>
-                      ) : null}
-                      {nextService ? (
-                        <View style={styles.mobileDetailRow}>
-                          <Feather name="tool" size={14} color="#64748B" />
-                          <Text style={styles.mobileDetailLabel}>Service:</Text>
-                          <Text style={[styles.mobileDetailValue, { color: '#B45309', fontWeight: '700' }]} numberOfLines={1}>
+                  <View style={styles.mobileCardDetails}>
+                    {model ? (
+                      <View style={styles.mobileDetailRow}>
+                        <Feather name="cpu" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Model:</Text>
+                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{model}</Text>
+                      </View>
+                    ) : null}
+                    {assignedTo ? (
+                      <View style={styles.mobileDetailRow}>
+                        <Feather name="user" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Assigned:</Text>
+                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{assignedTo}</Text>
+                      </View>
+                    ) : null}
+                    {loc ? (
+                      <View style={styles.mobileDetailRow}>
+                        <Feather name="map-pin" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Location:</Text>
+                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{loc}</Text>
+                      </View>
+                    ) : null}
+                    {nextService ? (
+                      <View style={styles.mobileDetailRow}>
+                        <Feather name="tool" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Service:</Text>
+                        <Text style={[styles.mobileDetailValue, { color: '#B45309', fontWeight: '700' }]} numberOfLines={1}>
                             {formatDaysUntil(nextService)}
-                          </Text>
-                        </View>
-                      ) : null}
+                        </Text>
+                      </View>
+                    ) : null}
                       {filters.type && typeFieldDefs.map((def) => {
                         const val = getDynamicFieldValue(item, def);
                         if (val === null || val === undefined || val === '') return null;
@@ -887,18 +887,18 @@ export default function SearchScreen(props = {}) {
                           </View>
                         );
                       })}
-                    </View>
+                  </View>
 
-                    <View style={styles.mobileCardActions}>
-                      <View style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}>
-                        <Text style={styles.mobileActionBtnText}>View Details</Text>
-                        <Feather name="arrow-right" size={16} color="#fff" />
-                      </View>
+                  <View style={styles.mobileCardActions}>
+                    <View style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}>
+                      <Text style={styles.mobileActionBtnText}>View Details</Text>
+                      <Feather name="arrow-right" size={16} color="#fff" />
                     </View>
-                  </TouchableOpacity>
-                );
+                  </View>
+                </TouchableOpacity>
+              );
 
-              })}
+            })}
             </View>
 
             {/* Mobile Pagination  */}
@@ -921,13 +921,13 @@ export default function SearchScreen(props = {}) {
         ) : (
           /* Desktop Table View */
           <View style={styles.tableContainer}>
-            <View style={styles.tableWrap}>
+          <View style={styles.tableWrap}>
             <View style={styles.tableScrollWrapper}>
-              <ScrollView
-                horizontal
+            <ScrollView
+              horizontal
                 showsHorizontalScrollIndicator
                 contentContainerStyle={{ flexGrow: 1 }}
-              >
+            >
                 <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
                 <View style={styles.tableHeader}>
                   {columns.map((c) => (
@@ -953,19 +953,19 @@ export default function SearchScreen(props = {}) {
                     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
                     const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short' }) : '—';
 
-                return (
-                  <View
-                    key={item.id}
-                    style={[styles.tr, idx % 2 === 1 && styles.rowAlt, (hoverRowId === item.id) && styles.rowHover]}
-                    onMouseEnter={() => setHoverRowId(item.id)}
-                    onMouseLeave={() => setHoverRowId(null)}
-                  >
-                    {/* QR Code */}
+                    return (
+                      <View
+                        key={item.id}
+                        style={[styles.tr, idx % 2 === 1 && styles.rowAlt, (hoverRowId === item.id) && styles.rowHover]}
+                        onMouseEnter={() => setHoverRowId(item.id)}
+                        onMouseLeave={() => setHoverRowId(null)}
+                      >
+                        {/* QR Code */}
                     <View style={[styles.td, columnStyle('qr')]}>
-                      <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 4 }}>
-                        <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.primary} />
-                      </TouchableOpacity>
-                    </View>
+                          <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 4 }}>
+                            <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.primary} />
+                          </TouchableOpacity>
+                        </View>
                     {/* Image */}
                     <View style={[styles.td, columnStyle('image')]}>
                       {imageUrl ? (
@@ -976,7 +976,7 @@ export default function SearchScreen(props = {}) {
                         </View>
                       )}
                     </View>
-                    {/* Asset Id */}
+                        {/* Asset Id */}
                     <View style={[styles.td, columnStyle('id')]}>
                       {isUUID(String(item.id || '')) ? (
                         <View style={styles.awaitingIdWrap}>
@@ -990,51 +990,51 @@ export default function SearchScreen(props = {}) {
                           <Text style={[styles.tdText, styles.linkText]} numberOfLines={1}>{item.id}</Text>
                         </TouchableOpacity>
                       )}
-                    </View>
-                    {/* Other Id */}
+                        </View>
+                        {/* Other Id */}
                     <View style={[styles.td, columnStyle('other_id')]}>
                       <Text style={styles.tdText} numberOfLines={1}>{otherId}</Text>
-                    </View>
-                    {/* Type */}
+                        </View>
+                        {/* Type */}
                     <View style={[styles.td, columnStyle('type')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? '—'}</Text>
-                    </View>
-                    {/* Serial */}
+                          <Text style={styles.tdText} numberOfLines={1}>{item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? '—'}</Text>
+                        </View>
+                        {/* Serial */}
                     <View style={[styles.td, columnStyle('serial')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{serial || '—'}</Text>
-                    </View>
-                    {/* Description */}
+                          <Text style={styles.tdText} numberOfLines={1}>{serial || '—'}</Text>
+                        </View>
+                        {/* Description */}
                     <View style={[styles.td, styles.tdTall, columnStyle('description')]}>
                       <Text style={[styles.tdText, styles.tdTextSmall]} numberOfLines={3}>
                         {description || '—'}
                       </Text>
-                    </View>
-                    {/* Model */}
+                        </View>
+                        {/* Model */}
                     <View style={[styles.td, styles.tdTall, columnStyle('model')]}>
                       <Text style={styles.tdText} numberOfLines={2}>{model || '—'}</Text>
-                    </View>
-                    {/* Assigned To */}
+                        </View>
+                        {/* Assigned To */}
                     <View style={[styles.td, columnStyle('assigned')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '—'}</Text>
-                    </View>
-                    {/* Status */}
+                          <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '—'}</Text>
+                        </View>
+                        {/* Status */}
                     <View style={[styles.td, columnStyle('status')]}>
-                      <View style={[styles.badge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-                        <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
-                      </View>
-                    </View>
-                    {/* Date Purchased */}
+                          <View style={[styles.badge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
+                            <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
+                          </View>
+                        </View>
+                        {/* Date Purchased */}
                     <View style={[styles.td, columnStyle('purchased')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{fmtDate(purchased)}</Text>
-                    </View>
-                    {/* Last Updated */}
+                          <Text style={styles.tdText} numberOfLines={1}>{fmtDate(purchased)}</Text>
+                        </View>
+                        {/* Last Updated */}
                     <View style={[styles.td, columnStyle('updated')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{fmtDateTime(updated)}</Text>
-                    </View>
-                    {/* Last Updated By */}
+                          <Text style={styles.tdText} numberOfLines={1}>{fmtDateTime(updated)}</Text>
+                        </View>
+                        {/* Last Updated By */}
                     <View style={[styles.td, columnStyle('updated_by')]}>
-                      <Text style={styles.tdText} numberOfLines={1}>{updatedBy}</Text>
-                    </View>
+                          <Text style={styles.tdText} numberOfLines={1}>{updatedBy}</Text>
+                        </View>
                         {/* Dynamic Fields */}
                         {dynamicColumns.map((col) => {
                           const val = formatDynamicValue(col.field, getDynamicFieldValue(item, col.field));
@@ -1044,8 +1044,8 @@ export default function SearchScreen(props = {}) {
                             </View>
                           );
                         })}
-                  </View>
-                );
+                      </View>
+                    );
                   })}
                 </ScrollView>
               </View>
@@ -1068,7 +1068,7 @@ export default function SearchScreen(props = {}) {
                           style={[styles.pageSizeBtn, active && styles.pageSizeBtnActive]}
                         >
                           <Text style={[styles.pageSizeText, active && styles.pageSizeTextActive]}>{label}</Text>
-                        </TouchableOpacity>
+                      </TouchableOpacity>
                       );
                     })}
                   </View>
@@ -1090,14 +1090,14 @@ export default function SearchScreen(props = {}) {
                     style={[styles.pageBtn, (page <= 1 || pageSize === 'all') && styles.pageBtnDisabled]}
                   >
                     <MaterialIcons name="chevron-left" size={20} color={(page <= 1 || pageSize === 'all') ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
+                    </TouchableOpacity>
                   <TouchableOpacity
                     disabled={page >= totalPages || pageSize === 'all'}
                     onPress={() => setPage(p => Math.min(totalPages, p + 1))}
                     style={[styles.pageBtn, (page >= totalPages || pageSize === 'all') && styles.pageBtnDisabled]}
                   >
                     <MaterialIcons name="chevron-right" size={20} color={(page >= totalPages || pageSize === 'all') ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
+                    </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -1119,10 +1119,10 @@ export default function SearchScreen(props = {}) {
                     <Text style={styles.clearAllText}>Clear all</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => setFilterModalOpen(false)} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
-                  <Feather name="x" size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={() => setFilterModalOpen(false)} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
+                <Feather name="x" size={16} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
             </View>
             <ScrollView style={{ maxHeight: filterScrollMaxHeight }}>
               <View style={{ gap: 16 }}>

@@ -1,0 +1,22 @@
+# EAS Build ignore file
+# Files and directories listed here will be excluded from EAS builds
+
+# QR codes and generated sheets (server-generated files, not needed for app build)
+utils/qrcodes/
+utils/qrcodes/**/*.png
+utils/qrcodes/**/*.pdf
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Development files
+.DS_Store
+.vscode/
+.idea/
+

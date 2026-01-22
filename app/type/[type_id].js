@@ -250,7 +250,7 @@ export default function AssetsType() {
   }, [withQR, withoutQR]);
 
   const renderContent = () => (
-    <View style={styles.container}>
+      <View style={styles.container}>
         {/* stats chips (now color-coded by status config) */}
         <View style={styles.metaRow}>
           <StatChip code="in_service"        count={counts.in_service} />

@@ -39,8 +39,27 @@ function guessFromExpoConstants() {
   return null;
 }
 
-export const API_BASE_URL =
-  (process.env.EXPO_PUBLIC_API_URL && String(process.env.EXPO_PUBLIC_API_URL).trim()) ||
-  (Platform.OS !== 'web' && guessDevApiBase()) ||
-  (Platform.OS !== 'web' && guessFromExpoConstants()) ||
-  cfg.API_URL;
+// Helper to validate if URL is accessible (for debugging)
+function logApiUrl(url, source) {
+  if (__DEV__) {
+    console.log(`🌐 API_BASE_URL: ${url} (from ${source})`);
+  }
+}
+
+// Determine API URL with fallback chain
+let apiBaseUrl;
+if (process.env.EXPO_PUBLIC_API_URL && String(process.env.EXPO_PUBLIC_API_URL).trim()) {
+  apiBaseUrl = String(process.env.EXPO_PUBLIC_API_URL).trim();
+  logApiUrl(apiBaseUrl, 'EXPO_PUBLIC_API_URL');
+} else if (Platform.OS !== 'web' && guessDevApiBase()) {
+  apiBaseUrl = guessDevApiBase();
+  logApiUrl(apiBaseUrl, 'Metro bundler detection');
+} else if (Platform.OS !== 'web' && guessFromExpoConstants()) {
+  apiBaseUrl = guessFromExpoConstants();
+  logApiUrl(apiBaseUrl, 'Expo Constants');
+} else {
+  apiBaseUrl = cfg.API_URL;
+  logApiUrl(apiBaseUrl, 'config.js fallback');
+}
+
+export const API_BASE_URL = apiBaseUrl;

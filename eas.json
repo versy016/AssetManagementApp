@@ -12,13 +12,21 @@
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000",
+        "NODE_ENV": "production"
+      }
     },
     "production": {
       "distribution": "store",
       "autoIncrement": true,
       "ios": {
         "enterpriseProvisioning": "universal"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000",
+        "NODE_ENV": "production"
       }
     }
   },
@@ -33,6 +41,19 @@
         "track": "internal"
       }
     },
-    "production": {}
+    "preview": {
+      "ios": {
+        "appleId": "shivamverma78698@gmail.com",
+        "ascAppId": "6749434013",
+        "appleTeamId": "7QSCBJMSR3"
+      }
+    },
+    "production": {
+      "ios": {
+        "appleId": "shivamverma78698@gmail.com",
+        "ascAppId": "6749434013",
+        "appleTeamId": "7QSCBJMSR3"
+      }
+    }
   }
 }

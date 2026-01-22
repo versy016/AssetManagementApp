@@ -299,41 +299,41 @@ export default function QRScannerScreen() {
               setIsScanning(false);
               setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 1500);
             } else {
-              // Process via ShortcutExecutor
-              await processScannedAsset(
-                shortcutType,
-                assetId,
-                assetData,
-                router,
-                user,
-                (message) => {
-                  // Success callback
-                  setToast({ visible: true, text: message, kind: 'success' });
+            // Process via ShortcutExecutor
+            await processScannedAsset(
+              shortcutType,
+              assetId,
+              assetData,
+              router,
+              user,
+              (message) => {
+                // Success callback
+                setToast({ visible: true, text: message, kind: 'success' });
                   if (shouldHoldOnShortcut) {
                     setIsProcessing(false);
                     setIsScanning(false);
                     setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 1500);
                     return;
                   }
-                  setTimeout(() => {
-                    setToast({ visible: false, text: '', kind: 'success' });
-                    // Return to dashboard after success
-                    if (returnTo) {
-                      router.replace(returnTo);
-                    } else {
-                      router.replace('/(tabs)/dashboard');
-                    }
-                  }, 1500);
-                },
-                (error) => {
-                  // Error callback
-                  setToast({ visible: true, text: error, kind: 'error' });
-                  setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 2000);
-                  setIsProcessing(false);
+                setTimeout(() => {
+                  setToast({ visible: false, text: '', kind: 'success' });
+                  // Return to dashboard after success
+                  if (returnTo) {
+                    router.replace(returnTo);
+                  } else {
+                    router.replace('/(tabs)/dashboard');
+                  }
+                }, 1500);
+              },
+              (error) => {
+                // Error callback
+                setToast({ visible: true, text: error, kind: 'error' });
+                setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 2000);
+                setIsProcessing(false);
                 },
                 returnTo || '/(tabs)/dashboard'
               );
-            }
+              }
           } catch (e) {
             Alert.alert('Error', e.message || 'Failed to process shortcut');
             setIsProcessing(false);

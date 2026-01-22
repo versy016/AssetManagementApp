@@ -2,7 +2,7 @@
   "expo": {
     "name": "AssetManagementApp",
     "slug": "AssetManagementApp",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "scheme": "assetmanager",
     "userInterfaceStyle": "automatic",
@@ -30,7 +30,7 @@
           "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
         ]
       },
-      "runtimeVersion": "1.0.4"
+      "runtimeVersion": "1.0.5"
     },
     "android": {
       "package": "com.engsurveys.assetmanager",
@@ -58,7 +58,7 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "runtimeVersion": "1.0.0"
+      "runtimeVersion": "1.0.5"
     },
     "web": {
       "bundler": "metro",
