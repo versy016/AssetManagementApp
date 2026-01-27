@@ -15,7 +15,7 @@
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "This app uses the camera to scan QR codes for asset check-in.",
+        "NSCameraUsageDescription": "This app uses the camera to scan QR codes for asset check-in and to take photos for assets.",
         "NSLocationWhenInUseUsageDescription": "We use your location to update an asset's last scanned location when you check it in or out.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true

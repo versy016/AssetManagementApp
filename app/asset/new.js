@@ -18,6 +18,7 @@ import { formatDisplayDate } from '../../utils/date';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import * as ImagePicker from 'expo-image-picker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
 
 registerTranslation('en', en);
@@ -353,17 +354,91 @@ export default function NewAsset() {
   // ---------- pickers with validation ----------
   const pickImage = async () => {
     try {
-      const result = await getImageFileFromPicker();
-      if (!result) return;
-      const t = (result.type || '').replace('jpg', 'jpeg');
-      if (!ALLOWED_IMAGE_MIME.includes(t)) {
-        const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
-        setFieldError('image', msg);
-        scrollToFirstError({ image: msg });
-        return;
+      // On mobile, show options to take photo or choose from library
+      if (Platform.OS !== 'web') {
+        Alert.alert(
+          'Select Image',
+          'Choose an option',
+          [
+            {
+              text: 'Take Photo',
+              onPress: async () => {
+                // Request camera permissions
+                const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                if (status !== 'granted') {
+                  Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+                  return;
+                }
+
+                // Launch camera
+                const { assets, canceled } = await ImagePicker.launchCameraAsync({
+                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                  allowsEditing: true,
+                  quality: 0.7,
+                });
+
+                if (canceled || !assets?.length) return;
+                const asset = assets[0];
+
+                // Process the camera result similar to getImageFileFromPicker
+                const contentType = asset.mimeType || 'image/jpeg';
+                const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
+                if (!allowed.has(contentType)) {
+                  const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+                  setFieldError('image', msg);
+                  scrollToFirstError({ image: msg });
+                  return;
+                }
+
+                const name = asset.fileName || `photo_${Date.now()}.jpg`;
+                const result = {
+                  uri: asset.uri,
+                  file: { uri: asset.uri, name, type: contentType },
+                  name,
+                  type: contentType,
+                };
+
+                setErrors(prev => ({ ...prev, image: undefined }));
+                setImage(result);
+              },
+            },
+            {
+              text: 'Choose from Library',
+              onPress: async () => {
+                const result = await getImageFileFromPicker();
+                if (!result) return;
+                const t = (result.type || '').replace('jpg', 'jpeg');
+                if (!ALLOWED_IMAGE_MIME.includes(t)) {
+                  const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+                  setFieldError('image', msg);
+                  scrollToFirstError({ image: msg });
+                  return;
+                }
+                setErrors(prev => ({ ...prev, image: undefined }));
+                setImage(result);
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        // Web: just use the library picker
+        const result = await getImageFileFromPicker();
+        if (!result) return;
+        const t = (result.type || '').replace('jpg', 'jpeg');
+        if (!ALLOWED_IMAGE_MIME.includes(t)) {
+          const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+          setFieldError('image', msg);
+          scrollToFirstError({ image: msg });
+          return;
+        }
+        setErrors(prev => ({ ...prev, image: undefined }));
+        setImage(result);
       }
-      setErrors(prev => ({ ...prev, image: undefined }));
-      setImage(result);
     } catch (e) {
       const msg = e.message || 'Invalid image';
       setFieldError('image', msg);
@@ -1045,22 +1120,49 @@ export default function NewAsset() {
 
         {/* QR / Asset ID */}
         <View onLayout={onLayoutFor('id')}>
-          {!!id && <Text style={{ marginBottom: 10, color: '#333' }}>Selected Asset ID: {id}</Text>}
           <Text style={styles.label}>Select Asset ID</Text>
           {Platform.OS !== 'web' ? (
             <View style={{ alignItems: 'center' }}>
-              <TouchableOpacity
-                style={[styles.btn, styles.pickerBtn]}
-                onPress={() => {
-                  const rp = encodeURIComponent(JSON.stringify({
-                    fromAssetId: fromAssetId ? String(fromAssetId) : undefined,
-                    returnTo: normalizedReturnTo ? String(normalizedReturnTo) : undefined,
-                  }));
-                  router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
-                }}
-              >
-                <Text>Scan QR to Assign</Text>
-              </TouchableOpacity>
+              {!id ? (
+                <TouchableOpacity
+                  style={[styles.btn, styles.pickerBtn]}
+                  onPress={() => {
+                    const rp = encodeURIComponent(JSON.stringify({
+                      fromAssetId: fromAssetId ? String(fromAssetId) : undefined,
+                      returnTo: normalizedReturnTo ? String(normalizedReturnTo) : undefined,
+                    }));
+                    router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
+                  }}
+                >
+                  <Text>Scan QR to Assign</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ width: '100%', alignItems: 'center' }}>
+                  <View style={{
+                    backgroundColor: '#E6F3FF',
+                    borderWidth: 2,
+                    borderColor: '#1E90FF',
+                    borderRadius: 8,
+                    paddingVertical: 16,
+                    paddingHorizontal: 20,
+                    marginVertical: 12,
+                    width: '100%',
+                    alignItems: 'center',
+                  }}>
+                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Selected Asset ID</Text>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.btn, { backgroundColor: '#fdecea', minWidth: 180 }]}
+                    onPress={() => {
+                      setId('');
+                      setErrors(prev => ({ ...prev, id: undefined }));
+                    }}
+                  >
+                    <Text style={{ color: '#b00020' }}>Remove selected QR</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
             </View>
           ) : (
