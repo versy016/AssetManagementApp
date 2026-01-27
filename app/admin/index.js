@@ -216,11 +216,13 @@ export default function AdminConsole() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.topbar}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
-            </TouchableOpacity>
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
+              </TouchableOpacity>
+            )}
             <Text style={styles.topbarTitle}>Admin Console</Text>
-            <View style={{ width: 24 }} />
+            {Platform.OS !== 'web' && <View style={{ width: 24 }} />}
           </View>
       {/* Segmented tabs */}
       <View style={styles.tabs}>

@@ -5,6 +5,7 @@ import { Link, usePathname, useLocalSearchParams } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { useTheme } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
+import { API_BASE_URL } from '../inventory-api/apiBase';
 // Theme options for navbar (keep only Golden Amber for consistency)
 const THEME_OPTIONS = [
   {
@@ -49,7 +50,7 @@ export default function WebNavbar() {
   const theme = useTheme();
   const selectedTheme = THEME_OPTIONS[0];
 
-  // Subscribe to auth and read custom claims to determine admin visibility
+  // Subscribe to auth and read custom claims + DB role to determine admin visibility
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (currentUser) => {
       try {
@@ -58,11 +59,25 @@ export default function WebNavbar() {
           setIsAdmin(false);
           return;
         }
+        // Check Firebase custom claims
         await currentUser.getIdToken(true);
         const tr = await currentUser.getIdTokenResult();
         const role = String(tr?.claims?.role || '').toUpperCase();
-        const admin = !!tr?.claims?.admin || role === 'ADMIN';
-        setIsAdmin(!!admin);
+        const adminClaim = !!tr?.claims?.admin || role === 'ADMIN';
+        
+        // Also check database role for more reliable admin check
+        let dbAdmin = false;
+        try {
+          const res = await fetch(`${API_BASE_URL}/users/${currentUser.uid}`);
+          if (res.ok) {
+            const dbUser = await res.json();
+            dbAdmin = String(dbUser?.role || '').toUpperCase() === 'ADMIN';
+          }
+        } catch (e) {
+          console.warn('Failed to check DB role:', e);
+        }
+        
+        setIsAdmin(!!adminClaim || dbAdmin);
       } catch {
         setIsAdmin(false);
         setUser(null);
@@ -142,7 +157,7 @@ export default function WebNavbar() {
         <NavLink href="/activity" label="Activity" isActive={active.activity} theme={theme} />
         <NavLink href="/certs" label="Certs" isActive={active.certs} theme={theme} />
         <NavLink href="/(tabs)/Inventory" label="Inventory" isActive={active.inventory} theme={theme} />
-        {isAdmin ? (<NavLink href="/admin" label="Admin" isActive={active.admin} theme={theme} />) : null}
+        {isAdmin ? (<NavLink href="/admin" label="Admin Controls" isActive={active.admin} theme={theme} />) : null}
       </View>
       <View style={styles.navRight}>
         <NavLink href="/profile" label="Profile" isActive={active.profile} theme={theme} />

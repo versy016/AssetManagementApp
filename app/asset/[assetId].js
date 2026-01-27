@@ -1398,60 +1398,90 @@ export default function AssetDetailPage() {
           <MapPreview location={displayLocation} />
           {/* Smart actions */}
           <View style={styles.actionsRow}>
-            {normalizeStatus(asset?.status) === 'available' ? (
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
-                onPress={() =>
-                  router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
-                }
-              >
-                <Text style={styles.actionText}>Transfer Out</Text>
-              </TouchableOpacity>
-            ) : normalizeStatus(asset?.status) === 'rented' ? (
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                onPress={() => router.push(`/check-in/${asset.id}`)}
-              >
-                <Text style={styles.actionText}>Transfer In</Text>
-              </TouchableOpacity>
-            ) : (
-              isAdmin ? (
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                  onPress={() => {
-                    router.push({
-                      pathname: '/asset/new',
-                      params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
-                    });
-                  }}
-                >
-                  <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
-                </TouchableOpacity>
-              ) : null
-            )}
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
-              onPress={() =>
-                router.push({
-                  pathname: '/asset/edit',
-                  params: {
-                    assetId: asset.id,
-                    returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
-                  },
-                })
+            {(() => {
+              const isQRReserved = String(asset?.description || '').trim().toLowerCase() === 'qr reserved asset';
+              
+              if (isQRReserved) {
+                // QR reserved assets only show Transfer Out/In buttons, no Edit/Copy/Delete
+                return normalizeStatus(asset?.status) === 'available' ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                    onPress={() =>
+                      router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
+                    }
+                  >
+                    <Text style={styles.actionText}>Transfer Out</Text>
+                  </TouchableOpacity>
+                ) : normalizeStatus(asset?.status) === 'rented' ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                    onPress={() => router.push(`/check-in/${asset.id}`)}
+                  >
+                    <Text style={styles.actionText}>Transfer In</Text>
+                  </TouchableOpacity>
+                ) : null;
               }
-            >
-              <Text style={styles.actionText}>✏️ Edit</Text>
-            </TouchableOpacity>
+              
+              // Regular assets show all buttons
+              return (
+                <>
+                  {normalizeStatus(asset?.status) === 'available' ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                      onPress={() =>
+                        router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
+                      }
+                    >
+                      <Text style={styles.actionText}>Transfer Out</Text>
+                    </TouchableOpacity>
+                  ) : normalizeStatus(asset?.status) === 'rented' ? (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                      onPress={() => router.push(`/check-in/${asset.id}`)}
+                    >
+                      <Text style={styles.actionText}>Transfer In</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    isAdmin ? (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                        onPress={() => {
+                          router.push({
+                            pathname: '/asset/new',
+                            params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
+                          });
+                        }}
+                      >
+                        <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
+                      </TouchableOpacity>
+                    ) : null
+                  )}
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/asset/edit',
+                        params: {
+                          assetId: asset.id,
+                          returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
+                        },
+                      })
+                    }
+                  >
+                    <Text style={styles.actionText}>✏️ Edit</Text>
+                  </TouchableOpacity>
 
-            {isAdmin && (
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
-                onPress={handleDelete}
-              >
-                <Text style={styles.actionText}>🗑 Delete</Text>
-              </TouchableOpacity>
-            )}
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
+                      onPress={handleDelete}
+                    >
+                      <Text style={styles.actionText}>🗑 Delete</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
           </View>
 
           {/* Helpful shortcuts

@@ -1265,8 +1265,7 @@ const postActionAlert = ({
                 onPress={handleBackToScanned}
                 style={styles.backToScanBtn}
               >
-                <MaterialIcons name={'list'} size={16} color={Colors.blue} />
-                <Text style={styles.backToScanText}>
+                <Text style={styles.backToScanText} numberOfLines={2}>
                   {`Back to Scanned Assets (${(multiScanCtx?.checked || []).length} of ${(multiScanCtx?.items || []).length} scanned)`}
                 </Text>
               </TouchableOpacity>
@@ -1330,8 +1329,9 @@ const postActionAlert = ({
                   onPress={() => router.replace('/(tabs)/dashboard')}
                   disabled={loading}
                 >
-                  <MaterialIcons name="dashboard" size={20} color={Colors.slate} />
-                  <Text style={[styles.tileText, { color: Colors.slate }]}>Back to Dashboard</Text>
+                  <Text style={[styles.tileText, { color: Colors.slate }]} numberOfLines={2}>
+                    Back to Dashboard
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : isPlaceholder ? (
@@ -1344,8 +1344,7 @@ const postActionAlert = ({
                     onPress={() => handleAction('checkin')}
                     disabled={loading}
                   >
-                    <MaterialIcons name="assignment-turned-in" size={20} color={Colors.green} />
-                    <Text style={[styles.tileText, { color: Colors.green }]}>
+                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
                       {loading ? 'Loading...' : 'Transfer to Office'}
                     </Text>
                   </TouchableOpacity>
@@ -1357,8 +1356,9 @@ const postActionAlert = ({
                   onPress={() => setSwapOpen(true)}
                   disabled={loading}
                 >
-                  <MaterialIcons name="swap-horiz" size={20} color={Colors.blue} />
-                  <Text style={[styles.tileText, { color: Colors.blue }]}>Swap</Text>
+                  <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
+                    Swap
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Assign Imported Asset */}
@@ -1368,8 +1368,9 @@ const postActionAlert = ({
                     onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
                     disabled={loading}
                   >
-                    <MaterialIcons name="qr-code" size={20} color={Colors.amber} />
-                    <Text style={[styles.tileText, { color: Colors.amber }]}>Assign Imported Asset</Text>
+                    <Text style={[styles.tileText, { color: Colors.amber }]} numberOfLines={2}>
+                      Assign Imported Asset
+                    </Text>
                   </TouchableOpacity>
                 )}
 
@@ -1380,8 +1381,9 @@ const postActionAlert = ({
                     onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
                     disabled={loading}
                   >
-                    <MaterialIcons name="add-box" size={20} color={Colors.green} />
-                    <Text style={[styles.tileText, { color: Colors.green }]}>Create Asset</Text>
+                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
+                      Create Asset
+                    </Text>
                   </TouchableOpacity>
                 )}
 
@@ -1390,8 +1392,9 @@ const postActionAlert = ({
                   style={[styles.tile, styles.backToDashboardTile]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                 >
-                  <MaterialIcons name="dashboard" size={20} color={Colors.blue} />
-                  <Text style={[styles.tileText, styles.backToDashboardText]}>Back to Dashboard</Text>
+                  <Text style={[styles.tileText, styles.backToDashboardText]} numberOfLines={2}>
+                    Back to Dashboard
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1407,8 +1410,7 @@ const postActionAlert = ({
                     onPress={() => handleAction('checkin')}
                     disabled={loading}
                   >
-                    <MaterialIcons name="assignment-turned-in" size={20} color={Colors.green} />
-                    <Text style={[styles.tileText, { color: Colors.green }]}>
+                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
                       {loading ? 'Loading...' : 'Transfer to Office'}
                     </Text>
                   </TouchableOpacity>
@@ -1420,8 +1422,9 @@ const postActionAlert = ({
                   onPress={openTransferMenu}
                   disabled={loading}
                 >
-                  <MaterialIcons name="swap-horiz" size={20} color={Colors.blue} />
-                  <Text style={[styles.tileText, { color: Colors.blue }]}>Transfer</Text>
+                  <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
+                    Transfer
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Transfer to Me */}
@@ -1431,8 +1434,9 @@ const postActionAlert = ({
                     onPress={() => handleAction('transferToMe')}
                     disabled={loading}
                   >
-                    <MaterialIcons name="person-add" size={20} color={Colors.blue} />
-                    <Text style={[styles.tileText, { color: Colors.blue }]}>Transfer to Me</Text>
+                    <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
+                      Transfer to Me
+                    </Text>
                   </TouchableOpacity>
                 )}
 
@@ -1441,8 +1445,9 @@ const postActionAlert = ({
                   style={[styles.tile, { backgroundColor: '#F9FAFB' }]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                 >
-                  <MaterialIcons name="dashboard" size={20} color={Colors.slate} />
-                  <Text style={[styles.tileText, { color: Colors.slate }]}>Back to Dashboard</Text>
+                  <Text style={[styles.tileText, { color: Colors.slate }]} numberOfLines={2}>
+                    Back to Dashboard
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Copy Asset */}
@@ -1452,8 +1457,9 @@ const postActionAlert = ({
                     onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
                     disabled={loading}
                   >
-                    <MaterialIcons name="content-copy" size={20} color={Colors.blue} />
-                    <Text style={[styles.tileText, { color: Colors.blue }]}>Copy Asset</Text>
+                    <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
+                      Copy Asset
+                    </Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -1467,28 +1473,32 @@ const postActionAlert = ({
         {!isPlaceholder && !isEOL && (
           <View style={styles.footerBar}>
             <TouchableOpacity
-              style={[styles.footerBtn, styles.footerBtnWide, { backgroundColor: Colors.amber }]}
+              style={[styles.footerBtn, { backgroundColor: Colors.amber }]}
               onPress={() => { setActionsFormType('Repair'); setActionsFormOpen(true); }}
             >
-            <MaterialIcons name="build" size={20} color="#FFFFFF" />
-            <Text style={styles.footerBtnText}>Repair Required</Text>
-          </TouchableOpacity>
+              <Text style={styles.footerBtnText} numberOfLines={2}>
+                Repair Required
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.footerBtn, { backgroundColor: Colors.purple }]}
-            onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
-          >
-            <MaterialIcons name="build-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.footerBtnText}>Log Service</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.footerBtn, { backgroundColor: Colors.purple }]}
+              onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
+            >
+              <Text style={styles.footerBtnText} numberOfLines={2}>
+                Log Service
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.footerBtn, { backgroundColor: Colors.slate }]}
-            onPress={() => setShowOtherModal(true)}
-          >
-            <Text style={styles.footerBtnText}>Other Actions</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.footerBtn, { backgroundColor: Colors.slate }]}
+              onPress={() => setShowOtherModal(true)}
+            >
+              <Text style={styles.footerBtnText} numberOfLines={2}>
+                Other Actions
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
       </Animated.View>
@@ -1663,7 +1673,10 @@ const postActionAlert = ({
                 </TouchableOpacity>
               </View>
 
-              <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 18, gap: 14 }}>
+              <ScrollView 
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 14 }}
+                keyboardShouldPersistTaps="handled"
+              >
                 <View style={styles.optionCard}>
                   <View style={styles.optionHeaderRow}>
                     <MaterialIcons name="search" size={18} color={Colors.blue} />
@@ -1684,8 +1697,10 @@ const postActionAlert = ({
                       <FlatList
                         data={filteredAssignResults}
                         keyExtractor={(item) => String(item.id)}
-                        style={{ maxHeight: 360 }}
+                        style={{ maxHeight: 300 }}
+                        contentContainerStyle={{ paddingBottom: 8 }}
                         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                        scrollEnabled={filteredAssignResults.length > 3}
                         renderItem={({ item }) => (
                           <TouchableOpacity
                             style={[
@@ -1702,7 +1717,7 @@ const postActionAlert = ({
                           </TouchableOpacity>
                         )}
                         ListEmptyComponent={() => (
-                          <Text style={{ color: Colors.muted, textAlign: 'center' }}>No matches</Text>
+                          <Text style={{ color: Colors.muted, textAlign: 'center', paddingVertical: 16 }}>No matches</Text>
                         )}
                       />
                     )}
@@ -1710,8 +1725,17 @@ const postActionAlert = ({
                 </View>
               </ScrollView>
 
-              {/* Confirm bar */}
-              <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 14 }}>
+              {/* Confirm bar - Fixed at bottom */}
+              <View style={{ 
+                flexDirection: 'row', 
+                gap: 10, 
+                paddingHorizontal: 16, 
+                paddingTop: 12,
+                paddingBottom: Platform.OS === 'ios' ? 20 : 14,
+                backgroundColor: Colors.card,
+                borderTopWidth: 1,
+                borderTopColor: Colors.border,
+              }}>
                 <TouchableOpacity
                   style={[styles.footerBtn, { backgroundColor: Colors.slate, flex: 1, opacity: assignLoading ? 0.6 : 1 }]}
                   disabled={assignLoading}
@@ -1803,45 +1827,65 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
 
   sectionTitle: { color: Colors.subtle, fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 6, letterSpacing: 0.5 },
-  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     flexBasis: '48%',
     backgroundColor: '#F9FAFB',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
+    minHeight: 60,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
-  tileText: { color: Colors.text, fontWeight: '800', fontSize: 15 },
+  tileText: {
+    color: Colors.text,
+    fontWeight: '700',
+    fontSize: Platform.select({
+      ios: 13,
+      android: 13,
+      default: 14,
+    }),
+    textAlign: 'center',
+    includeFontPadding: false, // Android: remove extra padding
+  },
   backToDashboardTile: {
     backgroundColor: '#E5E7EB',
     borderColor: '#9CA3AF',
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
   },
   backToDashboardText: {
     color: Colors.blue,
   },
   backToScanBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#BFDBFE',
     backgroundColor: '#EFF6FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 999,
+    maxWidth: '100%',
   },
-  backToScanText: { color: Colors.blue, fontWeight: '800' },
+  backToScanText: {
+    color: Colors.blue,
+    fontWeight: '700',
+    fontSize: Platform.select({
+      ios: 12,
+      android: 12,
+      default: 13,
+    }),
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
 
   footerBar: {
     position: 'absolute',
@@ -1849,8 +1893,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     flexDirection: 'row',
-    gap: 12,
-    padding: 12,
+    gap: 8,
+    padding: 10,
     backgroundColor: Colors.bg,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
@@ -1859,13 +1903,23 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    minHeight: 44,
   },
-  footerBtnWide: { flex: 1.2 },
-  footerBtnText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center', flexShrink: 1 },
+  footerBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: Platform.select({
+      ios: 11,
+      android: 11,
+      default: 12,
+    }),
+    textAlign: 'center',
+    flexShrink: 1,
+    includeFontPadding: false, // Android: remove extra padding
+  },
 
   // Modal / Bottom Sheet (light)
   sheetBackdrop: {

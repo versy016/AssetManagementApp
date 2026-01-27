@@ -1,7 +1,7 @@
 // app/profile/index.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -132,11 +132,11 @@ export default function ProfileScreen() {
       <View style={styles.container}>
       <PageHeader
         title="My Profile"
-        left={(
+        left={Platform.OS !== 'web' ? (
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
-        )}
+        ) : <View style={{ width: 24 }} />}
         right={<View style={{ width: 24 }} />}
       />
       <View style={styles.field}>

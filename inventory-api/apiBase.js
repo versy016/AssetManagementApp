@@ -17,7 +17,7 @@ function guessDevApiBase() {
       // Default API port from server/.env (3000). Adjust here if you change the API port.
       return `http://${host}:3000`;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -35,7 +35,7 @@ function guessFromExpoConstants() {
     const m = String(hostLike).match(/([^:]+):\d+/);
     const host = m && m[1];
     if (host) return `http://${host}:3000`;
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -51,6 +51,10 @@ let apiBaseUrl;
 if (process.env.EXPO_PUBLIC_API_URL && String(process.env.EXPO_PUBLIC_API_URL).trim()) {
   apiBaseUrl = String(process.env.EXPO_PUBLIC_API_URL).trim();
   logApiUrl(apiBaseUrl, 'EXPO_PUBLIC_API_URL');
+} else if (Platform.OS === 'web') {
+  // On web, always use localhost or the configured URL
+  apiBaseUrl = cfg.API_URL;
+  logApiUrl(apiBaseUrl, 'Web platform - config.js');
 } else if (Platform.OS !== 'web' && guessDevApiBase()) {
   apiBaseUrl = guessDevApiBase();
   logApiUrl(apiBaseUrl, 'Metro bundler detection');
@@ -60,6 +64,14 @@ if (process.env.EXPO_PUBLIC_API_URL && String(process.env.EXPO_PUBLIC_API_URL).t
 } else {
   apiBaseUrl = cfg.API_URL;
   logApiUrl(apiBaseUrl, 'config.js fallback');
+}
+
+// Additional validation and warning
+if (__DEV__) {
+  if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) {
+    console.log('⚠️ Using localhost API. Make sure the server is running on port 3000');
+    console.log('   Start server: cd inventory-api && npm start');
+  }
 }
 
 export const API_BASE_URL = apiBaseUrl;
