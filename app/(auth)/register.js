@@ -32,6 +32,8 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
@@ -107,21 +109,26 @@ export default function Register() {
         }),
       });
 
+      // Sign out immediately to prevent navbar from showing
+      await auth.signOut();
+
       if (isMountedRef.current) {
-        Alert.alert(
-          'Verification Email Sent',
-          'Please check your email and verify your account before logging in. The verification link will expire in 1 hour.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Sign out the user so they need to verify before accessing the app
-                auth.signOut();
-                router.replace('/(auth)/login');
-              },
-            },
-          ]
-        );
+        // Show success state on the page
+        setRegistrationSuccess(true);
+        setRegisteredEmail(email);
+        setLoading(false);
+
+        // Clear form
+        setName('');
+        setPassword('');
+        setEmail('');
+
+        // Auto-redirect to login after 5 seconds
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            router.replace('/(auth)/login');
+          }
+        }, 5000);
       }
     } catch (error) {
       if (isMountedRef.current) {
@@ -134,6 +141,49 @@ export default function Register() {
       }
     }
   };
+
+  // Show success message if registration was successful
+  if (registrationSuccess) {
+    return (
+      <ScreenWrapper style={styles.container} withScrollView>
+        <View style={styles.content}>
+          <View style={styles.successContainer}>
+            <Text style={[styles.successIcon, { color: theme.colors.primary }]}>✓</Text>
+            <Text style={[styles.successTitle, { color: theme.colors.primary }]}>
+              Registration Successful!
+            </Text>
+            <Text style={[styles.successMessage, { color: theme.colors.text }]}>
+              We've sent a verification email to:
+            </Text>
+            <Text style={[styles.successEmail, { color: theme.colors.primary }]}>
+              {registeredEmail}
+            </Text>
+            <View style={styles.instructionsBox}>
+              <Text style={[styles.instructionsTitle, { color: theme.colors.text }]}>
+                Next Steps:
+              </Text>
+              <Text style={[styles.instructionsText, { color: theme.colors.text }]}>
+                1. Check your email inbox (and spam folder){'\n'}
+                2. Click the verification link in the email{'\n'}
+                3. The link will expire in 1 hour{'\n'}
+                4. Once verified, you can log in to your account
+              </Text>
+            </View>
+            <AppButton
+              mode="contained"
+              onPress={() => router.replace('/(auth)/login')}
+              style={styles.goToLoginButton}
+            >
+              Go to Login
+            </AppButton>
+            <Text style={[styles.autoRedirectText, { color: theme.colors.text }]}>
+              Redirecting to login in a few seconds...
+            </Text>
+          </View>
+        </View>
+      </ScreenWrapper>
+    );
+  }
 
   return (
     <ScreenWrapper style={styles.container} withScrollView>
@@ -203,5 +253,58 @@ const styles = StyleSheet.create({
   loginLink: {
     marginTop: 24,
     alignItems: 'center',
+  },
+  successContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  successIcon: {
+    fontSize: 64,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  successMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successEmail: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  instructionsBox: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 24,
+    width: '100%',
+  },
+  instructionsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  instructionsText: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  goToLoginButton: {
+    marginBottom: 12,
+    minWidth: 200,
+  },
+  autoRedirectText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
