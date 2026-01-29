@@ -37,10 +37,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (user === null && layoutReady) {
+    // Only redirect to login if user is null AND we're not on an auth page
+    // This allows registration success screen to display
+    if (user === null && layoutReady && !isAuthPage) {
       router.replace('/(auth)/login');
     }
-  }, [user, layoutReady]);
+  }, [user, layoutReady, isAuthPage]);
 
   // 3) Web-only: ensure global scrolling is enabled (guard against hidden overflow)
   useEffect(() => {

@@ -45,6 +45,13 @@ export default function Register() {
     };
   }, []);
 
+  // Debug: Log state changes
+  useEffect(() => {
+    if (registrationSuccess) {
+      console.log('Registration success state is true, email:', registeredEmail);
+    }
+  }, [registrationSuccess, registeredEmail]);
+
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
     if (!domain) return false;
@@ -107,17 +114,23 @@ export default function Register() {
       // Send email verification
       await sendEmailVerification(userCredential.user);
 
-      await fetch(`${API_BASE_URL}/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: userCredential.user.uid,
-          name,
-          useremail: email,
-        }),
-      });
+      // Create user in database (don't fail registration if this fails)
+      try {
+        await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: userCredential.user.uid,
+            name,
+            useremail: email,
+          }),
+        });
+      } catch (dbError) {
+        console.warn('Failed to create user in database:', dbError);
+        // Continue with registration success even if DB call fails
+      }
 
       // Store email before signing out
       const registeredEmailValue = email;
@@ -125,11 +138,12 @@ export default function Register() {
       // Sign out immediately to prevent navbar from showing
       await auth.signOut();
 
-      // Small delay to ensure signOut completes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay to ensure signOut completes and state updates
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       if (isMountedRef.current) {
-        // Show success state on the page
+        console.log('Setting registration success state');
+        // Show success state on the page - use functional updates to ensure state is set
         setRegistrationSuccess(true);
         setRegisteredEmail(registeredEmailValue);
         setLoading(false);
@@ -145,6 +159,8 @@ export default function Register() {
             router.replace('/(auth)/login');
           }
         }, 5000);
+      } else {
+        console.warn('Component unmounted before setting success state');
       }
     } catch (error) {
       console.error('Registration error:', error);
@@ -157,7 +173,8 @@ export default function Register() {
   };
 
   // Show success message if registration was successful
-  if (registrationSuccess) {
+  if (registrationSuccess && registeredEmail) {
+    console.log('Rendering success screen for:', registeredEmail);
     return (
       <ScreenWrapper style={styles.container} withScrollView>
         <View style={styles.content}>
