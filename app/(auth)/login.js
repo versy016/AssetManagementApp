@@ -35,8 +35,30 @@ export default function Login() {
     setErrorMessage('');
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Alert.alert('Login Success', 'You have logged in successfully!'); // Optional: remove alert for smoother flow
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Check if email is verified
+      await userCredential.user.reload();
+      if (!userCredential.user.emailVerified) {
+        Alert.alert(
+          'Email Not Verified',
+          'Please verify your email address before accessing the app. Check your inbox for the verification link.',
+          [
+            {
+              text: 'Go to Verification',
+              onPress: () => router.replace('/(auth)/verify-email'),
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => auth.signOut(),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Email is verified, proceed to dashboard
       router.replace('/(tabs)/dashboard');
     } catch (error) {
       let errorMsg = 'Login failed';

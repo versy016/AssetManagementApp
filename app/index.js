@@ -33,6 +33,16 @@ export default function Index() {
 
       if (firebaseUser) {
         try {
+          // Check if email is verified
+          await firebaseUser.reload(); // Reload to get latest emailVerified status
+          if (!firebaseUser.emailVerified) {
+            if (isMountedRef.current) {
+              // Redirect to verification screen if email is not verified
+              router.replace('/(auth)/verify-email');
+            }
+            return;
+          }
+
           // Refresh the token to get the latest custom claims
           await firebaseUser.getIdToken(true);
           const tokenResult = await firebaseUser.getIdTokenResult();

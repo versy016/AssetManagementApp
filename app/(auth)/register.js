@@ -1,7 +1,7 @@
 // Register.js - User registration screen for the app
 
 import { auth } from '../../firebaseConfig';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
@@ -92,6 +92,9 @@ export default function Register() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
 
+      // Send email verification
+      await sendEmailVerification(userCredential.user);
+
       await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: {
@@ -105,8 +108,20 @@ export default function Register() {
       });
 
       if (isMountedRef.current) {
-        Alert.alert('Success', 'Registration successful!');
-        router.replace('/(tabs)/dashboard');
+        Alert.alert(
+          'Verification Email Sent',
+          'Please check your email and verify your account before logging in. The verification link will expire in 1 hour.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Sign out the user so they need to verify before accessing the app
+                auth.signOut();
+                router.replace('/(auth)/login');
+              },
+            },
+          ]
+        );
       }
     } catch (error) {
       if (isMountedRef.current) {
