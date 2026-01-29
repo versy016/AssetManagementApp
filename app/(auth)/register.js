@@ -41,6 +41,36 @@ export default function Register() {
     return docSnap.exists();
   };
 
+  const getFirebaseErrorMessage = (error) => {
+    if (!error || !error.code) {
+      return error?.message || 'An unexpected error occurred';
+    }
+
+    switch (error.code) {
+      case 'auth/email-already-in-use':
+        return 'This email address is already registered. Please use a different email or try logging in.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/weak-password':
+        return 'Password is too weak. Please use at least 6 characters.';
+      case 'auth/operation-not-allowed':
+        return 'Email/password accounts are not enabled. Please contact support.';
+      case 'auth/network-request-failed':
+        return 'Network error. Please check your internet connection and try again.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      case 'auth/invalid-credential':
+        return 'Invalid credentials. Please check your information and try again.';
+      default:
+        // For non-Firebase errors or unknown Firebase errors, return a cleaner message
+        if (error.message && error.message.includes('Firebase:')) {
+          // Remove "Firebase: Error" prefix if present
+          return error.message.replace(/^Firebase:\s*Error\s*\([^)]+\)\s*:?\s*/i, '').trim() || 'An error occurred during registration.';
+        }
+        return error.message || 'An error occurred during registration.';
+    }
+  };
+
   const handleRegister = async () => {
     if (!name || !email || !password) {
       if (isMountedRef.current) {
@@ -80,7 +110,8 @@ export default function Register() {
       }
     } catch (error) {
       if (isMountedRef.current) {
-        setErrorMessage(error.message);
+        const friendlyMessage = getFirebaseErrorMessage(error);
+        setErrorMessage(friendlyMessage);
       }
     } finally {
       if (isMountedRef.current) {
