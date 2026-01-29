@@ -44,31 +44,22 @@ export default function Login() {
         await auth.signOut();
         
         // Show error message in UI
-        setErrorMessage('Your email address has not been verified. Please check your inbox and click the verification link before logging in.');
+        setErrorMessage('Your email address has not been verified. Please check your inbox and click the verification link in the email we sent you. Once verified, you can log in.');
         
         // Also show alert for better visibility
         Alert.alert(
           'Email Verification Required',
-          'Please verify your email address before accessing the app. We\'ve sent a verification link to your email inbox. Click the link to verify your account.',
+          'Please verify your email address before accessing the app. Check your inbox (and spam folder) for the verification email we sent you. Click the verification link in that email to verify your account, then try logging in again.',
           [
             {
-              text: 'Go to Verification Page',
-              onPress: () => {
-                router.replace('/(auth)/verify-email');
-              },
-            },
-            {
               text: 'OK',
-              style: 'cancel',
+              onPress: () => {
+                // Stay on login page - user needs to verify via email
+              },
             },
           ],
           { cancelable: false }
         );
-        
-        // Auto-redirect to verification page after a short delay
-        setTimeout(() => {
-          router.replace('/(auth)/verify-email');
-        }, 2000);
         
         setLoading(false);
         return;
