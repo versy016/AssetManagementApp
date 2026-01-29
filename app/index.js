@@ -1,5 +1,5 @@
 // app/index.js
-import { auth } from '../firebaseConfig'; 
+import { auth } from '../firebaseConfig';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';

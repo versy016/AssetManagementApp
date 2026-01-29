@@ -67,7 +67,7 @@ export default function RootLayout() {
       <ErrorBoundary>
         <PaperProvider theme={theme}>
           <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            {Platform.OS === 'web' ? <WebNavbar /> : null}
+            {Platform.OS === 'web' && user ? <WebNavbar /> : null}
             <View style={{ flex: 1 }}>
               <Slot />
             </View>

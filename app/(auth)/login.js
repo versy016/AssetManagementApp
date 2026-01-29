@@ -36,7 +36,7 @@ export default function Login() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
+
       // Check if email is verified
       await userCredential.user.reload();
       if (!userCredential.user.emailVerified) {
