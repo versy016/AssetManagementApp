@@ -4,7 +4,7 @@ import { auth } from '../../firebaseConfig';
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, Alert, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from 'react-native-paper';
 
@@ -34,6 +34,16 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const redirectTimerRef = useRef(null);
+
+  // Cleanup redirect timer on unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
 
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
@@ -109,13 +119,19 @@ export default function Register() {
         }),
       });
 
+      // Store email before signing out
+      const registeredEmailValue = email;
+
       // Sign out immediately to prevent navbar from showing
       await auth.signOut();
+
+      // Small delay to ensure signOut completes
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       if (isMountedRef.current) {
         // Show success state on the page
         setRegistrationSuccess(true);
-        setRegisteredEmail(email);
+        setRegisteredEmail(registeredEmailValue);
         setLoading(false);
 
         // Clear form
@@ -124,19 +140,17 @@ export default function Register() {
         setEmail('');
 
         // Auto-redirect to login after 5 seconds
-        setTimeout(() => {
+        redirectTimerRef.current = setTimeout(() => {
           if (isMountedRef.current) {
             router.replace('/(auth)/login');
           }
         }, 5000);
       }
     } catch (error) {
+      console.error('Registration error:', error);
       if (isMountedRef.current) {
         const friendlyMessage = getFirebaseErrorMessage(error);
         setErrorMessage(friendlyMessage);
-      }
-    } finally {
-      if (isMountedRef.current) {
         setLoading(false);
       }
     }

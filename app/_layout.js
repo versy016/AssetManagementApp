@@ -5,6 +5,7 @@ import { auth } from '../firebaseConfig';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform, View } from 'react-native';
+import { usePathname } from 'expo-router';
 import WebNavbar from '../components/WebNavbar';
 
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -12,8 +13,15 @@ import { theme } from '../constants/uiTheme';
 
 export default function RootLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState(undefined);    // undefined = still checking
   const [layoutReady, setLayoutReady] = useState(false);
+
+  // Check if we're on an auth page (login, register, verify-email, etc.)
+  const isAuthPage = pathname?.includes('/login') || 
+                     pathname?.includes('/register') || 
+                     pathname?.includes('/verify-email') ||
+                     pathname?.includes('/ForgotPassword');
 
   // 1) watch auth
   useEffect(() => {
@@ -67,7 +75,7 @@ export default function RootLayout() {
       <ErrorBoundary>
         <PaperProvider theme={theme}>
           <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            {Platform.OS === 'web' && user ? <WebNavbar /> : null}
+            {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
             <View style={{ flex: 1 }}>
               <Slot />
             </View>
