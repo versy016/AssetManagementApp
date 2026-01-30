@@ -23,6 +23,8 @@ import AddShortcutModal from '../../components/AddShortcutModal';
 import { getShortcutType } from '../../constants/ShortcutTypes';
 import ShortcutManager from '../../utils/ShortcutManager';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
+import { TourStep, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Dashboard = ({ isAdmin }) => {
   const router = useRouter();
@@ -802,7 +804,7 @@ const Dashboard = ({ isAdmin }) => {
     const base = [
       { key: 'scan', label: 'Scan Asset', icon: 'qr-code-scanner', subtitle: 'Open camera scanner', onPress: () => router.push('/qr-scanner') },
       { key: 'multi', label: 'Multi-Scan', icon: 'sync-alt', subtitle: 'Batch check-in / out', onPress: () => router.push('/qr-scanner?mode=multi') },
-  { key: 'search', label: 'Search', icon: 'search', subtitle: 'Find any asset fast', onPress: () => router.push('/search') },
+      { key: 'search', label: 'Search', icon: 'search', subtitle: 'Find any asset fast', onPress: () => router.push('/search') },
       { key: 'assets', label: 'My Assets', icon: 'inventory', subtitle: 'Everything assigned to you', onPress: () => router.push('/asset/assets') },
       { key: 'activity', label: 'Activity', icon: 'history', subtitle: 'Recent asset activity', onPress: () => router.push('/activity') },
       { key: 'certs', label: 'Certs', icon: 'verified', subtitle: 'View certifications', onPress: () => router.push('/certs') },
@@ -1431,20 +1433,41 @@ const Dashboard = ({ isAdmin }) => {
         ) : (
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {renderHeroMobile()}
-            <View style={styles.quickRow}>
-              {quickActions.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickCard}
-                  onPress={action.onPress}
-                >
-                  <MaterialIcons name={action.icon} size={20} color="#2563EB" />
-                  <Text style={styles.quickText}>{action.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {renderTasksSection()}
-            {renderShortcutsSection()}
+            <TourStep
+              stepId="quick-actions"
+              order={1}
+              title="Quick Actions"
+              description="Use these quick action buttons to quickly access common features like scanning QR codes, creating new assets, or viewing your inventory."
+            >
+              <View style={styles.quickRow}>
+                {quickActions.map((action) => (
+                  <TouchableOpacity
+                    key={action.key}
+                    style={styles.quickCard}
+                    onPress={action.onPress}
+                  >
+                    <MaterialIcons name={action.icon} size={20} color="#2563EB" />
+                    <Text style={styles.quickText}>{action.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TourStep>
+            <TourStep
+              stepId="tasks"
+              order={2}
+              title="Tasks & Reminders"
+              description="This section shows your upcoming tasks and reminders. Swipe through to see items that need your attention, like maintenance due dates or document renewals."
+            >
+              {renderTasksSection()}
+            </TourStep>
+            <TourStep
+              stepId="shortcuts"
+              order={3}
+              title="Shortcuts"
+              description="Create custom shortcuts to quickly access your frequently used assets, documents, or features. Tap the + button to add new shortcuts."
+            >
+              {renderShortcutsSection()}
+            </TourStep>
           </ScrollView>
         )}
       </View>
@@ -1460,6 +1483,9 @@ const Dashboard = ({ isAdmin }) => {
             )}
             <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/profile'); }}>
               <Text style={styles.menuText}>Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleRestartTour}>
+              <Text style={styles.menuText}>Restart Tour</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.menuItem, styles.menuItemLast]} onPress={handleLogout}>
               <Text style={[styles.menuText, styles.logoutText]}>Logout</Text>

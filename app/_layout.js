@@ -10,6 +10,7 @@ import WebNavbar from '../components/WebNavbar';
 
 import ErrorBoundary from '../components/ErrorBoundary';
 import { theme } from '../constants/uiTheme';
+import { TourProvider } from '../components/TourGuide';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -76,12 +77,14 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <PaperProvider theme={theme}>
-          <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
-            <View style={{ flex: 1 }}>
-              <Slot />
+          <TourProvider>
+            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+              {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
+              <View style={{ flex: 1 }}>
+                <Slot />
+              </View>
             </View>
-          </View>
+          </TourProvider>
         </PaperProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

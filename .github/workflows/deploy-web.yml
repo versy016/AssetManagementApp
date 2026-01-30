@@ -1,4 +1,4 @@
-name: Deploy Expo Web to EC2
+name: Deploy Expo Web and API to EC2
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
       - name: List build output
         run: ls -l dist
 
-      - name: Deploy to EC2 via SSH
+      - name: Deploy Web Build to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -39,3 +39,26 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "dist/*"
           target: "/home/ec2-user/deploy/AssetManagementApp/web-build"
+
+      - name: Deploy API to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "inventory-api/**"
+          target: "/home/ec2-user/deploy/AssetManagementApp/inventory-api"
+          strip_components: 1
+
+      - name: Install API Dependencies and Restart Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/deploy/AssetManagementApp/inventory-api
+            npm install
+            npx prisma generate
+            pm2 restart all
+            pm2 save
