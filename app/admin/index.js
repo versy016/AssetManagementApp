@@ -21,12 +21,11 @@ export default function AdminConsole() {
   const [targetEmail, setTargetEmail] = useState('');
   const [working, setWorking] = useState(false);
 
-  // QR gen (sheet-based only)
-  const [sheetCount, setSheetCount] = useState('1'); // 1–5 sheets
-  const SHEET_SIZE = 65;
-  const MAX_SHEETS = 5;
+  // QR gen (Excel-based)
+  const [qrCount, setQrCount] = useState('100'); // Number of QR codes to generate
+  const MAX_QR_COUNT = 2000;
   const [qrResults, setQrResults] = useState([]);
-  const [qrSheets, setQrSheets] = useState([]);
+  const [excelFile, setExcelFile] = useState(null);
   const [allSheets, setAllSheets] = useState([]);
   const authHeader = async () => {
     const u = auth.currentUser;
@@ -109,71 +108,75 @@ export default function AdminConsole() {
     }
   };
 
-  // 🎯 Generate by sheets: sheets × 65 (no prefix, no length, no format)
- const generateQRCodes = async () => {
-  const sheets = Number(sheetCount);
-  if (!Number.isFinite(sheets) || sheets < 1 || sheets > MAX_SHEETS) {
-    return Alert.alert('Validation', `Sheets must be between 1 and ${MAX_SHEETS}.`);
-  }
-  const total = sheets * SHEET_SIZE;
+  // 🎯 Generate Excel file with ID and QR Code columns
+  const generateQRCodes = async () => {
+    console.log('[Admin] generateQRCodes → Function called');
+    const count = Number(qrCount);
+    console.log('[Admin] generateQRCodes → Count:', count, 'qrCount:', qrCount);
+    if (!Number.isFinite(count) || count < 1 || count > MAX_QR_COUNT) {
+      console.log('[Admin] generateQRCodes → Validation failed');
+      return Alert.alert('Validation', `Number of QR codes must be between 1 and ${MAX_QR_COUNT}.`);
+    }
 
-  setWorking(true);
-  try {
-    // Ask server to seed placeholder assets (count) and create a sheet with new IDs
-    const headers = await authHeader();
-    // Step 1: request legacy seeding to preserve server-generated IDs, then take the returned codes
-    const seedRes = await fetch(`${API_BASE_URL}/users/qr/generate`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ count: total }),
-    });
-    const seed = await seedRes.json();
-    if (!seedRes.ok) throw new Error(seed?.error || 'Failed to seed QR codes');
-    const ids = Array.isArray(seed?.codes) ? seed.codes.map((c) => c.id).slice(0, total) : [];
-    if (ids.length === 0) throw new Error('No IDs returned from server');
+    console.log('[Admin] generateQRCodes → Setting working to true');
+    setWorking(true);
+    try {
+      console.log('[Admin] generateQRCodes → Starting, count:', count);
+      const headers = await authHeader();
+      console.log('[Admin] generateQRCodes → Headers ready');
 
-    // Step 2: generate sheet PDF via new Python route with those IDs
-    const pdfRes = await fetch(`${API_BASE_URL}/labels/l7651`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ ids, startIndex: 1, storage: 'local' }),
-    });
-    const pdf = await pdfRes.json();
-    if (!pdfRes.ok) throw new Error(pdf?.error || 'Failed to build label sheet');
+      const url = `${API_BASE_URL}/users/qr/generate-excel`;
+      console.log('[Admin] generateQRCodes → Fetching:', url);
 
-    // Emulate prior UI state: show latest sheet in quick list + refresh persistent list
-    setQrResults(seed?.codes || []);
-    setQrSheets([{ name: pdf?.file?.name, url: pdf?.file?.localUrl }]);
-    await refreshSheets();
-    Alert.alert('Success', `Generated ${ids.length} QR codes (${sheets} × ${SHEET_SIZE}).`);
-  } catch (e) {
-    Alert.alert('Error', e.message);
-  } finally {
-    setWorking(false);
-  }
-};
+      // Generate Excel file with QR codes
+      const excelRes = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ count }),
+      });
 
-    // const refreshSheets = async () => {
-    // const headers = await authHeader();
-    // const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
+      console.log('[Admin] generateQRCodes → Response status:', excelRes.status, excelRes.ok);
+
+      const excel = await excelRes.json();
+      console.log('[Admin] generateQRCodes → Response data:', excel);
+
+      if (!excelRes.ok) {
+        throw new Error(excel?.error || 'Failed to generate Excel file');
+      }
+
+      // Update UI state
+      setExcelFile(excel?.file || null);
+      await refreshSheets();
+      Alert.alert('Success', `Generated ${count} QR codes in Excel file.`);
+    } catch (e) {
+      console.error('[Admin] generateQRCodes → Error:', e);
+      Alert.alert('Error', e.message || 'Failed to generate Excel file');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  // const refreshSheets = async () => {
+  // const headers = await authHeader();
+  // const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
   // const url = `${API_BASE_URL}/users/qr/sheets${uidParam}`;
-    const refreshSheets = async () => {
+  const refreshSheets = async () => {
     const url = `${API_BASE_URL}/users/qr/sheets`;
     const t0 = Date.now();
     try {
-        console.log('[Admin] refreshSheets →', url);
-        const res = await fetch(url); // public; no headers
-        const raw = await res.text();
-        console.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
-        console.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
-        const data = JSON.parse(raw);
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        console.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
-        setAllSheets(data?.sheets || []);
-      } catch (e) {
-        console.warn('[Admin] refreshSheets error:', e?.message || e);
-      }
-    };
+      console.log('[Admin] refreshSheets →', url);
+      const res = await fetch(url); // public; no headers
+      const raw = await res.text();
+      console.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
+      console.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
+      const data = JSON.parse(raw);
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      console.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
+      setAllSheets(data?.sheets || []);
+    } catch (e) {
+      console.warn('[Admin] refreshSheets error:', e?.message || e);
+    }
+  };
 
   useEffect(() => {
     if (isAdmin && currentUser) {
@@ -205,149 +208,124 @@ export default function AdminConsole() {
     );
   }
 
-  const sheetsNum = Number(sheetCount) || 0;
-  const totalCodes = sheetsNum * SHEET_SIZE;
+  const qrCountNum = Number(qrCount) || 0;
 
   return (
-      <SafeAreaView style={styles.safe}>
-        <ScrollView
-          style={styles.wrapper}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.topbar}>
-            {Platform.OS !== 'web' && (
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
-              </TouchableOpacity>
-            )}
-            <Text style={styles.topbarTitle}>Admin Console</Text>
-            {Platform.OS !== 'web' && <View style={{ width: 24 }} />}
-          </View>
-      {/* Segmented tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          onPress={() => setTab('roles')}
-          style={[styles.tab, tab === 'roles' && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, tab === 'roles' && styles.tabTextActive]}>Manage Roles</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setTab('qr')}
-          style={[styles.tab, tab === 'qr' && styles.tabActive]}
-        >
-          <Text style={[styles.tabText, tab === 'qr' && styles.tabTextActive]}>Generate QR</Text>
-        </TouchableOpacity>
-      </View>
-
-      {tab === 'roles' ? (
-        <View style={styles.card}>
-          <Text style={styles.label}>User Email</Text>
-          <TextInput
-            value={targetEmail}
-            onChangeText={setTargetEmail}
-            placeholder="Enter user email"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={styles.input}
-          />
-
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-            <TouchableOpacity onPress={promote} disabled={working} style={[styles.button, { flex: 1, opacity: working ? 0.7 : 1 }]}>
-              <Text style={styles.buttonText}>Promote to Admin</Text>
+    <SafeAreaView style={styles.safe}>
+      <ScrollView
+        style={styles.wrapper}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.topbar}>
+          {Platform.OS !== 'web' && (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={demote} disabled={working} style={[styles.buttonOutline, { flex: 1, opacity: working ? 0.7 : 1 }]}>
-              <Text style={styles.buttonOutlineText}>Demote to User</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.helpText}>
-            Tip: After changing a role, the user may need to sign out/in or refresh their token to see new access.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.card}>
-          <Text style={styles.label}>How many sheets? (1–5)</Text>
-          <TextInput
-            value={sheetCount}
-            onChangeText={setSheetCount}
-            keyboardType={Platform.OS === 'web' ? 'numeric' : 'number-pad'}
-            placeholder="e.g. 3"
-            style={styles.input}
-            maxLength={2}
-          />
-
-          {/* Live math display */}
-          <Text style={{ marginTop: 6, color: '#555' }}>
-            Total codes: <Text style={{ fontWeight: '700' }}>{sheetsNum || 0}</Text> × {SHEET_SIZE} = <Text style={{ fontWeight: '700' }}>{totalCodes || 0}</Text>
-          </Text>
-
-          <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
-            <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate'}</Text>
-          </TouchableOpacity>
-
-          {/* Calibration controls removed with new labels generator */}
-
-          {qrResults?.length > 0 && (
-            <View style={{ marginTop: 20 }}>
-              <Text style={styles.subTitle}>Generated ({qrResults.length})</Text>
-              <FlatList
-                data={qrResults}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={styles.qrRow}>
-                    <Text style={styles.qrCode}>{item.id}</Text>
-                    <TouchableOpacity onPress={() => Linking.openURL(item.url)}>
-                      <Text style={styles.link}>Open</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                scrollEnabled={false}
-                nestedScrollEnabled
-                contentContainerStyle={{ paddingBottom: 8 }}
-                  />
-                  {qrSheets?.length > 0 && (
-               <View style={{ marginTop: 16 }}>
-                 <Text style={styles.subTitle}>Download Sheets (PDF, 65 per page)</Text>
-                 {qrSheets.map((s, idx) => (
-                   <View key={idx} style={styles.qrRow}>
-                     <Text style={{ fontSize: 14, color: '#333' }}>Sheet {s.index}</Text>
-                     <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
-                       <Text style={styles.link}>Download PDF</Text>
-                     </TouchableOpacity>
-                   </View>
-                 ))}
-               </View>
-             )}
-            </View>
-            
           )}
+          <Text style={styles.topbarTitle}>Admin Console</Text>
+          {Platform.OS !== 'web' && <View style={{ width: 24 }} />}
+        </View>
+        {/* Segmented tabs */}
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            onPress={() => setTab('roles')}
+            style={[styles.tab, tab === 'roles' && styles.tabActive]}
+          >
+            <Text style={[styles.tabText, tab === 'roles' && styles.tabTextActive]}>Manage Roles</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTab('qr')}
+            style={[styles.tab, tab === 'qr' && styles.tabActive]}
+          >
+            <Text style={[styles.tabText, tab === 'qr' && styles.tabTextActive]}>Generate QR</Text>
+          </TouchableOpacity>
+        </View>
 
-          {/* Persistent: All Sheets */}
-          <View style={{ marginTop: 24 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={styles.subTitle}>All Sheets ({allSheets.length})</Text>
-              <TouchableOpacity onPress={refreshSheets} disabled={working}>
-                <Text style={styles.link}>Refresh</Text>
+        {tab === 'roles' ? (
+          <View style={styles.card}>
+            <Text style={styles.label}>User Email</Text>
+            <TextInput
+              value={targetEmail}
+              onChangeText={setTargetEmail}
+              placeholder="Enter user email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.input}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <TouchableOpacity onPress={promote} disabled={working} style={[styles.button, { flex: 1, opacity: working ? 0.7 : 1 }]}>
+                <Text style={styles.buttonText}>Promote to Admin</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={demote} disabled={working} style={[styles.buttonOutline, { flex: 1, opacity: working ? 0.7 : 1 }]}>
+                <Text style={styles.buttonOutlineText}>Demote to User</Text>
               </TouchableOpacity>
             </View>
-            {allSheets.length === 0 ? (
-              <Text style={{ color: '#666' }}>No sheets found yet.</Text>
-            ) : (
-              allSheets.map((s, idx) => (
-                <View key={`${s.name}-${idx}`} style={styles.qrRow}>
-                  <Text style={{ fontSize: 14, color: '#333' }}>{s.name}</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
-                    <Text style={styles.link}>Download PDF</Text>
+
+            <Text style={styles.helpText}>
+              Tip: After changing a role, the user may need to sign out/in or refresh their token to see new access.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.label}>Number of QR Codes (1–{MAX_QR_COUNT})</Text>
+            <TextInput
+              value={qrCount}
+              onChangeText={setQrCount}
+              keyboardType={Platform.OS === 'web' ? 'numeric' : 'number-pad'}
+              placeholder="e.g. 100"
+              style={styles.input}
+              maxLength={4}
+            />
+
+            {/* Display count */}
+            <Text style={{ marginTop: 6, color: '#555' }}>
+              Will generate: <Text style={{ fontWeight: '700' }}>{qrCountNum || 0}</Text> QR codes
+            </Text>
+
+            <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
+              <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate Excel'}</Text>
+            </TouchableOpacity>
+
+            {/* Excel file download */}
+            {excelFile && (
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.subTitle}>Generated Excel File</Text>
+                <View style={styles.qrRow}>
+                  <Text style={{ fontSize: 14, color: '#333' }}>{excelFile.name}</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
+                    <Text style={styles.link}>Download Excel</Text>
                   </TouchableOpacity>
                 </View>
-              ))
+              </View>
             )}
+
+            {/* Persistent: All Sheets */}
+            <View style={{ marginTop: 24 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.subTitle}>All Generated Files ({allSheets.length})</Text>
+                <TouchableOpacity onPress={refreshSheets} disabled={working}>
+                  <Text style={styles.link}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+              {allSheets.length === 0 ? (
+                <Text style={{ color: '#666' }}>No files found yet.</Text>
+              ) : (
+                allSheets.map((s, idx) => (
+                  <View key={`${s.name}-${idx}`} style={styles.qrRow}>
+                    <Text style={{ fontSize: 14, color: '#333' }}>{s.name}</Text>
+                    <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
+                      <Text style={styles.link}>{s.name.endsWith('.xlsx') ? 'Download Excel' : 'Download'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
           </View>
-        </View>
-      )}
-        </ScrollView>
-      </SafeAreaView>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -372,8 +350,8 @@ const styles = StyleSheet.create({
   subTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
   qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
   qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 14, color: '#333' },
-    link: { color: '#0B63CE', fontWeight: '700' },
-   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-   topbarTitle: { fontSize: 22, fontWeight: '800', color: '#111' },
-   backBtn: { padding: 6, marginRight: 6 },
+  link: { color: '#0B63CE', fontWeight: '700' },
+  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  topbarTitle: { fontSize: 22, fontWeight: '800', color: '#111' },
+  backBtn: { padding: 6, marginRight: 6 },
 });

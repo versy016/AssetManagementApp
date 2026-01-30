@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
 const apiConfig = require('../config');
@@ -213,7 +214,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
     const offsetXmm = Number(req.body?.offsetXmm || req.query?.offsetXmm || 0) || 0; // printer calibration
     const offsetYmm = Number(req.body?.offsetYmm || req.query?.offsetYmm || 0) || 0;
     const idFontPt = Math.max(6, Math.min(12, Number(req.body?.idFontPt || req.query?.idFontPt || 8) || 8));
-    const qrScale  = Math.max(0.6, Math.min(0.98, Number(req.body?.qrScale || req.query?.qrScale || 0.85) || 0.85));
+    const qrScale = Math.max(0.6, Math.min(0.98, Number(req.body?.qrScale || req.query?.qrScale || 0.85) || 0.85));
     const qrPanelFraction = Math.max(0.3, Math.min(0.8, Number(req.body?.qrPanelFraction || req.query?.qrPanelFraction || 0.5) || 0.5));
     const qrMarginMm = Number(req.body?.qrMarginMm || req.query?.qrMarginMm || 2) || 2; // inner panel margin
     const idRightMarginMm = Number(req.body?.idRightMarginMm || req.query?.idRightMarginMm || 1.5) || 1.5;
@@ -315,7 +316,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
           const { id } = batch[i];
           const pngPath = path.join(QR_DIR, `${id}.png`);
           let img = null;
-          try { img = fs.readFileSync(pngPath); } catch {}
+          try { img = fs.readFileSync(pngPath); } catch { }
           data[`QR_${idx}`] = img; // Buffer for image module
           data[`ID_${idx}`] = id;
         }
@@ -327,8 +328,8 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
 
         const imageModule = new ImageModule({
           centered: true,
-          getImage: function(tagValue) { return tagValue; },
-          getSize: function() { return [120, 120]; },
+          getImage: function (tagValue) { return tagValue; },
+          getSize: function () { return [120, 120]; },
         });
         const doc = new Docxtemplater();
         doc.attachModule(imageModule);
@@ -498,9 +499,9 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
             }
           } else {
             const usableH = labelH - (idFontPt + 6);
-            const baseQr  = Math.min(labelW, usableH) * (useAvery65 ? qrScale : 0.9);
-            const imgX    = cellX + (labelW - baseQr) / 2;
-            const imgY    = cellY + 2;
+            const baseQr = Math.min(labelW, usableH) * (useAvery65 ? qrScale : 0.9);
+            const imgX = cellX + (labelW - baseQr) / 2;
+            const imgY = cellY + 2;
             doc.image(pngPath, imgX, imgY, { width: baseQr, height: baseQr });
             const textY = cellY + labelH - (idFontPt + 2);
             doc.fontSize(idFontPt).text(id, cellX, textY, { width: labelW, align: 'center' });
@@ -521,6 +522,188 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
   } catch (e) {
     console.error('QR generation failed:', e);
     return res.status(500).json({ error: 'QR generation failed' });
+  }
+});
+
+/**
+ * Generate Excel file with ID and QR Code columns
+ * POST /users/qr/generate-excel
+ * Body: { count: number } (1-2000)
+ * Returns: Excel file with ID and QR Code columns
+ */
+router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
+  console.log('[Excel] Request received, body:', req.body);
+  const count = Math.min(Math.max(Number(req.body?.count || 1), 1), 2000); // 1..2000 limit
+  console.log('[Excel] Processing count:', count);
+
+  // Where should the /check-in link point?
+  const base =
+    process.env.CHECKIN_BASE_URL ||
+    req.get('X-External-Base-Url') ||
+    `${req.protocol}://${req.get('host')}`;
+
+  // Public base for serving static QR images/sheets
+  const apiBase =
+    process.env.PUBLIC_API_BASE_URL ||
+    req.get('X-External-Base-Url') ||
+    `${req.protocol}://${req.get('host')}`;
+  const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
+
+  // Output folders
+  const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
+  const SHEETS_DIR = path.join(QR_DIR, 'sheets');
+  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
+  ensureDir(QR_DIR);
+  ensureDir(SHEETS_DIR);
+
+  // Helper to make 8-char ID (A–Z, 0–9)
+  const makeId = () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let out = '';
+    for (let i = 0; i < 8; i += 1) {
+      out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return out;
+  };
+
+  const codes = [];
+  const used = new Set();
+
+  try {
+    console.log('[Excel] Starting QR code generation for', count, 'codes');
+    // Generate QR codes
+    for (let i = 0; i < count; i += 1) {
+      if (i % 10 === 0) console.log(`[Excel] Generated ${i}/${count} QR codes...`);
+      // Ensure unique id
+      let id;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        id = makeId();
+        if (used.has(id)) continue;
+        const existing = await prisma.assets.findUnique({ where: { id } });
+        if (!existing) break;
+      }
+      used.add(id);
+
+      // Seed a minimal asset row
+      try {
+        await prisma.assets.create({
+          data: {
+            id,
+            serial_number: null,
+            model: null,
+            description: 'QR reserved asset',
+            location: null,
+            assigned_to_id: null,
+            type_id: null,
+            status: 'available',
+          },
+        });
+      } catch (e) {
+        // Unique violation? Try again with a new id
+        if (e?.code === 'P2002') {
+          used.delete(id);
+          i -= 1;
+          continue;
+        }
+        console.error('Failed to insert asset', id, e);
+        return res.status(500).json({ error: 'Failed to insert asset rows' });
+      }
+
+      const url = `${base.replace(/\/+$/, '')}/check-in/${id}`;
+
+      // Persist PNG for this code
+      try {
+        const filePath = path.join(QR_DIR, `${id}.png`);
+        await QRCode.toFile(filePath, url);
+      } catch (e) {
+        console.error('Failed to write QR PNG', id, e);
+        return res.status(500).json({ error: 'Failed to write QR images' });
+      }
+
+      codes.push({ id, pngPath: path.join(QR_DIR, `${id}.png`) });
+    }
+
+    console.log('[Excel] Creating Excel workbook with', codes.length, 'codes');
+    // Create Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('QR Codes');
+
+    // Set column headers
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 15 },
+      { header: 'QR Code', key: 'qrCode', width: 20 },
+    ];
+
+    // Style header row
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
+
+    // Add data rows with QR code images
+    for (let i = 0; i < codes.length; i += 1) {
+      const { id, pngPath } = codes[i];
+      const rowNumber = i + 2; // Row 1 is header, so data starts at row 2
+      const row = worksheet.addRow({ id });
+
+      // Add QR code image to the second column (column B, index 1)
+      if (fs.existsSync(pngPath)) {
+        const image = workbook.addImage({
+          filename: pngPath,
+          extension: 'png',
+        });
+
+        // Insert image in the QR Code column
+        // col: 1 means column B (0-indexed: A=0, B=1)
+        // row: i + 1 because ExcelJS uses 0-indexed rows for images (0=header, 1=first data row)
+        // For first data row (i=0), we want row 1 in ExcelJS (which is row 2 in Excel)
+        worksheet.addImage(image, {
+          tl: { col: 1, row: i + 1 },
+          ext: { width: 100, height: 100 },
+        });
+      }
+
+      // Set row height to accommodate image
+      row.height = 80;
+    }
+
+    // Set column widths
+    worksheet.getColumn(1).width = 15; // ID column
+    worksheet.getColumn(2).width = 20; // QR Code column
+
+    // Generate filename
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '')
+      .replace('T', '_')
+      .slice(0, 15);
+    const filename = `qr_codes_${timestamp}.xlsx`;
+    const filePath = path.join(SHEETS_DIR, filename);
+
+    // Write Excel file
+    console.log('[Excel] Writing Excel file to:', filePath);
+    await workbook.xlsx.writeFile(filePath);
+    console.log('[Excel] Excel file written successfully');
+
+    // Return file URL
+    const fileUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
+    console.log('[Excel] Returning file URL:', fileUrl);
+
+    return res.json({
+      success: true,
+      count: codes.length,
+      file: {
+        name: filename,
+        url: fileUrl,
+        localUrl: fileUrl,
+      },
+    });
+  } catch (e) {
+    console.error('Excel generation failed:', e);
+    return res.status(500).json({ error: 'Excel generation failed: ' + e.message });
   }
 });
 
@@ -595,8 +778,8 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
     });
 
     const data = {};
-        const qrTags = (xml.match(/\[\[QR_\d+\]\]/g) || []).length;
-        const idTags = (xml.match(/\[\[ID_\d+\]\]/g) || []).length;
+    const qrTags = (xml.match(/\[\[QR_\d+\]\]/g) || []).length;
+    const idTags = (xml.match(/\[\[ID_\d+\]\]/g) || []).length;
     const capacity = Math.max(qrTags, idTags) || 65;
     const count = Math.min(capacity, chosen.length);
     for (let i = 0; i < count; i++) {
@@ -611,8 +794,8 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
       data[`ID_${i}`] = '';
     }
 
-        const doc = new Docxtemplater();
-        doc.setOptions({ delimiters: { start: '[[', end: ']]' } });
+    const doc = new Docxtemplater();
+    doc.setOptions({ delimiters: { start: '[[', end: ']]' } });
     doc.attachModule(imageModule);
     doc.loadZip(zip);
     doc.setData(data);
@@ -631,11 +814,11 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
 });
 
 /**
- * List all generated QR sheet PDFs from utils/qrcodes/sheets
+ * List all generated QR sheet files (PDFs, DOCX, Excel) from utils/qrcodes/sheets
  * GET /users/qr/sheets
  * Admin-only
  */
- router.get('/qr/sheets', async (req, res) => {
+router.get('/qr/sheets', async (req, res) => {
   try {
     const apiBase =
       process.env.PUBLIC_API_BASE_URL ||
@@ -646,9 +829,18 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
     const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
     const SHEETS_DIR = path.join(QR_DIR, 'sheets');
 
-    if (!fs.existsSync(SHEETS_DIR)) return res.json({ count: 0, sheets: [] });
+    console.log('[Sheets] SHEETS_DIR:', SHEETS_DIR);
+    console.log('[Sheets] Directory exists:', fs.existsSync(SHEETS_DIR));
 
-    const files = fs.readdirSync(SHEETS_DIR).filter((f) => /\.(pdf|docx)$/i.test(f));
+    if (!fs.existsSync(SHEETS_DIR)) {
+      console.log('[Sheets] Directory does not exist, returning empty');
+      return res.json({ count: 0, sheets: [] });
+    }
+
+    const allFiles = fs.readdirSync(SHEETS_DIR);
+    console.log('[Sheets] All files in directory:', allFiles);
+    const files = allFiles.filter((f) => /\.(pdf|docx|xlsx)$/i.test(f));
+    console.log('[Sheets] Filtered files (pdf|docx|xlsx):', files);
     const items = files.map((name) => {
       const full = path.join(SHEETS_DIR, name);
       const st = fs.statSync(full);
@@ -661,9 +853,10 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
     });
 
     items.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    console.log('[Sheets] Returning', items.length, 'items');
     return res.json({ count: items.length, sheets: items });
   } catch (e) {
-    console.error('List sheets failed:', e);
+    console.error('[Sheets] List sheets failed:', e);
     return res.status(500).json({ error: 'Failed to list sheets' });
   }
 });

@@ -42,10 +42,10 @@ export default function Login() {
       if (!userCredential.user.emailVerified) {
         // Sign out to prevent access
         await auth.signOut();
-        
+
         // Show error message in UI
         setErrorMessage('Your email address has not been verified. Please check your inbox and click the verification link in the email we sent you. Once verified, you can log in.');
-        
+
         // Also show alert for better visibility
         Alert.alert(
           'Email Verification Required',
@@ -60,7 +60,7 @@ export default function Login() {
           ],
           { cancelable: false }
         );
-        
+
         setLoading(false);
         return;
       }
