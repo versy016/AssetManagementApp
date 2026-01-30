@@ -1,6 +1,6 @@
 ﻿// dashboard.js - Main dashboard screen for authenticated users
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, FlatList, Animated, Dimensions, Modal, Platform, Image, useWindowDimensions } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { BlurView } from 'expo-blur';
@@ -23,7 +23,7 @@ import AddShortcutModal from '../../components/AddShortcutModal';
 import { getShortcutType } from '../../constants/ShortcutTypes';
 import ShortcutManager from '../../utils/ShortcutManager';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
-import { TourStep, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
+import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Dashboard = ({ isAdmin }) => {
@@ -114,6 +114,100 @@ const Dashboard = ({ isAdmin }) => {
   }, [user?.uid]);
 
   const canAdmin = isAdmin || adminClaim || dbAdmin; // allow prop override if you still pass it
+
+  // Tour management
+  const { startTour, finishTour, setDisabled: setTourDisabled, ensureVisible, currentStep } = useContext(TourContext);
+  const [tourStarted, setTourStarted] = useState(false);
+  const scrollViewRef = useRef(null);
+  const shortcutsRef = useRef(null);
+
+  // Temporarily disable tour when profile menu is open
+  useEffect(() => {
+    if (showProfileMenu) {
+      // Immediately finish any active tour and disable it
+      if (finishTour) {
+        finishTour();
+      }
+      if (setTourDisabled) {
+        setTourDisabled(true);
+      }
+    } else {
+      // Re-enable tour when menu closes
+      if (setTourDisabled) {
+        setTourDisabled(false);
+      }
+    }
+  }, [showProfileMenu, finishTour, setTourDisabled]);
+
+  const handleRestartTour = async () => {
+    setShowProfileMenu(false);
+    await resetTour();
+    setTourStarted(false);
+    setTimeout(() => {
+      startTour();
+      setTourStarted(true);
+    }, 300);
+  };
+
+  // Auto-scroll to shortcuts section when tour step is active
+  const measureAndScroll = (ref) => {
+    if (!ref || !scrollViewRef.current) return;
+
+    try {
+      // Measure the section to get its absolute page coordinates
+      ref.measure((x, y, width, height, pageX, pageY) => {
+        // Measure the ScrollView to get its absolute page coordinates
+        scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
+          // Calculate relative Y position within the ScrollView
+          const relativeY = pageY - spy;
+          console.log(`Measured shortcuts: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
+
+          if (relativeY >= 0) {
+            const scrollY = Math.max(0, relativeY - 100);
+            scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+          }
+        });
+      });
+    } catch (e) {
+      console.error(`Error measuring shortcuts:`, e);
+      // Fallback: try scrollToEnd for bottom sections
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
+  };
+
+  useEffect(() => {
+    if (currentStep && currentStep.targetId === 'section-shortcuts') {
+      // Small delay to ensure layout is complete
+      setTimeout(() => {
+        if (shortcutsRef.current) {
+          measureAndScroll(shortcutsRef.current);
+        }
+      }, 100);
+    }
+  }, [currentStep]);
+
+  // Register ScrollView with TourContext
+  useEffect(() => {
+    if (ensureVisible && scrollViewRef.current) {
+      ensureVisible(scrollViewRef.current);
+    }
+  }, [ensureVisible]);
+
+  // Auto-start tour disabled - users can start it manually via "Restart Tour" in profile menu
+  // useEffect(() => {
+  //   // Don't start tour if profile menu is open or tour already started
+  //   if (!user?.uid || loading || tourStarted || showProfileMenu) return;
+  //   (async () => {
+  //     const shouldShow = await shouldShowTour();
+  //     if (shouldShow) {
+  //       // Small delay to ensure UI is rendered
+  //       setTimeout(() => {
+  //         startTour();
+  //         setTourStarted(true);
+  //       }, 1000);
+  //     }
+  //   })();
+  // }, [user, loading, tourStarted, showProfileMenu, startTour]);
 
   // Removed: numeric overview fetch
 
@@ -904,7 +998,7 @@ const Dashboard = ({ isAdmin }) => {
     const canAddMore = ShortcutManager.canAddMoreShortcuts(shortcuts);
 
     return (
-      <View style={styles.shortcutsSection}>
+      <View ref={shortcutsRef} style={styles.shortcutsSection}>
         <View style={styles.shortcutsHeaderRow}>
           <Text style={styles.sectionTitle}>Shortcuts</Text>
           <TouchableOpacity
@@ -1353,9 +1447,11 @@ const Dashboard = ({ isAdmin }) => {
           </Text>
         </View>
         <TouchableOpacity onPress={() => setShowProfileMenu(!showProfileMenu)}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{userInitials}</Text>
-          </View>
+          <TourTarget id="profile-btn">
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{userInitials}</Text>
+            </View>
+          </TourTarget>
         </TouchableOpacity>
       </View>
       {!isIos && (
@@ -1431,68 +1527,113 @@ const Dashboard = ({ isAdmin }) => {
         {isDesktopWeb ? (
           <View style={styles.webContent}>{renderWebContent()}</View>
         ) : (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+          >
             {renderHeroMobile()}
-            <TourStep
-              stepId="quick-actions"
-              order={1}
-              title="Quick Actions"
-              description="Use these quick action buttons to quickly access common features like scanning QR codes, creating new assets, or viewing your inventory."
-            >
-              <View style={styles.quickRow}>
-                {quickActions.map((action) => (
+            <View style={styles.quickRow}>
+              {quickActions.map((action) => (
+                <TourTarget key={action.key} id={`qa-${action.key}`} style={{ flexBasis: '48%' }}>
                   <TouchableOpacity
-                    key={action.key}
-                    style={styles.quickCard}
+                    style={[styles.quickCard, { flexBasis: undefined, width: '100%' }]}
                     onPress={action.onPress}
                   >
                     <MaterialIcons name={action.icon} size={20} color="#2563EB" />
                     <Text style={styles.quickText}>{action.label}</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            </TourStep>
-            <TourStep
-              stepId="tasks"
-              order={2}
-              title="Tasks & Reminders"
-              description="This section shows your upcoming tasks and reminders. Swipe through to see items that need your attention, like maintenance due dates or document renewals."
-            >
+                </TourTarget>
+              ))}
+            </View>
+            <TourTarget id="section-tasks">
               {renderTasksSection()}
-            </TourStep>
-            <TourStep
-              stepId="shortcuts"
-              order={3}
-              title="Shortcuts"
-              description="Create custom shortcuts to quickly access your frequently used assets, documents, or features. Tap the + button to add new shortcuts."
-            >
+            </TourTarget>
+            <TourTarget id="section-shortcuts">
               {renderShortcutsSection()}
-            </TourStep>
+            </TourTarget>
           </ScrollView>
+        )}
+
+        {/* Tour Target for Inventory Tab (Invisible) */}
+        {!isDesktopWeb && (
+          <TourTarget
+            id="nav-inventory-tab"
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: '50%',
+              height: 0 // Zero height, we'll expand the highlight in TourGuide
+            }}
+          >
+            <View />
+          </TourTarget>
         )}
       </View>
 
-      {showProfileMenu && (
+      <Modal
+        transparent
+        visible={showProfileMenu}
+        animationType="fade"
+        onRequestClose={() => setShowProfileMenu(false)}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
         <View style={styles.menuOverlay} pointerEvents="box-none">
-          <TouchableOpacity style={styles.menuBackdrop} onPress={() => setShowProfileMenu(false)} />
-          <View style={styles.profileMenuFixed}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowProfileMenu(false)}
+          />
+          <View
+            style={styles.profileMenuFixed}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            pointerEvents="box-none"
+          >
             {canAdmin && (
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/admin'); }}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowProfileMenu(false);
+                  setTimeout(() => router.push('/admin'), 100);
+                }}
+              >
                 <Text style={styles.menuText}>Admin Console</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/profile'); }}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowProfileMenu(false);
+                setTimeout(() => router.push('/profile'), 100);
+              }}
+            >
               <Text style={styles.menuText}>Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleRestartTour}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={async () => {
+                setShowProfileMenu(false);
+                setTimeout(async () => {
+                  await handleRestartTour();
+                }, 100);
+              }}
+            >
               <Text style={styles.menuText}>Restart Tour</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, styles.menuItemLast]} onPress={handleLogout}>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemLast]}
+              onPress={() => {
+                setShowProfileMenu(false);
+                setTimeout(() => handleLogout(), 100);
+              }}
+            >
               <Text style={[styles.menuText, styles.logoutText]}>Logout</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      </Modal>
 
       <Modal visible={actionOpen} transparent animationType="fade" onRequestClose={() => setActionOpen(false)}>
         <View style={[styles.menuOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -1763,12 +1904,31 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: '#fff', fontSize: 16, fontWeight: '900' },
   profileMenu: { display: 'none' },
-  menuOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 70,
+    paddingRight: 20,
+    zIndex: 10001,
+    elevation: 10001,
+  },
   menuBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)' },
   profileMenuFixed: {
-    position: 'absolute', top: 70, right: 20, backgroundColor: '#fff', borderRadius: 8,
-    paddingVertical: 8, paddingHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 4, elevation: 8, minWidth: 180, borderWidth: 1, borderColor: '#E9F1FF'
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 10002,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: '#E9F1FF',
+    zIndex: 10002,
   },
   menuItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   menuItemLast: { borderBottomWidth: 0 },

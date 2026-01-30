@@ -2,6 +2,7 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { TourTarget } from '../../components/TourGuide';
 
 // Optional settings for the router
 export const unstable_settings = {
@@ -37,7 +38,9 @@ export default function TabsLayout() {
         options={{
           title: 'Inventory',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list-outline" size={size} color={color} />
+            <TourTarget id="nav-inventory-tab">
+              <Ionicons name="list-outline" size={size} color={color} />
+            </TourTarget>
           ),
         }}
       />

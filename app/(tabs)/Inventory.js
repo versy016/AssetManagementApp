@@ -21,6 +21,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { TourTarget } from '../../components/TourGuide';
 import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import SearchInput from '../../components/ui/SearchInput';
@@ -381,7 +382,15 @@ const AssetTypesTab = ({ query }) => {
       }
       data={sorted}
       keyExtractor={(item, idx) => String(item?.id ?? idx)}
-      renderItem={({ item }) => <TypeCard type={item} />}
+      renderItem={({ item, index }) => (
+        index === 0 ? (
+          <TourTarget id="first-asset-type">
+            <TypeCard type={item} />
+          </TourTarget>
+        ) : (
+          <TypeCard type={item} />
+        )
+      )}
       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24, paddingTop: 8 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       ListEmptyComponent={
@@ -616,7 +625,15 @@ const AllAssetsTab = ({ query }) => {
       }
       data={sortedAssets}
       keyExtractor={(item, idx) => String(item?.id ?? idx)}
-      renderItem={({ item }) => <ResultCard item={item} />}
+      renderItem={({ item, index }) => (
+        index === 0 ? (
+          <TourTarget id="first-asset">
+            <ResultCard item={item} />
+          </TourTarget>
+        ) : (
+          <ResultCard item={item} />
+        )
+      )}
       contentContainerStyle={{ paddingBottom: 28, paddingTop: 10 }}
       ListEmptyComponent={
         <View style={{ alignItems: 'center', paddingVertical: 30 }}>
@@ -636,6 +653,13 @@ const Inventory = () => {
   const theme = useTheme();
   const { tab } = useLocalSearchParams();
   const [index, setIndex] = useState(tab === 'all' ? 1 : 0);
+
+  // Sync tab index with URL param
+  useEffect(() => {
+    if (tab === 'all') setIndex(1);
+    else if (tab === 'types') setIndex(0);
+  }, [tab]);
+
   const [headerQuery, setHeaderQuery] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -695,36 +719,63 @@ const Inventory = () => {
           onIndexChange={setIndex}
           initialLayout={initialLayout}
           renderTabBar={props => (
-            <TabBar
-              {...props}
-              indicatorStyle={{ backgroundColor: COLORS.primary }}
-              style={{ backgroundColor: '#fff' }}
-              activeColor="#000"
-              inactiveColor="#555"
-              labelStyle={{ fontWeight: 'bold' }}
-              renderLabel={({ route, focused }) => (
-                <Text
-                  style={{
-                    color: focused ? '#000' : '#555',
-                    fontWeight: focused ? 'bold' : 'normal',
-                    fontSize: 14,
-                  }}
-                >
-                  {route.title}
-                </Text>
-              )}
-            />
+            <View style={{ position: 'relative' }}>
+              <TabBar
+                {...props}
+                indicatorStyle={{ backgroundColor: COLORS.primary }}
+                style={{ backgroundColor: '#fff' }}
+                activeColor="#000"
+                inactiveColor="#555"
+                labelStyle={{ fontWeight: 'bold' }}
+                renderLabel={({ route, focused }) => (
+                  <Text
+                    style={{
+                      color: focused ? '#000' : '#555',
+                      fontWeight: focused ? 'bold' : 'normal',
+                      fontSize: 14,
+                    }}
+                  >
+                    {route.title}
+                  </Text>
+                )}
+              />
+              {/* TourTargets for tabs - positioned absolutely over the tabs */}
+              {props.navigationState.routes.map((route, i) => {
+                const tabId = route.key === 'types' ? 'tab-asset-types' : 'tab-all-assets';
+                const isActive = props.navigationState.index === i;
+                return (
+                  <TourTarget
+                    key={route.key}
+                    id={tabId}
+                    style={{
+                      position: 'absolute',
+                      left: `${(i / props.navigationState.routes.length) * 100}%`,
+                      width: `${100 / props.navigationState.routes.length}%`,
+                      height: 48,
+                      top: 0,
+                    }}
+                  >
+                    <View style={{ flex: 1 }} />
+                  </TourTarget>
+                );
+              })}
+            </View>
           )}
         />
 
         {/* FAB (admin only) */}
         {isAdmin && (
-          <TouchableOpacity
+          <TourTarget
+            id={index === 0 ? 'btn-manage-types' : 'btn-add-asset'}
             style={styles.fab}
-            onPress={() => (index === 0 ? router.push('/type/new') : router.push('/asset/new'))}
           >
-            <MaterialIcons name="add" size={28} color="#fff" />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+              onPress={() => (index === 0 ? router.push('/type/new') : router.push('/asset/new'))}
+            >
+              <MaterialIcons name="add" size={28} color="#fff" />
+            </TouchableOpacity>
+          </TourTarget>
         )}
       </View>
     </ScreenWrapper>

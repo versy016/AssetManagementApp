@@ -1,5 +1,5 @@
 // app/(tabs)/assets/new.js
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, Switch, ActivityIndicator, Modal
 } from 'react-native';
@@ -20,6 +20,7 @@ import ScreenHeader from '../../components/ui/ScreenHeader';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
+import { TourTarget, TourContext } from '../../components/TourGuide';
 
 registerTranslation('en', en);
 LogBox.ignoreLogs(['VirtualizedLists should never be nested']);
@@ -41,10 +42,13 @@ export default function NewAsset() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
 
+  const { ensureVisible, currentStep } = useContext(TourContext);
+  const scrollViewRef = useRef(null);
+
   // ---------- scroll & focus helpers (web-safe) ----------
   const scrollRef = useRef(null);
   const fieldRefs = useRef({});     // focusable refs (TextInput)
-  const fieldYs   = useRef({});     // container Y positions (from onLayout)
+  const fieldYs = useRef({});     // container Y positions (from onLayout)
 
   const setInputRef = (slug) => (ref) => { if (ref) fieldRefs.current[slug] = ref; };
   const onLayoutFor = (slug) => (e) => { fieldYs.current[slug] = e.nativeEvent.layout.y; };
@@ -61,6 +65,27 @@ export default function NewAsset() {
       scrollRef.current.scrollTo({ x: 0, y: targetY, animated: true });
     }
   };
+
+  // Map tour IDs to field slugs for auto-scrolling
+  useEffect(() => {
+    if (!currentStep) return;
+    const map = {
+      'asset-id': 'id',
+      'asset-type': 'typeId',
+      'asset-details': 'serial_number', // Scroll to first field in details section
+      'asset-save': 'image', // Scroll to near the bottom where save button is
+    };
+    const slug = map[currentStep.targetId];
+    if (slug && fieldYs.current[slug] !== undefined) {
+      scrollToSlug(slug);
+    }
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (ensureVisible && scrollViewRef.current) {
+      ensureVisible(scrollViewRef.current);
+    }
+  }, [ensureVisible]);
 
   const focusSlug = (slug) => {
     const ref = fieldRefs.current[slug];
@@ -174,14 +199,14 @@ export default function NewAsset() {
     fetchDropdownOptions().then((data) => {
       const normAssetIds = Array.isArray(data.assetIds)
         ? data.assetIds
-            .map(a => (typeof a === 'string' ? a : (a && a.id ? String(a.id) : null)))
-            .filter(Boolean)
+          .map(a => (typeof a === 'string' ? a : (a && a.id ? String(a.id) : null)))
+          .filter(Boolean)
         : [];
       setOptions({
         assetTypes: data.assetTypes || [],
-        users:      data.users || [],
-        statuses:   data.statuses || [],
-        assetIds:   normAssetIds,
+        users: data.users || [],
+        statuses: data.statuses || [],
+        assetIds: normAssetIds,
       });
       setFilteredAssetIds(normAssetIds);
       // If a preselected QR id is provided (from check-in), set it
@@ -235,7 +260,7 @@ export default function NewAsset() {
         const res = await fetch(`${API_BASE_URL}/places/autocomplete?q=${encodeURIComponent(q)}`);
         if (!res.ok) {
           let msg = '';
-          try { const j = await res.json(); msg = j?.error || j?.message || ''; } catch {}
+          try { const j = await res.json(); msg = j?.error || j?.message || ''; } catch { }
           // If server reports missing API key, permanently disable suggestions for this session
           if (res.status === 400 && /GOOGLE_PLACES_API_KEY/i.test(msg)) {
             setLocSuggestEnabled(false);
@@ -310,7 +335,7 @@ export default function NewAsset() {
 
       // Known slugs
       const known = new Set([
-        'id','type_id','assigned_to_id','status','location','model','description','other_id','next_service_date','date_purchased','notes','image','document'
+        'id', 'type_id', 'assigned_to_id', 'status', 'location', 'model', 'description', 'other_id', 'next_service_date', 'date_purchased', 'notes', 'image', 'document'
       ]);
       for (const f of fieldsSchema) known.add(f.slug || normSlug(f.name));
 
@@ -511,7 +536,7 @@ export default function NewAsset() {
           const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
           linkSlug = Array.isArray(l) ? (l[0] || '') : (l || '');
           linkSlug = String(linkSlug || '').trim();
-        } catch {}
+        } catch { }
         // Read optional requirement flag
         let requireDoc = true;
         try {
@@ -522,7 +547,7 @@ export default function NewAsset() {
             const v = vr.requires_document_required ?? vr.require_document_required ?? vr.document_required ?? vr.require_document;
             if (typeof v === 'boolean') requireDoc = v; else if (typeof v === 'string') requireDoc = v.toLowerCase() === 'true';
           }
-        } catch {}
+        } catch { }
         if (linkSlug && requireDoc) {
           const dateVal = fieldValues[slug];
           if (dateVal) {
@@ -571,7 +596,7 @@ export default function NewAsset() {
     // Build dynamic fields payload (no placeholders)
     data.append('fields', JSON.stringify(fieldValues));
     if (model) data.append('model', model);
-    if (description) data.append('description', description);    if (datePurchased) data.append('date_purchased', datePurchased);    if (serialNumber) data.append('serial_number', serialNumber);
+    if (description) data.append('description', description); if (datePurchased) data.append('date_purchased', datePurchased); if (serialNumber) data.append('serial_number', serialNumber);
     if (otherId) data.append('other_id', otherId);
 
     if (image?.file) data.append('image', image.file, image.file.name || 'upload.jpg');
@@ -606,7 +631,7 @@ export default function NewAsset() {
       try {
         if (errLike && typeof errLike.text === 'function') {
           const raw = await errLike.text();
-          let parsed; try { parsed = JSON.parse(raw); } catch {}
+          let parsed; try { parsed = JSON.parse(raw); } catch { }
           const message = (parsed && (parsed.error || parsed.message)) || raw || 'Failed to create asset';
           distributeServerErrors(message);
           Alert.alert('Error', message);
@@ -614,14 +639,14 @@ export default function NewAsset() {
         }
         if (errLike && typeof errLike === 'object' && 'responseText' in errLike) {
           const raw = String(errLike.responseText || '');
-          let parsed; try { parsed = JSON.parse(raw); } catch {}
+          let parsed; try { parsed = JSON.parse(raw); } catch { }
           const message = (parsed && (parsed.error || parsed.message)) || raw || 'Failed to create asset';
           distributeServerErrors(message);
           Alert.alert('Error', message);
           return;
         }
         if (typeof errLike === 'string') {
-          let parsed; try { parsed = JSON.parse(errLike); } catch {}
+          let parsed; try { parsed = JSON.parse(errLike); } catch { }
           const message = (parsed && (parsed.error || parsed.message)) || errLike || 'Failed to create asset';
           distributeServerErrors(message);
           Alert.alert('Error', message);
@@ -651,7 +676,7 @@ export default function NewAsset() {
         };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            try { createdAsset = JSON.parse(xhr.responseText || '{}')?.asset || null; } catch {}
+            try { createdAsset = JSON.parse(xhr.responseText || '{}')?.asset || null; } catch { }
             resolve();
           }
           else {
@@ -666,20 +691,20 @@ export default function NewAsset() {
         xhr.send(data);
       });
 
-  // After create: upload each selected per-field document to asset_documents
-  try {
-    if (createdAsset && createdAsset.id && urlDocEntries.length > 0) {
-      // Build mapping docSlug -> { dateLabel, dateValue, fieldId, fieldName }
-      const norm = (s) => String(s || '').toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-      const toTitle = (s) => {
-        const txt = String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
-        return txt.split(' ').map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : '')).join(' ');
-      };
-      const parseJsonMaybe = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
-      const docMeta = {};
-      for (const df of (fieldsSchema || [])) {
-        const slug = df.slug || norm(df.name);
-        const typeCode = (df.field_type?.slug || df.field_type?.name || '').toLowerCase();
+      // After create: upload each selected per-field document to asset_documents
+      try {
+        if (createdAsset && createdAsset.id && urlDocEntries.length > 0) {
+          // Build mapping docSlug -> { dateLabel, dateValue, fieldId, fieldName }
+          const norm = (s) => String(s || '').toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+          const toTitle = (s) => {
+            const txt = String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+            return txt.split(' ').map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : '')).join(' ');
+          };
+          const parseJsonMaybe = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
+          const docMeta = {};
+          for (const df of (fieldsSchema || [])) {
+            const slug = df.slug || norm(df.name);
+            const typeCode = (df.field_type?.slug || df.field_type?.name || '').toLowerCase();
             if (typeCode === 'date') {
               const vr = parseJsonMaybe(df.validation_rules) || {};
               const opts = parseJsonMaybe(df.options) || {};
@@ -700,39 +725,39 @@ export default function NewAsset() {
           // Upload each picked doc
           for (const [docSlug, picked] of urlDocEntries) {
             try {
-          const meta = docMeta[norm(docSlug)] || {};
-          const fd = new FormData();
-          // attach file
-          if (Platform.OS === 'web') {
-            try {
-              const resp = await fetch(picked.uri);
-              const blob = await resp.blob();
-              const file = new File([blob], picked.name || 'document.pdf', { type: picked.mimeType || blob.type || 'application/pdf' });
-              fd.append('file', file, file.name);
-            } catch {
-              fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
-            }
-          } else {
-            fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
-          }
-          if (meta.fieldId) fd.append('asset_type_field_id', String(meta.fieldId));
-          const rawName = meta.fieldName || docSlug;
-          const niceName = toTitle(rawName);
-          fd.append('title', niceName);
-          fd.append('kind', niceName);
-          if (meta.dateLabel) fd.append('related_date_label', String(meta.dateLabel));
-          if (meta.dateValue) fd.append('related_date', String(meta.dateValue));
-          const resp = await fetch(`${API_BASE_URL}/assets/${createdAsset.id}/documents/upload`, { method: 'POST', body: fd });
-          if (!resp.ok) {
-            // swallow to avoid blocking creation; user can reattach later
-            continue;
+              const meta = docMeta[norm(docSlug)] || {};
+              const fd = new FormData();
+              // attach file
+              if (Platform.OS === 'web') {
+                try {
+                  const resp = await fetch(picked.uri);
+                  const blob = await resp.blob();
+                  const file = new File([blob], picked.name || 'document.pdf', { type: picked.mimeType || blob.type || 'application/pdf' });
+                  fd.append('file', file, file.name);
+                } catch {
+                  fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
+                }
+              } else {
+                fd.append('file', { uri: picked.uri, name: picked.name || 'document.pdf', type: picked.mimeType || 'application/pdf' });
+              }
+              if (meta.fieldId) fd.append('asset_type_field_id', String(meta.fieldId));
+              const rawName = meta.fieldName || docSlug;
+              const niceName = toTitle(rawName);
+              fd.append('title', niceName);
+              fd.append('kind', niceName);
+              if (meta.dateLabel) fd.append('related_date_label', String(meta.dateLabel));
+              if (meta.dateValue) fd.append('related_date', String(meta.dateValue));
+              const resp = await fetch(`${API_BASE_URL}/assets/${createdAsset.id}/documents/upload`, { method: 'POST', body: fd });
+              if (!resp.ok) {
+                // swallow to avoid blocking creation; user can reattach later
+                continue;
               }
             } catch {
               // ignore individual failures to not block the whole flow
             }
           }
         }
-      } catch {}
+      } catch { }
 
       Alert.alert('Success', 'Asset created!');
       if (normalizedReturnTo) {
@@ -785,19 +810,19 @@ export default function NewAsset() {
         const secsNode = el.querySelector('#secs');
         if (pctNode) pctNode.textContent = `${Math.max(0, Math.floor(uploadProgress || 0))}%`;
         if (barNode) barNode.style.width = `${Math.max(0, Math.min(100, uploadProgress || 0)) * 2.6}px`;
-        if (secsNode && uploadStartTs) secsNode.textContent = `${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`;
+        if (secsNode && uploadStartTs) secsNode.textContent = `${Math.max(0, Math.floor((Date.now() - uploadStartTs) / 1000))}s elapsed`;
       } else {
         // Remove if present
         if (webDomOverlayRef.current) {
-          try { document.body.removeChild(webDomOverlayRef.current); } catch {}
+          try { document.body.removeChild(webDomOverlayRef.current); } catch { }
           webDomOverlayRef.current = null;
         }
       }
-    } catch {}
+    } catch { }
     return () => {
       if (Platform.OS !== 'web') return;
       if (webDomOverlayRef.current) {
-        try { document.body.removeChild(webDomOverlayRef.current); } catch {}
+        try { document.body.removeChild(webDomOverlayRef.current); } catch { }
         webDomOverlayRef.current = null;
       }
     };
@@ -931,7 +956,7 @@ export default function NewAsset() {
           const link = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
           requiredDocSlug = Array.isArray(link) ? (link[0] || '') : (link || '');
           requiredDocSlug = String(requiredDocSlug || '').trim();
-        } catch {}
+        } catch { }
 
         const docSlug = requiredDocSlug ? normSlug(requiredDocSlug) : '';
         const docFieldExists = !!fieldsSchema.find(ff => (ff.slug || normSlug(ff.name)) === docSlug && ((ff.field_type?.slug || ff.field_type?.name || '').toLowerCase() === 'url'));
@@ -1121,69 +1146,71 @@ export default function NewAsset() {
         {/* QR / Asset ID */}
         <View onLayout={onLayoutFor('id')}>
           <Text style={styles.label}>Select Asset ID</Text>
-          {Platform.OS !== 'web' ? (
-            <View style={{ alignItems: 'center' }}>
-              {!id ? (
-                <TouchableOpacity
-                  style={[styles.btn, styles.pickerBtn]}
-                  onPress={() => {
-                    const rp = encodeURIComponent(JSON.stringify({
-                      fromAssetId: fromAssetId ? String(fromAssetId) : undefined,
-                      returnTo: normalizedReturnTo ? String(normalizedReturnTo) : undefined,
-                    }));
-                    router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
-                  }}
-                >
-                  <Text>Scan QR to Assign</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={{ width: '100%', alignItems: 'center' }}>
-                  <View style={{
-                    backgroundColor: '#E6F3FF',
-                    borderWidth: 2,
-                    borderColor: '#1E90FF',
-                    borderRadius: 8,
-                    paddingVertical: 16,
-                    paddingHorizontal: 20,
-                    marginVertical: 12,
-                    width: '100%',
-                    alignItems: 'center',
-                  }}>
-                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Selected Asset ID</Text>
-                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
-                  </View>
+          <TourTarget id="asset-id">
+            {Platform.OS !== 'web' ? (
+              <View style={{ alignItems: 'center' }}>
+                {!id ? (
                   <TouchableOpacity
-                    style={[styles.btn, { backgroundColor: '#fdecea', minWidth: 180 }]}
+                    style={[styles.btn, styles.pickerBtn]}
                     onPress={() => {
-                      setId('');
-                      setErrors(prev => ({ ...prev, id: undefined }));
+                      const rp = encodeURIComponent(JSON.stringify({
+                        fromAssetId: fromAssetId ? String(fromAssetId) : undefined,
+                        returnTo: normalizedReturnTo ? String(normalizedReturnTo) : undefined,
+                      }));
+                      router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
                     }}
                   >
-                    <Text style={{ color: '#b00020' }}>Remove selected QR</Text>
+                    <Text>Scan QR to Assign</Text>
                   </TouchableOpacity>
-                </View>
-              )}
-              {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
-            </View>
-          ) : (
-            <>
-              <TextInput
-                ref={setInputRef('id')}
-                style={styles.input}
-                placeholder="Search by ID"
-                value={searchTerm}
-                onChangeText={text => {
-                  setSearchTerm(text);
-                }}
-              />
-              <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
-                <Text style={{ color: '#1E90FF', fontWeight: 'bold' }}>
-                  {showQRs ? 'Hide QR Options ▲' : 'Show QR Options ▼'}
-                </Text>
-              </TouchableOpacity>
-              {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
-            </>
-          )}
+                ) : (
+                  <View style={{ width: '100%', alignItems: 'center' }}>
+                    <View style={{
+                      backgroundColor: '#E6F3FF',
+                      borderWidth: 2,
+                      borderColor: '#1E90FF',
+                      borderRadius: 8,
+                      paddingVertical: 16,
+                      paddingHorizontal: 20,
+                      marginVertical: 12,
+                      width: '100%',
+                      alignItems: 'center',
+                    }}>
+                      <Text style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Selected Asset ID</Text>
+                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.btn, { backgroundColor: '#fdecea', minWidth: 180 }]}
+                      onPress={() => {
+                        setId('');
+                        setErrors(prev => ({ ...prev, id: undefined }));
+                      }}
+                    >
+                      <Text style={{ color: '#b00020' }}>Remove selected QR</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  ref={setInputRef('id')}
+                  style={styles.input}
+                  placeholder="Search by ID"
+                  value={searchTerm}
+                  onChangeText={text => {
+                    setSearchTerm(text);
+                  }}
+                />
+                <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
+                  <Text style={{ color: '#1E90FF', fontWeight: 'bold' }}>
+                    {showQRs ? 'Hide QR Options ▲' : 'Show QR Options ▼'}
+                  </Text>
+                </TouchableOpacity>
+                {!!errors.id && <Text style={styles.errorBelow}>{errors.id}</Text>}
+              </>
+            )}
+          </TourTarget>
         </View>
 
         {(showQRs || searchTerm.length > 0) && (
@@ -1196,12 +1223,12 @@ export default function NewAsset() {
                 key={qrId}
                 style={[styles.qrCard, id === String(qrId) && styles.qrCardSelected]}
                 onPress={() => {
-                    setId(String(qrId));
-                    setShowQRs(false);                 // ⬅ close menu immediately
-                    setErrors(prev => ({ ...prev, id: undefined }));
-                    setSearchTerm('');                 // optional: clear search
-                    setFilteredAssetIds(options.assetIds || []); // optional: reset list
-                  }}              >
+                  setId(String(qrId));
+                  setShowQRs(false);                 // ⬅ close menu immediately
+                  setErrors(prev => ({ ...prev, id: undefined }));
+                  setSearchTerm('');                 // optional: clear search
+                  setFilteredAssetIds(options.assetIds || []); // optional: reset list
+                }}              >
                 <View style={{ width: 80, height: 80 }}>
                   <Image
                     source={{ uri: `${API_BASE_URL}/qr/${qrId}.png` }}
@@ -1218,30 +1245,34 @@ export default function NewAsset() {
         {/* Asset Type */}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={styles.label}>Asset Type *</Text>
-          <DropDownPicker
-            open={typeOpen}
-            setOpen={setTypeOpen}
-            value={typeId}
-            setValue={(fn) => setTypeId(fn())}
-            items={(options.assetTypes || []).map(t => ({ label: t.name, value: t.id }))}
-            placeholder="Select Asset Type"
-            searchable
-            searchPlaceholder="Search asset type"
-            listMode="SCROLLVIEW"
-            searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
-            searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            nestedScrollEnabled
-          />
+          <TourTarget id="asset-type">
+            <DropDownPicker
+              open={typeOpen}
+              setOpen={setTypeOpen}
+              value={typeId}
+              setValue={(fn) => setTypeId(fn())}
+              items={(options.assetTypes || []).map(t => ({ label: t.name, value: t.id }))}
+              placeholder="Select Asset Type"
+              searchable
+              searchPlaceholder="Search asset type"
+              listMode="SCROLLVIEW"
+              searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
+              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              nestedScrollEnabled
+            />
+          </TourTarget>
           {!!errors.typeId && <Text style={styles.errorBelow}>{errors.typeId}</Text>}
         </View>
 
-        {/* Dynamic Fields */}
-        {!!typeId && fieldsSchema.map(renderField)}
-        {/* Serial Number */}
-        <View onLayout={onLayoutFor('serial_number')}>
-          <Text style={styles.label}>Serial Number</Text>
+        {/* All Asset Details - Wrapped for Tour */}
+        <TourTarget id="asset-details">
+          {/* Dynamic Fields */}
+          {!!typeId && fieldsSchema.map(renderField)}
+          {/* Serial Number */}
+          <View onLayout={onLayoutFor('serial_number')}>
+            <Text style={styles.label}>Serial Number</Text>
             <TextInput
               ref={setInputRef('serial_number')}
               style={styles.input}
@@ -1253,125 +1284,126 @@ export default function NewAsset() {
               }}
               autoCapitalize="characters" // or "none" if you prefer
             />
-          {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
-        </View>
+            {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
+          </View>
 
-        <View onLayout={onLayoutFor('other_id')}>
-          <Text style={styles.label}>Other ID</Text>
-          <TextInput
-            ref={setInputRef('other_id')}
-            style={styles.input}
-            placeholder="Optional"
-            value={otherId}
-            onChangeText={(t) => {
-              setOtherId(t);
-              setErrors(prev => ({ ...prev, other_id: undefined }));
-            }}
-            autoCapitalize="none"
-          />
-          {!!errors.other_id && <Text style={styles.errorBelow}>{errors.other_id}</Text>}
-        </View>
+          <View onLayout={onLayoutFor('other_id')}>
+            <Text style={styles.label}>Other ID</Text>
+            <TextInput
+              ref={setInputRef('other_id')}
+              style={styles.input}
+              placeholder="Optional"
+              value={otherId}
+              onChangeText={(t) => {
+                setOtherId(t);
+                setErrors(prev => ({ ...prev, other_id: undefined }));
+              }}
+              autoCapitalize="none"
+            />
+            {!!errors.other_id && <Text style={styles.errorBelow}>{errors.other_id}</Text>}
+          </View>
 
-        <View onLayout={onLayoutFor('model')}>
-          <Text style={styles.label}>Model</Text>
-          <TextInput
-            ref={setInputRef('model')}
-            style={styles.input}
-            placeholder="Model"
-            value={model}
-            onChangeText={(t)=>{ setModel(t); setErrors(prev=>({...prev,model:undefined})); }}
-          />
-          {!!errors.model && <Text style={styles.errorBelow}>{errors.model}</Text>}
-        </View>
+          <View onLayout={onLayoutFor('model')}>
+            <Text style={styles.label}>Model</Text>
+            <TextInput
+              ref={setInputRef('model')}
+              style={styles.input}
+              placeholder="Model"
+              value={model}
+              onChangeText={(t) => { setModel(t); setErrors(prev => ({ ...prev, model: undefined })); }}
+            />
+            {!!errors.model && <Text style={styles.errorBelow}>{errors.model}</Text>}
+          </View>
 
-        <View onLayout={onLayoutFor('description')}>
-          <Text style={styles.label}>Description</Text>
-          <TextInput
-            ref={setInputRef('description')}
-            style={[styles.input, { height: 80 }]}
-            placeholder="Description"
-            value={description}
-            onChangeText={(t)=>{ setDescription(t); setErrors(prev=>({...prev,description:undefined})); }}
-            multiline
-          />
-          {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
-        </View>
-        <View onLayout={onLayoutFor('date_purchased')}>
-          <Text style={styles.label}>Date Purchased</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__date_purchased' })}>
-            <Text style={{ color: datePurchased ? '#000' : '#888' }}>
-              {datePurchased ? formatDisplayDate(datePurchased) : 'Select Date Purchased'}
-            </Text>
-          </TouchableOpacity>
-          {!!errors.date_purchased && <Text style={styles.errorBelow}>{errors.date_purchased}</Text>}
-        </View>
-        <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
-          <Text style={styles.label}>User Assigned</Text>
-          <DropDownPicker
-            open={userOpen}
-            setOpen={setUserOpen}
-            value={assignedToId}
-            setValue={(fn) => setAssignedToId(fn())}
-            items={(options.users || []).map(u => ({ label: u.name, value: u.id }))}
-            placeholder="Select User"
-            searchable
-            searchPlaceholder="Search user"
-            listMode="SCROLLVIEW"
-            searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
-            searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            nestedScrollEnabled
-          />
-          {!!errors.assigned_to_id && <Text style={styles.errorBelow}>{errors.assigned_to_id}</Text>}
-        </View>
+          <View onLayout={onLayoutFor('description')}>
+            <Text style={styles.label}>Description</Text>
+            <TextInput
+              ref={setInputRef('description')}
+              style={[styles.input, { height: 80 }]}
+              placeholder="Description"
+              value={description}
+              onChangeText={(t) => { setDescription(t); setErrors(prev => ({ ...prev, description: undefined })); }}
+              multiline
+            />
+            {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
+          </View>
+          <View onLayout={onLayoutFor('date_purchased')}>
+            <Text style={styles.label}>Date Purchased</Text>
+            <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__date_purchased' })}>
+              <Text style={{ color: datePurchased ? '#000' : '#888' }}>
+                {datePurchased ? formatDisplayDate(datePurchased) : 'Select Date Purchased'}
+              </Text>
+            </TouchableOpacity>
+            {!!errors.date_purchased && <Text style={styles.errorBelow}>{errors.date_purchased}</Text>}
+          </View>
+          <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
+            <Text style={styles.label}>User Assigned</Text>
+            <DropDownPicker
+              open={userOpen}
+              setOpen={setUserOpen}
+              value={assignedToId}
+              setValue={(fn) => setAssignedToId(fn())}
+              items={(options.users || []).map(u => ({ label: u.name, value: u.id }))}
+              placeholder="Select User"
+              searchable
+              searchPlaceholder="Search user"
+              listMode="SCROLLVIEW"
+              searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
+              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              nestedScrollEnabled
+            />
+            {!!errors.assigned_to_id && <Text style={styles.errorBelow}>{errors.assigned_to_id}</Text>}
+          </View>
 
-        <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
-          <Text style={styles.label}>Status</Text>
-          <DropDownPicker
-            open={statusOpen}
-            setOpen={setStatusOpen}
-            value={status}
-            setValue={(fn) => setStatus(fn())}
-            items={(options.statuses || []).map(s => ({ label: s, value: s }))}
-            placeholder="Select Status"
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            nestedScrollEnabled
-          />
-          {!!errors.status && <Text style={styles.errorBelow}>{errors.status}</Text>}
-        </View>
+          <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
+            <Text style={styles.label}>Status</Text>
+            <DropDownPicker
+              open={statusOpen}
+              setOpen={setStatusOpen}
+              value={status}
+              setValue={(fn) => setStatus(fn())}
+              items={(options.statuses || []).map(s => ({ label: s, value: s }))}
+              placeholder="Select Status"
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              nestedScrollEnabled
+            />
+            {!!errors.status && <Text style={styles.errorBelow}>{errors.status}</Text>}
+          </View>
 
-        {/* Attachments */}
-        <View onLayout={onLayoutFor('image')}>
-          {image?.uri && (
-            <View>
-              {uploading ? (
-                <View style={[styles.preview, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF5FF', borderWidth: 1, borderColor: '#DBEAFE' }]}>
-                  <ActivityIndicator size="large" color="#1E90FF" />
-                  <Text style={{ marginTop: 8, color: '#5374a6' }}>
-                    Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
-                  </Text>
-                </View>
-              ) : (
-                <Image source={{ uri: image.uri }} style={styles.preview} />
-              )}
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
-                onPress={() => { if (!uploading) { setImage(null); setErrors(prev => ({ ...prev, image: undefined })); } }}
-                disabled={uploading}
-              >
-                <Text style={{ color: '#b00020' }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
+          {/* Attachments */}
+          <View onLayout={onLayoutFor('image')}>
+            {image?.uri && (
+              <View>
+                {uploading ? (
+                  <View style={[styles.preview, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF5FF', borderWidth: 1, borderColor: '#DBEAFE' }]}>
+                    <ActivityIndicator size="large" color="#1E90FF" />
+                    <Text style={{ marginTop: 8, color: '#5374a6' }}>
+                      Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
+                    </Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: image.uri }} style={styles.preview} />
+                )}
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
+                  onPress={() => { if (!uploading) { setImage(null); setErrors(prev => ({ ...prev, image: undefined })); } }}
+                  disabled={uploading}
+                >
+                  <Text style={{ color: '#b00020' }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
+            <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+              <TouchableOpacity style={[styles.btn, styles.pickerBtn]} onPress={pickImage} disabled={uploading}>
+                <Text>{image?.uri ? 'Replace Image' : 'Pick Image'}</Text>
               </TouchableOpacity>
             </View>
-          )}
-          {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
-          <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
-            <TouchableOpacity style={[styles.btn, styles.pickerBtn]} onPress={pickImage} disabled={uploading}>
-              <Text>{image?.uri ? 'Replace Image' : 'Pick Image'}</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </TourTarget>
 
         <View onLayout={onLayoutFor('document')}>
           {document && (
@@ -1395,21 +1427,23 @@ export default function NewAsset() {
         </View>
 
         {/* Submit */}
-        <TouchableOpacity
-          onPress={submit}
-          disabled={uploading}
-          style={[styles.btn, styles.submit, uploading && styles.submitDisabled]}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: uploading, busy: uploading }}
-        >
-          {uploading ? (
-            <Text style={{ color: '#fff', fontWeight: '700' }}>
-              Creating… {uploadProgress ? `${uploadProgress}%` : ''}
-            </Text>
-          ) : (
-            <Text style={{ color: '#fff' }}>Create Asset</Text>
-          )}
-        </TouchableOpacity>
+        <TourTarget id="asset-save">
+          <TouchableOpacity
+            onPress={submit}
+            disabled={uploading}
+            style={[styles.btn, styles.submit, uploading && styles.submitDisabled]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: uploading, busy: uploading }}
+          >
+            {uploading ? (
+              <Text style={{ color: '#fff', fontWeight: '700' }}>
+                Creating… {uploadProgress ? `${uploadProgress}%` : ''}
+              </Text>
+            ) : (
+              <Text style={{ color: '#fff' }}>Create Asset</Text>
+            )}
+          </TouchableOpacity>
+        </TourTarget>
 
         {uploading ? (
           <View style={{ alignItems: 'center', marginTop: 8 }}>
@@ -1422,11 +1456,12 @@ export default function NewAsset() {
               />
             </View>
             <Text style={{ marginTop: 4, color: '#666' }}>
-              {uploadStartTs ? `${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed` : ''}
+              {uploadStartTs ? `${Math.max(0, Math.floor((Date.now() - uploadStartTs) / 1000))}s elapsed` : ''}
             </Text>
           </View>
         ) : null}
 
+        <View style={{ height: 120 }} />
       </KeyboardAwareScrollView>
 
       {/* One DatePicker for everything */}
@@ -1440,7 +1475,7 @@ export default function NewAsset() {
             // keep the modal open so they can pick; just warn them
             const label =
               datePicker.slug === '__next_service_date' ? 'Next Service Date' :
-              datePicker.slug === '__date_purchased'   ? 'Date Purchased'     : 'Date';
+                datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Date';
             warn(`Please choose a valid ${label} before confirming.`);
             return;
           }
@@ -1471,7 +1506,7 @@ export default function NewAsset() {
           </View>
           {uploadStartTs ? (
             <Text style={{ marginTop: 4, color: '#666' }}>
-              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`}
+              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs) / 1000))}s elapsed`}
             </Text>
           ) : null}
         </View>
@@ -1488,7 +1523,7 @@ export default function NewAsset() {
           </View>
           {uploadStartTs ? (
             <Text style={{ marginTop: 4, color: '#666' }}>
-              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs)/1000))}s elapsed`}
+              {`${Math.max(0, Math.floor((Date.now() - uploadStartTs) / 1000))}s elapsed`}
             </Text>
           ) : null}
         </WebOverlayPortal>
@@ -1512,7 +1547,7 @@ function WebOverlayPortal({ visible, children }) {
       el.style.zIndex = '2147483647';
       document.body.appendChild(el);
       mountRef.current = el;
-      return () => { try { document.body.removeChild(el); } catch {} mountRef.current = null; };
+      return () => { try { document.body.removeChild(el); } catch { } mountRef.current = null; };
     } catch { return undefined; }
   }, [visible]);
   if (Platform.OS !== 'web' || !visible || !mountRef.current) return null;

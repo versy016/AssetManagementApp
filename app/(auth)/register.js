@@ -153,12 +153,12 @@ export default function Register() {
         setPassword('');
         setEmail('');
 
-        // Auto-redirect to login after 5 seconds
+        // Auto-redirect to login after 10 seconds
         redirectTimerRef.current = setTimeout(() => {
           if (isMountedRef.current) {
             router.replace('/(auth)/login');
           }
-        }, 5000);
+        }, 10000);
       } else {
         console.warn('Component unmounted before setting success state');
       }

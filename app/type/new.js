@@ -1,5 +1,5 @@
 // app/(tabs)/types/new.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView,
   Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
@@ -12,21 +12,22 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import { TourTarget, TourContext } from '../../components/TourGuide';
 
 // ---- Default fields (always present on assets) -----------------------------
 const DEFAULT_FIELDS = [
-  { slug: 'id',                label: 'Asset ID (system)' },
-  { slug: 'other_id',          label: 'Other ID' },
-  { slug: 'type_id',           label: 'Asset Type' },
-  { slug: 'serial_number',     label: 'Serial Number' },
-  { slug: 'description',       label: 'Description' },
-  { slug: 'model',             label: 'Model' },
-  { slug: 'assigned_to_id',    label: 'Assigned To' },
-  { slug: 'status',            label: 'Status' },
-  { slug: 'image_url',         label: 'Image URL' },
-  { slug: 'date_purchased',    label: 'Date Purchased' },
-  { slug: 'last_updated',      label: 'Last Updated (system)' },
-  { slug: 'last_changed_by',   label: 'Last Changed By (system)' },
+  { slug: 'id', label: 'Asset ID (system)' },
+  { slug: 'other_id', label: 'Other ID' },
+  { slug: 'type_id', label: 'Asset Type' },
+  { slug: 'serial_number', label: 'Serial Number' },
+  { slug: 'description', label: 'Description' },
+  { slug: 'model', label: 'Model' },
+  { slug: 'assigned_to_id', label: 'Assigned To' },
+  { slug: 'status', label: 'Status' },
+  { slug: 'image_url', label: 'Image URL' },
+  { slug: 'date_purchased', label: 'Date Purchased' },
+  { slug: 'last_updated', label: 'Last Updated (system)' },
+  { slug: 'last_changed_by', label: 'Last Changed By (system)' },
 ];
 
 // ---- Pick-from-library presets (2-column checklist) ------------------------
@@ -111,6 +112,66 @@ export default function NewAssetType() {
   const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '' });
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const { ensureVisible, currentStep } = useContext(TourContext);
+  const scrollViewRef = useRef(null);
+  const sectionRefs = useRef({
+    'name-image': null,
+    defaults: null,
+    library: null,
+    'custom-fields': null,
+    save: null,
+  });
+
+  const measureAndScroll = (key) => {
+    const ref = sectionRefs.current[key];
+    if (!ref || !scrollViewRef.current) return;
+
+    try {
+      // Measure the section to get its absolute page coordinates
+      ref.measure((x, y, width, height, pageX, pageY) => {
+        // Measure the ScrollView to get its absolute page coordinates
+        scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
+          // Calculate relative Y position within the ScrollView
+          const relativeY = pageY - spy;
+          console.log(`Measured ${key}: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
+
+          if (relativeY >= 0) {
+            const scrollY = Math.max(0, relativeY - 100);
+            scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+          }
+        });
+      });
+    } catch (e) {
+      console.error(`Error measuring ${key}:`, e);
+      // Fallback: try scrollToEnd for bottom sections
+      if (key === 'save' || key === 'library') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!currentStep) return;
+    const map = {
+      'type-name-image': 'name-image',
+      'type-defaults': 'defaults',
+      'type-library': 'library',
+      'type-custom-fields': 'custom-fields',
+      'type-save': 'save',
+    };
+    const key = map[currentStep.targetId];
+    if (key) {
+      // Small delay to ensure layout is complete
+      setTimeout(() => measureAndScroll(key), 100);
+    }
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (ensureVisible && scrollViewRef.current) {
+      ensureVisible(scrollViewRef.current);
+    }
+  }, [ensureVisible]);
+
   // Admin gate via DB role
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -133,7 +194,7 @@ export default function NewAssetType() {
     (async () => {
       try {
         setLoadingFieldTypes(true);
-        await fetch(`${API_BASE_URL}/field-types/ensure-defaults`, { method: 'POST' }).catch(() => {});
+        await fetch(`${API_BASE_URL}/field-types/ensure-defaults`, { method: 'POST' }).catch(() => { });
         const r = await fetch(`${API_BASE_URL}/field-types`);
         if (!r.ok) throw new Error(await r.text());
         const data = await r.json();
@@ -211,9 +272,9 @@ export default function NewAssetType() {
     setPickerOpen(false);
     setEditingOpen(true);
   };
-  const cancelEditor = () => { 
-    setEditingOpen(false); 
-    setPickerOpen(false); 
+  const cancelEditor = () => {
+    setEditingOpen(false);
+    setPickerOpen(false);
   };
 
   // Save editor - add to list, close editor
@@ -270,29 +331,29 @@ export default function NewAssetType() {
       // 2) Combine preset selections (with required state) + manual fields
       const selectedPresetKeys = PRESET_LIBRARY.filter(p => presetState[p.key]?.selected).map(p => p.key);
 
-  const presetPayloads = selectedPresetKeys.map((key, i) => {
-  const p = PRESET_LIBRARY.find(x => x.key === key);
-  const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
-  if (!typeIdMapped) return null;
-  const payload = {
-    name: p.label,
-    field_type_id: typeIdMapped,
-    is_required: !!presetState[key]?.required,
-    display_order: i,
-  };
-  if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
-  if ((p.fieldTypeSlug || '').toLowerCase() === 'date') {
-    const docSlug = (presetState[key]?.requiresDocSlug || '').trim();
-    const lead = Number(presetState[key]?.reminderLeadDays) || 0;
-    const docReq = !!presetState[key]?.documentRequired;
-    const vr = {};
-    if (docSlug) vr.requires_document_slug = docSlug;
-    if (lead > 0) vr.reminder_lead_days = lead;
-    if (docSlug) vr.requires_document_required = docReq;
-    if (Object.keys(vr).length) payload.validation_rules = vr;
-  }
-  return payload;
-}).filter(Boolean);
+      const presetPayloads = selectedPresetKeys.map((key, i) => {
+        const p = PRESET_LIBRARY.find(x => x.key === key);
+        const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
+        if (!typeIdMapped) return null;
+        const payload = {
+          name: p.label,
+          field_type_id: typeIdMapped,
+          is_required: !!presetState[key]?.required,
+          display_order: i,
+        };
+        if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
+        if ((p.fieldTypeSlug || '').toLowerCase() === 'date') {
+          const docSlug = (presetState[key]?.requiresDocSlug || '').trim();
+          const lead = Number(presetState[key]?.reminderLeadDays) || 0;
+          const docReq = !!presetState[key]?.documentRequired;
+          const vr = {};
+          if (docSlug) vr.requires_document_slug = docSlug;
+          if (lead > 0) vr.reminder_lead_days = lead;
+          if (docSlug) vr.requires_document_required = docReq;
+          if (Object.keys(vr).length) payload.validation_rules = vr;
+        }
+        return payload;
+      }).filter(Boolean);
 
       const manualPayloads = fields
         .filter(f => f.enabled && f.name && f.field_type_id)
@@ -354,7 +415,7 @@ export default function NewAssetType() {
       if (normalizedReturnTo) {
         router.replace(String(normalizedReturnTo));
       } else {
-      router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+        router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
       }
     } catch (err) {
       console.error('Create asset type error:', err);
@@ -407,122 +468,149 @@ export default function NewAssetType() {
         }}
       />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={s.container}
+          keyboardShouldPersistTaps="handled"
+        >
 
-          {/* Type name */}
-          <Text style={s.label}>Name</Text>
-          <TextInput
-            style={[s.input, nameError ? s.inputError : null]}
-            value={name}
-            onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
-            placeholder="Enter asset type name"
-            autoCapitalize="words"
-          />
-          {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
+          {/* Type name and image - combined for tour */}
+          <TourTarget id="type-name-image">
+            <View 
+              ref={(r) => { sectionRefs.current['name-image'] = r; }}
+            >
+              {/* Type name */}
+              <Text style={s.label}>Name</Text>
+              <View style={{ marginVertical: 8 }}>
+                <TextInput
+                  style={[s.input, nameError ? s.inputError : null]}
+                  value={name}
+                  onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
+                  placeholder="Enter asset type name"
+                  autoCapitalize="words"
+                />
+              </View>
+              {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
 
-          {/* Type image */}
-          <TouchableOpacity style={s.btn} onPress={pickImage}>
-            <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
-          </TouchableOpacity>
-          {image?.uri && <Image source={{ uri: image.uri }} style={s.preview} />}
+              {/* Type image */}
+              <TouchableOpacity style={s.btn} onPress={pickImage}>
+                <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
+              </TouchableOpacity>
+              {image?.uri && <Image source={{ uri: image.uri }} style={s.preview} />}
+            </View>
+          </TourTarget>
 
           {/* Default (always included) */}
-          <View style={{ marginTop: 24 }}>
-            <Text style={[s.label, { fontSize: 18 }]}>Default fields (always included)</Text>
-            <View style={s.defaultList}>
-              {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
+          <TourTarget id="type-defaults">
+            <View
+              ref={(r) => { sectionRefs.current.defaults = r; }}
+              style={{ marginTop: 24 }}
+            >
+              <Text style={[s.label, { fontSize: 18 }]}>Default fields (always included)</Text>
+              <View style={s.defaultList}>
+                {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
+              </View>
             </View>
-          </View>
+          </TourTarget>
 
           {/* Pick from library (2-column checklist with Required toggles) */}
-          <View style={{ marginTop: 24 }}>
-            <Text style={[s.label, { fontSize: 18 }]}>Pick from library</Text>
-            <View style={s.grid}>
-              {PRESET_LIBRARY.map((p) => {
-                const state = presetState[p.key];
-                const checked = !!state?.selected;
-                const required = !!state?.required;
-                return (
-                  <View key={p.key} style={s.gridItem}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                        onPress={() => togglePresetSelected(p.key)}
-                        activeOpacity={0.8}
-                      >
-                        <SquareCheckbox checked={checked} />
-                        <Text style={s.gridLabel}>{p.label}</Text>
-                      </TouchableOpacity>
-                      <View style={s.reqWrap}>
-                        <Text style={s.reqLabel}>Required</Text>
-                        <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
+          <TourTarget id="type-library">
+            <View
+              ref={(r) => { sectionRefs.current.library = r; }}
+              style={{ marginTop: 24 }}
+            >
+              <Text style={[s.label, { fontSize: 18 }]}>Pick from library</Text>
+              <View style={s.grid}>
+                {PRESET_LIBRARY.map((p) => {
+                  const state = presetState[p.key];
+                  const checked = !!state?.selected;
+                  const required = !!state?.required;
+                  return (
+                    <View key={p.key} style={s.gridItem}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                          onPress={() => togglePresetSelected(p.key)}
+                          activeOpacity={0.8}
+                        >
+                          <SquareCheckbox checked={checked} />
+                          <Text style={s.gridLabel}>{p.label}</Text>
+                        </TouchableOpacity>
+                        <View style={s.reqWrap}>
+                          <Text style={s.reqLabel}>Required</Text>
+                          <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
+                        </View>
                       </View>
-                    </View>
-                    {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
-                      <View style={{ width: '100%', marginTop: 8 }}>
-                        <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
-                        <TextInput
-                          style={s.input}
-                          value={presetState[p.key]?.requiresDocSlug || ''}
-                          onChangeText={(t) =>
-                            setPresetState((prev) => ({
-                              ...prev,
-                              [p.key]: { ...prev[p.key], requiresDocSlug: t },
-                            }))
-                          }
-                          placeholder="e.g. documentation_url"
-                          autoCapitalize="none"
-                        />
-                        <View style={s.switchRow}>
-                          <Text style={s.subLabel}>Document required</Text>
-                          <Switch
-                            value={!!presetState[p.key]?.documentRequired}
-                            onValueChange={(v) =>
+                      {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
+                        <View style={{ width: '100%', marginTop: 8 }}>
+                          <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
+                          <TextInput
+                            style={s.input}
+                            value={presetState[p.key]?.requiresDocSlug || ''}
+                            onChangeText={(t) =>
                               setPresetState((prev) => ({
                                 ...prev,
-                                [p.key]: { ...prev[p.key], documentRequired: v },
+                                [p.key]: { ...prev[p.key], requiresDocSlug: t },
                               }))
                             }
+                            placeholder="e.g. documentation_url"
+                            autoCapitalize="none"
                           />
+                          <View style={s.switchRow}>
+                            <Text style={s.subLabel}>Document required</Text>
+                            <Switch
+                              value={!!presetState[p.key]?.documentRequired}
+                              onValueChange={(v) =>
+                                setPresetState((prev) => ({
+                                  ...prev,
+                                  [p.key]: { ...prev[p.key], documentRequired: v },
+                                }))
+                              }
+                            />
+                          </View>
+                          <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                            {[7, 14, 30].map((d) => (
+                              <TouchableOpacity
+                                key={`lead-${p.key}-${d}`}
+                                onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
+                                style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                              >
+                                <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          <TextInput
+                            style={[s.input, { marginTop: 6 }]}
+                            value={(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
+                            onChangeText={(t) => {
+                              const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
+                              setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
+                            }}
+                            placeholder="No Reminder"
+                            keyboardType="numeric"
+                          />
+                          <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                            {(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0
+                              ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
+                              : 'No Reminder'}
+                          </Text>
                         </View>
-                        <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                          {[7,14,30].map((d) => (
-                            <TouchableOpacity
-                              key={`lead-${p.key}-${d}`}
-                              onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
-                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
-                            >
-                              <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                        <TextInput
-                          style={[s.input, { marginTop: 6 }]}
-                          value={(Number(presetState[p.key]?.reminderLeadDays)||0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
-                          onChangeText={(t) => {
-                            const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
-                            setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
-                          }}
-                          placeholder="No Reminder"
-                          keyboardType="numeric"
-                        />
-                        <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
-                          {(Number(presetState[p.key]?.reminderLeadDays)||0) > 0
-                            ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
-                            : 'No Reminder'}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
             </View>
-          </View>
+          </TourTarget>
 
           {/* Custom fields (saved list + editor) */}
-          <View style={{ marginTop: 24 }}>
-            <Text style={[s.label, { fontSize: 18 }]}>Custom fields</Text>
+          <TourTarget id="type-custom-fields">
+            <View 
+              ref={(r) => { sectionRefs.current['custom-fields'] = r; }}
+              style={{ marginTop: 24 }}
+            >
+              <Text style={[s.label, { fontSize: 18 }]}>Custom fields</Text>
 
             {loadingFieldTypes && (
               <View style={{ paddingVertical: 12 }}>
@@ -624,28 +712,28 @@ export default function NewAssetType() {
                       </View>
                       <Text style={s.subLabel}>Reminder lead time (days, optional)</Text>
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                        {[7,14,30].map((d) => (
+                        {[7, 14, 30].map((d) => (
                           <TouchableOpacity
                             key={`lead-editor-${d}`}
                             onPress={() => setEditing(e => ({ ...e, reminderLeadDays: d }))}
-                            style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(editing.reminderLeadDays)||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                            style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(editing.reminderLeadDays) || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
                           >
-                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
                       <TextInput
                         style={[s.input, { marginTop: 6 }]}
-                        value={(Number(editing.reminderLeadDays)||0) > 0 ? String(Number(editing.reminderLeadDays)) : ''}
+                        value={(Number(editing.reminderLeadDays) || 0) > 0 ? String(Number(editing.reminderLeadDays)) : ''}
                         onChangeText={(t) => {
-                          const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
+                          const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
                           setEditing(e => ({ ...e, reminderLeadDays: n }));
                         }}
                         placeholder="No Reminder"
                         keyboardType="numeric"
                       />
                       <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
-                        {(Number(editing.reminderLeadDays)||0) > 0
+                        {(Number(editing.reminderLeadDays) || 0) > 0
                           ? `Reminder to be sent ${Number(editing.reminderLeadDays)} days before expiry date`
                           : 'No Reminder'}
                       </Text>
@@ -671,14 +759,21 @@ export default function NewAssetType() {
                 <Text>+ Add Field</Text>
               </TouchableOpacity>
             )}
-          </View>
+            </View>
+          </TourTarget>
 
           {/* Submit */}
-          <TouchableOpacity style={[s.btn, s.submit, { marginTop: 16 }]} onPress={handleSubmit} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Create Asset Type</Text>}
-          </TouchableOpacity>
+          <TourTarget id="type-save">
+            <View
+              ref={(r) => { sectionRefs.current.save = r; }}
+            >
+              <TouchableOpacity style={[s.btn, s.submit, { marginTop: 16 }]} onPress={handleSubmit} disabled={submitting}>
+                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Create Asset Type</Text>}
+              </TouchableOpacity>
+            </View>
+          </TourTarget>
 
-          <View style={{ height: 24 }} />
+          <View style={{ height: 120 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
