@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -99,6 +100,7 @@ export default function AssetsType() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [deleteBlockedMessage, setDeleteBlockedMessage] = useState(null);
 
   // Determine admin via DB role
   useEffect(() => {
@@ -117,6 +119,13 @@ export default function AssetsType() {
 
   /* delete type (same logic, nicer feedback) */
   const doDeleteType = async () => {
+    if (assets.length > 0) {
+      setDeleteBlockedMessage(
+        `This asset type has ${assets.length} asset(s). Delete or reassign all assets first, then you can delete the type.`
+      );
+      return;
+    }
+
     const ok = await new Promise((resolve) => {
       if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
         return resolve(window.confirm('Delete this asset type? This cannot be undone.'));
@@ -131,8 +140,21 @@ export default function AssetsType() {
     try {
       const headers = auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {};
       const res = await fetch(`${API_BASE_URL}/asset-types/${type_id}`, { method: 'DELETE', headers });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.message || body?.error || 'Failed to delete');
+      const responseText = await res.text();
+      let body = {};
+      try {
+        if (responseText && responseText.trim()) body = JSON.parse(responseText);
+      } catch {
+        body = {};
+      }
+      if (!res.ok) {
+        const msg = body?.message || body?.error || responseText?.trim() || 'Failed to delete';
+        if (res.status === 400 && (msg.toLowerCase().includes('asset') || msg.toLowerCase().includes('existing'))) {
+          setDeleteBlockedMessage(msg || 'This asset type has assets. Delete or reassign all assets first.');
+          return;
+        }
+        throw new Error(msg);
+      }
       if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset type removed.');
       router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
     } catch (e) {
@@ -251,49 +273,51 @@ export default function AssetsType() {
 
   const renderContent = () => (
       <View style={styles.container}>
-        {/* stats chips (now color-coded by status config) */}
-        <View style={styles.metaRow}>
-          <StatChip code="in_service"        count={counts.in_service} />
-          <StatChip code="repair"            count={counts.repair} />
-          <StatChip code="maintenance"       count={counts.maintenance} />
-          <StatChip code="rented"            count={counts.rented} />
-          <StatChip code="end_of_life"       count={counts.end_of_life} />
-          <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
-            <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
-            <Text style={[styles.metaChipText, { color: '#1E90FF' }]}>Total: {counts.total}</Text>
+        <View style={styles.contentWrap}>
+          {/* stats chips (now color-coded by status config) */}
+          <View style={styles.metaRow}>
+            <StatChip code="in_service"        count={counts.in_service} />
+            <StatChip code="repair"            count={counts.repair} />
+            <StatChip code="maintenance"       count={counts.maintenance} />
+            <StatChip code="rented"            count={counts.rented} />
+            <StatChip code="end_of_life"       count={counts.end_of_life} />
+            <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
+              <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
+              <Text style={[styles.metaChipText, { color: '#1E90FF' }]}>Total: {counts.total}</Text>
+            </View>
           </View>
-        </View>
 
-        {/* list / empty state */}
-        {assets.length === 0 ? (
-          <Text style={styles.noData}>No assets found for this type.</Text>
-        ) : (
-          <FlatList
-            data={grouped}
-            keyExtractor={(item, idx) => item?.__header ? `hdr-${item.__header}-${idx}` : String(item.id)}
-            contentContainerStyle={{ padding: 20 }}
-            renderItem={({ item }) => (
-              item?.__header ? (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>{item.__header}</Text>
-                </View>
-              ) : (
-                renderItem({ item })
-              )
-            )}
-          />
-        )}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FFA500' }]} onPress={goEditType}>
-          <Text style={styles.actionText}>✏️ Edit Type</Text>
-        </TouchableOpacity>
-        {isAdmin && (
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b00020' }]} onPress={doDeleteType}>
-            <Text style={styles.actionText}>🗑 Delete Type</Text>
+          {/* list / empty state */}
+          {assets.length === 0 ? (
+            <Text style={styles.noData}>No assets found for this type.</Text>
+          ) : (
+            <FlatList
+              data={grouped}
+              keyExtractor={(item, idx) => item?.__header ? `hdr-${item.__header}-${idx}` : String(item.id)}
+              contentContainerStyle={{ padding: 20, ...(Platform.OS === 'web' ? { paddingBottom: 88 } : {}) }}
+              renderItem={({ item }) => (
+                item?.__header ? (
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionHeaderText}>{item.__header}</Text>
+                  </View>
+                ) : (
+                  renderItem({ item })
+                )
+              )}
+            />
+          )}
+        </View>
+        <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FFA500' }]} onPress={goEditType}>
+            <Text style={styles.actionText}>✏️ Edit Type</Text>
           </TouchableOpacity>
-        )}
+          {isAdmin && (
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b00020' }]} onPress={doDeleteType}>
+              <Text style={styles.actionText}>🗑 Delete Type</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
-    </View>
   );
 
   return (
@@ -311,6 +335,23 @@ export default function AssetsType() {
       ) : (
         renderContent()
       )}
+
+      {/* Cannot delete asset type (has assets) */}
+      <Modal transparent animationType="fade" visible={!!deleteBlockedMessage} onRequestClose={() => setDeleteBlockedMessage(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.15)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '92%', maxWidth: 400, borderWidth: 1, borderColor: '#E6EDF3' }}>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A', marginBottom: 8 }}>Cannot delete asset type</Text>
+            <Text style={{ fontSize: 15, color: '#374151', marginBottom: 20 }}>{deleteBlockedMessage}</Text>
+            <TouchableOpacity
+              style={{ alignSelf: 'flex-end', backgroundColor: '#1E90FF', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
+              onPress={() => setDeleteBlockedMessage(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,6 +362,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
   },
   container: { flex: 1, backgroundColor: '#fff' },
+  contentWrap: { flex: 1, minHeight: 0 },
   /* meta chips row (counts) */
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   metaChip: {
@@ -349,10 +391,17 @@ const styles = StyleSheet.create({
   /* empty state */
   noData: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#777' },
 
-  /* footer actions styled like asset page */
+  /* footer actions styled like asset page; sticky on web */
   actionsRow: {
     flexDirection: 'row', justifyContent: 'space-between', gap: 8,
     padding: 16, borderTopColor: '#ddd', borderTopWidth: 1, backgroundColor: '#fff',
+  },
+  actionsRowSticky: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   actionBtn: {
     flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', elevation: 2,

@@ -15,6 +15,7 @@ import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
 import SearchInput from './ui/SearchInput';
 import ScreenHeader from './ui/ScreenHeader';
+import { TourTarget } from './TourGuide';
 
 const openDocumentLink = (url) => {
   if (!url) return;
@@ -377,6 +378,7 @@ export default function CertsView({ visible: initialVisible }) {
 
   const actionsNode = (
     <>
+      <TourTarget id="web-certs-filters">
       <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterOpen(true)}>
         <View style={{ position: 'relative' }}>
           <Feather name="sliders" size={18} color={Colors.primary} />
@@ -387,6 +389,7 @@ export default function CertsView({ visible: initialVisible }) {
           )}
         </View>
       </TouchableOpacity>
+      </TourTarget>
       <TouchableOpacity style={styles.iconBtn} onPress={() => setRefreshKey((v) => v + 1)}>
         <Feather name="refresh-ccw" size={18} color={Colors.primary} />
       </TouchableOpacity>
@@ -652,6 +655,7 @@ export default function CertsView({ visible: initialVisible }) {
       )}
       {/* Top surface like Search */}
       <View style={styles.toolbarSurface}>
+        <TourTarget id="web-certs-search">
         <View style={styles.toolbarRow}>
           <SearchInput
             placeholder="Search by asset, type, model, assigned…"
@@ -672,6 +676,7 @@ export default function CertsView({ visible: initialVisible }) {
           <Chip label="Expiring soon" tone="warning" active={filterExp === 'soon'} onPress={() => setFilterExp((prev) => (prev === 'soon' ? '' : 'soon'))} />
           <Chip label="Expired" tone="danger" active={filterExp === 'expired'} onPress={() => setFilterExp((prev) => (prev === 'expired' ? '' : 'expired'))} />
         </View>
+        </TourTarget>
       </View>
       {renderEditModal()}
       {/* <DatePickerModal
@@ -766,6 +771,7 @@ export default function CertsView({ visible: initialVisible }) {
 
       {/* Mobile Card View */}
       {Platform.OS !== 'web' || isCompact ? (
+        <TourTarget id="web-certs-list">
         <ScrollView
           style={styles.mobileScroll}
           contentContainerStyle={[styles.mobileScrollContent, { paddingBottom: 80 }]}
@@ -928,8 +934,10 @@ export default function CertsView({ visible: initialVisible }) {
             </View>
           )}
         </ScrollView>
+        </TourTarget>
       ) : (
         /* Desktop Table View */
+        <TourTarget id="web-certs-list">
       <View style={styles.tableWrap}>
         <ScrollView
           horizontal
@@ -1070,6 +1078,7 @@ export default function CertsView({ visible: initialVisible }) {
             </View>
           )}
         </View>
+        </TourTarget>
       )}
     </View>
   );

@@ -12,6 +12,9 @@ import {
   FlatList,
   Platform,
   RefreshControl,
+  Modal,
+  ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -134,7 +137,7 @@ function DetailRow({ icon, label, value }) {
 }
 
 /** ================== TAB: Asset Types (live filtered + full status chips) ================== */
-const AssetTypesTab = ({ query }) => {
+const AssetTypesTab = ({ query, filters }) => {
   const router = useRouter();
   const [assetTypes, setAssetTypes] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -219,10 +222,20 @@ const AssetTypesTab = ({ query }) => {
   }, [fetchTypes, fetchTypeCounts]);
 
   const filtered = useMemo(() => {
+    let arr = assetTypes;
     const t = (query || '').trim().toLowerCase();
-    if (!t) return assetTypes;
-    return assetTypes.filter(x => String(x?.name || '').toLowerCase().includes(t));
-  }, [assetTypes, query]);
+    if (t) arr = arr.filter(x => String(x?.name || '').toLowerCase().includes(t));
+    const statusFilter = filters?.status;
+    if (statusFilter && typeCounts) {
+      const statusKey = normalizeStatus(statusFilter);
+      arr = arr.filter(x => {
+        const id = String(x?.id ?? '');
+        const c = typeCounts[id] || {};
+        return (c[statusKey] ?? 0) > 0;
+      });
+    }
+    return arr;
+  }, [assetTypes, query, filters?.status, typeCounts]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -406,7 +419,7 @@ const AssetTypesTab = ({ query }) => {
 };
 
 /** ================== TAB: All Assets (live filtered) ================== */
-const AllAssetsTab = ({ query }) => {
+const AllAssetsTab = ({ query, filters }) => {
   const router = useRouter();
   const [assets, setAssets] = useState([]);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -458,24 +471,40 @@ const AllAssetsTab = ({ query }) => {
   }, []);
 
   const filtered = useMemo(() => {
+    let arr = assets;
     const t = (query || '').trim().toLowerCase();
-    if (!t) return assets;
-    const tokens = t.split(/\s+/).filter(Boolean);
-    return assets.filter((it) => {
-      const name = it?.name ?? it?.asset_name ?? '';
-      const id = it?.id ?? '';
-      const serial = it?.serial_number ?? it?.fields?.serial_number ?? '';
-      const model = it?.model ?? it?.fields?.model ?? '';
-      const notes = it?.notes ?? '';
-      const desc = it?.description ?? '';
-      const loc = it?.location ?? it?.fields?.location ?? '';
-      const type = it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '';
-      const assigned =
-        it?.assigned_to ?? it?.users?.email ?? it?.users?.name ?? '';
-      const hay = `${name} ${id} ${serial} ${model} ${notes} ${desc} ${loc} ${type} ${assigned}`.toLowerCase();
-      return tokens.every(tok => hay.includes(tok));
-    });
-  }, [assets, query]);
+    if (t) {
+      const tokens = t.split(/\s+/).filter(Boolean);
+      arr = arr.filter((it) => {
+        const name = it?.name ?? it?.asset_name ?? '';
+        const id = it?.id ?? '';
+        const serial = it?.serial_number ?? it?.fields?.serial_number ?? '';
+        const model = it?.model ?? it?.fields?.model ?? '';
+        const notes = it?.notes ?? '';
+        const desc = it?.description ?? '';
+        const loc = it?.location ?? it?.fields?.location ?? '';
+        const type = it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '';
+        const assigned =
+          it?.assigned_to ?? it?.users?.email ?? it?.users?.name ?? '';
+        const hay = `${name} ${id} ${serial} ${model} ${notes} ${desc} ${loc} ${type} ${assigned}`.toLowerCase();
+        return tokens.every(tok => hay.includes(tok));
+      });
+    }
+    const statusFilter = filters?.status;
+    if (statusFilter) {
+      const statusKey = normalizeStatus(statusFilter);
+      arr = arr.filter(it => normalizeStatus(it?.status) === statusKey);
+    }
+    const typeFilters = filters?.assetTypes;
+    if (typeFilters && typeFilters.length > 0) {
+      const set = new Set(typeFilters.map(t => String(t).toLowerCase()));
+      arr = arr.filter(it => {
+        const type = it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '';
+        return set.has(String(type).toLowerCase());
+      });
+    }
+    return arr;
+  }, [assets, query, filters?.status, filters?.assetTypes]);
 
   const sortedAssets = useMemo(() => {
     const arr = [...filtered];
@@ -652,21 +681,40 @@ const Inventory = () => {
   const router = useRouter();
   const theme = useTheme();
   const { tab } = useLocalSearchParams();
-  const [index, setIndex] = useState(tab === 'all' ? 1 : 0);
+  const [index, setIndex] = useState(tab === 'types' ? 1 : 0);
 
   // Sync tab index with URL param
   useEffect(() => {
-    if (tab === 'all') setIndex(1);
-    else if (tab === 'types') setIndex(0);
+    if (tab === 'all') setIndex(0);
+    else if (tab === 'types') setIndex(1);
   }, [tab]);
 
   const [headerQuery, setHeaderQuery] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [filters, setFilters] = useState({ status: null, assetTypes: [] });
+  const [filterAssetTypes, setFilterAssetTypes] = useState([]);
+  const [typeSearch, setTypeSearch] = useState('');
 
   const [routes] = useState([
-    { key: 'types', title: 'Asset Types' },
     { key: 'all', title: 'All Assets' },
+    { key: 'types', title: 'Asset Types' },
   ]);
+
+  // Fetch asset types for filter dropdown
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/assets/asset-types-summary`);
+        const data = await res.json();
+        if (!ignore && Array.isArray(data)) {
+          setFilterAssetTypes(data.map(t => t.name).filter(Boolean));
+        }
+      } catch { if (!ignore) setFilterAssetTypes([]); }
+    })();
+    return () => { ignore = true; };
+  }, []);
 
   // Determine admin from DB role (users.role === 'ADMIN')
   useEffect(() => {
@@ -683,14 +731,16 @@ const Inventory = () => {
     return unsub;
   }, []);
 
-  // renderScene with props so we can pass the live query down
+  // renderScene with props so we can pass the live query and filters down
   const renderScene = ({ route }) => {
-    if (route.key === 'types') return <AssetTypesTab query={headerQuery} />;
-    if (route.key === 'all') return <AllAssetsTab query={headerQuery} />;
+    if (route.key === 'types') return <AssetTypesTab query={headerQuery} filters={filters} />;
+    if (route.key === 'all') return <AllAssetsTab query={headerQuery} filters={filters} />;
     return null;
   };
 
-  const isTypesTab = index === 0;
+  const activeFilterCount = [filters.status, ...(filters.assetTypes || [])].filter(Boolean).length;
+
+  const isTypesTab = index === 1;
   const headerPlaceholder = isTypesTab ? 'Search asset types' : 'Search assets';
 
   return (
@@ -706,9 +756,21 @@ const Inventory = () => {
               returnKeyType="search"
             />
           </View>
-          <TouchableOpacity style={styles.iconButton}>
-            <MaterialIcons name="filter-list" size={24} color={theme.colors.primary} />
-          </TouchableOpacity>
+          {!isTypesTab && (
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => setFilterModalOpen(true)}
+            >
+              <View style={{ position: 'relative' }}>
+                <Feather name="sliders" size={22} color={theme.colors.primary} />
+                {activeFilterCount > 0 && (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>{Math.min(activeFilterCount, 9)}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          )}
           {/* No search icon / navigation */}
         </View>
 
@@ -763,15 +825,93 @@ const Inventory = () => {
           )}
         />
 
+        {/* Filter Modal */}
+        <Modal visible={filterModalOpen} transparent animationType="fade">
+          <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+            <TouchableOpacity style={styles.modalBackdropTouch} activeOpacity={1} onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }} />
+            <View style={styles.filterSheet}>
+              <View style={styles.filterSheetHeader}>
+                <Text style={styles.filterSheetTitle}>Filters</Text>
+                <TouchableOpacity onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }}>
+                  <MaterialIcons name="close" size={24} color={COLORS.sub} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.filterSheetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={styles.filterGroupTitle}>Status</Text>
+                <View style={styles.filterChipsRow}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, !filters.status && styles.filterChipActive]}
+                    onPress={() => setFilters(f => ({ ...f, status: null }))}
+                  >
+                    <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
+                  </TouchableOpacity>
+                  {['In Service', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[styles.filterChip, filters.status === s && styles.filterChipActive]}
+                      onPress={() => setFilters(f => ({ ...f, status: f.status === s ? null : s }))}
+                    >
+                      <Text style={[styles.filterChipText, filters.status === s && styles.filterChipTextActive]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={[styles.filterGroupTitle, { marginTop: 16 }]}>Asset Type</Text>
+                {(filters.assetTypes || []).length > 0 && (
+                  <View style={styles.filterSelectedTypesWrap}>
+                    {(filters.assetTypes || []).map(t => (
+                      <View key={t} style={styles.filterSelectedChip}>
+                        <Text style={styles.filterSelectedChipText} numberOfLines={1}>{t}</Text>
+                        <TouchableOpacity onPress={() => setFilters(f => ({ ...f, assetTypes: (f.assetTypes || []).filter(x => x !== t) }))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Feather name="x" size={14} color={COLORS.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <TextInput
+                  style={styles.filterTypeInput}
+                  placeholder="Search and select asset types…"
+                  placeholderTextColor="#94A3B8"
+                  value={typeSearch}
+                  onChangeText={setTypeSearch}
+                />
+                {typeSearch.trim().length > 0 && (
+                  <ScrollView style={styles.filterTypeList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    {filterAssetTypes
+                      .filter(t => String(t).toLowerCase().includes(typeSearch.trim().toLowerCase()) && !(filters.assetTypes || []).includes(t))
+                      .map(t => (
+                        <TouchableOpacity
+                          key={t}
+                          style={styles.filterTypeItem}
+                          onPress={() => { setFilters(f => ({ ...f, assetTypes: [...(f.assetTypes || []), t] })); setTypeSearch(''); }}
+                        >
+                          <Text style={styles.filterTypeItemText} numberOfLines={1}>{t}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                )}
+              </ScrollView>
+              {activeFilterCount > 0 && (
+                <TouchableOpacity
+                  style={styles.filterClearBtn}
+                  onPress={() => { setFilters({ status: null, assetTypes: [] }); setTypeSearch(''); setFilterModalOpen(false); }}
+                >
+                  <Text style={styles.filterClearText}>Clear all</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
         {/* FAB (admin only) */}
         {isAdmin && (
           <TourTarget
-            id={index === 0 ? 'btn-manage-types' : 'btn-add-asset'}
+            id={index === 1 ? 'btn-manage-types' : 'btn-add-asset'}
             style={styles.fab}
           >
             <TouchableOpacity
               style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
-              onPress={() => (index === 0 ? router.push('/type/new') : router.push('/asset/new'))}
+              onPress={() => (index === 1 ? router.push('/type/new') : router.push('/asset/new'))}
             >
               <MaterialIcons name="add" size={28} color="#fff" />
             </TouchableOpacity>
@@ -790,6 +930,96 @@ const styles = StyleSheet.create({
     marginRight: 10, borderColor: '#ddd', borderWidth: 1, color: '#111',
   },
   iconButton: { padding: 10 },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#D32F2F',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdropTouch: { flex: 1, width: '100%' },
+  filterSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  filterSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  filterSheetTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  filterSheetScroll: { maxHeight: 320 },
+  filterGroupTitle: { fontSize: 12, fontWeight: '700', color: COLORS.sub, marginBottom: 8, textTransform: 'uppercase' },
+  filterChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+  },
+  filterChipActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: COLORS.sub },
+  filterChipTextActive: { color: COLORS.primary, fontWeight: '700' },
+  filterClearBtn: {
+    marginTop: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
+  },
+  filterClearText: { color: COLORS.primary, fontWeight: '700', fontSize: 14 },
+  filterSelectedTypesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  filterSelectedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 6,
+  },
+  filterSelectedChipText: { fontSize: 13, fontWeight: '600', color: COLORS.primary, maxWidth: 140 },
+  filterTypeInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  filterTypeList: { maxHeight: 180 },
+  filterTypeItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  filterTypeItemActive: { backgroundColor: COLORS.primaryLight },
+  filterTypeItemText: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
+  filterTypeItemTextActive: { color: COLORS.primary, fontWeight: '700' },
   extrasWrap: {
     marginTop: 8,
     paddingTop: 8,

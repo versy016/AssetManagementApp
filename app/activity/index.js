@@ -1,12 +1,13 @@
 // app/activity/index.js - Unified activity feed
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Platform, Modal, Pressable, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Platform, Modal, Pressable, TextInput, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { Colors } from '../../constants/uiTheme';
+import { TourTarget } from '../../components/TourGuide';
 
 export default function ActivityScreen() {
   const [rawItems, setRawItems] = useState([]);
@@ -18,6 +19,7 @@ export default function ActivityScreen() {
     types: [], // e.g. ['TRANSFER','CHECK_IN'] (no CHECK_OUT/STATUS_CHANGE here)
     assetTypes: [], // e.g. ['Laptop','Camera']
     status: null, // 'in_service'|'repair'|'maintenance'|'end_of_life'
+    user: null, // null = any; string = filter by actor/from/to
     dateRange: 'all', // 'all'|'24h'|'7d'|'30d'|'custom'
     dateFrom: '', // YYYY-MM-DD when dateRange==='custom'
     dateTo: '',   // YYYY-MM-DD when dateRange==='custom'
@@ -44,15 +46,25 @@ export default function ActivityScreen() {
     return () => { cancel = true; };
   }, []);
 
-  // Load asset types for filter chips
+  // Load all asset types from database for filter (paginate to get full list)
   useEffect(() => {
     let cancel = false;
+    const pageSize = 100; // API max per page
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/asset-types`);
-        const j = await res.json();
-        const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : Array.isArray(j?.items) ? j.items : [];
-        if (!cancel) setAssetTypeOptions(list.map(t => ({ id: t.id, name: t.name })));
+        const all = [];
+        let page = 1;
+        let total = 0;
+        do {
+          const res = await fetch(`${API_BASE_URL}/asset-types?page=${page}&pageSize=${pageSize}`);
+          const j = await res.json();
+          const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : Array.isArray(j?.items) ? j.items : [];
+          total = typeof j?.total === 'number' ? j.total : list.length;
+          list.forEach((t) => all.push({ id: t.id, name: t.name }));
+          if (list.length < pageSize || all.length >= total) break;
+          page += 1;
+        } while (!cancel && all.length < total);
+        if (!cancel) setAssetTypeOptions(all);
       } catch {
         if (!cancel) setAssetTypeOptions([]);
       }
@@ -66,9 +78,22 @@ export default function ActivityScreen() {
       filters.types && filters.types.length > 0,
       filters.assetTypes && filters.assetTypes.length > 0,
       !!filters.status,
+      !!filters.user,
       filters.dateRange && (filters.dateRange !== 'all'),
     ].filter(Boolean).length;
   }, [filters]);
+
+  // Unique user names/emails from activity (actor, from, to) for filter dropdown
+  const userOptions = useMemo(() => {
+    const set = new Set();
+    rawItems.forEach((it) => {
+      [it.actor, it.from, it.to].forEach((v) => {
+        const s = typeof v === 'string' ? v.trim() : '';
+        if (s) set.add(s);
+      });
+    });
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
+  }, [rawItems]);
 
   const normStatus = (s) => {
     const t = String(s || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
@@ -161,6 +186,17 @@ export default function ActivityScreen() {
           if (String(it.type || '').toUpperCase() !== 'STATUS_CHANGE') return false;
           const newS = it?.data?.newStatus || it?.data?.status || it?.note || '';
           if (normStatus(newS) !== normStatus(filters.status)) return false;
+        }
+
+        // user filter: match actor, from, or to (case-insensitive exact match)
+        if (filters.user) {
+          const key = String(filters.user).trim().toLowerCase();
+          const actor = String(it.actor || '').trim().toLowerCase();
+          const from = String(it.from || '').trim().toLowerCase();
+          const to = String(it.to || '').trim().toLowerCase();
+          if (!key) return true;
+          const match = actor === key || from === key || to === key;
+          if (!match) return false;
         }
 
         // date range
@@ -388,6 +424,7 @@ export default function ActivityScreen() {
         <Text style={styles.heroSub}>All asset actions, notes and changes</Text>
       </View>
       {/* Filters & sort bar */}
+      <TourTarget id="web-activity-filters">
       <View style={styles.filterBar}>
         <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersOpen(true)}>
           <MaterialIcons name="tune" size={16} color="#0B63CE" />
@@ -401,9 +438,11 @@ export default function ActivityScreen() {
           <Text style={styles.filterBtnText}>Sort</Text>
         </TouchableOpacity>
       </View>
+      </TourTarget>
       {loading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
       ) : (
+        <TourTarget id="web-activity-feed">
         <FlatList
           data={items}
           keyExtractor={(it) => String(it.id) + String(it.when)}
@@ -411,6 +450,7 @@ export default function ActivityScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
         />
+        </TourTarget>
       )}
 
       {/* Filters modal */}
@@ -419,6 +459,7 @@ export default function ActivityScreen() {
         filters={filters}
         setFilters={setFilters}
         assetTypeOptions={assetTypeOptions}
+        userOptions={userOptions}
         onClose={() => setFiltersOpen(false)}
         onApply={() => setFiltersOpen(false)}
       />
@@ -476,7 +517,34 @@ const styles = StyleSheet.create({
 });
 
 // --------- Modals and small UI helpers ---------
-function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTypeOptions }) {
+function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTypeOptions, userOptions = [] }) {
+  const [assetTypeSearch, setAssetTypeSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [assetTypeSuggestOpen, setAssetTypeSuggestOpen] = useState(false);
+  const [userSuggestOpen, setUserSuggestOpen] = useState(false);
+  useEffect(() => {
+    if (!visible) {
+      setAssetTypeSearch('');
+      setUserSearch('');
+      setAssetTypeSuggestOpen(false);
+      setUserSuggestOpen(false);
+    }
+  }, [visible]);
+
+  const assetTypeSuggestions = useMemo(() => {
+    const q = String(assetTypeSearch || '').trim().toLowerCase();
+    const list = assetTypeOptions || [];
+    if (!q) return list;
+    return list.filter((t) => String(t.name || '').toLowerCase().includes(q));
+  }, [assetTypeOptions, assetTypeSearch]);
+
+  const userSuggestions = useMemo(() => {
+    const q = String(userSearch || '').trim().toLowerCase();
+    const list = userOptions || [];
+    if (!q) return list;
+    return list.filter((u) => String(u || '').toLowerCase().includes(q));
+  }, [userOptions, userSearch]);
+
   const TYPE_OPTIONS = [
     { label: 'Deleted', value: 'ASSET_DELETED' },
     { label: 'Edit', value: 'ASSET_EDIT' },
@@ -515,6 +583,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
   };
 
   const setStatus = (val) => setFilters((f) => ({ ...f, status: val }));
+  const setUser = (val) => setFilters((f) => ({ ...f, user: val }));
   const setDate = (val) => setFilters((f) => ({ ...f, dateRange: val }));
   const toggleAssetType = (name) => setFilters((f) => {
     const set = new Set(f.assetTypes || []);
@@ -532,7 +601,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
           <Text style={mStyles.title}>Filters</Text>
           <TouchableOpacity onPress={onClose}><MaterialIcons name="close" size={20} color="#0F172A" /></TouchableOpacity>
         </View>
-
+        <ScrollView style={{ maxHeight: '75%' }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
         <Text style={mStyles.label}>Types</Text>
         <View style={mStyles.row}>
           {TYPE_OPTIONS.map((o) => {
@@ -546,16 +615,44 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
         </View>
 
         <Text style={mStyles.label}>Asset Type</Text>
-        <View style={mStyles.row}>
-          {(assetTypeOptions || []).map((t) => {
-            const active = (filters.assetTypes || []).includes(t.name);
-            return (
-              <TouchableOpacity key={t.id} onPress={() => toggleAssetType(t.name)} style={[mStyles.chip, active && mStyles.chipActive]}>
-                <Text style={[mStyles.chipText, active && mStyles.chipTextActive]}>{t.name}</Text>
+        <TextInput
+          placeholder="Search asset types in system…"
+          value={assetTypeSearch}
+          onChangeText={(v) => { setAssetTypeSearch(v); setAssetTypeSuggestOpen(true); }}
+          onFocus={() => setAssetTypeSuggestOpen(true)}
+          onBlur={() => setTimeout(() => setAssetTypeSuggestOpen(false), 200)}
+          style={mStyles.input}
+          placeholderTextColor="#94A3B8"
+        />
+        {assetTypeSuggestOpen && (
+          <View style={[mStyles.suggestList, { maxHeight: 140 }]}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {assetTypeSuggestions.length === 0 ? (
+                <Text style={[mStyles.chipText, { padding: 8 }]}>No matching asset types</Text>
+              ) : (
+                assetTypeSuggestions.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    onPress={() => { toggleAssetType(t.name); setAssetTypeSearch(''); setAssetTypeSuggestOpen(false); }}
+                    style={mStyles.suggestItem}
+                  >
+                    <Text style={mStyles.chipText}>{t.name}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
+        {(filters.assetTypes || []).length > 0 && (
+          <View style={[mStyles.row, { marginTop: 6 }]}>
+            {(filters.assetTypes || []).map((name) => (
+              <TouchableOpacity key={name} onPress={() => toggleAssetType(name)} style={[mStyles.chip, mStyles.chipActive, { flexDirection: 'row', alignItems: 'center' }]}>
+                <Text style={[mStyles.chipText, mStyles.chipTextActive, { flex: 1 }]} numberOfLines={1}>{name}</Text>
+                <Text style={[mStyles.chipText, mStyles.chipTextActive, { marginLeft: 6 }]}>×</Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        )}
 
         <Text style={mStyles.label}>Status</Text>
         <View style={mStyles.row}>
@@ -568,6 +665,47 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
             );
           })}
         </View>
+
+        <Text style={mStyles.label}>User</Text>
+        <TextInput
+          placeholder="Search user…"
+          value={userSearch}
+          onChangeText={(v) => { setUserSearch(v); setUserSuggestOpen(true); }}
+          onFocus={() => setUserSuggestOpen(true)}
+          onBlur={() => setTimeout(() => setUserSuggestOpen(false), 200)}
+          style={mStyles.input}
+          placeholderTextColor="#94A3B8"
+        />
+        {userSuggestOpen && (
+          <View style={[mStyles.suggestList, { maxHeight: 140 }]}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <TouchableOpacity onPress={() => { setUser(null); setUserSearch(''); setUserSuggestOpen(false); }} style={mStyles.suggestItem}>
+                <Text style={mStyles.chipText}>Any</Text>
+              </TouchableOpacity>
+              {userSuggestions.length === 0 && userSearch.trim() ? (
+                <Text style={[mStyles.chipText, { padding: 8 }]}>No matching users</Text>
+              ) : (
+                userSuggestions.map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    onPress={() => { setUser(u); setUserSearch(''); setUserSuggestOpen(false); }}
+                    style={mStyles.suggestItem}
+                  >
+                    <Text style={mStyles.chipText} numberOfLines={1}>{u}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
+        {filters.user && (
+          <View style={[mStyles.row, { marginTop: 6 }]}>
+            <TouchableOpacity onPress={() => setUser(null)} style={[mStyles.chip, mStyles.chipActive, { flexDirection: 'row', alignItems: 'center' }]}>
+              <Text style={[mStyles.chipText, mStyles.chipTextActive, { flex: 1 }]} numberOfLines={1}>{filters.user}</Text>
+              <Text style={[mStyles.chipText, mStyles.chipTextActive, { marginLeft: 6 }]}>×</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Text style={mStyles.label}>Date range</Text>
         <View style={mStyles.row}>
@@ -620,6 +758,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
           </View>
         )}
 
+        </ScrollView>
         <View style={mStyles.actions}>
           <TouchableOpacity onPress={onClose} style={[mStyles.btn, mStyles.secondary]}>
             <Text style={mStyles.btnSecondaryText}>Cancel</Text>
@@ -716,4 +855,6 @@ const mStyles = StyleSheet.create({
   btnPrimaryText: { color: '#FFFFFF', fontWeight: '900' },
   btnSecondaryText: { color: '#0F172A', fontWeight: '800' },
   input: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: Platform.OS === 'web' ? 8 : 6 },
+  suggestList: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, backgroundColor: '#FFFFFF', marginTop: 4 },
+  suggestItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
 });

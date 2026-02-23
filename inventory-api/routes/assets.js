@@ -1,4 +1,4 @@
-﻿// routes/assets.js
+// routes/assets.js
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('../generated/prisma');
@@ -1583,7 +1583,9 @@ router.get('/actions/pending-signoff', async (req, res) => {
       },
       orderBy: { occurred_at: 'desc' },
       include: {
-        asset: { select: { id: true, model: true, description: true, image_url: true, type_id: true, status: true, assigned_to_id: true } },
+        asset: {
+          include: { asset_types: { select: { name: true } } },
+        },
         details: true,
       },
       take: 400,
@@ -1601,10 +1603,14 @@ router.get('/actions/pending-signoff', async (req, res) => {
       due: a.details?.date || a.occurred_at,
       title: `Sign Off ${a.type === 'MAINTENANCE' ? 'Maintenance' : (a.type === 'REPAIR' ? 'Repair' : 'Hire')}`,
       subtitle: a.asset?.model || a.asset?.description || a.asset?.id,
+      model: a.asset?.model || a.asset?.description || null,
+      assetTypeName: a.asset?.asset_types?.name || null,
+      serialNumber: a.asset?.serial_number ?? null,
       imageUrl: a.asset?.image_url || null,
       typeId: a.asset?.type_id || null,
       assigned_to_id: a.asset?.assigned_to_id || null,
       kind: 'signoff',
+      actionImages: Array.isArray(a.data?.images) ? a.data.images : [],
     }));
     res.json({ count: pending.length, items: pending });
   } catch (e) {

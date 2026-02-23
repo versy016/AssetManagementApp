@@ -38,12 +38,12 @@ const Colors = {
   subtle: '#6B7280',
   muted: '#9CA3AF',
   green: '#16A34A',
-  blue:  '#2563EB',
+  blue: '#2563EB',
   slate: '#64748B',
-  red:   '#DC2626',
+  red: '#DC2626',
   // Add these two:
   amber: '#F59E0B',
-  purple:'#7C3AED',
+  purple: '#7C3AED',
 };
 
 const badgeTone = (status) => {
@@ -56,7 +56,7 @@ const badgeTone = (status) => {
 };
 
 const Chip = ({ label, tone }) => (
-  <View style={[styles.chip, { backgroundColor: tone?.bg, borderColor: Colors.border }]}> 
+  <View style={[styles.chip, { backgroundColor: tone?.bg, borderColor: Colors.border }]}>
     <Text style={[styles.chipText, { color: tone?.fg }]}>{label}</Text>
   </View>
 );
@@ -105,7 +105,7 @@ export default function CheckInScreen() {
   };
   const [showOtherModal, setShowOtherModal] = useState(false);
   const [actionsFormOpen, setActionsFormOpen] = useState(false);
-  const [actionsFormType, setActionsFormType] = useState(null); 
+  const [actionsFormType, setActionsFormType] = useState(null);
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapIdInput, setSwapIdInput] = useState('');
   const [lookup, setLookup] = useState({ model: '', type: '', assigned: '' });
@@ -128,12 +128,16 @@ export default function CheckInScreen() {
   const [forceUserAssign, setForceUserAssign] = useState(false);
   // Free-form action note captured during check-in/transfer
   const [actionNote, setActionNote] = useState('');
+  // Create note only (no transfer): show input and submit to POST /assets/:id/actions
+  const [showCreateNoteInput, setShowCreateNoteInput] = useState(false);
+  const [createNoteText, setCreateNoteText] = useState('');
+  const [createNoteSubmitting, setCreateNoteSubmitting] = useState(false);
   // EOL detection: hide actions for decommissioned QRs
   const isEOL = React.useMemo(() => {
     const s = String(asset?.status || '').toLowerCase();
     return s === 'end of life';
   }, [asset]);
-  
+
   const isAssignedToAdmin = React.useMemo(() => {
     try {
       if (!asset?.assigned_to_id) {
@@ -149,7 +153,7 @@ export default function CheckInScreen() {
 
       // Find the assigned user in our users list
       const assignedUser = users.find(u => String(u.id) === String(asset.assigned_to_id));
-      
+
       if (!assignedUser) {
         console.log('Assigned user not found in users list, assuming not admin');
         return false;
@@ -211,7 +215,7 @@ export default function CheckInScreen() {
         const r = await fetch(`${API_BASE_URL}/assets`);
         const data = await r.json();
         if (!cancelled) setAllAssets(Array.isArray(data) ? data : []);
-      } catch {}
+      } catch { }
     })();
     return () => { cancelled = true; };
   }, [swapOpen]);
@@ -239,7 +243,7 @@ export default function CheckInScreen() {
         if (!it?.model && !it?.serial_number) return false; // require some concrete identity
         if (isPlaceholder(it)) return false;             // defensive guard
         const model = String(it?.model || '').toLowerCase();
-        const type  = String(it?.asset_types?.name || it?.type || '').toLowerCase();
+        const type = String(it?.asset_types?.name || it?.type || '').toLowerCase();
         const assigned = String(it?.users?.name || it?.users?.useremail || '').toLowerCase();
         return (!q.model || model.includes(q.model)) && (!q.type || type.includes(q.type)) && (!q.assigned || assigned.includes(q.assigned));
       })
@@ -255,7 +259,7 @@ export default function CheckInScreen() {
       if (swapScrollRef.current?.scrollTo) {
         swapScrollRef.current.scrollTo({ y: Math.max(0, y - 12), animated: true });
       }
-    } catch {}
+    } catch { }
   };
 
   const scrollToLookupField = (which) => {
@@ -265,7 +269,7 @@ export default function CheckInScreen() {
       if (swapScrollRef.current?.scrollTo) {
         swapScrollRef.current.scrollTo({ y: Math.max(0, y - 12), animated: true });
       }
-    } catch {}
+    } catch { }
   };
 
   // When results appear while typing, bring the lookup block into view
@@ -398,7 +402,7 @@ export default function CheckInScreen() {
         let assetRes;
         let retries = 3;
         let lastError;
-        
+
         while (retries > 0) {
           try {
             assetRes = await fetch(`${API_BASE_URL}/assets/${id}`, {
@@ -420,7 +424,7 @@ export default function CheckInScreen() {
 
         if (!assetRes) {
           throw new Error(
-            lastError?.message || 
+            lastError?.message ||
             `Network request failed. Please check your connection and ensure the API is accessible at ${API_BASE_URL}`
           );
         }
@@ -433,29 +437,29 @@ export default function CheckInScreen() {
             `URL: ${API_BASE_URL}/assets/${id}`
           );
         }
-        
+
         if (!contentType?.includes('application/json')) {
           const text = await assetRes.text();
           throw new Error(`Unexpected response type: ${contentType}\nResponse: ${text}`);
         }
-        
+
         const assetData = await assetRes.json();
 
         // If asset has an assigned user, use the nested user data
         if (assetData.assigned_to_id && assetData.users) {
           // Use the nested user data if available
-          assetData.assigned_user_name = assetData.users.name || 
-                                       assetData.users.useremail || 
-                                       `User ${assetData.assigned_to_id}`;
+          assetData.assigned_user_name = assetData.users.name ||
+            assetData.users.useremail ||
+            `User ${assetData.assigned_to_id}`;
         } else if (assetData.assigned_to_id) {
           // Fallback to fetching user details if not in the nested data
           try {
             const userRes = await fetch(`${API_BASE_URL}/users/${assetData.assigned_to_id}`);
             if (userRes.ok) {
               const userData = await userRes.json();
-              assetData.assigned_user_name = userData.name || 
-                                           userData.useremail || 
-                                           `User ${assetData.assigned_to_id}`;
+              assetData.assigned_user_name = userData.name ||
+                userData.useremail ||
+                `User ${assetData.assigned_to_id}`;
             }
           } catch (userError) {
             console.error('Error fetching user details:', userError);
@@ -483,7 +487,7 @@ export default function CheckInScreen() {
         let response;
         let retries = 3;
         let lastError;
-        
+
         while (retries > 0) {
           try {
             response = await fetch(`${API_BASE_URL}/users`, {
@@ -582,7 +586,7 @@ export default function CheckInScreen() {
         const tk = await u.getIdToken();
         if (tk) headers.Authorization = `Bearer ${tk}`;
       }
-    } catch {}
+    } catch { }
     if (u?.uid) headers['X-User-Id'] = u.uid;
     if (u?.displayName) headers['X-User-Name'] = u.displayName;
     if (u?.email) headers['X-User-Email'] = u.email;
@@ -632,6 +636,12 @@ export default function CheckInScreen() {
     return emptyLike;
   }, [asset]);
 
+  const isQRReserved = React.useMemo(() => {
+    if (!asset) return false;
+    const desc = String(asset?.description || '').toLowerCase();
+    return desc.includes('qr reserved');
+  }, [asset]);
+
   // Helper: load imported assets (UUID ids, not placeholders)
   const loadImportedAssets = async () => {
     try {
@@ -669,14 +679,14 @@ export default function CheckInScreen() {
   const handleAssignToPlaceholder = async (fromId) => {
     try {
       setAssignLoading(true);
-      
+
       // Get Firebase auth token
       const auth = getAuth();
       const currentUser = auth?.currentUser;
       let headers = {
         'Content-Type': 'application/json',
       };
-      
+
       // Add Authorization Bearer token
       try {
         if (currentUser && typeof currentUser.getIdToken === 'function') {
@@ -688,12 +698,12 @@ export default function CheckInScreen() {
       } catch (tokenError) {
         console.warn('Failed to get auth token:', tokenError);
       }
-      
+
       // Add user info headers
       if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
       if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
       if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
-      
+
       const resp = await fetch(`${API_BASE_URL}/assets/swap-qr`, {
         method: 'POST',
         headers,
@@ -719,188 +729,188 @@ export default function CheckInScreen() {
 
   // Handle transfer to selected user
   const handleTransferToUser = async (selectedUser) => {
-  try {
-    setLoading(true);
-
-    // Get Firebase auth token
-    const auth = getAuth();
-    const currentUser = auth?.currentUser;
-    let headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    // Add Authorization Bearer token
     try {
-      if (currentUser && typeof currentUser.getIdToken === 'function') {
-        const token = await currentUser.getIdToken();
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
+      setLoading(true);
+
+      // Get Firebase auth token
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      let headers = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add Authorization Bearer token
+      try {
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          const token = await currentUser.getIdToken();
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
         }
+      } catch (tokenError) {
+        console.warn('Failed to get auth token:', tokenError);
       }
-    } catch (tokenError) {
-      console.warn('Failed to get auth token:', tokenError);
-    }
-    
-    // Add user info headers
-    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
-    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
-    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
 
-    const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({
-        assigned_to_id: selectedUser.id,
-        status: 'In Service', // allowed value
-        action_note: actionNote || undefined,
-      }),
-    });
+      // Add user info headers
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
 
-    if (!updateResponse.ok) {
-      const errorText = await updateResponse.text();
-      throw new Error(errorText || 'Failed to transfer asset');
-    }
+      const updateResponse = await fetch(`${API_BASE_URL}/assets/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          assigned_to_id: selectedUser.id,
+          status: 'In Service', // allowed value
+          action_note: actionNote || undefined,
+        }),
+      });
 
-    // Optimistic local update
-    applyAssetPatch({ assigned_to_id: selectedUser.id, status: 'In Service' });
-    setShowUserModal(false);
-    setForceUserAssign(false);
-    setLoading(false);
-    postActionAlert({
-      message: `Asset transferred to ${selectedUser.name || selectedUser.useremail}`,
-    });
-    // If part of multi-scan, go back to the list to process the rest
-    if (returnTo) {
-      try { router.replace(String(returnTo)); } catch { router.back(); }
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(errorText || 'Failed to transfer asset');
+      }
+
+      // Optimistic local update
+      applyAssetPatch({ assigned_to_id: selectedUser.id, status: 'In Service' });
+      setShowUserModal(false);
+      setForceUserAssign(false);
+      setLoading(false);
+      postActionAlert({
+        message: `Asset transferred to ${selectedUser.name || selectedUser.useremail}`,
+      });
+      // If part of multi-scan, go back to the list to process the rest
+      if (returnTo) {
+        try { router.replace(String(returnTo)); } catch { router.back(); }
+      }
+    } catch (err) {
+      console.error('Error in transfer:', err);
+      Alert.alert('Error', err.message || 'Failed to transfer asset');
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Error in transfer:', err);
-    Alert.alert('Error', err.message || 'Failed to transfer asset');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
 
   // Handle check-in or transfer button actions
-const handleAction = async (type) => {
-  if (!asset || !user) return;
+  const handleAction = async (type) => {
+    if (!asset || !user) return;
 
-  let payload = {};
-  let successMessage = '';
+    let payload = {};
+    let successMessage = '';
 
-  // Try to capture last scanned device location and turn into human-friendly text
-  const getLastScannedLocation = async () => {
-    try {
-      let ExpoLocation;
-      try { ExpoLocation = require('expo-location'); } catch { return null; }
-      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return null;
-      const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy?.Balanced || 3 });
-      if (!pos?.coords) return null;
-      const { latitude, longitude } = pos.coords;
-      // Prefer server-backed Google Geocoding for a high-quality address
+    // Try to capture last scanned device location and turn into human-friendly text
+    const getLastScannedLocation = async () => {
       try {
-        const resp = await fetch(`${API_BASE_URL}/places/reverse-geocode?lat=${latitude}&lng=${longitude}`);
-        if (resp.ok) {
-          const j = await resp.json();
-          if (j?.formatted_address) return j.formatted_address;
-        }
-      } catch {}
-      // Fallback to native reverse geocode
-      try {
-        const geos = await ExpoLocation.reverseGeocodeAsync({ latitude, longitude });
-        const first = Array.isArray(geos) ? geos[0] : null;
-        if (first) {
-          const parts = [first.name, first.street, first.city, first.region, first.country].filter(Boolean);
-          const addr = parts.join(', ');
-          if (addr) return addr;
-        }
-      } catch {}
-      return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-    } catch { return null; }
-  };
-
-  try {
-    setLoading(true);
-
-    if (type === 'checkin') {
-      // assign to office admin via server flag and mark usable
-      payload = {
-        assign_to_admin: true,
-        status: 'In Service', // was "Available"
-        action_note: actionNote || undefined,
-      };
-      const loc = await getLastScannedLocation();
-      if (loc) payload.location = loc;
-      successMessage = 'Asset checked in successfully';
-    } else if (type === 'transferToMe') {
-      if (!myUserId) throw new Error('Your user record was not found');
-
-      payload = {
-        assigned_to_id: myUserId,
-        // Leave status unchanged. If you must set one, use 'In Service'
-        // status: 'In Service',
-        action_note: actionNote || undefined,
-      };
-      const loc = await getLastScannedLocation();
-      if (loc) payload.location = loc;
-      successMessage = 'Asset assigned to you';
-    } else {
-      throw new Error(`Unknown action: ${type}`);
-    }
-
-    // Get Firebase auth token
-    const auth = getAuth();
-    const currentUser = auth?.currentUser;
-    let headers = {
-      'Content-Type': 'application/json',
+        let ExpoLocation;
+        try { ExpoLocation = require('expo-location'); } catch { return null; }
+        const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return null;
+        const pos = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy?.Balanced || 3 });
+        if (!pos?.coords) return null;
+        const { latitude, longitude } = pos.coords;
+        // Prefer server-backed Google Geocoding for a high-quality address
+        try {
+          const resp = await fetch(`${API_BASE_URL}/places/reverse-geocode?lat=${latitude}&lng=${longitude}`);
+          if (resp.ok) {
+            const j = await resp.json();
+            if (j?.formatted_address) return j.formatted_address;
+          }
+        } catch { }
+        // Fallback to native reverse geocode
+        try {
+          const geos = await ExpoLocation.reverseGeocodeAsync({ latitude, longitude });
+          const first = Array.isArray(geos) ? geos[0] : null;
+          if (first) {
+            const parts = [first.name, first.street, first.city, first.region, first.country].filter(Boolean);
+            const addr = parts.join(', ');
+            if (addr) return addr;
+          }
+        } catch { }
+        return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      } catch { return null; }
     };
-    
-    // Add Authorization Bearer token
+
     try {
-      if (currentUser && typeof currentUser.getIdToken === 'function') {
-        const token = await currentUser.getIdToken();
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
+      setLoading(true);
+
+      if (type === 'checkin') {
+        // assign to office admin via server flag and mark usable
+        payload = {
+          assign_to_admin: true,
+          status: 'In Service', // was "Available"
+          action_note: actionNote || undefined,
+        };
+        const loc = await getLastScannedLocation();
+        if (loc) payload.location = loc;
+        successMessage = 'Asset Transferred';
+      } else if (type === 'transferToMe') {
+        if (!myUserId) throw new Error('Your user record was not found');
+
+        payload = {
+          assigned_to_id: myUserId,
+          // Leave status unchanged. If you must set one, use 'In Service'
+          // status: 'In Service',
+          action_note: actionNote || undefined,
+        };
+        const loc = await getLastScannedLocation();
+        if (loc) payload.location = loc;
+        successMessage = 'Asset Transferred';
+      } else {
+        throw new Error(`Unknown action: ${type}`);
       }
-    } catch (tokenError) {
-      console.warn('Failed to get auth token:', tokenError);
-    }
-    
-    // Add user info headers
-    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
-    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
-    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
 
-    const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(payload),
-    });
+      // Get Firebase auth token
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      let headers = {
+        'Content-Type': 'application/json',
+      };
 
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(t || 'Failed to update asset');
-    }
+      // Add Authorization Bearer token
+      try {
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          const token = await currentUser.getIdToken();
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        }
+      } catch (tokenError) {
+        console.warn('Failed to get auth token:', tokenError);
+      }
 
-     // Optimistic local update so UI reflects immediately
-    applyAssetPatch(payload);
-    // Optional: tiny success hint
-    setLoading(false); // stop spinner first
-    postActionAlert({ message: successMessage });
-    if (returnTo) {
-      try { router.replace(String(returnTo)); } catch { router.back(); }
+      // Add user info headers
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+
+      const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || 'Failed to update asset');
+      }
+
+      // Optimistic local update so UI reflects immediately
+      applyAssetPatch(payload);
+      // Optional: tiny success hint
+      setLoading(false); // stop spinner first
+      postActionAlert({ message: successMessage });
+      if (returnTo) {
+        try { router.replace(String(returnTo)); } catch { router.back(); }
+      }
+      return;
+    } catch (err) {
+      console.error('Error in handleAction:', err);
+      Alert.alert('Error', err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
     }
-    return;  
-  } catch (err) {
-    console.error('Error in handleAction:', err);
-    Alert.alert('Error', err.message || 'An error occurred');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const openTransferMenu = React.useCallback(() => {
     if (!id) return;
@@ -914,118 +924,159 @@ const handleAction = async (type) => {
     });
   }, [id, returnTo, router]);
 
- const handleOtherAction = (key) => {
-   if (!isAdmin && (key === 'hire' || key === 'eol')) {
-     Alert.alert('Admins only', 'Please contact an administrator for this action.');
-     return;
-   }
-   // Map keys from the list to the EXACT action labels ActionsForm expects
-   const map = {
-     hire: 'Hire',
-     eol: 'End of Life',
-     lost: 'Report Lost',
-     stolen: 'Report Stolen',
-   };
-   setShowOtherModal(false);
-   setActionsFormType(map[key]);
-   setActionsFormOpen(true);
- };
-
-
-  // ----- Status updaters (footer buttons) -----
-const updateStatus = async (newStatus) => {
-  try {
-    setLoading(true);
-    const body = {
-      status: newStatus,
-      // preserve current assignment; backend should upsert only fields sent
-      assigned_to_id: asset?.assigned_to_id ?? null,
-      action_note: actionNote || undefined,
-    };
-
-    // Get Firebase auth token
-    const auth = getAuth();
-    const currentUser = auth?.currentUser;
-    let headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    // Add Authorization Bearer token
-    try {
-      if (currentUser && typeof currentUser.getIdToken === 'function') {
-        const token = await currentUser.getIdToken();
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-      }
-    } catch (tokenError) {
-      console.warn('Failed to get auth token:', tokenError);
+  const handleOtherAction = (key) => {
+    if (!isAdmin && (key === 'hire' || key === 'eol')) {
+      Alert.alert('Admins only', 'Please contact an administrator for this action.');
+      return;
     }
-    
-    // Add user info headers
-    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
-    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
-    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
-
-    const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(t || `Failed to set status: ${newStatus}`);
-    }
-
-    applyAssetPatch({ status: newStatus });
-    setLoading(false); // stop spinner first
-    postActionAlert({ message: `Status updated to "${newStatus}"` });
-  } catch (e) {
-    console.error('updateStatus error', e);
-    Alert.alert('Error', e.message || 'Failed to update status');
-  } finally {
-    setLoading(false);
-  }
-};
-
-const markRepair = () => updateStatus('Repair');
-const markMaintenance = () => updateStatus('Maintenance');
-
-
-// Reusable post-action alert (waits for UI to settle)
-// Reusable post-action alert (cross-platform)
-const postActionAlert = ({
-  title = 'Success',
-  message = 'Action completed.',
-  stayLabel = 'Stay here',
-  goLabel = 'Go to Dashboard',
-  onStay,
-  onGo,
-} = {}) => {
-  const goToDashboard = () => router.replace('/dashboard');
-
-  // Ensure UI is idle before showing native alert (Android/iOS)
-  const showNativeAlert = () => {
-    InteractionManager.runAfterInteractions(() => {
-      Alert.alert(title, message, [
-        { text: stayLabel, style: 'default', onPress: onStay || (() => {}) },
-        { text: goLabel,  style: 'default', onPress: onGo || goToDashboard },
-      ]);
-    });
+    // Map keys from the list to the EXACT action labels ActionsForm expects
+    const map = {
+      hire: 'Hire',
+      eol: 'End of Life',
+      lost: 'Report Lost',
+      stolen: 'Report Stolen',
+    };
+    setShowOtherModal(false);
+    setActionsFormType(map[key]);
+    setActionsFormOpen(true);
   };
 
-  if (Platform.OS === 'web') {
-    // Use a reliable browser confirm dialog on web
-    const go = window.confirm(
-      `${title}\n\n${message}\n\nPress "OK" to ${goLabel.toLowerCase()}, or "Cancel" to ${stayLabel.toLowerCase()}.`
-    );
-    if (go) (onGo || goToDashboard)();
-    else    (onStay || (() => {}))();
-  } else {
-    showNativeAlert();
-  }
-};
+  // Submit note only (no transfer) via POST /assets/:id/actions
+  const submitCreateNote = async () => {
+    const note = (createNoteText || '').trim();
+    if (!note) {
+      Alert.alert('Note required', 'Please enter a note.');
+      return;
+    }
+    if (!asset?.id) return;
+    setCreateNoteSubmitting(true);
+    try {
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      const headers = { 'Content-Type': 'application/json' };
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+      try {
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          const token = await currentUser.getIdToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (e) { console.warn('Token error:', e); }
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/actions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ type: 'STATUS_CHANGE', note }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || 'Failed to save note');
+      }
+      setCreateNoteText('');
+      setShowCreateNoteInput(false);
+      Alert.alert('Success', 'Note saved.');
+    } catch (e) {
+      console.error('submitCreateNote error', e);
+      Alert.alert('Error', e.message || 'Failed to save note');
+    } finally {
+      setCreateNoteSubmitting(false);
+    }
+  };
+
+  // ----- Status updaters (footer buttons) -----
+  const updateStatus = async (newStatus) => {
+    try {
+      setLoading(true);
+      const body = {
+        status: newStatus,
+        // preserve current assignment; backend should upsert only fields sent
+        assigned_to_id: asset?.assigned_to_id ?? null,
+        action_note: actionNote || undefined,
+      };
+
+      // Get Firebase auth token
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      let headers = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add Authorization Bearer token
+      try {
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          const token = await currentUser.getIdToken();
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        }
+      } catch (tokenError) {
+        console.warn('Failed to get auth token:', tokenError);
+      }
+
+      // Add user info headers
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+
+      const res = await fetch(`${API_BASE_URL}/assets/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `Failed to set status: ${newStatus}`);
+      }
+
+      applyAssetPatch({ status: newStatus });
+      setLoading(false); // stop spinner first
+      postActionAlert({ message: `Status updated to "${newStatus}"` });
+    } catch (e) {
+      console.error('updateStatus error', e);
+      Alert.alert('Error', e.message || 'Failed to update status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markRepair = () => updateStatus('Repair');
+  const markMaintenance = () => updateStatus('Maintenance');
+
+
+  // Reusable post-action alert (waits for UI to settle)
+  // Reusable post-action alert (cross-platform)
+  const postActionAlert = ({
+    title = 'Success',
+    message = 'Action completed.',
+    stayLabel = 'Stay here',
+    goLabel = 'Go to Dashboard',
+    onStay,
+    onGo,
+  } = {}) => {
+    const goToDashboard = () => router.replace('/dashboard');
+
+    // Ensure UI is idle before showing native alert (Android/iOS)
+    const showNativeAlert = () => {
+      InteractionManager.runAfterInteractions(() => {
+        Alert.alert(title, message, [
+          { text: stayLabel, style: 'default', onPress: onStay || (() => { }) },
+          { text: goLabel, style: 'default', onPress: onGo || goToDashboard },
+        ]);
+      });
+    };
+
+    if (Platform.OS === 'web') {
+      // Use a reliable browser confirm dialog on web
+      const go = window.confirm(
+        `${title}\n\n${message}\n\nPress "OK" to ${goLabel.toLowerCase()}, or "Cancel" to ${stayLabel.toLowerCase()}.`
+      );
+      if (go) (onGo || goToDashboard)();
+      else (onStay || (() => { }))();
+    } else {
+      showNativeAlert();
+    }
+  };
 
 
   // Render user selection modal
@@ -1043,128 +1094,168 @@ const postActionAlert = ({
       }}
     >
       <View style={styles.sheetBackdrop}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} style={{ width: '100%' }}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{forceUserAssign ? 'Assign to User (required)' : 'Transfer to User'}</Text>
-            {!forceUserAssign && (
-              <TouchableOpacity onPress={() => setShowUserModal(false)}>
-                <MaterialIcons name="close" size={24} color={Colors.subtle} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.searchContainer}>
-            <MaterialIcons name="search" size={20} color={Colors.muted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search name or email"
-              placeholderTextColor={Colors.muted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0} style={{ width: '100%' }}>
+          <View style={[styles.sheet, styles.userModalSheet]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{forceUserAssign ? 'Assign to User (required)' : 'Transfer to User'}</Text>
+              {!forceUserAssign && (
+                <TouchableOpacity onPress={() => setShowUserModal(false)}>
+                  <MaterialIcons name="close" size={24} color={Colors.subtle} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.searchContainer}>
+              <MaterialIcons name="search" size={20} color={Colors.muted} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search name or email"
+                placeholderTextColor={Colors.muted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
+              />
+            </View>
+            <FlatList
+              data={filteredUsers}
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.userRow} onPress={() => handleTransferToUser(item)} disabled={loading}>
+                  <AvatarCircle name={item.name} email={item.useremail} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.userName}>{item.name || 'No Name'}</Text>
+                    <Text style={styles.userEmail}>{item.useremail}</Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={22} color={Colors.muted} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: Colors.muted }}>No users found</Text>
+                </View>
+              }
             />
           </View>
-          <FlatList
-            data={filteredUsers}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={{ paddingBottom: 24 }}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.userRow} onPress={() => handleTransferToUser(item)} disabled={loading}>
-                <AvatarCircle name={item.name} email={item.useremail} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>{item.name || 'No Name'}</Text>
-                  <Text style={styles.userEmail}>{item.useremail}</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={22} color={Colors.muted} />
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View style={{ padding: 24, alignItems: 'center' }}>
-                <Text style={{ color: Colors.muted }}>No users found</Text>
-              </View>
-            }
-          />
-        </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
   );
 
   const renderOtherActionsModal = () => (
-  <Modal
-    visible={showOtherModal}
-    animationType="slide"
-    transparent
-    onRequestClose={() => setShowOtherModal(false)}
-  >
-    <View style={styles.sheetBackdrop}>
-      <View style={styles.sheet}>
-        <View style={styles.sheetHandle} />
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Other Actions</Text>
-          <TouchableOpacity onPress={() => setShowOtherModal(false)}>
-            <MaterialIcons name="close" size={24} color={Colors.subtle} />
-          </TouchableOpacity>
-        </View>
+    <Modal
+      visible={showOtherModal}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setShowOtherModal(false)}
+    >
+      <View style={styles.sheetBackdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Other Actions</Text>
+            <TouchableOpacity onPress={() => setShowOtherModal(false)}>
+              <MaterialIcons name="close" size={24} color={Colors.subtle} />
+            </TouchableOpacity>
+          </View>
 
-        <View style={{ paddingVertical: 8 }}>
-          {/* Hire (opens transfer picker) */}
-          {isAdmin && (
+          <View style={{ paddingVertical: 8 }}>
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => handleOtherAction('hire')}
+                disabled={loading}
+              >
+                <MaterialIcons name="work-outline" size={22} color="#0369A1" />
+                <Text style={styles.actionText}>Hire</Text>
+              </TouchableOpacity>
+            )}
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => handleOtherAction('eol')}
+                disabled={loading}
+              >
+                <MaterialIcons name="remove-circle-outline" size={22} color="#B91C1C" />
+                <Text style={styles.actionText}>End of Life</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.actionRow}
-              onPress={() => handleOtherAction('hire')}
+              onPress={() => handleOtherAction('lost')}
               disabled={loading}
             >
-              <MaterialIcons name="person-add-alt" size={22} color={Colors.blue} />
-              <Text style={styles.actionText}>Hire</Text>
+              <MaterialIcons name="lost-and-found" size={22} color="#D97706" />
+              <Text style={styles.actionText}>Report Lost</Text>
             </TouchableOpacity>
-          )}
-
-          {/* End of Life */}
-          {isAdmin && (
             <TouchableOpacity
               style={styles.actionRow}
-              onPress={() => handleOtherAction('eol')}
+              onPress={() => handleOtherAction('stolen')}
               disabled={loading}
             >
-              <MaterialIcons name="do-not-disturb" size={22} color={Colors.red} />
-              <Text style={styles.actionText}>End of Life</Text>
+              <MaterialIcons name="warning-amber" size={22} color="#DC2626" />
+              <Text style={styles.actionText}>Report Stolen</Text>
             </TouchableOpacity>
-          )}
-
-          {/* Report lost */}
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => handleOtherAction('lost')}
-            disabled={loading}
-          >
-            <MaterialIcons name="report-gmailerrorred" size={22} color={Colors.slate} />
-            <Text style={styles.actionText}>Report lost</Text>
-          </TouchableOpacity>
-
-          {/* Report stolen */}
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => handleOtherAction('stolen')}
-            disabled={loading}
-          >
-            <MaterialIcons name="report" size={22} color={Colors.slate} />
-            <Text style={styles.actionText}>Report stolen</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
 
+  const renderCreateNoteModal = () => (
+    <Modal
+      visible={showCreateNoteInput}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setShowCreateNoteInput(false)}
+    >
+      <View style={[styles.sheetBackdrop, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} style={{ width: '100%', maxWidth: 360, alignSelf: 'center' }}>
+          <View style={[styles.sheet, styles.createNoteSheet]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{isPlaceholder ? 'Create a note for this asset' : 'Create note'}</Text>
+              <TouchableOpacity onPress={() => setShowCreateNoteInput(false)}>
+                <MaterialIcons name="close" size={24} color={Colors.subtle} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.createNoteContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <TextInput
+                placeholder="Create a note for this asset"
+                value={createNoteText}
+                onChangeText={setCreateNoteText}
+                style={[styles.input, { minHeight: 80 }]}
+                placeholderTextColor={Colors.subtle}
+                multiline
+                editable={!createNoteSubmitting}
+              />
+              <TouchableOpacity
+                style={[styles.btnPrimary, styles.createNoteSubmitBtn, createNoteSubmitting && { opacity: 0.7 }]}
+                onPress={submitCreateNote}
+                disabled={createNoteSubmitting}
+              >
+                <MaterialIcons name="check-circle" size={18} color="#fff" />
+                <Text style={styles.btnPrimaryText} numberOfLines={1}>
+                  {createNoteSubmitting ? 'Saving...' : 'Submit'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
 
   // ---------- Render ----------
   if (loading && !showUserModal) {
     return (
-      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}> 
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={Colors.blue} />
       </SafeAreaView>
     );
@@ -1191,13 +1282,13 @@ const postActionAlert = ({
                   const currentUser = auth.currentUser;
                   if (currentUser) setUser(currentUser);
                   else setUser({ uid: "guest" });
-                  
+
                   if (!id) {
                     setError("Invalid asset ID");
                     setLoading(false);
                     return;
                   }
-                  
+
                   const assetRes = await fetch(`${API_BASE_URL}/assets/${id}`);
                   if (!assetRes.ok) {
                     const text = await assetRes.text();
@@ -1252,8 +1343,8 @@ const postActionAlert = ({
                 <MaterialIcons name="inventory-2" size={26} color={Colors.text} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.pageTitle}>Check‑In / Transfer</Text>
-                <Text style={styles.pageSubtitle}>Fast actions for this asset</Text>
+                <Text style={styles.pageTitle}>Asset actions</Text>
+                <Text style={styles.pageSubtitle}>Quick actions for this asset</Text>
               </View>
             </View>
           </View>
@@ -1272,43 +1363,42 @@ const postActionAlert = ({
             </View>
           ) : null}
 
-       {/* Asset Overview */}
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.assetTitle}>{asset.model || 'Asset'}</Text>
-            <View style={styles.idPill}>
-              <Text style={styles.idPillText}>#{asset.id}</Text>
-            </View>
-          </View>
+          {/* Asset Overview */}
+          <View style={styles.card}>
+            <Text style={styles.assetTitle}>
+              {asset.asset_types?.name || asset.asset_type || 'Asset'} · ID: {asset.id}
+            </Text>
+            <Text style={styles.assetSerial}>
+              Serial: {asset.serial_number || 'N/A'}
+            </Text>
+            <View style={styles.infoRow}>
+              {/* Assigned to (left) */}
+              <View style={styles.infoCell}>
+                <Text style={styles.infoLabel}>Assigned to</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                  <AvatarCircle name={asset.assigned_user_name} email={asset.assigned_user_email} />
+                  <Text style={styles.infoValue} numberOfLines={1}>
+                    {asset.assigned_user_name || 'Unassigned'}
+                  </Text>
+                </View>
+              </View>
 
-          <View style={styles.infoRow}>
-            {/* Assigned to (left) */}
-            <View style={styles.infoCell}>
-              <Text style={styles.infoLabel}>Assigned to</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                <AvatarCircle name={asset.assigned_user_name} email={asset.assigned_user_email} />
-                <Text style={styles.infoValue} numberOfLines={1}>
-                  {asset.assigned_user_name || 'Unassigned'}
-                </Text>
+              {/* Current Status (right) */}
+              <View style={[styles.infoCell, styles.infoCellRight]}>
+                <Text style={[styles.infoLabel, styles.textRight]}>Current Status</Text>
+                <View style={{ marginTop: 6, alignSelf: 'flex-end' }}>
+                  <Chip label={asset.status || 'N/A'} tone={badgeTone(asset.status)} />
+                </View>
               </View>
             </View>
-
-            {/* Current Status (right) */}
-            <View style={[styles.infoCell, styles.infoCellRight]}>
-              <Text style={[styles.infoLabel, styles.textRight]}>Current Status</Text>
-              <View style={{ marginTop: 6, alignSelf: 'flex-end' }}>
-                <Chip label={asset.status || 'N/A'} tone={badgeTone(asset.status)} />
-              </View>
-            </View>
           </View>
-        </View>
 
 
           {/* Check-in / Transfer Notes */}
           <View style={{ marginTop: 8, marginBottom: 6 }}>
             <Text style={styles.fieldLabel}>Notes (optional)</Text>
             <TextInput
-              placeholder="Add a note for this action"
+              placeholder="Add a note for the asset"
               value={actionNote}
               onChangeText={setActionNote}
               style={[styles.input, { minHeight: 42 }]}
@@ -1322,146 +1412,202 @@ const postActionAlert = ({
           <View style={styles.tileGrid}>
 
             {isEOL ? (
-              // End of Life: only show Back to Dashboard
-              <>
+              <View style={styles.quickActionBar}>
                 <TouchableOpacity
-                  style={[styles.tile, { backgroundColor: '#F9FAFB' }]}
+                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                   disabled={loading}
                 >
-                  <Text style={[styles.tileText, { color: Colors.slate }]} numberOfLines={2}>
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
-              </>
-            ) : isPlaceholder ? (
-              <>
-                {/* Transfer to Office - Always show for unassigned assets */}
-                {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
-                  <TouchableOpacity
-                    testID="transfer-to-office-button"
-                    style={[styles.tile, { backgroundColor: '#F0FDF4' }]}
-                    onPress={() => handleAction('checkin')}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
-                      {loading ? 'Loading...' : 'Transfer to Office'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                
-                {/* Swap */}
-                <TouchableOpacity
-                  style={[styles.tile, { backgroundColor: '#EFF6FF' }]}
-                  onPress={() => setSwapOpen(true)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
-                    Swap
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Assign Imported Asset */}
+              </View>
+            ) : isQRReserved ? (
+              <View style={styles.quickActionBar}>
                 {!!asset?.id && (
                   <TouchableOpacity
-                    style={[styles.tile, { backgroundColor: '#FFF7ED' }]}
+                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
                     onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
                     disabled={loading}
                   >
-                    <Text style={[styles.tileText, { color: Colors.amber }]} numberOfLines={2}>
+                    <MaterialIcons name="assignment" size={18} color="#1E90FF" />
+                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Assign Imported Asset
                     </Text>
                   </TouchableOpacity>
                 )}
-
-                {/* Create Asset */}
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                  onPress={() => setSwapOpen(true)}
+                  disabled={loading}
+                >
+                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
+                  <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                    Swap
+                  </Text>
+                </TouchableOpacity>
                 {!!asset?.id && (
                   <TouchableOpacity
-                    style={[styles.tile, { backgroundColor: '#F0FDF4' }]}
+                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
                     onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
                     disabled={loading}
                   >
-                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
+                    <MaterialIcons name="add-circle-outline" size={18} color="#fff" />
+                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
                       Create Asset
                     </Text>
                   </TouchableOpacity>
                 )}
-
-                {/* Back to Dashboard */}
                 <TouchableOpacity
-                  style={[styles.tile, styles.backToDashboardTile]}
+                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                 >
-                  <Text style={[styles.tileText, styles.backToDashboardText]} numberOfLines={2}>
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
+              </View>
+            ) : isPlaceholder ? (
+              <>
+                <View style={styles.quickActionBar}>
+                  {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
+                    <TouchableOpacity
+                      testID="transfer-to-office-button"
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                      onPress={() => handleAction('checkin')}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="business" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        {loading ? 'Loading...' : 'Transfer to office'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                    onPress={() => setSwapOpen(true)}
+                    disabled={loading}
+                  >
+                    <MaterialIcons name="swap-horiz" size={18} color="#fff" />
+                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                      Swap
+                    </Text>
+                  </TouchableOpacity>
+                  {!!asset?.id && (
+                    <TouchableOpacity
+                      style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
+                      onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="assignment" size={18} color="#1E90FF" />
+                      <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
+                        Assign Imported Asset
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {!!asset?.id && (
+                    <TouchableOpacity
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                      onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="add-circle-outline" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        Create Asset
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                    onPress={() => router.replace('/(tabs)/dashboard')}
+                  >
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                      Back to Dashboard
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
+                    onPress={() => setShowCreateNoteInput(true)}
+                    disabled={loading}
+                  >
+                    <MaterialIcons name="note-add" size={18} color="#1E90FF" />
+                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
+                      Create note
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </>
             ) : (
               <>
-                {/* Always show Transfer to Office button */}
-                {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
+                {/* Quick actions: same style and placement as multi-scan */}
+                <View style={styles.quickActionBar}>
+                  {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
+                    <TouchableOpacity
+                      testID="transfer-to-office-button"
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
+                      onPress={() => handleAction('checkin')}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="business" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        {loading ? 'Loading...' : 'Transfer to office'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
-                    testID="transfer-to-office-button"
-                    style={[styles.tile, { 
-                      backgroundColor: '#F0FDF4',
-                      opacity: loading ? 0.7 : 1
-                    }]}
-                    onPress={() => handleAction('checkin')}
+                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                    onPress={openTransferMenu}
                     disabled={loading}
                   >
-                    <Text style={[styles.tileText, { color: Colors.green }]} numberOfLines={2}>
-                      {loading ? 'Loading...' : 'Transfer to Office'}
+                    <MaterialIcons name="person-add" size={18} color="#fff" />
+                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                      Transfer to user
                     </Text>
                   </TouchableOpacity>
-                )}
-
-                {/* Transfer */}
-                <TouchableOpacity
-                  style={[styles.tile, { backgroundColor: '#EFF6FF' }]}
-                  onPress={openTransferMenu}
-                  disabled={loading}
-                >
-                  <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
-                    Transfer
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Transfer to Me */}
-                {(myUserId && asset.assigned_to_id !== myUserId) && (
+                  {(myUserId && asset.assigned_to_id !== myUserId) && (
+                    <TouchableOpacity
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                      onPress={() => handleAction('transferToMe')}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="person" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        Transfer to me
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
-                    style={[styles.tile, { backgroundColor: '#EFF6FF' }]}
-                    onPress={() => handleAction('transferToMe')}
+                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                    onPress={() => router.replace('/(tabs)/dashboard')}
+                  >
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                      Back to Dashboard
+                    </Text>
+                  </TouchableOpacity>
+                  {!!asset?.id && (
+                    <TouchableOpacity
+                      style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
+                      onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="content-copy" size={18} color="#1E90FF" />
+                      <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
+                        Copy Asset
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
+                    onPress={() => setShowCreateNoteInput(true)}
                     disabled={loading}
                   >
-                    <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
-                      Transfer to Me
+                    <MaterialIcons name="note-add" size={18} color="#1E90FF" />
+                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
+                      Create note
                     </Text>
                   </TouchableOpacity>
-                )}
-
-                {/* Back to Dashboard */}
-                <TouchableOpacity
-                  style={[styles.tile, { backgroundColor: '#F9FAFB' }]}
-                  onPress={() => router.replace('/(tabs)/dashboard')}
-                >
-                  <Text style={[styles.tileText, { color: Colors.slate }]} numberOfLines={2}>
-                    Back to Dashboard
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Copy Asset */}
-                {!!asset?.id && (
-                  <TouchableOpacity
-                    style={[styles.tile, { backgroundColor: '#EFF6FF' }]}
-                    onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.tileText, { color: Colors.blue }]} numberOfLines={2}>
-                      Copy Asset
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                </View>
               </>
             )}
 
@@ -1469,32 +1615,35 @@ const postActionAlert = ({
 
         </ScrollView>
 
-        {/* Sticky Footer Bar (hide for placeholders and EOL) */}
-        {!isPlaceholder && !isEOL && (
+        {/* Sticky Footer Bar (hide for placeholders, QR Reserved, and EOL) */}
+        {!isPlaceholder && !isEOL && !isQRReserved && (
           <View style={styles.footerBar}>
             <TouchableOpacity
-              style={[styles.footerBtn, { backgroundColor: Colors.amber }]}
+              style={[styles.footerBtn, styles.footerBtnPrimary]}
               onPress={() => { setActionsFormType('Repair'); setActionsFormOpen(true); }}
             >
+              <MaterialIcons name="build" size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
                 Repair Required
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.footerBtn, { backgroundColor: Colors.purple }]}
+              style={[styles.footerBtn, styles.footerBtnPrimary]}
               onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
             >
+              <MaterialIcons name="build-circle" size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
                 Log Service
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.footerBtn, { backgroundColor: Colors.slate }]}
+              style={[styles.footerBtn, styles.footerBtnSecondary]}
               onPress={() => setShowOtherModal(true)}
             >
-              <Text style={styles.footerBtnText} numberOfLines={2}>
+              <MaterialIcons name="more-horiz" size={18} color="#1E90FF" />
+              <Text style={[styles.footerBtnText, { color: '#1E90FF' }]} numberOfLines={2}>
                 Other Actions
               </Text>
             </TouchableOpacity>
@@ -1502,160 +1651,161 @@ const postActionAlert = ({
         )}
 
       </Animated.View>
-          <ActionsForm
-            visible={actionsFormOpen}
-            onClose={() => setActionsFormOpen(false)}
-            asset={asset}
-            action={actionsFormType}
-            apiBaseUrl={API_BASE_URL}
-            users={users}
-            onSubmitted={(updatedPartial, meta) => {
-              // Optimistic UI update
-              if (updatedPartial && Object.keys(updatedPartial).length) {
-                setAsset(prev => ({ ...prev, ...updatedPartial }));
-              }
-              postActionAlert({ message: 'Asset updated successfully' });
-            }}
-          />
+      <ActionsForm
+        visible={actionsFormOpen}
+        onClose={() => setActionsFormOpen(false)}
+        asset={asset}
+        action={actionsFormType}
+        apiBaseUrl={API_BASE_URL}
+        users={users}
+        onSubmitted={(updatedPartial, meta) => {
+          // Optimistic UI update
+          if (updatedPartial && Object.keys(updatedPartial).length) {
+            setAsset(prev => ({ ...prev, ...updatedPartial }));
+          }
+          postActionAlert({ message: 'Asset updated successfully' });
+        }}
+      />
 
       {renderUserModal()}
       {renderOtherActionsModal()}
+      {renderCreateNoteModal()}
       {swapOpen && (
         <Modal transparent animationType="slide" visible={swapOpen} onRequestClose={() => setSwapOpen(false)}>
           <View style={styles.sheetBackdrop}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} style={{ width: '100%' }}>
-            <View style={[styles.sheet, { maxHeight: '85%' }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Swap QR to Existing Asset</Text>
-                <TouchableOpacity onPress={() => setSwapOpen(false)}>
-                  <MaterialIcons name="close" size={20} color={Colors.subtle} />
-                </TouchableOpacity>
+              <View style={[styles.sheet, { maxHeight: '85%' }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Swap QR to Existing Asset</Text>
+                  <TouchableOpacity onPress={() => setSwapOpen(false)}>
+                    <MaterialIcons name="close" size={20} color={Colors.subtle} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView ref={swapScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 240, gap: 14 }}>
+                  {/* Option 1: Asset ID */}
+                  <View style={styles.optionCard}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="tag" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Find by Asset ID</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>Enter the existing Asset ID (QR code or UUID) and we will move that asset onto this QR.</Text>
+                    <Text style={styles.fieldLabel}>Asset ID</Text>
+                    <TextInput
+                      placeholder="e.g. ABCD1234"
+                      value={swapIdInput}
+                      onChangeText={(t) => setSwapIdInput((t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                      style={styles.input}
+                      placeholderTextColor={Colors.subtle}
+                      autoCapitalize="characters"
+                      maxLength={8}
+                    />
+                    <Text style={styles.fieldHint}>Tip: You can paste the ID from the asset page or scan its QR and copy.</Text>
+                    <View style={styles.btnRow}>
+                      <TouchableOpacity
+                        style={[styles.btnPrimary, { opacity: swapIdInput.trim() ? 1 : 0.6 }]}
+                        disabled={!swapIdInput.trim() || loading}
+                        onPress={async () => {
+                          try {
+                            const idTrim = swapIdInput.trim();
+                            const qrLike = /^[A-Z0-9]{8}$/;
+                            if (!qrLike.test(idTrim)) throw new Error('Asset ID must be 8 characters (A–Z, 0–9).');
+                            const confirmed = await new Promise((resolve) => {
+                              Alert.alert('Confirm Swap', `Swap assets between ${idTrim} and ${asset?.id}?`, [
+                                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                                { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
+                              ]);
+                            });
+                            if (!confirmed) return;
+                            setLoading(true);
+                            await performSwap(idTrim, asset?.id);
+                            setSwapOpen(false);
+                            if (returnTo) { try { router.replace(String(returnTo)); } catch { router.back(); } }
+                            else { router.replace(`/check-in/${asset?.id}`); }
+                            Alert.alert('Success', 'QR swapped successfully.');
+                          } catch (e) {
+                            Alert.alert('Error', e.message || 'Failed to swap');
+                          } finally { setLoading(false); }
+                        }}
+                      >
+                        <MaterialIcons name="swap-horiz" size={18} color="#fff" />
+                        <Text style={styles.btnPrimaryText}>Swap Now</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Option 2: Scan QR */}
+                  <View style={styles.optionCard}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="qr-code-scanner" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Scan QR</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>Scan the QR of an existing asset and we will move it onto this QR.</Text>
+                    <View style={styles.btnRow}>
+                      <TouchableOpacity
+                        style={[styles.btnGhost]}
+                        onPress={() => router.push({ pathname: '/qr-scanner', params: { intent: 'swap-target', placeholderId: asset?.id, returnTo: returnTo || '' } })}
+                      >
+                        <MaterialIcons name="qr-code" size={18} color={Colors.blue} />
+                        <Text style={styles.btnGhostText}>Open Scanner</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Option 3: Lookup */}
+                  <View style={styles.optionCard} onLayout={(e) => { lookupSectionYRef.current = e.nativeEvent.layout.y; }}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="search" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Lookup by Details</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>Use any combination. We’ll use the first close match (top 10).</Text>
+                    <Text style={styles.fieldLabel}>Model</Text>
+                    <View onLayout={(e) => { modelYRef.current = e.nativeEvent.layout.y; }}>
+                      <TextInput
+                        placeholder="e.g. DJI Mavic 3"
+                        value={lookup.model}
+                        onFocus={() => { setLookupFocus('model'); scrollToLookupField('model'); }}
+                        onChangeText={(t) => setLookup(prev => ({ ...prev, model: t }))}
+                        style={styles.input}
+                        placeholderTextColor={Colors.subtle}
+                      />
+                    </View>
+                    {lookupResults.length > 0 && lookupFocus === 'model' && renderLookupSuggestions()}
+                    <Text style={styles.fieldLabel}>Type</Text>
+                    <View onLayout={(e) => { typeYRef.current = e.nativeEvent.layout.y; }}>
+                      <TextInput
+                        placeholder="e.g. Drone"
+                        value={lookup.type}
+                        onFocus={() => { setLookupFocus('type'); scrollToLookupField('type'); }}
+                        onChangeText={(t) => setLookup(prev => ({ ...prev, type: t }))}
+                        style={styles.input}
+                        placeholderTextColor={Colors.subtle}
+                      />
+                    </View>
+                    {lookupResults.length > 0 && lookupFocus === 'type' && renderLookupSuggestions()}
+                    <Text style={styles.fieldLabel}>Assigned (email or name)</Text>
+                    <View onLayout={(e) => { assignedYRef.current = e.nativeEvent.layout.y; }}>
+                      <TextInput
+                        placeholder="e.g. alex@company.com or Alex"
+                        value={lookup.assigned}
+                        onFocus={() => { setLookupFocus('assigned'); scrollToLookupField('assigned'); }}
+                        onChangeText={(t) => setLookup(prev => ({ ...prev, assigned: t }))}
+                        style={styles.input}
+                        placeholderTextColor={Colors.subtle}
+                      />
+                    </View>
+                    {lookupResults.length > 0 && lookupFocus === 'assigned' && renderLookupSuggestions()}
+                    <Text style={styles.fieldHint}>Example: Model "ThinkPad", Type "Laptop", Assigned "sam@company.com".</Text>
+                    {/* Suggestions are now rendered inline under the focused field via renderLookupSuggestions() */}
+                  </View>
+
+                  <View style={{ height: 8 }} />
+                  <TouchableOpacity style={[styles.btnGhost, { alignSelf: 'center' }]} onPress={() => setSwapOpen(false)}>
+                    <MaterialIcons name="close" size={18} color={Colors.slate} />
+                    <Text style={styles.btnGhostText}>Close</Text>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
-
-              <ScrollView ref={swapScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 240, gap: 14 }}>
-                {/* Option 1: Asset ID */}
-                <View style={styles.optionCard}>
-                  <View style={styles.optionHeaderRow}>
-                    <MaterialIcons name="tag" size={18} color={Colors.blue} />
-                    <Text style={styles.optionTitle}>Find by Asset ID</Text>
-                  </View>
-                  <Text style={styles.optionDesc}>Enter the existing Asset ID (QR code or UUID) and we will move that asset onto this QR.</Text>
-                  <Text style={styles.fieldLabel}>Asset ID</Text>
-                  <TextInput
-                    placeholder="e.g. ABCD1234"
-                    value={swapIdInput}
-                    onChangeText={(t) => setSwapIdInput((t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0,8))}
-                    style={styles.input}
-                    placeholderTextColor={Colors.subtle}
-                    autoCapitalize="characters"
-                    maxLength={8}
-                  />
-                  <Text style={styles.fieldHint}>Tip: You can paste the ID from the asset page or scan its QR and copy.</Text>
-                  <View style={styles.btnRow}>
-                    <TouchableOpacity
-                      style={[styles.btnPrimary, { opacity: swapIdInput.trim() ? 1 : 0.6 }]}
-                      disabled={!swapIdInput.trim() || loading}
-                      onPress={async () => {
-                        try {
-                          const idTrim = swapIdInput.trim();
-                          const qrLike = /^[A-Z0-9]{8}$/;
-                          if (!qrLike.test(idTrim)) throw new Error('Asset ID must be 8 characters (A–Z, 0–9).');
-                          const confirmed = await new Promise((resolve) => {
-                            Alert.alert('Confirm Swap', `Swap assets between ${idTrim} and ${asset?.id}?`, [
-                              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-                              { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
-                            ]);
-                          });
-                          if (!confirmed) return;
-                          setLoading(true);
-                          await performSwap(idTrim, asset?.id);
-                          setSwapOpen(false);
-                          if (returnTo) { try { router.replace(String(returnTo)); } catch { router.back(); } }
-                          else { router.replace(`/check-in/${asset?.id}`); }
-                          Alert.alert('Success', 'QR swapped successfully.');
-                        } catch (e) {
-                          Alert.alert('Error', e.message || 'Failed to swap');
-                        } finally { setLoading(false); }
-                      }}
-                    >
-                      <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                      <Text style={styles.btnPrimaryText}>Swap Now</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Option 2: Scan QR */}
-                <View style={styles.optionCard}>
-                  <View style={styles.optionHeaderRow}>
-                    <MaterialIcons name="qr-code-scanner" size={18} color={Colors.blue} />
-                    <Text style={styles.optionTitle}>Scan QR</Text>
-                  </View>
-                  <Text style={styles.optionDesc}>Scan the QR of an existing asset and we will move it onto this QR.</Text>
-                  <View style={styles.btnRow}>
-                    <TouchableOpacity
-                      style={[styles.btnGhost]}
-                      onPress={() => router.push({ pathname: '/qr-scanner', params: { intent: 'swap-target', placeholderId: asset?.id, returnTo: returnTo || '' } })}
-                    >
-                      <MaterialIcons name="qr-code" size={18} color={Colors.blue} />
-                      <Text style={styles.btnGhostText}>Open Scanner</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Option 3: Lookup */}
-                <View style={styles.optionCard} onLayout={(e) => { lookupSectionYRef.current = e.nativeEvent.layout.y; }}>
-                  <View style={styles.optionHeaderRow}>
-                    <MaterialIcons name="search" size={18} color={Colors.blue} />
-                    <Text style={styles.optionTitle}>Lookup by Details</Text>
-                  </View>
-                  <Text style={styles.optionDesc}>Use any combination. We’ll use the first close match (top 10).</Text>
-                  <Text style={styles.fieldLabel}>Model</Text>
-                  <View onLayout={(e) => { modelYRef.current = e.nativeEvent.layout.y; }}>
-                    <TextInput
-                      placeholder="e.g. DJI Mavic 3"
-                      value={lookup.model}
-                      onFocus={() => { setLookupFocus('model'); scrollToLookupField('model'); }}
-                      onChangeText={(t)=>setLookup(prev=>({ ...prev, model: t }))}
-                      style={styles.input}
-                      placeholderTextColor={Colors.subtle}
-                    />
-                  </View>
-                  {lookupResults.length > 0 && lookupFocus === 'model' && renderLookupSuggestions()}
-                  <Text style={styles.fieldLabel}>Type</Text>
-                  <View onLayout={(e) => { typeYRef.current = e.nativeEvent.layout.y; }}>
-                    <TextInput
-                      placeholder="e.g. Drone"
-                      value={lookup.type}
-                      onFocus={() => { setLookupFocus('type'); scrollToLookupField('type'); }}
-                      onChangeText={(t)=>setLookup(prev=>({ ...prev, type: t }))}
-                      style={styles.input}
-                      placeholderTextColor={Colors.subtle}
-                    />
-                  </View>
-                  {lookupResults.length > 0 && lookupFocus === 'type' && renderLookupSuggestions()}
-                  <Text style={styles.fieldLabel}>Assigned (email or name)</Text>
-                  <View onLayout={(e) => { assignedYRef.current = e.nativeEvent.layout.y; }}>
-                    <TextInput
-                      placeholder="e.g. alex@company.com or Alex"
-                      value={lookup.assigned}
-                      onFocus={() => { setLookupFocus('assigned'); scrollToLookupField('assigned'); }}
-                      onChangeText={(t)=>setLookup(prev=>({ ...prev, assigned: t }))}
-                      style={styles.input}
-                      placeholderTextColor={Colors.subtle}
-                    />
-                  </View>
-                  {lookupResults.length > 0 && lookupFocus === 'assigned' && renderLookupSuggestions()}
-                  <Text style={styles.fieldHint}>Example: Model "ThinkPad", Type "Laptop", Assigned "sam@company.com".</Text>
-                  {/* Suggestions are now rendered inline under the focused field via renderLookupSuggestions() */}
-                </View>
-
-                <View style={{ height: 8 }} />
-                <TouchableOpacity style={[styles.btnGhost, { alignSelf: 'center' }]} onPress={() => setSwapOpen(false)}>
-                  <MaterialIcons name="close" size={18} color={Colors.slate} />
-                  <Text style={styles.btnGhostText}>Close</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
             </KeyboardAvoidingView>
           </View>
         </Modal>
@@ -1665,95 +1815,108 @@ const postActionAlert = ({
         <Modal transparent animationType="slide" visible={assignOpen} onRequestClose={() => setAssignOpen(false)}>
           <View style={styles.sheetBackdrop}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} style={{ width: '100%' }}>
-            <View style={[styles.sheet, { maxHeight: '85%' }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Assign Imported Asset</Text>
-                <TouchableOpacity onPress={() => setAssignOpen(false)}>
-                  <MaterialIcons name="close" size={20} color={Colors.subtle} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView 
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 14 }}
-                keyboardShouldPersistTaps="handled"
-              >
-                <View style={styles.optionCard}>
-                  <View style={styles.optionHeaderRow}>
-                    <MaterialIcons name="search" size={18} color={Colors.blue} />
-                    <Text style={styles.optionTitle}>Find Imported Asset</Text>
-                  </View>
-                  <Text style={styles.optionDesc}>Pick an imported asset (UUID id) to assign to this QR. We will move its data onto this QR id and reset the original record to a placeholder.</Text>
-                  <TextInput
-                    placeholder="Search by model, type, serial, other id, notes"
-                    value={assignQuery}
-                    onChangeText={setAssignQuery}
-                    style={styles.input}
-                    placeholderTextColor={Colors.subtle}
-                  />
-                  <View style={{ marginTop: 8 }}>
-                    {assignLoading ? (
-                      <ActivityIndicator />
-                    ) : (
-                      <FlatList
-                        data={filteredAssignResults}
-                        keyExtractor={(item) => String(item.id)}
-                        style={{ maxHeight: 300 }}
-                        contentContainerStyle={{ paddingBottom: 8 }}
-                        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-                        scrollEnabled={filteredAssignResults.length > 3}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={[
-                              styles.optionCard,
-                              { padding: 12, borderColor: assignSelected?.id === item.id ? Colors.amber : Colors.border },
-                            ]}
-                            onPress={() => setAssignSelected(item)}
-                          >
-                            <Text style={{ fontWeight: '600', color: Colors.text }}>{item.model || 'Unnamed'}</Text>
-                            <Text style={{ color: Colors.subtle, marginTop: 2 }}>
-                              {(item.asset_types?.name || 'Unknown type')} · {(item.serial_number || item.other_id || 'No SN')}
-                            </Text>
-                            <Text style={{ color: Colors.muted, marginTop: 2 }}>ID: {item.id}</Text>
-                          </TouchableOpacity>
-                        )}
-                        ListEmptyComponent={() => (
-                          <Text style={{ color: Colors.muted, textAlign: 'center', paddingVertical: 16 }}>No matches</Text>
-                        )}
-                      />
-                    )}
-                  </View>
+              <View style={[styles.sheet, { maxHeight: '85%' }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Assign Imported Asset</Text>
+                  <TouchableOpacity onPress={() => setAssignOpen(false)}>
+                    <MaterialIcons name="close" size={20} color={Colors.subtle} />
+                  </TouchableOpacity>
                 </View>
-              </ScrollView>
 
-              {/* Confirm bar - Fixed at bottom */}
-              <View style={{ 
-                flexDirection: 'row', 
-                gap: 10, 
-                paddingHorizontal: 16, 
-                paddingTop: 12,
-                paddingBottom: Platform.OS === 'ios' ? 20 : 14,
-                backgroundColor: Colors.card,
-                borderTopWidth: 1,
-                borderTopColor: Colors.border,
-              }}>
-                <TouchableOpacity
-                  style={[styles.footerBtn, { backgroundColor: Colors.slate, flex: 1, opacity: assignLoading ? 0.6 : 1 }]}
-                  disabled={assignLoading}
-                  onPress={() => { setAssignOpen(false); setAssignSelected(null); }}
+                <ScrollView
+                  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 14 }}
+                  keyboardShouldPersistTaps="always"
+                  keyboardDismissMode="none"
                 >
-                  <MaterialIcons name="close" size={20} color="#FFFFFF" />
-                  <Text style={styles.footerBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.footerBtn, { backgroundColor: Colors.amber, flex: 1, opacity: (!assignSelected || assignLoading) ? 0.6 : 1 }]}
-                  disabled={!assignSelected || assignLoading}
-                  onPress={() => assignSelected && handleAssignToPlaceholder(assignSelected.id)}
-                >
-                  <MaterialIcons name="qr-code" size={20} color="#FFFFFF" />
-                  <Text style={styles.footerBtnText}>Assign</Text>
-                </TouchableOpacity>
+                  <View style={styles.optionCard}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="search" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Find Imported Asset</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>Pick an imported asset (UUID id) to assign to this QR. We will move its data onto this QR id and reset the original record to a placeholder.</Text>
+                    <TextInput
+                      placeholder="Search by model, type, serial, other id, notes"
+                      value={assignQuery}
+                      onChangeText={setAssignQuery}
+                      style={[styles.input, { borderColor: Colors.amber, borderWidth: 2, backgroundColor: '#FFFBF0' }]}
+                      placeholderTextColor={Colors.subtle}
+                      autoFocus={true}
+                    />
+                    <View style={{ marginTop: 8 }}>
+                      {assignLoading ? (
+                        <ActivityIndicator />
+                      ) : (
+                        <FlatList
+                          data={filteredAssignResults}
+                          keyExtractor={(item) => String(item.id)}
+                          style={{ maxHeight: 500 }}
+                          contentContainerStyle={{ paddingBottom: 8 }}
+                          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                          scrollEnabled={filteredAssignResults.length > 5}
+                          keyboardShouldPersistTaps="always"
+                          keyboardDismissMode="none"
+                          renderItem={({ item }) => (
+                            <TouchableOpacity
+                              style={[
+                                styles.optionCard,
+                                { padding: 12, borderColor: assignSelected?.id === item.id ? Colors.amber : Colors.border },
+                              ]}
+                              onPress={() => {
+                                setAssignSelected(item);
+                              }}
+                              activeOpacity={0.7}
+                              delayPressIn={0}
+                            >
+                              <Text style={{ fontWeight: '700', color: Colors.text }}>{item.model || 'Unnamed'}</Text>
+                              <Text style={{ fontWeight: '700', color: Colors.subtle, marginTop: 2 }}>
+                                {(item.asset_types?.name || 'Unknown type')}
+                              </Text>
+                              {item.serial_number ? (
+                                <Text style={{ fontWeight: '700', color: Colors.subtle, marginTop: 2 }}>SN: {item.serial_number}</Text>
+                              ) : null}
+                              {item.other_id ? (
+                                <Text style={{ fontWeight: '700', color: Colors.muted, marginTop: 2 }}>Other ID: {item.other_id}</Text>
+                              ) : null}
+                            </TouchableOpacity>
+                          )}
+                          ListEmptyComponent={() => (
+                            <Text style={{ color: Colors.muted, textAlign: 'center', paddingVertical: 16 }}>No matches</Text>
+                          )}
+                        />
+                      )}
+                    </View>
+                  </View>
+                </ScrollView>
+
+                {/* Confirm bar - Fixed at bottom */}
+                <View style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: Platform.OS === 'ios' ? 20 : 14,
+                  backgroundColor: Colors.card,
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.border,
+                }}>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, { backgroundColor: Colors.slate, flex: 1, opacity: assignLoading ? 0.6 : 1 }]}
+                    disabled={assignLoading}
+                    onPress={() => { setAssignOpen(false); setAssignSelected(null); }}
+                  >
+                    <MaterialIcons name="close" size={20} color="#FFFFFF" />
+                    <Text style={styles.footerBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, { backgroundColor: Colors.amber, flex: 1, opacity: (!assignSelected || assignLoading) ? 0.6 : 1 }]}
+                    disabled={!assignSelected || assignLoading}
+                    onPress={() => assignSelected && handleAssignToPlaceholder(assignSelected.id)}
+                  >
+                    <MaterialIcons name="qr-code" size={20} color="#FFFFFF" />
+                    <Text style={styles.footerBtnText}>Assign</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
             </KeyboardAvoidingView>
           </View>
         </Modal>
@@ -1803,6 +1966,7 @@ const styles = StyleSheet.create({
   },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   assetTitle: { color: Colors.text, fontSize: 18, fontWeight: '700' },
+  assetSerial: { color: Colors.subtle, fontSize: 14, marginTop: 4, fontWeight: '500' },
   idPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1845,6 +2009,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
+  /* Multi-scan style: primary and secondary action buttons */
+  quickActionBar: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  quickActionBtn: {
+    width: '47%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  quickActionBtnPrimary: { backgroundColor: '#1E90FF' },
+  quickActionBtnSecondary: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#1E90FF' },
+  quickActionBtnNeutral: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB' },
+  quickActionBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+  quickActionBtnTextSecondary: { color: '#1E90FF', fontWeight: '600', fontSize: 14 },
+  quickActionBtnTextNeutral: { color: Colors.slate, fontWeight: '600', fontSize: 14 },
   tileText: {
     color: Colors.text,
     fontWeight: '700',
@@ -1893,28 +2074,30 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     flexDirection: 'row',
-    gap: 8,
-    padding: 10,
+    gap: 10,
+    padding: 12,
     backgroundColor: Colors.bg,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
   footerBtn: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 8,
+    paddingVertical: 10,
     paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
   },
+  footerBtnPrimary: { backgroundColor: '#1E90FF' },
+  footerBtnSecondary: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#1E90FF' },
   footerBtnText: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '600',
     fontSize: Platform.select({
-      ios: 11,
-      android: 11,
-      default: 12,
+      ios: 12,
+      android: 12,
+      default: 14,
     }),
     textAlign: 'center',
     flexShrink: 1,
@@ -1934,6 +2117,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     maxHeight: '80%',
+  },
+  userModalSheet: {
+    maxHeight: '90%',
+  },
+  createNoteSheet: {
+    borderRadius: 18,
+    width: '100%',
+    minHeight: 220,
+    maxHeight: '90%',
+    overflow: 'hidden',
+  },
+  createNoteContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 4,
+  },
+  createNoteSubmitBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    maxWidth: 160,
   },
   sheetHandle: {
     width: 44,
@@ -2019,36 +2222,37 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   infoRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginTop: 14,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
 
-infoCell: {
-  flex: 1,
-  paddingRight: 12,
-},
+  infoCell: {
+    flex: 1,
+    paddingRight: 12,
+  },
 
-infoCellRight: {
-  alignItems: 'flex-end',   // <-- key: push content to the right
-  paddingRight: 0,
-},
+  infoCellRight: {
+    alignItems: 'flex-end',   // <-- key: push content to the right
+    paddingRight: 0,
+  },
 
-textRight: {
-  textAlign: 'right',
-},
-actionRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 14,
-  borderTopWidth: 1,
-  borderTopColor: Colors.border,
-},
-actionText: {
-  color: Colors.text,
-  fontWeight: '700',
-},
+  textRight: {
+    textAlign: 'right',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  actionText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 16,
+  },
 
 });

@@ -124,28 +124,64 @@ export default function NewAssetType() {
 
   const measureAndScroll = (key) => {
     const ref = sectionRefs.current[key];
-    if (!ref || !scrollViewRef.current) return;
+    if (!ref) return;
 
     try {
-      // Measure the section to get its absolute page coordinates
-      ref.measure((x, y, width, height, pageX, pageY) => {
-        // Measure the ScrollView to get its absolute page coordinates
-        scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
-          // Calculate relative Y position within the ScrollView
-          const relativeY = pageY - spy;
-          console.log(`Measured ${key}: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
-
-          if (relativeY >= 0) {
-            const scrollY = Math.max(0, relativeY - 100);
-            scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+      if (Platform.OS === 'web') {
+        // Web: Use getBoundingClientRect for DOM elements
+        // Try multiple ways to access the DOM node
+        let domNode = null;
+        if (ref && typeof ref === 'object') {
+          domNode = ref._nativeNode || ref.current?._nativeNode || ref.current || ref;
+        }
+        
+        if (domNode && typeof domNode.getBoundingClientRect === 'function') {
+          const rect = domNode.getBoundingClientRect();
+          const currentScrollY = window.scrollY || 0;
+          const targetAbsoluteY = rect.top + currentScrollY;
+          
+          // Calculate desired scroll position (target should be 150px from top)
+          const desiredScrollY = targetAbsoluteY - 150;
+          
+          // Always scroll if the target is not well-positioned (off-screen or too low)
+          if (rect.top < 100 || rect.top > window.innerHeight - 200) {
+            // Target is off-screen or not well-positioned, scroll to it
+            window.scrollTo({ top: Math.max(0, desiredScrollY), behavior: 'smooth' });
           }
+        } else {
+          // Fallback: try to find the element by querying the DOM
+          // This is a last resort if ref access fails
+          console.warn(`Could not access DOM node for ${key}, trying fallback scroll`);
+          if (key === 'save' || key === 'library') {
+            window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+          }
+        }
+      } else {
+        // Native: Use measure API
+        if (!scrollViewRef.current) return;
+        ref.measure((x, y, width, height, pageX, pageY) => {
+          // Measure the ScrollView to get its absolute page coordinates
+          scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
+            // Calculate relative Y position within the ScrollView
+            const relativeY = pageY - spy;
+            console.log(`Measured ${key}: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
+
+            if (relativeY >= 0) {
+              const scrollY = Math.max(0, relativeY - 100);
+              scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+            }
+          });
         });
-      });
+      }
     } catch (e) {
       console.error(`Error measuring ${key}:`, e);
       // Fallback: try scrollToEnd for bottom sections
       if (key === 'save' || key === 'library') {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
+        if (Platform.OS === 'web') {
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+        } else if (scrollViewRef.current) {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }
       }
     }
   };
@@ -479,23 +515,23 @@ export default function NewAssetType() {
             <View 
               ref={(r) => { sectionRefs.current['name-image'] = r; }}
             >
-              {/* Type name */}
-              <Text style={s.label}>Name</Text>
+          {/* Type name */}
+          <Text style={s.label}>Name</Text>
               <View style={{ marginVertical: 8 }}>
-                <TextInput
-                  style={[s.input, nameError ? s.inputError : null]}
-                  value={name}
-                  onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
-                  placeholder="Enter asset type name"
-                  autoCapitalize="words"
-                />
-              </View>
-              {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
+              <TextInput
+                style={[s.input, nameError ? s.inputError : null]}
+                value={name}
+                onChangeText={(t) => { setName(t); if (nameError) setNameError(''); }}
+                placeholder="Enter asset type name"
+                autoCapitalize="words"
+              />
+            </View>
+          {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
 
-              {/* Type image */}
-              <TouchableOpacity style={s.btn} onPress={pickImage}>
-                <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
-              </TouchableOpacity>
+          {/* Type image */}
+            <TouchableOpacity style={s.btn} onPress={pickImage}>
+              <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
+            </TouchableOpacity>
               {image?.uri && <Image source={{ uri: image.uri }} style={s.preview} />}
             </View>
           </TourTarget>
@@ -506,11 +542,11 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current.defaults = r; }}
               style={{ marginTop: 24 }}
             >
-              <Text style={[s.label, { fontSize: 18 }]}>Default fields (always included)</Text>
-              <View style={s.defaultList}>
-                {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
-              </View>
+            <Text style={[s.label, { fontSize: 18 }]}>Default fields (always included)</Text>
+            <View style={s.defaultList}>
+              {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
             </View>
+          </View>
           </TourTarget>
 
           {/* Pick from library (2-column checklist with Required toggles) */}
@@ -519,89 +555,89 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current.library = r; }}
               style={{ marginTop: 24 }}
             >
-              <Text style={[s.label, { fontSize: 18 }]}>Pick from library</Text>
-              <View style={s.grid}>
-                {PRESET_LIBRARY.map((p) => {
-                  const state = presetState[p.key];
-                  const checked = !!state?.selected;
-                  const required = !!state?.required;
-                  return (
-                    <View key={p.key} style={s.gridItem}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                        <TouchableOpacity
-                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                          onPress={() => togglePresetSelected(p.key)}
-                          activeOpacity={0.8}
-                        >
-                          <SquareCheckbox checked={checked} />
-                          <Text style={s.gridLabel}>{p.label}</Text>
-                        </TouchableOpacity>
-                        <View style={s.reqWrap}>
-                          <Text style={s.reqLabel}>Required</Text>
-                          <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
-                        </View>
+            <Text style={[s.label, { fontSize: 18 }]}>Pick from library</Text>
+            <View style={s.grid}>
+              {PRESET_LIBRARY.map((p) => {
+                const state = presetState[p.key];
+                const checked = !!state?.selected;
+                const required = !!state?.required;
+                return (
+                  <View key={p.key} style={s.gridItem}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                        onPress={() => togglePresetSelected(p.key)}
+                        activeOpacity={0.8}
+                      >
+                        <SquareCheckbox checked={checked} />
+                        <Text style={s.gridLabel}>{p.label}</Text>
+                      </TouchableOpacity>
+                      <View style={s.reqWrap}>
+                        <Text style={s.reqLabel}>Required</Text>
+                        <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
                       </View>
-                      {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
-                        <View style={{ width: '100%', marginTop: 8 }}>
-                          <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
-                          <TextInput
-                            style={s.input}
-                            value={presetState[p.key]?.requiresDocSlug || ''}
-                            onChangeText={(t) =>
+                    </View>
+                    {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
+                      <View style={{ width: '100%', marginTop: 8 }}>
+                        <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
+                        <TextInput
+                          style={s.input}
+                          value={presetState[p.key]?.requiresDocSlug || ''}
+                          onChangeText={(t) =>
+                            setPresetState((prev) => ({
+                              ...prev,
+                              [p.key]: { ...prev[p.key], requiresDocSlug: t },
+                            }))
+                          }
+                          placeholder="e.g. documentation_url"
+                          autoCapitalize="none"
+                        />
+                        <View style={s.switchRow}>
+                          <Text style={s.subLabel}>Document required</Text>
+                          <Switch
+                            value={!!presetState[p.key]?.documentRequired}
+                            onValueChange={(v) =>
                               setPresetState((prev) => ({
                                 ...prev,
-                                [p.key]: { ...prev[p.key], requiresDocSlug: t },
+                                [p.key]: { ...prev[p.key], documentRequired: v },
                               }))
                             }
-                            placeholder="e.g. documentation_url"
-                            autoCapitalize="none"
                           />
-                          <View style={s.switchRow}>
-                            <Text style={s.subLabel}>Document required</Text>
-                            <Switch
-                              value={!!presetState[p.key]?.documentRequired}
-                              onValueChange={(v) =>
-                                setPresetState((prev) => ({
-                                  ...prev,
-                                  [p.key]: { ...prev[p.key], documentRequired: v },
-                                }))
-                              }
-                            />
-                          </View>
-                          <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
-                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                            {[7, 14, 30].map((d) => (
-                              <TouchableOpacity
-                                key={`lead-${p.key}-${d}`}
-                                onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
-                                style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
-                              >
-                                <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                          <TextInput
-                            style={[s.input, { marginTop: 6 }]}
-                            value={(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
-                            onChangeText={(t) => {
-                              const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
-                              setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
-                            }}
-                            placeholder="No Reminder"
-                            keyboardType="numeric"
-                          />
-                          <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
-                            {(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0
-                              ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
-                              : 'No Reminder'}
-                          </Text>
                         </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
+                        <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          {[7, 14, 30].map((d) => (
+                            <TouchableOpacity
+                              key={`lead-${p.key}-${d}`}
+                              onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                            >
+                              <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <TextInput
+                          style={[s.input, { marginTop: 6 }]}
+                          value={(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
+                          onChangeText={(t) => {
+                            const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
+                            setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
+                          }}
+                          placeholder="No Reminder"
+                          keyboardType="numeric"
+                        />
+                        <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                          {(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0
+                            ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
+                            : 'No Reminder'}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
+          </View>
           </TourTarget>
 
           {/* Custom fields (saved list + editor) */}
@@ -610,7 +646,7 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current['custom-fields'] = r; }}
               style={{ marginTop: 24 }}
             >
-              <Text style={[s.label, { fontSize: 18 }]}>Custom fields</Text>
+            <Text style={[s.label, { fontSize: 18 }]}>Custom fields</Text>
 
             {loadingFieldTypes && (
               <View style={{ paddingVertical: 12 }}>
@@ -759,7 +795,7 @@ export default function NewAssetType() {
                 <Text>+ Add Field</Text>
               </TouchableOpacity>
             )}
-            </View>
+          </View>
           </TourTarget>
 
           {/* Submit */}
@@ -767,9 +803,9 @@ export default function NewAssetType() {
             <View
               ref={(r) => { sectionRefs.current.save = r; }}
             >
-              <TouchableOpacity style={[s.btn, s.submit, { marginTop: 16 }]} onPress={handleSubmit} disabled={submitting}>
-                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Create Asset Type</Text>}
-              </TouchableOpacity>
+            <TouchableOpacity style={[s.btn, s.submit, { marginTop: 16 }]} onPress={handleSubmit} disabled={submitting}>
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Create Asset Type</Text>}
+            </TouchableOpacity>
             </View>
           </TourTarget>
 

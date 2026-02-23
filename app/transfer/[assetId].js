@@ -133,7 +133,10 @@ export default function TransferAssetScreen() {
         text: 'View asset',
         onPress: () => router.replace({ pathname: '/asset/[assetId]', params: { assetId } }),
       });
-      Alert.alert('Success', 'Asset transferred successfully.', actions);
+      const sn = asset?.serial_number || asset?.id || assetId;
+      const model = asset?.model || 'N/A';
+      const targetName = targetUser?.name || targetUser?.useremail || 'user';
+      Alert.alert('Success', `SN: ${sn}, Model: ${model} transferred to ${targetName}.`, actions);
     } catch (e) {
       Alert.alert('Error', e?.message || 'Transfer failed');
     } finally {
@@ -169,6 +172,7 @@ export default function TransferAssetScreen() {
         <View style={styles.assetCard}>
           <Text style={styles.assetTitle}>{asset?.asset_types?.name || 'Asset'}</Text>
           <Text style={styles.assetSubtitle}>ID: {asset?.id}</Text>
+          <Text style={styles.assetDetail}>SN: {asset?.serial_number || 'N/A'}, Model: {asset?.model || 'N/A'}</Text>
           <Text style={styles.assetDetail}>
             Assigned to: {asset?.users?.name || asset?.users?.useremail || asset?.assigned_to_id || 'Unassigned'}
           </Text>
@@ -197,7 +201,7 @@ export default function TransferAssetScreen() {
                 disabled={submitting === item.id}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>{item.name || 'Unnamed User'}</Text>
+                  <Text style={styles.userName}>{item.name || item.useremail || item.email || 'Unnamed User'}</Text>
                   <Text style={styles.userEmail}>{item.useremail || item.email || 'No email'}</Text>
                 </View>
                 <Text style={[styles.transferBtn, submitting === item.id && { opacity: 0.6 }]}>

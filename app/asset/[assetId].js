@@ -969,6 +969,35 @@ export default function AssetDetailPage() {
     } catch { return []; }
   }, [actions, asset?.id]);
 
+  // Full work detail history: REPAIR and MAINTENANCE only, with details and photos
+  const workDetailHistory = useMemo(() => {
+    try {
+      const arr = Array.isArray(actions) ? actions : [];
+      const wanted = new Set(['REPAIR', 'MAINTENANCE']);
+      return arr
+        .filter((a) => a && wanted.has(String(a?.type || '').toUpperCase()))
+        .map((a) => {
+          const base = a.details || {};
+          const date = base.date || a.occurred_at || a.created_at || null;
+          const summary = base.summary || a.note || null;
+          // Only use base.notes so we don't duplicate a.note when it was already used as summary
+          const notes = base.notes ?? null;
+          const images = Array.isArray(a?.data?.images) ? a.data.images.filter(Boolean) : [];
+          return {
+            id: a.id,
+            type: String(a.type || '').toUpperCase(),
+            date,
+            occurred_at: a.occurred_at,
+            summary,
+            priority: base.priority,
+            estimated_cost: base.estimated_cost,
+            notes,
+            images,
+          };
+        });
+    } catch { return []; }
+  }, [actions]);
+
   // Notes typed by users during check-in/transfer/status (flagged on server)
   const typedNotes = useMemo(() => {
     try {
@@ -1058,9 +1087,10 @@ export default function AssetDetailPage() {
         onBack={handleBack}
       />
 
+      <View style={styles.mainContentWrap}>
       <ScrollView
-        style={{ flex: 1, ...(Platform.OS === 'web' ? { height: '100vh', overflow: 'auto' } : {}) }}
-        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 160, flexGrow: 1 }}
+        style={styles.detailScrollView}
+        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
       >
         {/* Hero image spanning full width */}
         <Image
@@ -1184,6 +1214,18 @@ export default function AssetDetailPage() {
                   }
                   if (currentDetails.eol_reason) rows.push({ label: 'Reason', value: currentDetails.eol_reason });
                   if (currentDetails.notes) rows.push({ label: 'Notes', value: currentDetails.notes });
+                  if (currentActionImages.length > 0) {
+                    rows.push({
+                      label: 'Work photo',
+                      value: (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', flexWrap: 'nowrap' }}>
+                          {currentActionImages.map((url, idx) => (
+                            <Image key={`curr-wp-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                          ))}
+                        </ScrollView>
+                      ),
+                    });
+                  }
                   return <DetailsGrid rows={rows} />;
                 })()
               ) : (
@@ -1206,16 +1248,19 @@ export default function AssetDetailPage() {
                   {currentDetails.notes && (
                     <Row label="Notes" value={currentDetails.notes} rightAlign={false} />
                   )}
-                </>
-              )}
-              {!!currentActionImages.length && (
-                <>
-                  <Text style={[styles.sectionH, { marginTop: 12 }]}>Work Photos</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                    {currentActionImages.map((url, idx) => (
-                      <Image key={`curr-img-${idx}`} source={{ uri: url }} style={{ width: 100, height: 100, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: '#eee' }} />
-                    ))}
-                  </ScrollView>
+                  {currentActionImages.length > 0 && (
+                    <Row
+                      label="Work photo"
+                      value={(
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                          {currentActionImages.map((url, idx) => (
+                            <Image key={`curr-wp-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                          ))}
+                        </ScrollView>
+                      )}
+                      rightAlign={false}
+                    />
+                  )}
                 </>
               )}
             </>
@@ -1310,6 +1355,52 @@ export default function AssetDetailPage() {
             </>
           )}
 
+          {/* Work Detail History (REPAIR / MAINTENANCE with full details and photos) */}
+          <Text style={[styles.sectionH, { marginTop: 16 }]}>Work Detail History</Text>
+          {workDetailHistory.length === 0 ? (
+            <Text style={{ color: '#666' }}>No repair or service work yet.</Text>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {workDetailHistory.map((w) => {
+                const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
+                const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
+                const summaryWithNext = [
+                  w.summary || '',
+                  asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
+                ].filter(Boolean).join('. ');
+                return (
+                  <View key={w.id} style={styles.noteCard}>
+                    <View style={styles.noteHead}>
+                      <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
+                        <Text style={styles.noteWhen}>{prettyDateTime(w.occurred_at || w.date)}</Text>
+                      </View>
+                      <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                        <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                      </View>
+                    </View>
+                    <View style={{ marginTop: 8, gap: 4 }}>
+                      {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
+                      {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
+                      {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
+                        <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
+                      )}
+                      {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
+                    </View>
+                    {!!(w.images && w.images.length) && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                        {w.images.map((url, idx) => (
+                          <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           {/* Document history (older attachments) */}
           {(() => {
             try {
@@ -1396,93 +1487,6 @@ export default function AssetDetailPage() {
           )}
           {/* Map (works on all platforms) */}
           <MapPreview location={displayLocation} />
-          {/* Smart actions */}
-          <View style={styles.actionsRow}>
-            {(() => {
-              const isQRReserved = String(asset?.description || '').trim().toLowerCase() === 'qr reserved asset';
-              
-              if (isQRReserved) {
-                // QR reserved assets only show Transfer Out/In buttons, no Edit/Copy/Delete
-                return normalizeStatus(asset?.status) === 'available' ? (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
-                    onPress={() =>
-                      router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
-                    }
-                  >
-                    <Text style={styles.actionText}>Transfer Out</Text>
-                  </TouchableOpacity>
-                ) : normalizeStatus(asset?.status) === 'rented' ? (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                    onPress={() => router.push(`/check-in/${asset.id}`)}
-                  >
-                    <Text style={styles.actionText}>Transfer In</Text>
-                  </TouchableOpacity>
-                ) : null;
-              }
-              
-              // Regular assets show all buttons
-              return (
-                <>
-                  {normalizeStatus(asset?.status) === 'available' ? (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
-                      onPress={() =>
-                        router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
-                      }
-                    >
-                      <Text style={styles.actionText}>Transfer Out</Text>
-                    </TouchableOpacity>
-                  ) : normalizeStatus(asset?.status) === 'rented' ? (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                      onPress={() => router.push(`/check-in/${asset.id}`)}
-                    >
-                      <Text style={styles.actionText}>Transfer In</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    isAdmin ? (
-                      <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
-                        onPress={() => {
-                          router.push({
-                            pathname: '/asset/new',
-                            params: { fromAssetId: asset.id }, // Pass asset ID to NewAsset page
-                          });
-                        }}
-                      >
-                        <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
-                      </TouchableOpacity>
-                    ) : null
-                  )}
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/asset/edit',
-                        params: {
-                          assetId: asset.id,
-                          returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
-                        },
-                      })
-                    }
-                  >
-                    <Text style={styles.actionText}>✏️ Edit</Text>
-                  </TouchableOpacity>
-
-                  {isAdmin && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
-                      onPress={handleDelete}
-                    >
-                      <Text style={styles.actionText}>🗑 Delete</Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              );
-            })()}
-          </View>
 
           {/* Helpful shortcuts
           <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -1502,6 +1506,89 @@ export default function AssetDetailPage() {
           
         </View>
       </ScrollView>
+      {/* Sticky action bar (always visible on web, at bottom on native) */}
+      <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
+        {(() => {
+          const isQRReserved = String(asset?.description || '').trim().toLowerCase() === 'qr reserved asset';
+          if (isQRReserved) {
+            return normalizeStatus(asset?.status) === 'available' ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                onPress={() =>
+                  router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
+                }
+              >
+                <Text style={styles.actionText}>Transfer Out</Text>
+              </TouchableOpacity>
+            ) : normalizeStatus(asset?.status) === 'rented' ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                onPress={() => router.push(`/check-in/${asset.id}`)}
+              >
+                <Text style={styles.actionText}>Transfer In</Text>
+              </TouchableOpacity>
+            ) : null;
+          }
+          return (
+            <>
+              {normalizeStatus(asset?.status) === 'available' ? (
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                  onPress={() =>
+                    router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
+                  }
+                >
+                  <Text style={styles.actionText}>Transfer Out</Text>
+                </TouchableOpacity>
+              ) : normalizeStatus(asset?.status) === 'rented' ? (
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                  onPress={() => router.push(`/check-in/${asset.id}`)}
+                >
+                  <Text style={styles.actionText}>Transfer In</Text>
+                </TouchableOpacity>
+              ) : (
+                isAdmin ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/asset/new',
+                        params: { fromAssetId: asset.id },
+                      });
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
+                  </TouchableOpacity>
+                ) : null
+              )}
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/asset/edit',
+                    params: {
+                      assetId: asset.id,
+                      returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
+                    },
+                  })
+                }
+              >
+                <Text style={styles.actionText}>✏️ Edit</Text>
+              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
+                  onPress={handleDelete}
+                >
+                  <Text style={styles.actionText}>🗑 Delete</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          );
+        })()}
+      </View>
+      </View>
       {/* QR modal */}
       <Modal
         visible={qrOpen}
@@ -1776,9 +1863,21 @@ const styles = StyleSheet.create({
     color: '#1E90FF',
     fontWeight: 'bold',
   },
+  mainContentWrap: { flex: 1, minHeight: 0 },
+  detailScrollView: {
+    flex: 1,
+    ...(Platform.OS === 'web' ? { overflow: 'auto' } : {}),
+  },
   actionsRow: {
     flexDirection: 'row', justifyContent: 'center', gap: 8,
     padding: 16, borderTopColor: '#ddd', borderTopWidth: 1, backgroundColor: '#fff',
+  },
+  actionsRowSticky: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   actionBtn: {
     flex: 1,

@@ -1,4 +1,4 @@
-﻿// app/(tabs)/type/edit.js
+// app/(tabs)/type/edit.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -97,6 +97,7 @@ export default function EditAssetType() {
   const [addOpen, setAddOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [addModel, setAddModel] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '', reminderLeadDays: 0 });
+  const [conflictModalMessage, setConflictModalMessage] = useState(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -329,9 +330,18 @@ export default function EditAssetType() {
       } else {
         payload.options = [];
       }
+      const headers = { 'Content-Type': 'application/json' };
+      try {
+        const u = auth?.currentUser;
+        if (u?.uid) headers['X-User-Id'] = u.uid;
+        if (typeof u?.getIdToken === 'function') {
+          const token = await u.getIdToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (_) {}
       const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${row.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
       if (!r.ok) {
@@ -358,9 +368,44 @@ export default function EditAssetType() {
             );
       if (!ok) return;
 
-      const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${row.id}`, { method: 'DELETE' });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body?.error || body?.message || 'Delete failed');
+      const headers = {};
+      try {
+        const u = auth?.currentUser;
+        if (u?.uid) headers['X-User-Id'] = u.uid;
+        if (typeof u?.getIdToken === 'function') {
+          const token = await u.getIdToken();
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (_) {}
+      const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${row.id}`, { method: 'DELETE', headers });
+      const responseText = await r.text();
+      let body = {};
+      try {
+        if (responseText && responseText.trim()) body = JSON.parse(responseText);
+      } catch {
+        body = {};
+      }
+      if (!r.ok) {
+        const msg = body?.error || body?.message || (r.status === 409 ? responseText?.trim() || 'This field is in use and cannot be deleted.' : '');
+        const isFieldInUse =
+          r.status === 409 ||
+          (msg && (
+            String(msg).toLowerCase().includes('existing values') ||
+            String(msg).toLowerCase().includes('field has') ||
+            String(msg).toLowerCase().includes('populated')
+          ));
+        if (isFieldInUse) {
+          setConflictModalMessage(
+            msg || `This field has existing values and cannot be edited or deleted. Remove or clear it from all assets first.`
+          );
+          return;
+        }
+        if (r.status === 401) {
+          Alert.alert('Unauthorized', 'You must be signed in as an admin to delete fields.');
+          return;
+        }
+        throw new Error(msg || 'Delete failed');
+      }
       setEditableCustom((prev) => prev.filter((x) => x.id !== row.id));
       Alert.alert('Deleted', `"${row.name}" removed`);
     } catch (e) {
@@ -1154,6 +1199,23 @@ export default function EditAssetType() {
           <Text style={s.actionText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Conflict modal (409 - field in use) */}
+      <Modal transparent animationType="fade" visible={!!conflictModalMessage} onRequestClose={() => setConflictModalMessage(null)}>
+        <View style={[s.summaryBackdrop, { justifyContent: 'center', padding: 24 }]}>
+          <View style={[s.summaryCard, { maxWidth: 400 }]}>
+            <Text style={s.summaryTitle}>Cannot edit or delete field</Text>
+            <Text style={{ fontSize: 15, color: '#374151', marginTop: 8, marginBottom: 20 }}>{conflictModalMessage}</Text>
+            <TouchableOpacity
+              style={{ alignSelf: 'flex-end', backgroundColor: '#1E90FF', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
+              onPress={() => setConflictModalMessage(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Summary modal */}
       <Modal transparent animationType="fade" visible={showSummary} onRequestClose={() => setShowSummary(false)}>

@@ -9,6 +9,7 @@ import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { TourTarget } from '../../components/TourGuide';
 
 export default function AdminConsole() {
   const router = useRouter();
@@ -226,20 +227,28 @@ export default function AdminConsole() {
           <Text style={styles.topbarTitle}>Admin Console</Text>
           {Platform.OS !== 'web' && <View style={{ width: 24 }} />}
         </View>
-        {/* Segmented tabs */}
+        {/* Segmented tabs: flex on outer View so TouchableOpacity (styles.tab) controls sizing and touch area */}
         <View style={styles.tabs}>
-          <TouchableOpacity
-            onPress={() => setTab('roles')}
-            style={[styles.tab, tab === 'roles' && styles.tabActive]}
-          >
-            <Text style={[styles.tabText, tab === 'roles' && styles.tabTextActive]}>Manage Roles</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setTab('qr')}
-            style={[styles.tab, tab === 'qr' && styles.tabActive]}
-          >
-            <Text style={[styles.tabText, tab === 'qr' && styles.tabTextActive]}>Generate QR</Text>
-          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <TourTarget id="web-admin-roles-tab">
+              <TouchableOpacity
+                onPress={() => setTab('roles')}
+                style={[styles.tab, tab === 'roles' && styles.tabActive]}
+              >
+                <Text style={[styles.tabText, tab === 'roles' && styles.tabTextActive]}>Manage Roles</Text>
+              </TouchableOpacity>
+            </TourTarget>
+          </View>
+          <View style={{ flex: 1 }}>
+            <TourTarget id="web-admin-qr-tab">
+              <TouchableOpacity
+                onPress={() => setTab('qr')}
+                style={[styles.tab, tab === 'qr' && styles.tabActive]}
+              >
+                <Text style={[styles.tabText, tab === 'qr' && styles.tabTextActive]}>Generate QR</Text>
+              </TouchableOpacity>
+            </TourTarget>
+          </View>
         </View>
 
         {tab === 'roles' ? (
@@ -255,9 +264,13 @@ export default function AdminConsole() {
             />
 
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-              <TouchableOpacity onPress={promote} disabled={working} style={[styles.button, { flex: 1, opacity: working ? 0.7 : 1 }]}>
-                <Text style={styles.buttonText}>Promote to Admin</Text>
-              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <TourTarget id="web-admin-promote-btn">
+                  <TouchableOpacity onPress={promote} disabled={working} style={[styles.button, { flex: 1, opacity: working ? 0.7 : 1 }]}>
+                    <Text style={styles.buttonText}>Promote to Admin</Text>
+                  </TouchableOpacity>
+                </TourTarget>
+              </View>
               <TouchableOpacity onPress={demote} disabled={working} style={[styles.buttonOutline, { flex: 1, opacity: working ? 0.7 : 1 }]}>
                 <Text style={styles.buttonOutlineText}>Demote to User</Text>
               </TouchableOpacity>
@@ -284,20 +297,24 @@ export default function AdminConsole() {
               Will generate: <Text style={{ fontWeight: '700' }}>{qrCountNum || 0}</Text> QR codes
             </Text>
 
-            <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
-              <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate Excel'}</Text>
-            </TouchableOpacity>
+            <TourTarget id="web-admin-qr-generate-btn">
+              <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
+                <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate Excel'}</Text>
+              </TouchableOpacity>
+            </TourTarget>
 
             {/* Excel file download */}
             {excelFile && (
               <View style={{ marginTop: 20 }}>
                 <Text style={styles.subTitle}>Generated Excel File</Text>
-                <View style={styles.qrRow}>
-                  <Text style={{ fontSize: 14, color: '#333' }}>{excelFile.name}</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
-                    <Text style={styles.link}>Download Excel</Text>
-                  </TouchableOpacity>
-                </View>
+                <TourTarget id="web-admin-qr-download-btn">
+                  <View style={styles.qrRow}>
+                    <Text style={{ fontSize: 14, color: '#333' }}>{excelFile.name}</Text>
+                    <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
+                      <Text style={styles.link}>Download Excel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TourTarget>
               </View>
             )}
 

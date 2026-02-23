@@ -6,6 +6,7 @@ import { auth } from '../firebaseConfig';
 import { useTheme } from 'react-native-paper';
 import { Feather } from '@expo/vector-icons';
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import { TourTarget } from './TourGuide';
 // Theme options for navbar (keep only Golden Amber for consistency)
 const THEME_OPTIONS = [
   {
@@ -146,30 +147,48 @@ export default function WebNavbar() {
   };
 
   return (
-    <View style={[styles.wrap, { borderBottomColor: selectedTheme.colors.border, backgroundColor: selectedTheme.colors.background, shadowColor: selectedTheme.colors.primary }]}>
-      <View style={styles.brandWrap}>
-        <Text style={[styles.brand, { color: theme.colors.primary }]}>Asset Manager</Text>
+    <TourTarget id="web-navbar">
+      <View style={[styles.wrap, { borderBottomColor: selectedTheme.colors.border, backgroundColor: selectedTheme.colors.background, shadowColor: selectedTheme.colors.primary }]}>
+        <View style={styles.brandWrap}>
+          <Text style={[styles.brand, { color: theme.colors.primary }]}>Asset Manager</Text>
+        </View>
+        <View style={styles.navCenter}>
+          <TourTarget id="web-nav-dashboard">
+            <NavLink href="/(tabs)/dashboard" label="Dashboard" isActive={active.dashboard} theme={theme} />
+          </TourTarget>
+          {/* Shortcuts omitted on web; WebNavbar is web-only so no platform check needed */}
+          <TourTarget id="web-nav-tasks">
+            <NavLink href="/(tabs)/dashboard?view=tasks" label="My Tasks" isActive={active.tasks} theme={theme} />
+          </TourTarget>
+          <TourTarget id="web-nav-activity">
+            <NavLink href="/activity" label="Activity" isActive={active.activity} theme={theme} />
+          </TourTarget>
+          <TourTarget id="web-nav-certs">
+            <NavLink href="/certs" label="Certs" isActive={active.certs} theme={theme} />
+          </TourTarget>
+          <TourTarget id="nav-inventory-tab">
+            <NavLink href="/(tabs)/Inventory" label="Inventory" isActive={active.inventory} theme={theme} />
+          </TourTarget>
+          {isAdmin ? (
+            <TourTarget id="web-nav-admin">
+              <NavLink href="/admin" label="Admin Controls" isActive={active.admin} theme={theme} />
+            </TourTarget>
+          ) : null}
+        </View>
+        <View style={styles.navRight}>
+          <TourTarget id="web-nav-profile">
+            <NavLink href="/profile" label="Profile" isActive={active.profile} theme={theme} />
+          </TourTarget>
+          <TouchableOpacity
+            onPress={handleLogout}
+            style={[styles.logoutButton, { borderColor: selectedTheme.colors.border }]}
+          >
+            <Feather name="log-out" size={16} color={selectedTheme.colors.text} />
+            <Text style={[styles.logoutText, { color: selectedTheme.colors.text }]}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.navCenter}>
-        <NavLink href="/(tabs)/dashboard" label="Dashboard" isActive={active.dashboard} theme={theme} />
-        <NavLink href="/(tabs)/dashboard?view=shortcuts" label="Shortcuts" isActive={active.shortcuts} theme={theme} />
-        <NavLink href="/(tabs)/dashboard?view=tasks" label="My Tasks" isActive={active.tasks} theme={theme} />
-        <NavLink href="/activity" label="Activity" isActive={active.activity} theme={theme} />
-        <NavLink href="/certs" label="Certs" isActive={active.certs} theme={theme} />
-        <NavLink href="/(tabs)/Inventory" label="Inventory" isActive={active.inventory} theme={theme} />
-        {isAdmin ? (<NavLink href="/admin" label="Admin Controls" isActive={active.admin} theme={theme} />) : null}
-      </View>
-      <View style={styles.navRight}>
-        <NavLink href="/profile" label="Profile" isActive={active.profile} theme={theme} />
-        <TouchableOpacity
-          onPress={handleLogout}
-          style={[styles.logoutButton, { borderColor: selectedTheme.colors.border }]}
-        >
-          <Feather name="log-out" size={16} color={selectedTheme.colors.text} />
-          <Text style={[styles.logoutText, { color: selectedTheme.colors.text }]}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </TourTarget>
   );
 }
 

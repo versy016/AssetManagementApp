@@ -1,4 +1,4 @@
-﻿// app/components/ActionsForm.js
+// app/components/ActionsForm.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
@@ -14,6 +14,7 @@ import {
 import { DatePickerModal } from 'react-native-paper-dates';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { ALGOLIA_INDEX_CLIENTS, ALGOLIA_INDEX_PROJECTS, algoliaSearch } from '../config/algolia';
 import { getAuth } from 'firebase/auth';
 
@@ -68,6 +69,7 @@ export default function ActionsForm({
   statusMap = STATUS_MAP,
   apiBaseUrl,
   users = [],           // pass from parent to support Hire picker
+  additionalAssetIds = [], // when set, apply same action to these asset ids (bulk)
 }) {
   const [submitting, setSubmitting] = useState(false);
 
@@ -93,9 +95,7 @@ export default function ActionsForm({
   const [hireRate, setHireRate] = useState('');
   const [hireProject, setHireProject] = useState('');
   const [hireClient, setHireClient] = useState('');
-  const [hireMode, setHireMode] = useState('user'); // 'user' | 'project' | 'client' | 'manual'
-  const [hireSearch, setHireSearch] = useState('');
-  const [selectedHireUser, setSelectedHireUser] = useState(null);
+  const [hireMode, setHireMode] = useState('project'); // 'project' | 'client' | 'manual'
   const [projectSearch, setProjectSearch] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [projectHits, setProjectHits] = useState([]);
@@ -235,9 +235,7 @@ export default function ActionsForm({
         return false;
       }
     } else if (fields === 'hire') {
-      if (hireMode === 'user') {
-        if (!selectedHireUser) return Alert.alert('Missing info', 'Please choose who to hire to.'), false;
-      } else if (hireMode === 'project') {
+      if (hireMode === 'project') {
         if (!selectedProject) return Alert.alert('Missing info', 'Please select a project from suggestions.'), false;
       } else if (hireMode === 'client') {
         if (!selectedClient) return Alert.alert('Missing info', 'Please select a client from suggestions.'), false;
@@ -275,18 +273,14 @@ export default function ActionsForm({
         ...(fields === 'service'
           ? {
               summary,
-              ...(action === 'Repair'
-                ? {
-                    priority,
-                    ...(nextServiceDate ? { estimatedRepairDate: nextServiceDate } : {}),
-                  }
-                : {}),
+              priority,
+              ...(action === 'Repair' && nextServiceDate ? { estimatedRepairDate: nextServiceDate } : {}),
               cost: Number(cost) || 0,
               ...(odometerValue ? { odometer: odometerValue } : {}),
             }
           : {}),
         ...(fields === 'hire' ? {
-          hireTo: hireMode === 'user' ? (selectedHireUser?.name || selectedHireUser?.useremail || selectedHireUser?.id) : (hireMode === 'manual' ? hireTo : undefined),
+          hireTo: hireMode === 'manual' ? hireTo : undefined,
           hireStart,
           hireEnd,
           hireRate: Number(hireRate) || 0,
@@ -294,7 +288,6 @@ export default function ActionsForm({
           projectId: selectedProject?.objectID,
           client: hireMode === 'client' ? (selectedClient?.name || selectedClient?.title || selectedClient?.label || hireClient) : (hireClient || undefined),
           clientId: selectedClient?.objectID,
-          hireUserId: hireMode === 'user' ? selectedHireUser?.id : undefined,
           mode: hireMode,
         } : {}),
         ...(fields === 'eol' ? { eolReason } : {}),
@@ -341,10 +334,24 @@ export default function ActionsForm({
           form.append('note', summary || '');
           form.append('occurred_at', date);
           form.append('details', JSON.stringify(meta));
-          // data flags for sign-off
           form.append('data', JSON.stringify({ requires_signoff: true, completed: false }));
-          serviceImages.forEach((f) => form.append('images', f));
+          serviceImages.forEach((f) => {
+            if (!f) return;
+            if (typeof f === 'object' && f.uri) {
+              form.append('images', { uri: f.uri, name: f.name || 'image.jpg', type: f.type || 'image/jpeg' });
+            } else if (typeof File !== 'undefined' && f instanceof File) {
+              form.append('images', f);
+            } else {
+              form.append('images', f);
+            }
+          });
           const headers = {};
+          try {
+            if (current && typeof current.getIdToken === 'function') {
+              const token = await current.getIdToken();
+              if (token) headers.Authorization = `Bearer ${token}`;
+            }
+          } catch (_) {}
           if (current?.uid) headers['X-User-Id'] = current.uid;
           if (current?.displayName) headers['X-User-Name'] = current.displayName;
           if (current?.email) headers['X-User-Email'] = current.email;
@@ -413,6 +420,41 @@ export default function ActionsForm({
             });
           } catch (e) {
             console.error('ActionsForm report upload failed', e);
+          }
+        }
+
+        // Bulk: apply same action to additional assets (no images/report upload)
+        const extraIds = Array.isArray(additionalAssetIds) ? additionalAssetIds : [];
+        if (extraIds.length > 0 && !hasImages) {
+          const bodyPatch = newStatus ? { status: newStatus } : null;
+          const actionBody = {
+            type: enumType,
+            note: fields === 'service' ? summary : (notes || undefined),
+            details: meta,
+            occurred_at: date,
+            data: (fields === 'service' || enumType === 'HIRE') ? { requires_signoff: true, completed: false } : undefined,
+          };
+          const headers = { 'Content-Type': 'application/json' };
+          if (current?.uid) headers['X-User-Id'] = current.uid;
+          if (current?.displayName) headers['X-User-Name'] = current.displayName;
+          if (current?.email) headers['X-User-Email'] = current.email;
+          for (const otherId of extraIds) {
+            if (bodyPatch) {
+              const putRes = await fetch(`${apiBaseUrl}/assets/${otherId}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(bodyPatch),
+              });
+              if (!putRes.ok) continue;
+            }
+            const postRes = await fetch(`${apiBaseUrl}/assets/${otherId}/actions`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(actionBody),
+            });
+            if (!postRes.ok) {
+              console.warn('ActionsForm bulk action failed for', otherId);
+            }
           }
         }
       }
@@ -492,7 +534,7 @@ export default function ActionsForm({
                   </View>
                 )}
 
-                {action === 'Repair' && (
+                {(action === 'Repair' || action === 'Maintenance') && (
                   <PickerRow
                     label="Priority"
                     value={priority}
@@ -561,83 +603,79 @@ export default function ActionsForm({
                   </LabeledInput>
                 )}
 
-                {/* Service / Repair attachment (labelled as photos/images in UI) */}
-                {Platform.OS === 'web' ? (
-                  <LabeledInput label={action === 'Repair' ? 'Upload Repair Photos (optional)' : 'Upload Service Images (optional)'}>
+                {/* Native: Camera or library for Repair/Maintenance images */}
+                {Platform.OS !== 'web' && (action === 'Repair' || action === 'Maintenance') && (
+                  <LabeledInput label={action === 'Repair' ? 'Upload Repair Images (optional)' : 'Upload Service Images (optional)'}>
                     <View style={{ gap: 8 }}>
-                      <input
-                        type="file"
-                        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
-                        onChange={(e) => {
-                          const file = (e.target.files && e.target.files[0]) || null;
-                          setServiceReport(file || null);
-                        }}
-                        style={{
-                          border: '1px solid #E5E7EB',
-                          borderRadius: 10,
-                          padding: 10,
-                          background: '#fff',
-                          color: '#111827',
-                        }}
-                      />
-                      {serviceReport && (
-                        <Text style={{ color: Colors.subtle, fontSize: 12 }}>
-                          Attached: {serviceReport.name || 'document'}
-                        </Text>
+                      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                        <TouchableOpacity
+                          style={[styles.btn, styles.btnGhost]}
+                          onPress={async () => {
+                            try {
+                              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                              if (status !== 'granted') {
+                                Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+                                return;
+                              }
+                              const { assets, canceled } = await ImagePicker.launchCameraAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                allowsEditing: true,
+                                quality: 0.7,
+                              });
+                              if (canceled || !assets?.length) return;
+                              const a = assets[0];
+                              const type = a.mimeType || 'image/jpeg';
+                              const name = a.fileName || `photo_${Date.now()}.jpg`;
+                              setServiceImages((prev) => [...prev, { uri: a.uri, name, type }]);
+                            } catch (e) {
+                              Alert.alert('Error', e.message || 'Failed to take photo');
+                            }
+                          }}
+                        >
+                          <Text style={{ fontWeight: '700', color: Colors.blue }}>Take Photo</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.btn, styles.btnGhost]}
+                          onPress={async () => {
+                            try {
+                              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                              if (status !== 'granted') {
+                                Alert.alert('Permission Required', 'Photo library permission is required to choose images.');
+                                return;
+                              }
+                              const { assets, canceled } = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                allowsMultipleSelection: true,
+                                quality: 0.7,
+                              });
+                              if (canceled || !assets?.length) return;
+                              const newOnes = assets.map((a) => ({
+                                uri: a.uri,
+                                name: a.fileName || `image_${Date.now()}.jpg`,
+                                type: a.mimeType || 'image/jpeg',
+                              }));
+                              setServiceImages((prev) => [...prev, ...newOnes]);
+                            } catch (e) {
+                              Alert.alert('Error', e.message || 'Failed to choose images');
+                            }
+                          }}
+                        >
+                          <Text style={{ fontWeight: '700', color: Colors.blue }}>Choose from Library</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {serviceImages.length > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Text style={{ color: Colors.subtle, fontSize: 12 }}>{serviceImages.length} image(s) selected</Text>
+                          <TouchableOpacity
+                            style={[styles.btn, { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#FEE2E2' }]}
+                            onPress={() => setServiceImages([])}
+                          >
+                            <Text style={{ fontWeight: '700', color: '#B91C1C', fontSize: 12 }}>Clear all</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
                   </LabeledInput>
-                ) : (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={{ color: Colors.subtle, fontSize: 12, marginBottom: 6 }}>
-                      {action === 'Repair' ? 'Upload Repair Photos (optional)' : 'Upload Service Images (optional)'}
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TouchableOpacity
-                        style={[styles.btn, styles.btnGhost, { flex: 1 }]}
-                        onPress={async () => {
-                          try {
-                            const res = await DocumentPicker.getDocumentAsync({
-                              type: [
-                                'application/pdf',
-                                'application/msword',
-                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                'image/*',
-                              ],
-                              multiple: false,
-                            });
-                            if (res.canceled) return;
-                            const asset = res.assets?.[0];
-                            if (!asset) return;
-                            setServiceReport(asset);
-                          } catch (e) {
-                            Alert.alert('Error', e.message || 'Failed to select document');
-                          }
-                        }}
-                      >
-                        <Text style={{ fontWeight: '700', color: Colors.blue }}>
-                          {serviceReport
-                            ? 'Replace File'
-                            : action === 'Repair'
-                              ? 'Upload Repair Photos'
-                              : 'Upload Service Images'}
-                        </Text>
-                      </TouchableOpacity>
-                      {serviceReport && (
-                        <TouchableOpacity
-                          style={[styles.btn, { flex: 1, backgroundColor: '#FEE2E2' }]}
-                          onPress={() => setServiceReport(null)}
-                        >
-                          <Text style={{ fontWeight: '700', color: '#B91C1C' }}>Remove</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    {serviceReport && (
-                      <Text style={{ marginTop: 4, fontSize: 12, color: Colors.subtle }}>
-                        Attached: {serviceReport.name || 'document'}
-                      </Text>
-                    )}
-                  </View>
                 )}
               </>
             )}
@@ -647,50 +685,15 @@ export default function ActionsForm({
                 {/* Mode toggle */}
                 <PickerRow
                   label="Entry Mode"
-                  value={{ user: 'User', project: 'Project', client: 'Client', manual: 'Enter Manually' }[hireMode]}
+                  value={{ project: 'Project', client: 'Client', manual: 'Enter Manually' }[hireMode]}
                   onChange={(v) => {
-                    const map = { 'User': 'user', 'Project': 'project', 'Client': 'client', 'Enter Manually': 'manual' };
-                    setHireMode(map[v] || 'user');
+                    const map = { 'Project': 'project', 'Client': 'client', 'Enter Manually': 'manual' };
+                    setHireMode(map[v] || 'project');
                   }}
-                  options={['User','Project','Client','Enter Manually']}
+                  options={['Project','Client','Enter Manually']}
                 />
 
-                {hireMode === 'user' ? (
-                  <>
-                    <LabeledInput label="Search User">
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          style={[styles.input, { paddingRight: 36 }]}
-                          placeholder="Type a name or email"
-                          placeholderTextColor={Colors.muted}
-                          value={selectedHireUser ? (selectedHireUser.name || selectedHireUser.useremail || selectedHireUser.id) : hireSearch}
-                          onChangeText={(v) => { setSelectedHireUser(null); setHireSearch(v); }}
-                        />
-                        {(selectedHireUser || hireSearch) ? (
-                          <TouchableOpacity style={styles.clearBtn} onPress={() => { setSelectedHireUser(null); setHireSearch(''); }}>
-                            <MaterialIcons name="close" size={18} color={Colors.subtle} />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    </LabeledInput>
-                    {hireSearch?.trim()?.length > 0 && !selectedHireUser && (
-                      <View style={{ maxHeight: 160, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, overflow: 'hidden' }}>
-                        <ScrollView>
-                          {(users || [])
-                            .filter(u => (u.name?.toLowerCase().includes(hireSearch.toLowerCase()) || u.useremail?.toLowerCase().includes(hireSearch.toLowerCase())))
-                            .slice(0, 20)
-                            .map(u => (
-                              <TouchableOpacity key={u.id} onPress={() => { setSelectedHireUser(u); setHireSearch(''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
-                                <Text style={{ color: Colors.text, fontWeight: '700' }}>{u.name || u.useremail || u.id}</Text>
-                                {!!u.useremail && <Text style={{ color: Colors.subtle, fontSize: 12 }}>{u.useremail}</Text>}
-                              </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
-                    {/* Selected user's name/email now shown directly in the input above */}
-                  </>
-                ) : hireMode === 'project' ? (
+                {hireMode === 'project' ? (
                   <>
                     <LabeledInput label="Project *">
                       <View style={styles.inputWrap}>

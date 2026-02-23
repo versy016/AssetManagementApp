@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   useWindowDimensions,
   Switch,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather, MaterialIcons, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,11 +29,12 @@ import Chip from '../../components/ui/Chip';
 import InlineButton from '../../components/ui/InlineButton';
 import { Colors as COLORS } from '../../constants/uiTheme';
 import { Colors } from '../../constants/uiTheme';
+import { TourTarget } from '../../components/TourGuide';
 
 const RECENT_KEY = 'search_recents_v2';
 const ASSET_TYPE_OPTIONS = [
   'iPad', 'Vehicle', 'UG Locating', 'Two drill set', 'Total Station',
-  'Torch', 'Target', 'Stamps', 'Staff', 'Sonar', 'Scanner', 'Satellite Phone',
+  'Torch', 'Target', 'Stamps', 'Sonar', 'Scanner', 'Satellite Phone',
   'Radio', 'Power Tool', 'Plummet', 'Office Equipment', 'Mounting Bracket',
   'Mobile phone', 'Metal detector', 'Magnetic Mount', 'Laptop', 'Camera',
   'Survey Gear', 'Generator', 'Computer', 'Server Rack', 'Tablet',
@@ -100,7 +102,7 @@ export default function SearchScreen(props = {}) {
 
   // Filters
   const [filters, setFilters] = useState({
-    type: null,
+    types: [],
     status: null,
     location: null,
     assignedTo: null,
@@ -120,6 +122,7 @@ export default function SearchScreen(props = {}) {
   const [typeFieldError, setTypeFieldError] = useState(null);
   const [activeTypeId, setActiveTypeId] = useState(null);
   const [showAllTypes, setShowAllTypes] = useState(false);
+  const [typeSearch, setTypeSearch] = useState('');
 
   // User
   const [me, setMe] = useState({ uid: null, email: null });
@@ -178,7 +181,8 @@ export default function SearchScreen(props = {}) {
       ].some(v => String(v || '').toLowerCase().includes(q));
 
       // Filters
-      const typeOk = !filters.type || (it.asset_type === filters.type || it.type === filters.type || it.asset_types?.name === filters.type);
+      const types = filters.types;
+      const typeOk = !types || types.length === 0 || types.some(t => it.asset_type === t || it.type === t || it.asset_types?.name === t);
       const statusOk = !filters.status || (it.status === filters.status);
       const locOk = !filters.location || String(it.location || '').toLowerCase().includes(filters.location.toLowerCase());
 
@@ -334,23 +338,24 @@ export default function SearchScreen(props = {}) {
   }, [debouncedQuery, filters]);
 
   const selectedTypeInfo = useMemo(() => {
-    if (!filters.type) return null;
-    const target = String(filters.type).toLowerCase();
+    const types = filters.types;
+    if (!types || types.length === 0) return null;
+    const target = String(types[0]).toLowerCase();
     const pool = rawItems.length ? rawItems : items;
     const match = pool.find((it) => {
       const typeName = (it?.asset_type || it?.type || it?.asset_types?.name || '').toLowerCase();
       return typeName === target;
     });
-    if (!match) return { name: filters.type, id: null };
+    if (!match) return { name: types[0], id: null };
     return {
-      name: filters.type,
+      name: types[0],
       id: match?.type_id || match?.asset_types?.id || null,
     };
-  }, [filters.type, rawItems, items]);
+  }, [filters.types, rawItems, items]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!filters.type) {
+    if (!filters.types || filters.types.length === 0) {
       setTypeFieldDefs([]);
       setActiveTypeId(null);
       setTypeFieldLoading(false);
@@ -387,14 +392,14 @@ export default function SearchScreen(props = {}) {
       }
     })();
     return () => { cancelled = true; };
-  }, [filters.type, selectedTypeInfo?.id, activeTypeId, typeFieldDefs.length]);
+  }, [filters.types, selectedTypeInfo?.id, activeTypeId, typeFieldDefs.length]);
 
   const saveRecent = useCallback(async () => {
     const labelParts = [];
     if (debouncedQuery) labelParts.push(`“${debouncedQuery}”`);
     if (filters.onlyMine) labelParts.push('My assets');
     if (filters.status) labelParts.push(`Status:${filters.status}`);
-    if (filters.type) labelParts.push(`Type:${filters.type}`);
+    if (filters.types && filters.types.length > 0) labelParts.push(`Type:${filters.types.join(', ')}`);
     if (filters.dueSoon) labelParts.push('Due soon');
     if (filters.awaitingQROnly) labelParts.push('QR awaiting');
     const label = labelParts.join(' · ');
@@ -453,11 +458,17 @@ export default function SearchScreen(props = {}) {
   }, [loading, filters.onlyMine, me.uid, me.email, buildQueryParams, clientFilterAndSort, saveRecent]);
 
   const quickToggle = (key) => setFilters(f => ({ ...f, [key]: !f[key] }));
+  const closeFilterModal = () => {
+    setFilterModalOpen(false);
+    setTypeSearch('');
+  };
+
   const clearFilters = () => {
     setQuery('');
     setDebouncedQuery('');
+    setTypeSearch('');
     setFilters({
-      type: null,
+      types: [],
       status: null,
       location: null,
       assignedTo: null,
@@ -472,7 +483,7 @@ export default function SearchScreen(props = {}) {
   // active filter count for badge
   const activeCount = [
     !!debouncedQuery,
-    !!filters.type,
+    !!(filters.types && filters.types.length > 0),
     !!filters.status,
     !!filters.location,
     !!filters.assignedTo,
@@ -505,16 +516,18 @@ export default function SearchScreen(props = {}) {
   const actionsNode = (
     <>
       {/* Filter Button */}
-      <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterModalOpen(true)}>
-        <View style={{ position: 'relative' }}>
-          <Feather name="sliders" size={18} color={COLORS.primary} />
-          {activeCount > 0 && (
-            <View style={styles.countDot}>
-              <Text style={styles.countDotText}>{Math.min(activeCount, 9)}</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+      <TourTarget id="web-search-filter-btn">
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterModalOpen(true)}>
+          <View style={{ position: 'relative' }}>
+            <Feather name="sliders" size={18} color={COLORS.primary} />
+            {activeCount > 0 && (
+              <View style={styles.countDot}>
+                <Text style={styles.countDotText}>{Math.min(activeCount, 9)}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </TourTarget>
 
       <TouchableOpacity style={styles.iconBtn} onPress={() => { setPage(1); fetchAll(); }}>
         <Feather name="refresh-ccw" size={18} color={COLORS.primary} />
@@ -548,7 +561,7 @@ export default function SearchScreen(props = {}) {
   ]), []);
 
   const dynamicColumns = useMemo(() => {
-    if (!filters.type || !Array.isArray(typeFieldDefs) || !typeFieldDefs.length) return [];
+    if (!filters.types?.length || !Array.isArray(typeFieldDefs) || !typeFieldDefs.length) return [];
     return typeFieldDefs.map((def) => ({
       key: `dyn_${def.id || def.slug}`,
       label: def.name || formatFieldLabel(def.slug),
@@ -557,7 +570,7 @@ export default function SearchScreen(props = {}) {
       isDynamic: true,
       field: def,
     }));
-  }, [filters.type, typeFieldDefs]);
+  }, [filters.types, typeFieldDefs]);
 
   const columns = useMemo(() => [...baseColumns, ...dynamicColumns], [baseColumns, dynamicColumns]);
 
@@ -589,6 +602,23 @@ export default function SearchScreen(props = {}) {
     if (showAllTypes) return ASSET_TYPE_OPTIONS;
     return ASSET_TYPE_OPTIONS.slice(0, 8);
   }, [showAllTypes]);
+
+  const assetTypesForFilter = useMemo(() => {
+    const fromData = new Set();
+    (rawItems || []).forEach((it) => {
+      const t = it?.asset_type ?? it?.type ?? it?.asset_types?.name;
+      if (t && String(t).trim()) fromData.add(String(t).trim());
+    });
+    const combined = Array.from(fromData).length ? Array.from(fromData).sort() : ASSET_TYPE_OPTIONS;
+    return combined;
+  }, [rawItems]);
+
+  const filteredAssetTypes = useMemo(() => {
+    const q = (typeSearch || '').trim().toLowerCase();
+    if (!q) return [];
+    const selected = new Set(filters.types || []);
+    return assetTypesForFilter.filter((t) => String(t).toLowerCase().includes(q) && !selected.has(t));
+  }, [assetTypesForFilter, typeSearch, filters.types]);
 
   const filterScrollMaxHeight = useMemo(() => {
     const h = windowHeight || 800;
@@ -701,82 +731,80 @@ export default function SearchScreen(props = {}) {
         <ScreenHeader
           title="Search"
           backLabel="Dashboard"
-          onBack={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  router.replace('/(tabs)/dashboard');
-                }
-              }}
+          onBack={() => router.replace('/(tabs)/dashboard')}
         />
       )}
 
       {/* Search input */}
       <View style={styles.toolbarSurface}>
-        <SearchInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search by name, ID, serial, model, notes…"
-          style={[hideHeader && styles.searchRowCompact]}
-          inputStyle={{ fontSize: 16 }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          right={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {actionsNode}
-            </View>
-          }
-        />
+        <TourTarget id="web-search-input">
+          <SearchInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search by name, ID, serial, model, notes…"
+            style={[hideHeader && styles.searchRowCompact]}
+            inputStyle={{ fontSize: 16 }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            right={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {actionsNode}
+              </View>
+            }
+          />
+        </TourTarget>
         {/* Quick filters */}
         <View style={styles.quickRow}>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
             <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
-            <Chip label="In Service" icon="check-circle" active={filters.status === 'In Service'} onPress={() => setFilters(f => ({ ...f, status: f.status === 'In Service' ? null : 'In Service' }))} />
-            <Chip label="QR awaiting" icon="alert-circle" active={filters.awaitingQROnly} onPress={() => setFilters(f => ({ ...f, awaitingQROnly: !f.awaitingQROnly }))} />
           </View>
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {/* Sort Button */}
-            <TouchableOpacity style={[styles.iconBtn, styles.actionBtn, { marginRight: 0, height: 32, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' }]} onPress={() => setSortModalOpen(true)}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <MaterialIcons name="sort" size={18} color={COLORS.primary} />
-                <Text style={styles.actionBtnText}>
-                  {`${currentSortLabel} · ${(sort.dir || 'desc').toUpperCase()}`}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            <TourTarget id="web-search-sort-btn">
+              <TouchableOpacity style={[styles.iconBtn, styles.actionBtn, { marginRight: 0, height: 32, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' }]} onPress={() => setSortModalOpen(true)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MaterialIcons name="sort" size={18} color={COLORS.primary} />
+                  <Text style={styles.actionBtnText}>
+                    {`${currentSortLabel} · ${(sort.dir || 'desc').toUpperCase()}`}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </TourTarget>
 
             {!isCompact && (
-              <View style={styles.viewToggleGroup}>
-                <TouchableOpacity
-                  style={[styles.viewToggleBtn, viewMode === 'grid' && styles.viewToggleBtnActive]}
-                  onPress={() => setViewMode('grid')}
-                >
-                  <Feather name="grid" size={18} color={viewMode === 'grid' ? COLORS.primary : '#64748B'} />
-                  <Text style={[styles.viewToggleText, viewMode === 'grid' && styles.viewToggleTextActive]}>Grid</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
-                  onPress={() => setViewMode('list')}
-                >
-                  <Feather name="list" size={18} color={viewMode === 'list' ? COLORS.primary : '#64748B'} />
-                  <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>Table</Text>
-                </TouchableOpacity>
-              </View>
+              <TourTarget id="web-search-view-mode">
+                <View style={styles.viewToggleGroup}>
+                  <TouchableOpacity
+                    style={[styles.viewToggleBtn, viewMode === 'grid' && styles.viewToggleBtnActive]}
+                    onPress={() => setViewMode('grid')}
+                  >
+                    <Feather name="grid" size={18} color={viewMode === 'grid' ? COLORS.primary : '#64748B'} />
+                    <Text style={[styles.viewToggleText, viewMode === 'grid' && styles.viewToggleTextActive]}>Grid</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+                    onPress={() => setViewMode('list')}
+                  >
+                    <Feather name="list" size={18} color={viewMode === 'list' ? COLORS.primary : '#64748B'} />
+                    <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>Table</Text>
+                  </TouchableOpacity>
+                </View>
+              </TourTarget>
             )}
           </View>
         </View>
       </View>
 
       {/* Content Area */}
-    {filters.type && typeFieldLoading && (
+    {filters.types?.length > 0 && typeFieldLoading && (
       <View style={[styles.inlineAlert, { marginHorizontal: 12 }]}>
         <ActivityIndicator size="small" color={COLORS.primary} />
-        <Text style={[styles.inlineAlertText, { marginLeft: 8 }]}>Loading {filters.type} fields…</Text>
+        <Text style={[styles.inlineAlertText, { marginLeft: 8 }]}>Loading {filters.types?.[0]} fields…</Text>
       </View>
     )}
-    {filters.type && typeFieldError && (
+    {filters.types?.length > 0 && typeFieldError && (
       <View style={[styles.inlineAlert, { marginHorizontal: 12, backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
         <MaterialIcons name="error-outline" size={16} color="#B91C1C" />
         <Text style={[styles.inlineAlertText, { marginLeft: 6, color: '#B91C1C' }]}>{typeFieldError}</Text>
@@ -814,8 +842,10 @@ export default function SearchScreen(props = {}) {
             {paginatedItems.map((item) => {
               const statusColor = statusToColor(item?.status);
               const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
-              const loc = item?.location ?? item?.fields?.location;
+              const desc = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
               const model = item?.model ?? item?.fields?.model;
+              const serial = item?.serial_number ?? item?.fields?.serial_number;
+              const assetType = item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type';
               const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
 
               return (
@@ -835,9 +865,9 @@ export default function SearchScreen(props = {}) {
                         </View>
                       )}
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.name || item?.asset_name || 'Unnamed Asset'}</Text>
+                        <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.id} · {assetType}</Text>
                         <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
-                          {item?.id} • {item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type'}
+                          SN: {serial || 'N/A'}
                         </Text>
                       </View>
                     </View>
@@ -861,11 +891,11 @@ export default function SearchScreen(props = {}) {
                         <Text style={styles.mobileDetailValue} numberOfLines={1}>{assignedTo}</Text>
                       </View>
                     ) : null}
-                    {loc ? (
+                    {desc ? (
                       <View style={styles.mobileDetailRow}>
-                        <Feather name="map-pin" size={14} color="#64748B" />
-                        <Text style={styles.mobileDetailLabel}>Location:</Text>
-                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{loc}</Text>
+                        <Feather name="file-text" size={14} color="#64748B" />
+                        <Text style={styles.mobileDetailLabel}>Description:</Text>
+                        <Text style={styles.mobileDetailValue} numberOfLines={1}>{desc}</Text>
                       </View>
                     ) : null}
                     {nextService ? (
@@ -877,7 +907,7 @@ export default function SearchScreen(props = {}) {
                         </Text>
                       </View>
                     ) : null}
-                      {filters.type && typeFieldDefs.map((def) => {
+                      {filters.types?.length > 0 && typeFieldDefs.map((def) => {
                         const val = getDynamicFieldValue(item, def);
                         if (val === null || val === undefined || val === '') return null;
                         return (
@@ -904,17 +934,19 @@ export default function SearchScreen(props = {}) {
             {/* Mobile Pagination  */}
 
             {items.length > 0 && (
-              <View style={styles.paginationRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                  <TouchableOpacity disabled={page <= 1} onPress={() => setPage(p => p - 1)} style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}>
-                    <MaterialIcons name="chevron-left" size={24} color={page <= 1 ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
-                  <Text style={styles.pageText}>{page} of {totalPages}</Text>
-                  <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage(p => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}>
-                    <MaterialIcons name="chevron-right" size={24} color={page >= totalPages ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
+              <TourTarget id="web-search-pagination">
+                <View style={styles.paginationRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
+                    <TouchableOpacity disabled={page <= 1} onPress={() => setPage(p => p - 1)} style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}>
+                      <MaterialIcons name="chevron-left" size={24} color={page <= 1 ? '#CBD5E1' : '#0F172A'} />
+                    </TouchableOpacity>
+                    <Text style={styles.pageText}>{page} of {totalPages}</Text>
+                    <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage(p => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}>
+                      <MaterialIcons name="chevron-right" size={24} color={page >= totalPages ? '#CBD5E1' : '#0F172A'} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
+              </TourTarget>
 
             )}
           </ScrollView>
@@ -1054,7 +1086,8 @@ export default function SearchScreen(props = {}) {
 
             {/* Desktop Pagination Controls */}
             {items.length > 0 && (
-              <View style={styles.paginationRow}>
+              <TourTarget id="web-search-pagination">
+                <View style={styles.paginationRow}>
                 <View style={styles.paginationLeft}>
                   <Text style={styles.pageText}>Rows per page:</Text>
                   <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -1100,6 +1133,7 @@ export default function SearchScreen(props = {}) {
                     </TouchableOpacity>
                 </View>
               </View>
+              </TourTarget>
             )}
             </View>
           </View>
@@ -1107,9 +1141,9 @@ export default function SearchScreen(props = {}) {
       )}
 
       {/* Advanced Filter Modal */}
-      <Modal visible={filterModalOpen} transparent animationType="fade" onRequestClose={() => setFilterModalOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={() => setFilterModalOpen(false)} />
+      <Modal visible={filterModalOpen} transparent animationType="fade" onRequestClose={closeFilterModal}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={closeFilterModal} />
           <View style={styles.filterSheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.modalTitle}>Filters</Text>
@@ -1119,27 +1153,40 @@ export default function SearchScreen(props = {}) {
                     <Text style={styles.clearAllText}>Clear all</Text>
                   </TouchableOpacity>
                 )}
-              <TouchableOpacity onPress={() => setFilterModalOpen(false)} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
+              <TouchableOpacity onPress={closeFilterModal} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
                 <Feather name="x" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
             </View>
-            <ScrollView style={{ maxHeight: filterScrollMaxHeight }}>
+            <ScrollView style={{ maxHeight: filterScrollMaxHeight }} keyboardShouldPersistTaps="handled">
               <View style={{ gap: 16 }}>
                 {/* Asset Type */}
                 <View>
                   <Text style={styles.groupTitle}>Asset Type</Text>
-                  <View style={[styles.filterMenuRow, styles.chipsRow, styles.typeChipWrap]}>
-                    <Chip label="Any type" active={!filters.type} onPress={() => setFilters(f => ({ ...f, type: null }))} />
-                    {visibleAssetTypes.map(t => (
-                      <Chip key={t} label={t} active={filters.type === t} onPress={() => setFilters(f => ({ ...f, type: t }))} />
-                    ))}
-                  </View>
-                  {ASSET_TYPE_OPTIONS.length > 8 && (
-                    <TouchableOpacity onPress={() => setShowAllTypes(v => !v)} style={styles.showMoreBtn}>
-                      <Text style={styles.showMoreText}>{showAllTypes ? 'Show less' : 'Show more'}</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    placeholder="Search asset types…"
+                    placeholderTextColor="#94A3B8"
+                    value={typeSearch}
+                    onChangeText={setTypeSearch}
+                  />
+                  <ScrollView style={styles.filterTypeList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    <TouchableOpacity
+                      style={[styles.filterTypeItem, !filters.type && styles.filterTypeItemActive]}
+                      onPress={() => { setFilters(f => ({ ...f, type: null })); setTypeSearch(''); }}
+                    >
+                      <Text style={[styles.filterTypeItemText, !filters.type && styles.filterTypeItemTextActive]}>Any type</Text>
                     </TouchableOpacity>
-                  )}
+                    {filteredAssetTypes.map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.filterTypeItem, filters.type === t && styles.filterTypeItemActive]}
+                        onPress={() => { setFilters(f => ({ ...f, type: f.type === t ? null : t })); setTypeSearch(''); }}
+                      >
+                        <Text style={[styles.filterTypeItemText, filters.type === t && styles.filterTypeItemTextActive]} numberOfLines={1}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
 
                 {/* Status */}
@@ -1202,17 +1249,17 @@ export default function SearchScreen(props = {}) {
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
               <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
-                setFilters({ type: null, status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
-                setFilterModalOpen(false);
+                setFilters({ types: [], status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
+                closeFilterModal();
               }}>
                 <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, { flex: 1 }]} onPress={() => setFilterModalOpen(false)}>
+              <TouchableOpacity style={[styles.btn, { flex: 1 }]} onPress={closeFilterModal}>
                 <Text style={styles.btnText}>Apply</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Sort Modal */}
@@ -1430,6 +1477,16 @@ const styles = StyleSheet.create({
   filterInputGroup: { width: 140 },
   filterLabel: { fontSize: 12, fontWeight: '600', color: '#64748B', marginBottom: 4 },
   filterInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0F172A' },
+  filterTypeList: { maxHeight: 180, marginBottom: 8 },
+  filterTypeItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  filterTypeItemActive: { backgroundColor: '#EFF6FF' },
+  filterTypeItemText: { fontSize: 14, color: '#0F172A', fontWeight: '500' },
+  filterTypeItemTextActive: { color: COLORS.primary, fontWeight: '700' },
 
   // View Toggle
   viewToggleGroup: { flexDirection: 'row', backgroundColor: '#EFF6FF', borderRadius: 8, padding: 2 },

@@ -57,12 +57,28 @@ export default function NewAsset() {
     const y = fieldYs.current[slug];
     const targetY = typeof y === 'number' ? Math.max(y - 80, 0) : 0;
 
-    // KeyboardAwareScrollView API
-    if (scrollRef.current?.scrollToPosition) {
-      scrollRef.current.scrollToPosition(0, targetY, true);
-    } else if (scrollRef.current?.scrollTo) {
-      // RN ScrollView fallback
-      scrollRef.current.scrollTo({ x: 0, y: targetY, animated: true });
+    if (Platform.OS === 'web') {
+      // Web: Use window.scrollTo for better compatibility
+      if (typeof window !== 'undefined') {
+        const currentScrollY = window.scrollY || 0;
+        const targetAbsoluteY = targetY + currentScrollY;
+        const desiredScrollY = targetAbsoluteY - 150;
+        window.scrollTo({ top: Math.max(0, desiredScrollY), behavior: 'smooth' });
+      }
+      // Also try ScrollView if available
+      if (scrollRef.current?.scrollToPosition) {
+        scrollRef.current.scrollToPosition(0, targetY, true);
+      } else if (scrollRef.current?.scrollTo) {
+        scrollRef.current.scrollTo({ x: 0, y: targetY, animated: true });
+      }
+    } else {
+      // Native: KeyboardAwareScrollView API
+      if (scrollRef.current?.scrollToPosition) {
+        scrollRef.current.scrollToPosition(0, targetY, true);
+      } else if (scrollRef.current?.scrollTo) {
+        // RN ScrollView fallback
+        scrollRef.current.scrollTo({ x: 0, y: targetY, animated: true });
+      }
     }
   };
 
@@ -76,8 +92,23 @@ export default function NewAsset() {
       'asset-save': 'image', // Scroll to near the bottom where save button is
     };
     const slug = map[currentStep.targetId];
-    if (slug && fieldYs.current[slug] !== undefined) {
-      scrollToSlug(slug);
+    if (slug) {
+      if (Platform.OS === 'web') {
+        // On web, try to scroll even if fieldYs is not set yet
+        // Use a small delay to allow layout to complete
+        setTimeout(() => {
+          if (fieldYs.current[slug] !== undefined) {
+            scrollToSlug(slug);
+          } else if (slug === 'image') {
+            // Fallback: scroll to bottom for save button
+            if (typeof window !== 'undefined') {
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+            }
+          }
+        }, 200);
+      } else if (fieldYs.current[slug] !== undefined) {
+        scrollToSlug(slug);
+      }
     }
   }, [currentStep]);
 
@@ -843,10 +874,11 @@ export default function NewAsset() {
     const slug = f.slug || normSlug(f.name);
     const typeCode = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
     const isReq = !!f.is_required;
+    const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
 
     const Label = (
       <Text style={styles.label}>
-        {(f.label || f.name) || slug}{isReq ? ' *' : ''}
+        {displayLabel}{isReq ? ' *' : ''}
       </Text>
     );
 

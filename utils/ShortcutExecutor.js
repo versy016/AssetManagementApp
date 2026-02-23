@@ -65,16 +65,16 @@ export const processScannedAsset = async (
                 await handleQuickTransferOut(assetId, assetData, user, onSuccess, onError);
                 break;
 
-            case SHORTCUT_TYPES.QUICK_TRANSFER.id:
-                await handleQuickTransfer(assetId, assetData, router, user, onSuccess, onError, returnTarget);
-                break;
-
             case SHORTCUT_TYPES.QUICK_SERVICE.id:
                 await handleQuickService(assetId, assetData, router, user, onSuccess, onError, returnTarget);
                 break;
 
             case SHORTCUT_TYPES.QUICK_REPAIR.id:
                 await handleQuickRepair(assetId, assetData, router, user, onSuccess, onError, returnTarget);
+                break;
+
+            case SHORTCUT_TYPES.QUICK_NOTE.id:
+                await handleQuickNote(assetId, assetData, router, user, onSuccess, onError, returnTarget);
                 break;
 
             default:
@@ -133,7 +133,7 @@ const handleQuickTransferIn = async (assetId, assetData, user, onSuccess, onErro
         if (assetData?.assigned_to_id) {
             const currentAssignee = String(assetData.assigned_to_id);
             if (currentAssignee === adminUser.id) {
-                throw new Error('Asset already assigned to admin');
+                throw new Error('Asset already assigned to office');
             }
         }
 
@@ -173,9 +173,10 @@ const handleQuickTransferIn = async (assetId, assetData, user, onSuccess, onErro
             }),
         });
 
-        const assetName = assetData?.id || assetId;
-        const adminLabel = adminUser.useremail || adminUser.name || 'admin';
-        onSuccess?.(`✓ ${assetName} transferred to ${adminLabel}`);
+        const sn = assetData?.serial_number || assetData?.id || assetId;
+        const model = assetData?.model || 'N/A';
+        const adminLabel = adminUser.name || adminUser.useremail || 'admin';
+        onSuccess?.(`✓ SN: ${sn}, Model: ${model} transferred to ${adminLabel}`);
     } catch (error) {
         onError?.(error.message || 'Failed to transfer in');
     }
@@ -246,7 +247,9 @@ const handleQuickTransfer = async (assetId, assetData, router, user, onSuccess, 
             returnTo: returnTarget,
         },
     });
-    onSuccess?.('Select a user to transfer this asset');
+    const sn = assetData?.serial_number || assetData?.id || assetId;
+    const model = assetData?.model || 'N/A';
+    onSuccess?.(`Select a user to transfer. SN: ${sn}, Model: ${model}`);
 };
 
 /**
@@ -277,6 +280,20 @@ const handleQuickRepair = async (assetId, assetData, router, user, onSuccess, on
         },
     });
     onSuccess?.('Log the repair details');
+};
+
+/**
+ * Quick Note - Add a note to an asset
+ */
+const handleQuickNote = async (assetId, assetData, router, user, onSuccess, onError, returnTarget = '/(tabs)/dashboard') => {
+    router.push({
+        pathname: '/quick-note/[assetId]',
+        params: {
+            assetId: String(assetId),
+            returnTo: returnTarget,
+        },
+    });
+    onSuccess?.('Add your note');
 };
 
 export default {

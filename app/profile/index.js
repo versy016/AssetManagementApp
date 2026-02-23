@@ -1,5 +1,5 @@
 // app/profile/index.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform,
 } from 'react-native';
@@ -11,9 +11,11 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { MaterialIcons } from '@expo/vector-icons';
 import PageHeader from '../../components/ui/PageHeader';
 import { Colors } from '../../constants/uiTheme';
+import { TourContext, resetTour } from '../../components/TourGuide';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { startTour } = useContext(TourContext);
 
   const [fbUser, setFbUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -181,6 +183,20 @@ export default function ProfileScreen() {
           <Text style={styles.buttonGhostText}>Admin Controls</Text>
         </TouchableOpacity>
       )}
+
+      <TouchableOpacity
+        onPress={async () => {
+          await resetTour();
+          // Navigate to dashboard first, then start tour
+          router.replace('/(tabs)/dashboard');
+          setTimeout(() => {
+            startTour();
+          }, 1000);
+        }}
+        style={[styles.buttonGhost, { marginTop: 24 }]}
+      >
+        <Text style={styles.buttonGhostText}>Restart Tour</Text>
+      </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

@@ -56,6 +56,15 @@ export const SHORTCUT_TYPES = {
         color: '#5B21B6',
         bgColor: '#EDE9FE',
     },
+    QUICK_NOTE: {
+        id: 'quick_note',
+        label: 'Quick Note',
+        icon: 'note-add',
+        description: 'Scan asset to add a quick note',
+        requiresAdmin: false,
+        color: '#0D9488',
+        bgColor: '#CCFBF1',
+    },
     GENERATE_QR_SHEET: {
         id: 'generate_qr_sheet',
         label: 'Generate QR Sheet',

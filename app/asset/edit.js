@@ -271,7 +271,8 @@ export default function EditAsset() {
     const slug = f.slug || normSlug(f.name);
     const typeCode = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
     const isReq = !!f.is_required;
-    const Label = <Text style={styles.label}>{(f.label || f.name) || slug}{isReq ? ' *' : ''}</Text>;
+    const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
+    const Label = <Text style={styles.label}>{displayLabel}{isReq ? ' *' : ''}</Text>;
     const items = (f.options || []).map(o => ({ label: String(o.label ?? o), value: (o.value ?? o) }));
 
     // helper: parse validation rules/options

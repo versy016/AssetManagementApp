@@ -29,7 +29,8 @@ export default function QRScannerScreen() {
   const isQuickTransferShortcut = shortcutType === SHORTCUT_TYPES.QUICK_TRANSFER.id;
   const isQuickServiceShortcut = shortcutType === SHORTCUT_TYPES.QUICK_SERVICE.id;
   const isQuickRepairShortcut = shortcutType === SHORTCUT_TYPES.QUICK_REPAIR.id;
-  const shouldHoldOnShortcut = isQuickViewShortcut || isQuickTransferShortcut || isQuickServiceShortcut || isQuickRepairShortcut;
+  const isQuickNoteShortcut = shortcutType === SHORTCUT_TYPES.QUICK_NOTE.id;
+  const shouldHoldOnShortcut = isQuickViewShortcut || isQuickTransferShortcut || isQuickServiceShortcut || isQuickRepairShortcut || isQuickNoteShortcut;
   // Extra params to round-trip back to caller (e.g., fromAssetId, nested returnTo)
   const rawReturnParams = params?.returnParams ? String(params.returnParams) : null;
   let extraParams = {};
@@ -115,7 +116,7 @@ export default function QRScannerScreen() {
       if (scanMode === 'multi' && scannedItems.some(id => id.toUpperCase() === assetId.toUpperCase())) {
         // Soft-handle duplicate in multi-scan: show toast, no native alert
         setToast({ visible: true, text: 'This asset has already been scanned', kind: 'warn' });
-        setTimeout(() => setToast({ visible: false, text: '', kind: 'warn' }), 1800);
+        setTimeout(() => setToast({ visible: false, text: '', kind: 'warn' }), 2500);
         return;
       }
 
@@ -294,10 +295,12 @@ export default function QRScannerScreen() {
             if (shortcutType === SHORTCUT_TYPES.QUICK_TRANSFER.id) {
               const transferReturnTarget = returnTo ? String(returnTo) : '/(tabs)/dashboard';
               router.push({ pathname: '/transfer/[assetId]', params: { assetId, returnTo: transferReturnTarget } });
-              setToast({ visible: true, text: 'Select a user to transfer this asset', kind: 'success' });
+              const sn = assetData?.serial_number || assetData?.id || assetId;
+              const model = assetData?.model || 'N/A';
+              setToast({ visible: true, text: `Select a user to transfer. SN: ${sn}, Model: ${model}`, kind: 'success' });
               setIsProcessing(false);
               setIsScanning(false);
-              setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 1500);
+              setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 2500);
             } else {
             // Process via ShortcutExecutor
             await processScannedAsset(
@@ -312,7 +315,7 @@ export default function QRScannerScreen() {
                   if (shouldHoldOnShortcut) {
                     setIsProcessing(false);
                     setIsScanning(false);
-                    setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 1500);
+                    setTimeout(() => setToast({ visible: false, text: '', kind: 'success' }), 2500);
                     return;
                   }
                 setTimeout(() => {
@@ -323,12 +326,12 @@ export default function QRScannerScreen() {
                   } else {
                     router.replace('/(tabs)/dashboard');
                   }
-                }, 1500);
+                }, 2500);
               },
               (error) => {
                 // Error callback
                 setToast({ visible: true, text: error, kind: 'error' });
-                setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 2000);
+                setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 2500);
                 setIsProcessing(false);
                 },
                 returnTo || '/(tabs)/dashboard'
@@ -348,13 +351,13 @@ export default function QRScannerScreen() {
       // Prefer non-blocking toast for expected errors
       if (/already been scanned/i.test(msg)) {
         setToast({ visible: true, text: 'This asset has already been scanned', kind: 'warn' });
-        setTimeout(() => setToast({ visible: false, text: '', kind: 'warn' }), 1800);
+        setTimeout(() => setToast({ visible: false, text: '', kind: 'warn' }), 2500);
         setIsProcessing(false);
         return;
       }
       if (/invalid/i.test(msg)) {
         setToast({ visible: true, text: 'Invalid QR/ID. Try again.', kind: 'error' });
-        setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 1800);
+        setTimeout(() => setToast({ visible: false, text: '', kind: 'error' }), 2500);
         setIsProcessing(false);
         return;
       }
@@ -521,8 +524,8 @@ export default function QRScannerScreen() {
       {toast.visible && (
         <View style={[
           styles.toast,
+          styles.toastCenter,
           toast.kind === 'warn' ? styles.toastWarn : toast.kind === 'success' ? styles.toastSuccess : styles.toastError,
-          { bottom: Math.max(12, (insets?.bottom || 0) + 12) }
         ]}>
           <MaterialIcons
             name={toast.kind === 'warn' ? 'warning-amber' : toast.kind === 'success' ? 'check-circle' : 'error-outline'}
@@ -613,7 +616,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 18,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -621,6 +623,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
+  },
+  toastCenter: {
+    top: '50%',
+    transform: [{ translateY: -30 }],
   },
   toastWarn: { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
   toastError: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
