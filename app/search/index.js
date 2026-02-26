@@ -106,12 +106,17 @@ export default function SearchScreen(props = {}) {
     status: null,
     location: null,
     assignedTo: null,
+    assignedToUserId: null,
     onlyMine: false,
     dueSoon: false,
     includeQRReserved: false,
     onlyUnassigned: false,
     awaitingQROnly: false,
   });
+
+  // Users from DB (for Assigned To filter)
+  const [filterUsers, setFilterUsers] = useState([]);
+  const [userSearch, setUserSearch] = useState('');
 
   // Sort
   const [sort, setSort] = useState({ field: 'updated_at', dir: 'desc' });
@@ -132,6 +137,24 @@ export default function SearchScreen(props = {}) {
   useEffect(() => {
     const u = auth.currentUser;
     if (u) setMe({ uid: u.uid, email: u.email });
+  }, []);
+
+  // Load users from DB for filter dropdown
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/users`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!ignore && Array.isArray(data)) {
+          setFilterUsers(data.map((u) => ({ id: u.id, name: u.name || '', useremail: u.useremail || '' })));
+        }
+      } catch {
+        if (!ignore) setFilterUsers([]);
+      }
+    })();
+    return () => { ignore = true; };
   }, []);
 
   // Debounce Query
@@ -173,12 +196,23 @@ export default function SearchScreen(props = {}) {
   const clientFilterAndSort = useCallback((raw) => {
     const source = Array.isArray(raw) ? [...raw] : [];
     let filtered = source.filter(it => {
-      // Keyword
-      const q = debouncedQuery.toLowerCase();
-      const keywordOk = !q || [
-        it.name, it.asset_name, it.id, it.model, it.serial_number,
-        it.asset_type, it.type, it.location, it.notes
-      ].some(v => String(v || '').toLowerCase().includes(q));
+      // Keyword: token-based so "user model" matches items that have both somewhere
+      const q = (debouncedQuery || '').trim().toLowerCase();
+      const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+      const keywordOk = (() => {
+        if (!tokens.length) return true;
+        const name = String(it?.name ?? it?.asset_name ?? '').toLowerCase();
+        const id = String(it?.id ?? '').toLowerCase();
+        const serial = String(it?.serial_number ?? it?.fields?.serial_number ?? '').toLowerCase();
+        const model = String(it?.model ?? it?.fields?.model ?? '').toLowerCase();
+        const assetType = String(it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '').toLowerCase();
+        const location = String(it?.location ?? it?.fields?.location ?? '').toLowerCase();
+        const notes = String(it?.notes ?? it?.fields?.notes ?? '').toLowerCase();
+        const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email || '';
+        const assignedStr = String(assigned || '').toLowerCase();
+        const haystack = `${name} ${id} ${serial} ${model} ${assetType} ${location} ${notes} ${assignedStr}`;
+        return tokens.every(tok => haystack.includes(tok));
+      })();
 
       // Filters
       const types = filters.types;
@@ -188,7 +222,9 @@ export default function SearchScreen(props = {}) {
 
       const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email;
       const assignedUid = it.assigned_to_id || it.assigned_to_uid || it.assigned_to_user_id;
-      const assignedOk = !filters.assignedTo || String(assigned || '').toLowerCase().includes(filters.assignedTo.toLowerCase());
+      const assignedOk = filters.assignedToUserId
+        ? String(assignedUid || '') === String(filters.assignedToUserId)
+        : (!filters.assignedTo || String(assigned || '').toLowerCase().includes(filters.assignedTo.toLowerCase()));
 
       const dueOk = !filters.dueSoon || (it.next_service_date && new Date(it.next_service_date) <= new Date(Date.now() + 7 * 86400000));
 
@@ -400,6 +436,10 @@ export default function SearchScreen(props = {}) {
     if (filters.onlyMine) labelParts.push('My assets');
     if (filters.status) labelParts.push(`Status:${filters.status}`);
     if (filters.types && filters.types.length > 0) labelParts.push(`Type:${filters.types.join(', ')}`);
+    if (filters.assignedToUserId) {
+      const u = filterUsers.find((x) => String(x.id) === String(filters.assignedToUserId));
+      labelParts.push(`User: ${u ? (u.name || u.useremail || u.id) : filters.assignedToUserId}`);
+    }
     if (filters.dueSoon) labelParts.push('Due soon');
     if (filters.awaitingQROnly) labelParts.push('QR awaiting');
     const label = labelParts.join(' · ');
@@ -408,7 +448,7 @@ export default function SearchScreen(props = {}) {
     const next = [entry, ...recents.filter(r => r.label !== label)].slice(0, 10);
     setRecents(next);
     try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { }
-  }, [debouncedQuery, filters, sort, recents]);
+  }, [debouncedQuery, filters, sort, recents, filterUsers]);
 
   const fetchAll = useCallback(async () => {
     if (loading) return;
@@ -461,6 +501,7 @@ export default function SearchScreen(props = {}) {
   const closeFilterModal = () => {
     setFilterModalOpen(false);
     setTypeSearch('');
+    setUserSearch('');
   };
 
   const clearFilters = () => {
@@ -472,6 +513,7 @@ export default function SearchScreen(props = {}) {
       status: null,
       location: null,
       assignedTo: null,
+      assignedToUserId: null,
       onlyMine: false,
       dueSoon: false,
       includeQRReserved: false,
@@ -487,6 +529,7 @@ export default function SearchScreen(props = {}) {
     !!filters.status,
     !!filters.location,
     !!filters.assignedTo,
+    !!filters.assignedToUserId,
     !!filters.onlyMine,
     !!filters.dueSoon,
     !!filters.awaitingQROnly,
@@ -1194,21 +1237,54 @@ export default function SearchScreen(props = {}) {
                   <Text style={styles.groupTitle}>Status</Text>
                   <View style={[styles.filterMenuRow, styles.chipsRow]}>
                     <Chip label="Any status" active={!filters.status} onPress={() => setFilters(f => ({ ...f, status: null }))} />
-                    {['In Service', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                    {['In Service', 'Repair', 'Maintenance', 'End of Life', 'Hire'].map(s => (
                       <Chip key={s} label={s} active={filters.status === s} onPress={() => setFilters(f => ({ ...f, status: s }))} />
                     ))}
                   </View>
                 </View>
 
-                {/* Assigned To */}
+                {/* Users (assigned to) */}
                 <View>
-                  <Text style={styles.groupTitle}>Assigned To (email)</Text>
+                  <Text style={styles.groupTitle}>Users</Text>
                   <TextInput
                     style={styles.filterInput}
-                    placeholder="someone@company.com"
-                    value={filters.assignedTo || ''}
-                    onChangeText={(t) => setFilters(f => ({ ...f, assignedTo: t || null }))}
+                    placeholder="Search by name or email…"
+                    placeholderTextColor="#94A3B8"
+                    value={userSearch}
+                    onChangeText={setUserSearch}
                   />
+                  <ScrollView style={styles.filterTypeList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    <TouchableOpacity
+                      style={[styles.filterTypeItem, !filters.assignedToUserId && styles.filterTypeItemActive]}
+                      onPress={() => setFilters((f) => ({ ...f, assignedToUserId: null }))}
+                    >
+                      <Text style={[styles.filterTypeItemText, !filters.assignedToUserId && styles.filterTypeItemTextActive]}>Any user</Text>
+                    </TouchableOpacity>
+                    {filterUsers
+                      .filter((u) => {
+                        if (!(userSearch || '').trim()) return true;
+                        const term = String(userSearch).trim().toLowerCase();
+                        const name = String(u.name || '').toLowerCase();
+                        const email = String(u.useremail || '').toLowerCase();
+                        const id = String(u.id || '').toLowerCase();
+                        return name.includes(term) || email.includes(term) || id.includes(term);
+                      })
+                      .map((u) => {
+                        const label = u.name || u.useremail || u.id;
+                        const isSelected = String(filters.assignedToUserId || '') === String(u.id);
+                        return (
+                          <TouchableOpacity
+                            key={u.id}
+                            style={[styles.filterTypeItem, isSelected && styles.filterTypeItemActive]}
+                            onPress={() => setFilters((f) => ({ ...f, assignedToUserId: isSelected ? null : u.id }))}
+                          >
+                            <Text style={[styles.filterTypeItemText, isSelected && styles.filterTypeItemTextActive]} numberOfLines={1}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </ScrollView>
                 </View>
 
                 {/* Location */}
@@ -1249,7 +1325,7 @@ export default function SearchScreen(props = {}) {
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
               <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
-                setFilters({ types: [], status: null, location: null, assignedTo: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
+                setFilters({ types: [], status: null, location: null, assignedTo: null, assignedToUserId: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
                 closeFilterModal();
               }}>
                 <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>

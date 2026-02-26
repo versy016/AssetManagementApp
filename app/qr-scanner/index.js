@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, FlatList } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +14,7 @@ export default function QRScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState('back');
   const [scanMode, setScanMode] = useState('single');
-  const [scannedItems, setScannedItems] = useState([]);
+  const [scannedItems, setScannedItems] = useState([]); // multi: { id, assetType }[]
   const [isScanning, setIsScanning] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastScanned, setLastScanned] = useState('');
@@ -113,26 +114,42 @@ export default function QRScannerScreen() {
       if (!assetId) return;
 
       // Check for duplicates in multi-scan mode (case-insensitive check)
-      if (scanMode === 'multi' && scannedItems.some(id => id.toUpperCase() === assetId.toUpperCase())) {
+      if (scanMode === 'multi' && scannedItems.some(x => (x.id || x).toString().toUpperCase() === assetId.toUpperCase())) {
         // Soft-handle duplicate in multi-scan: show toast, no native alert
         setToast({ visible: true, text: 'This asset has already been scanned', kind: 'warn' });
         setTimeout(() => setToast({ visible: false, text: '', kind: 'warn' }), 2500);
         return;
       }
 
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        setTimeout(() => { try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); } catch { } }, 80);
+      } catch { /* ignore on unsupported platforms */ }
       setIsProcessing(true);
 
       if (scanMode === 'multi') {
         // Use functional update to ensure we have the latest state
         setScannedItems(prev => {
-          // Double-check for duplicates to be extra safe
-          if (prev.some(id => id.toUpperCase() === assetId.toUpperCase())) {
+          if (prev.some(x => (x.id || x).toString().toUpperCase() === assetId.toUpperCase())) {
             return prev;
           }
-          return [...prev, assetId];
+          return [...prev, { id: assetId, assetType: null }];
         });
 
         setLastScanned(assetId);
+
+        // Fetch asset type in background and update list
+        (async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/assets/${assetId}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const typeName = data?.asset_types?.name || null;
+            setScannedItems(prev =>
+              prev.map(x => (x.id === assetId ? { ...x, assetType: typeName } : x))
+            );
+          } catch { /* ignore */ }
+        })();
 
         // Auto-reset after 1 second
         const timer = setTimeout(() => {
@@ -367,7 +384,8 @@ export default function QRScannerScreen() {
   }, [isScanning, isProcessing, scanMode, scannedItems, processScannedItem, returnTo, JSON.stringify(extraParams)]);
 
   const removeItem = (itemToRemove) => {
-    setScannedItems(prev => prev.filter(item => item !== itemToRemove));
+    const id = typeof itemToRemove === 'object' && itemToRemove?.id != null ? itemToRemove.id : itemToRemove;
+    setScannedItems(prev => prev.filter(item => (item.id || item) !== id));
   };
 
   const handleSubmit = () => {
@@ -375,12 +393,11 @@ export default function QRScannerScreen() {
       Alert.alert('No Items', 'Please scan at least one asset before submitting.');
       return;
     }
-
-    // Navigate to the scanned assets list with the scanned items
+    const ids = scannedItems.map(item => typeof item === 'object' && item?.id != null ? item.id : item);
     router.push({
       pathname: '/multi-scan/list',
       params: {
-        items: encodeURIComponent(JSON.stringify(scannedItems))
+        items: encodeURIComponent(JSON.stringify(ids))
       }
     });
   };
@@ -495,22 +512,28 @@ export default function QRScannerScreen() {
           {scannedItems.length > 0 ? (
             <FlatList
               data={scannedItems}
-              keyExtractor={(item, index) => `${item}-${index}`}
-              renderItem={({ item }) => (
-                <View style={styles.item}>
-                  <Text style={styles.itemText}>{item}</Text>
-                  <TouchableOpacity
-                    onPress={() => !isProcessing && removeItem(item)}
-                    disabled={isProcessing}
-                  >
-                    <MaterialIcons
-                      name="close"
-                      size={24}
-                      color={isProcessing ? "#ccc" : "#ff4444"}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
+              keyExtractor={(item, index) => `${(item.id || item)}-${index}`}
+              renderItem={({ item }) => {
+                const id = typeof item === 'object' && item?.id != null ? item.id : item;
+                const assetType = typeof item === 'object' ? item.assetType : null;
+                return (
+                  <View style={styles.item}>
+                    <Text style={styles.itemText}>
+                      {id}{assetType ? ` · ${assetType}` : ''}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => !isProcessing && removeItem(item)}
+                      disabled={isProcessing}
+                    >
+                      <MaterialIcons
+                        name="close"
+                        size={24}
+                        color={isProcessing ? "#ccc" : "#ff4444"}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
             />
           ) : (
             <Text style={styles.emptyText}>

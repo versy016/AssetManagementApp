@@ -97,7 +97,7 @@ const AddShortcutModal = ({
                                         key={shortcutType.id}
                                         style={[
                                             styles.shortcutCard,
-                                            { backgroundColor: shortcutType.bgColor },
+                                            styles.shortcutCardScanStyle,
                                             added && styles.shortcutCardAdded,
                                         ]}
                                         onPress={() => handleSelectShortcut(shortcutType)}
@@ -112,21 +112,16 @@ const AddShortcutModal = ({
                                         )}
 
                                         {/* Icon */}
-                                        <View
-                                            style={[
-                                                styles.iconContainer,
-                                                { backgroundColor: shortcutType.color + '20' },
-                                            ]}
-                                        >
+                                        <View style={styles.iconContainerScan}>
                                             <MaterialIcons
                                                 name={shortcutType.icon}
                                                 size={28}
-                                                color={shortcutType.color}
+                                                color="#2563EB"
                                             />
                                         </View>
 
                                         {/* Label */}
-                                        <Text style={styles.shortcutLabel} numberOfLines={2}>
+                                        <Text style={styles.shortcutLabelScan} numberOfLines={2}>
                                             {shortcutType.label}
                                         </Text>
 
@@ -157,25 +152,20 @@ const AddShortcutModal = ({
                                                 key={shortcutType.id}
                                                 style={[
                                                     styles.shortcutCard,
-                                                    { backgroundColor: shortcutType.bgColor },
+                                                    styles.shortcutCardScanStyle,
                                                     added && styles.shortcutCardAdded,
                                                 ]}
                                                 onPress={() => handleSelectShortcut(shortcutType)}
                                                 disabled={added}
                                             >
-                                                <View
-                                                    style={[
-                                                        styles.iconContainer,
-                                                        { backgroundColor: shortcutType.color + '20' },
-                                                    ]}
-                                                >
+                                                <View style={styles.iconContainerScan}>
                                                     <MaterialIcons
                                                         name={shortcutType.icon}
                                                         size={28}
-                                                        color={shortcutType.color}
+                                                        color="#2563EB"
                                                     />
                                                 </View>
-                                                <Text style={styles.shortcutLabel} numberOfLines={2}>
+                                                <Text style={styles.shortcutLabelScan} numberOfLines={2}>
                                                     {shortcutType.label}
                                                 </Text>
                                                 <Text style={styles.shortcutDescription} numberOfLines={2}>
@@ -203,8 +193,8 @@ const AddShortcutModal = ({
                                 <Text style={styles.sectionLabel}>Your shortcuts</Text>
                                 {addedShortcutMeta.map((shortcut) => (
                                     <View key={shortcut.id} style={styles.addedRow}>
-                                        <View style={[styles.iconSmall, { backgroundColor: shortcut.meta.color + '10' }]}>
-                                            <MaterialIcons name={shortcut.meta.icon} size={18} color={shortcut.meta.color} />
+                                        <View style={styles.iconSmallScan}>
+                                            <MaterialIcons name={shortcut.meta.icon} size={18} color="#2563EB" />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.addedRowLabel}>{shortcut.meta.label}</Text>
@@ -343,6 +333,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    iconSmallScan: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#EFF6FF',
+    },
     addedRowLabel: {
         fontSize: 14,
         fontWeight: '700',
@@ -381,6 +379,16 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: 'transparent',
         position: 'relative',
+    },
+    shortcutCardScanStyle: {
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#E9F1FF',
+        shadowColor: '#0B63CE',
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
     },
     shortcutCardAdded: {
         opacity: 0.6,
@@ -438,10 +446,25 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginBottom: 12,
     },
+    iconContainerScan: {
+        width: 56,
+        height: 56,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
+        backgroundColor: '#EFF6FF',
+    },
     shortcutLabel: {
         fontSize: 15,
         fontWeight: '700',
         color: '#0F172A',
+        marginBottom: 4,
+    },
+    shortcutLabelScan: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#2563EB',
         marginBottom: 4,
     },
     shortcutDescription: {

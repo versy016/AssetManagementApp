@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -71,6 +72,7 @@ export default function ActionsForm({
   users = [],           // pass from parent to support Hire picker
   additionalAssetIds = [], // when set, apply same action to these asset ids (bulk)
 }) {
+  const scrollRef = React.useRef(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Common fields across forms
@@ -477,16 +479,27 @@ export default function ActionsForm({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>{actionLabel || 'Action'}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialIcons name="close" size={24} color={Colors.subtle} />
-            </TouchableOpacity>
-          </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardAvoid}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={styles.sheet}>
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title}>{actionLabel || 'Action'}</Text>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <MaterialIcons name="close" size={24} color={Colors.subtle} />
+              </TouchableOpacity>
+            </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <ScrollView
+              ref={scrollRef}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={true}
+            >
             {/* Date */}
             <DateField label="Date" value={date} onChange={setDate} minDate={new Date(new Date().setFullYear(new Date().getFullYear() - 10))} maxDate={new Date()} />
 
@@ -713,9 +726,9 @@ export default function ActionsForm({
                     </LabeledInput>
                     {projectSearch.trim().length > 1 && !selectedProject && (
                       <View style={{ maxHeight: 200, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, overflow: 'hidden' }}>
-                        <ScrollView>
+                        <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
                           {projectHits.map(hit => (
-                            <TouchableOpacity key={hit.objectID} onPress={() => { setSelectedProject(hit); setProjectSearch(''); setHireProject(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+                            <TouchableOpacity key={hit.objectID} activeOpacity={0.7} delayPressIn={0} onPress={() => { setSelectedProject(hit); setProjectSearch(''); setHireProject(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
                               <Text style={{ color: Colors.text, fontWeight: '700' }}>{hit.name || hit.title || hit.label}</Text>
                             </TouchableOpacity>
                           ))}
@@ -723,26 +736,30 @@ export default function ActionsForm({
                       </View>
                     )}
                     <LabeledInput label="Client (optional)">
-                      <View style={styles.inputWrap}>
+                      <View style={[styles.inputWrap, selectedProject && { opacity: 0.7 }]}>
                         <TextInput
-                          style={[styles.input, { paddingRight: 36 }]}
+                          style={[styles.input, { paddingRight: 36 }, selectedProject && { backgroundColor: '#F3F4F6', color: Colors.muted }]}
                           placeholder="Type to search clients"
                           placeholderTextColor={Colors.muted}
                           value={selectedClient ? (selectedClient.name || selectedClient.title || selectedClient.label) : clientSearch || hireClient}
                           onChangeText={(v) => { setSelectedClient(null); setClientSearch(v); setHireClient(''); }}
+                          editable={!selectedProject}
                         />
-                        {(selectedClient || clientSearch) ? (
+                        {(selectedClient || clientSearch) && !selectedProject ? (
                           <TouchableOpacity style={styles.clearBtn} onPress={() => { setSelectedClient(null); setClientSearch(''); setHireClient(''); }}>
                             <MaterialIcons name="close" size={18} color={Colors.subtle} />
                           </TouchableOpacity>
                         ) : null}
                       </View>
+                      {selectedProject ? (
+                        <Text style={{ color: Colors.muted, fontSize: 11, marginTop: 4 }}>Clear project above to change client</Text>
+                      ) : null}
                     </LabeledInput>
-                    {clientSearch.trim().length > 1 && !selectedClient && (
+                    {clientSearch.trim().length > 1 && !selectedClient && !selectedProject && (
                       <View style={{ maxHeight: 200, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, overflow: 'hidden' }}>
-                        <ScrollView>
+                        <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
                           {clientHits.map(hit => (
-                            <TouchableOpacity key={hit.objectID} onPress={() => { setSelectedClient(hit); setClientSearch(''); setHireClient(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+                            <TouchableOpacity key={hit.objectID} activeOpacity={0.7} delayPressIn={0} onPress={() => { setSelectedClient(hit); setClientSearch(''); setHireClient(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
                               <Text style={{ color: Colors.text, fontWeight: '700' }}>{hit.name || hit.title || hit.label}</Text>
                             </TouchableOpacity>
                           ))}
@@ -770,9 +787,9 @@ export default function ActionsForm({
                     </LabeledInput>
                     {clientSearch.trim().length > 1 && !selectedClient && (
                       <View style={{ maxHeight: 200, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, overflow: 'hidden' }}>
-                        <ScrollView>
+                        <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
                           {clientHits.map(hit => (
-                            <TouchableOpacity key={hit.objectID} onPress={() => { setSelectedClient(hit); setClientSearch(''); setHireClient(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+                            <TouchableOpacity key={hit.objectID} activeOpacity={0.7} delayPressIn={0} onPress={() => { setSelectedClient(hit); setClientSearch(''); setHireClient(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
                               <Text style={{ color: Colors.text, fontWeight: '700' }}>{hit.name || hit.title || hit.label}</Text>
                             </TouchableOpacity>
                           ))}
@@ -780,26 +797,30 @@ export default function ActionsForm({
                       </View>
                     )}
                     <LabeledInput label="Project (optional)">
-                      <View style={styles.inputWrap}>
+                      <View style={[styles.inputWrap, (selectedClient || (clientSearch && clientSearch.trim().length > 0)) && { opacity: 0.7 }]}>
                         <TextInput
-                          style={[styles.input, { paddingRight: 36 }]}
+                          style={[styles.input, { paddingRight: 36 }, (selectedClient || (clientSearch && clientSearch.trim().length > 0)) && { backgroundColor: '#F3F4F6', color: Colors.muted }]}
                           placeholder="Type to search projects"
                           placeholderTextColor={Colors.muted}
                           value={selectedProject ? (selectedProject.name || selectedProject.title || selectedProject.label) : projectSearch || hireProject}
                           onChangeText={(v) => { setSelectedProject(null); setProjectSearch(v); setHireProject(''); }}
+                          editable={!(selectedClient || (clientSearch && clientSearch.trim().length > 0))}
                         />
-                        {(selectedProject || projectSearch) ? (
+                        {(selectedProject || projectSearch) && !(selectedClient || (clientSearch && clientSearch.trim().length > 0)) ? (
                           <TouchableOpacity style={styles.clearBtn} onPress={() => { setSelectedProject(null); setProjectSearch(''); setHireProject(''); }}>
                             <MaterialIcons name="close" size={18} color={Colors.subtle} />
                           </TouchableOpacity>
                         ) : null}
                       </View>
+                      {(selectedClient || (clientSearch && clientSearch.trim().length > 0)) ? (
+                        <Text style={{ color: Colors.muted, fontSize: 11, marginTop: 4 }}>Clear client above to change project</Text>
+                      ) : null}
                     </LabeledInput>
-                    {projectSearch.trim().length > 1 && !selectedProject && (
+                    {projectSearch.trim().length > 1 && !selectedProject && !(selectedClient || (clientSearch && clientSearch.trim().length > 0)) && (
                       <View style={{ maxHeight: 200, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, overflow: 'hidden' }}>
-                        <ScrollView>
+                        <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
                           {projectHits.map(hit => (
-                            <TouchableOpacity key={hit.objectID} onPress={() => { setSelectedProject(hit); setProjectSearch(''); setHireProject(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+                            <TouchableOpacity key={hit.objectID} activeOpacity={0.7} delayPressIn={0} onPress={() => { setSelectedProject(hit); setProjectSearch(''); setHireProject(hit.name || hit.title || hit.label || ''); }} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
                               <Text style={{ color: Colors.text, fontWeight: '700' }}>{hit.name || hit.title || hit.label}</Text>
                             </TouchableOpacity>
                           ))}
@@ -896,6 +917,9 @@ export default function ActionsForm({
                 value={notes}
                 onChangeText={setNotes}
                 multiline
+                onFocus={() => {
+                  setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
+                }}
               />
             </LabeledInput>
 
@@ -915,6 +939,7 @@ export default function ActionsForm({
             </View>
           </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -982,6 +1007,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.25)',
     justifyContent: 'flex-end',
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 160,
+  },
+  keyboardAvoid: {
+    width: '100%',
   },
   sheet: {
     backgroundColor: Colors.card,

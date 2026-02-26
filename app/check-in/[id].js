@@ -1394,19 +1394,6 @@ export default function CheckInScreen() {
           </View>
 
 
-          {/* Check-in / Transfer Notes */}
-          <View style={{ marginTop: 8, marginBottom: 6 }}>
-            <Text style={styles.fieldLabel}>Notes (optional)</Text>
-            <TextInput
-              placeholder="Add a note for the asset"
-              value={actionNote}
-              onChangeText={setActionNote}
-              style={[styles.input, { minHeight: 42 }]}
-              placeholderTextColor={Colors.subtle}
-              multiline
-            />
-          </View>
-
           {/* Quick Actions (adjusted for Placeholder/EOL) */}
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.tileGrid}>
@@ -1519,14 +1506,6 @@ export default function CheckInScreen() {
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                    onPress={() => router.replace('/(tabs)/dashboard')}
-                  >
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
-                      Back to Dashboard
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
                     style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
                     onPress={() => setShowCreateNoteInput(true)}
                     disabled={loading}
@@ -1534,6 +1513,14 @@ export default function CheckInScreen() {
                     <MaterialIcons name="note-add" size={18} color="#1E90FF" />
                     <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Create note
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                    onPress={() => router.replace('/(tabs)/dashboard')}
+                  >
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                      Back to Dashboard
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1577,14 +1564,6 @@ export default function CheckInScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                    onPress={() => router.replace('/(tabs)/dashboard')}
-                  >
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
-                      Back to Dashboard
-                    </Text>
-                  </TouchableOpacity>
                   {!!asset?.id && (
                     <TouchableOpacity
                       style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
@@ -1605,6 +1584,14 @@ export default function CheckInScreen() {
                     <MaterialIcons name="note-add" size={18} color="#1E90FF" />
                     <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Create note
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                    onPress={() => router.replace('/(tabs)/dashboard')}
+                  >
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                      Back to Dashboard
                     </Text>
                   </TouchableOpacity>
                 </View>

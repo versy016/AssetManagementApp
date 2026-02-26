@@ -884,14 +884,17 @@ export default function AssetDetailPage() {
   const typeMeta = (t) => {
     const k = String(t || '').toUpperCase();
     switch (k) {
-      case 'TRANSFER':     return { label: 'Transfer', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
-      case 'CHECK_IN':     return { label: 'Transfer In', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
-      case 'CHECK_OUT':    return { label: 'Transfer Out', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
-      case 'STATUS_CHANGE':return { label: 'Status', bg: '#FEF3C7', fg: '#92400E', bd: '#FDE68A' };
-      case 'REPAIR':       return { label: 'Repair', bg: '#FFF7ED', fg: '#9A3412', bd: '#FED7AA' };
-      case 'MAINTENANCE':  return { label: 'Maintenance', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
-      case 'HIRE':         return { label: 'Hire', bg: '#E0F2FE', fg: '#075985', bd: '#BAE6FD' };
-      default:             return { label: k || 'Note', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
+      case 'TRANSFER':     return { label: 'Transfer', description: 'Transfer', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
+      case 'CHECK_IN':     return { label: 'Transfer In', description: 'Transfer in', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
+      case 'CHECK_OUT':    return { label: 'Transfer Out', description: 'Transfer out', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
+      case 'STATUS_CHANGE':return { label: 'Status', description: 'Status change', bg: '#FEF3C7', fg: '#92400E', bd: '#FDE68A' };
+      case 'REPAIR':       return { label: 'Repair', description: 'Repair', bg: '#FFF7ED', fg: '#9A3412', bd: '#FED7AA' };
+      case 'MAINTENANCE':  return { label: 'Maintenance', description: 'Service / maintenance', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
+      case 'HIRE':         return { label: 'Hire', description: 'Hire', bg: '#E0F2FE', fg: '#075985', bd: '#BAE6FD' };
+      case 'END_OF_LIFE':  return { label: 'End of Life', description: 'End of life', bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' };
+      case 'LOST':         return { label: 'Lost', description: 'Reported lost', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
+      case 'STOLEN':       return { label: 'Stolen', description: 'Reported stolen', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
+      default:             return { label: k || 'Note', description: k ? `${k.replace(/_/g, ' ').toLowerCase()}` : 'Note', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
     }
   };
 
@@ -1319,13 +1322,19 @@ export default function AssetDetailPage() {
               <View style={{ gap: 10 }}>
                 {(notesExpanded ? noteItems : noteItems.slice(0, 3)).map((n) => {
                   const meta = typeMeta(n.type);
+                  const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
                   return (
                     <View key={n.id} style={styles.noteCard}>
                       <View style={styles.noteHead}>
                         <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
                         <View style={{ flex: 1, paddingRight: 8 }}>
-                          <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
+                          <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
+                            {activityDescription}
+                          </Text>
                           <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                          <Text style={[styles.noteWhen, { fontSize: 12, color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
+                            {n.who || 'System'}
+                          </Text>
                         </View>
                         {!!n.type && (
                           <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
@@ -1355,10 +1364,10 @@ export default function AssetDetailPage() {
             </>
           )}
 
-          {/* Work Detail History (REPAIR / MAINTENANCE with full details and photos) */}
-          <Text style={[styles.sectionH, { marginTop: 16 }]}>Work Detail History</Text>
+          {/* Maintenance record (REPAIR / MAINTENANCE with full details and photos) */}
+          <Text style={[styles.sectionH, { marginTop: 16 }]}>Maintenance record</Text>
           {workDetailHistory.length === 0 ? (
-            <Text style={{ color: '#666' }}>No repair or service work yet.</Text>
+            <Text style={{ color: '#666' }}>No maintenance record yet.</Text>
           ) : (
             <View style={{ gap: 12 }}>
               {workDetailHistory.map((w) => {

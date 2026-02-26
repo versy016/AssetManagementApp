@@ -27,10 +27,12 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AppTextInput from '../../components/ui/AppTextInput';
 import { useTheme } from 'react-native-paper';
+import { useTasksCount } from '../../contexts/TasksCountContext';
 
 export default function TasksScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const { setTaskCount } = useTasksCount();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [dbAdmin, setDbAdmin] = useState(false);
@@ -799,6 +801,12 @@ export default function TasksScreen() {
   };
 
   const taskItems = tasks?.items || [];
+  const totalTasks = taskItems.length;
+
+  useEffect(() => {
+    setTaskCount(tasks?.items?.length ?? 0);
+  }, [tasks?.items?.length, setTaskCount]);
+
   const todayMid = React.useMemo(() => {
     const t = new Date();
     t.setHours(0, 0, 0, 0);
@@ -850,7 +858,6 @@ export default function TasksScreen() {
     if (type === 'HIRE') return true;
     return /hire/.test(title);
   }).length;
-  const totalTasks = taskItems.length;
 
   const filteredTaskItems = React.useMemo(() => {
     if (taskFilter === 'overdue') return taskItems.filter(isOverdueTask);

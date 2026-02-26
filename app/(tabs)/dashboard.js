@@ -347,20 +347,17 @@ const Dashboard = ({ isAdmin }) => {
               return (
                 <TouchableOpacity
                   key={shortcut.id}
-                  style={[
-                    styles.shortcutCard,
-                    { backgroundColor: shortcutType.bgColor }
-                  ]}
+                  style={[styles.shortcutCard, styles.shortcutCardScanStyle]}
                   onPress={() => handleExecuteShortcut(shortcut.type)}
                   onLongPress={() => handleRemoveShortcut(shortcut.id)}
                 >
                   <MaterialIcons
                     name={shortcutType.icon}
                     size={20}
-                    color={shortcutType.color}
+                    color="#2563EB"
                   />
                   <Text
-                    style={[styles.shortcutText, { color: shortcutType.color }]}
+                    style={[styles.shortcutText, { color: '#2563EB' }]}
                     numberOfLines={1}
                   >
                     {shortcutType.label}
@@ -718,6 +715,15 @@ const styles = StyleSheet.create({
     elevation: 2,
     minHeight: 86,
     gap: 6,
+  },
+  shortcutCardScanStyle: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E9F1FF',
+    shadowColor: '#0B63CE',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   addShortcutCard: { borderWidth: 1, borderColor: '#1E90FF', borderStyle: 'dashed', backgroundColor: 'transparent' },
   shortcutText: { color: '#111827', fontSize: 14, fontWeight: '600', textAlign: 'center' },

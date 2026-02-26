@@ -845,7 +845,7 @@ const Inventory = () => {
                   >
                     <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
                   </TouchableOpacity>
-                  {['In Service', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                  {['In Service', 'Repair', 'Maintenance', 'End of Life', 'Hire'].map(s => (
                     <TouchableOpacity
                       key={s}
                       style={[styles.filterChip, filters.status === s && styles.filterChipActive]}

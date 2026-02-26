@@ -11,6 +11,7 @@ import WebNavbar from '../components/WebNavbar';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { theme } from '../constants/uiTheme';
 import { TourProvider } from '../components/TourGuide';
+import { TasksCountProvider } from '../contexts/TasksCountContext';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -78,12 +79,14 @@ export default function RootLayout() {
       <ErrorBoundary>
         <PaperProvider theme={theme}>
           <TourProvider>
-            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-              {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
-              <View style={{ flex: 1 }}>
-                <Slot />
+            <TasksCountProvider>
+              <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+                {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
+                <View style={{ flex: 1 }}>
+                  <Slot />
+                </View>
               </View>
-            </View>
+            </TasksCountProvider>
           </TourProvider>
         </PaperProvider>
       </ErrorBoundary>
