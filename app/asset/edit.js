@@ -9,6 +9,7 @@ import { en, registerTranslation } from 'react-native-paper-dates';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { formatDisplayDate } from '../../utils/date';
+import { auth } from '../../firebaseConfig';
 import * as DocumentPicker from 'expo-document-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -52,6 +53,11 @@ export default function EditAsset() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
+  const showToast = (text, kind = 'success') => {
+    setToast({ visible: true, text, kind });
+    setTimeout(() => setToast({ visible: false, text: '', kind }), 2500);
+  };
   const [filesProgress, setFilesProgress] = useState(0);
   const [filesStartTs, setFilesStartTs] = useState(null);
 
@@ -243,8 +249,8 @@ export default function EditAsset() {
           setDocument(null);
         }
       }
-      if (Platform.OS !== 'web') Alert.alert('Updated', 'Asset saved.');
-      router.replace({ pathname: `/asset/${assetId}` });
+      showToast('Asset saved');
+      setTimeout(() => router.replace({ pathname: `/asset/${assetId}` }), 1000);
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update');
     } finally {
@@ -269,7 +275,8 @@ export default function EditAsset() {
 
   const renderDynamic = (f) => {
     const slug = f.slug || normSlug(f.name);
-    const typeCode = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
+    let typeCode = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
+    if (typeCode === 'datetime') typeCode = 'date';
     const isReq = !!f.is_required;
     const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
     const Label = <Text style={styles.label}>{displayLabel}{isReq ? ' *' : ''}</Text>;
@@ -405,6 +412,7 @@ export default function EditAsset() {
           </View>
         );
       case 'date':
+      case 'datetime':
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
@@ -478,7 +486,11 @@ export default function EditAsset() {
                             onPress={async () => {
                               try {
                                 if (best?.id) {
-                                  await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${best.id}`, { method: 'DELETE' });
+                                  const uid = auth?.currentUser?.uid;
+                                  const headers = uid ? { 'X-User-Id': uid } : {};
+                                  if (auth?.currentUser?.displayName) headers['X-User-Name'] = auth.currentUser.displayName;
+                                  if (auth?.currentUser?.email) headers['X-User-Email'] = auth.currentUser.email;
+                                  await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${best.id}`, { method: 'DELETE', headers });
                                   setAssetDocs(prev => prev.filter(x => x.id !== best.id));
                                 } else {
                                   // clear field value only (for field-based URLs)
@@ -630,6 +642,12 @@ export default function EditAsset() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {toast.visible && (
+        <View style={[styles.toast, styles.toastSuccess]}>
+          <MaterialIcons name="check-circle" size={20} color="#047857" />
+          <Text style={styles.toastText}>{toast.text}</Text>
+        </View>
+      )}
       <ScreenHeader
         title="Edit Asset"
         backLabel="Details"
@@ -900,4 +918,8 @@ const styles = StyleSheet.create({
     pointerEvents: 'auto',
   },
   portalOverlayCard: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
+  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
 });

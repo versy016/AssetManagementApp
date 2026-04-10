@@ -11,14 +11,16 @@ export default function CertsScreen() {
   }, []);
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper edges={['top']}>
       <ErrorBoundary>
         <React.Suspense fallback={
           <View style={styles.loadingState}>
             <ActivityIndicator size="large" color="#2563EB" />
           </View>
         }>
-          <CertsView visible />
+          <View style={styles.certsScreenWrap}>
+            <CertsView visible />
+          </View>
         </React.Suspense>
       </ErrorBoundary>
     </ScreenWrapper>
@@ -31,6 +33,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 32,
+  },
+  certsScreenWrap: {
+    flex: 1,
   },
 });
 

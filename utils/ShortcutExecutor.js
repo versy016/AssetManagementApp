@@ -17,6 +17,11 @@ export const executeShortcut = (shortcutType, router, user) => {
         router.push('/admin?tab=qr');
         return;
     }
+    // Hire disclaimer: go to form (no scan)
+    if (shortcutType === SHORTCUT_TYPES.HIRE_DISCLAIMER.id) {
+        router.push('/hire');
+        return;
+    }
 
     // Navigate to QR scanner with shortcut context
     router.push({

@@ -42,6 +42,8 @@ export function TourProvider({ children }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const targetsRef = useRef({});
+  targetsRef.current = targets;
 
   // Check admin status
   useEffect(() => {
@@ -1010,12 +1012,12 @@ export function TourProvider({ children }) {
 
   useEffect(() => {
     if (active && currentStep) {
-      // If we have a target, scroll to it
-      if (targets[currentStep.targetId]) {
-        scrollToTarget(targets[currentStep.targetId]);
+      // If we have a target, scroll to it. Read from ref to avoid depending on `targets` (which updates every measure and can cause "maximum update depth" on iOS).
+      const target = targetsRef.current[currentStep.targetId];
+      if (target) {
+        scrollToTarget(target);
       } else {
         // Fallback: If no target found yet, and it's a "bottom" element like save, force scroll down
-        // This is a bit hacky but helps when target isn't measured yet because it's off screen
         if (currentStep.targetId === 'type-save' || currentStep.targetId === 'asset-save' || currentStep.targetId === 'type-library' || currentStep.targetId === 'type-custom-fields' || currentStep.targetId === 'asset-details' || currentStep.targetId === 'section-shortcuts') {
           try {
             if (scrollViewRef) scrollViewRef.scrollToEnd({ animated: true });
@@ -1023,7 +1025,7 @@ export function TourProvider({ children }) {
         }
       }
     }
-  }, [active, currentStep, targets, scrollToTarget, scrollViewRef]);
+  }, [active, currentStep?.targetId, scrollToTarget, scrollViewRef]);
 
   const contextValue = useMemo(() => ({
     startTour,
@@ -1344,7 +1346,7 @@ function TourOverlay({ target, step, onNext, onStop, totalSteps, currentStepInde
       : {
         position: 'absolute',
         top: tooltipTopAnimated,
-        left: 20,
+        left: 20,                                                                                                                                                                                                                                                                                                   
         right: 20,
         ...(marginBottom && { marginBottom }),
       };

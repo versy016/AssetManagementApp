@@ -239,6 +239,7 @@ export default function ActivityScreen() {
     if (kind === 'ASSET_TYPE_CREATED') return 'category';
     switch (String(type || '').toUpperCase()) {
       case 'ASSET_DELETED': return 'delete';
+      case 'DOCUMENT_DELETED': return 'description';
       case 'ASSET_EDIT': return 'edit';
       case 'NEW_ASSET': return 'add-circle-outline';
       case 'TRANSFER': return 'swap-horiz';
@@ -260,6 +261,7 @@ export default function ActivityScreen() {
     if (kind === 'ASSET_TYPE_CREATED') return '#7C3AED';
     switch (String(type || '').toUpperCase()) {
       case 'ASSET_DELETED': return '#DC2626';
+      case 'DOCUMENT_DELETED': return '#B45309';
       case 'ASSET_EDIT': return '#0EA5E9';
       case 'NEW_ASSET': return '#10B981';
       case 'TRANSFER': return '#0B63CE';
@@ -322,6 +324,7 @@ export default function ActivityScreen() {
     const t = String(effectiveType || '').toUpperCase();
     if (item.kind === 'ASSET_TYPE_CREATED') return 'NEW ASSET TYPE';
     if (t === 'ASSET_DELETED') return 'DELETED';
+    if (t === 'DOCUMENT_DELETED') return 'DOCUMENT DELETED';
     if (t === 'SERVICE_COMPLETE') return 'SERVICE COMPLETE';
     if (t === 'ASSET_EDIT') return 'EDIT';
     if (t === 'NEW_ASSET') return 'NEW ASSET';
@@ -547,6 +550,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
 
   const TYPE_OPTIONS = [
     { label: 'Deleted', value: 'ASSET_DELETED' },
+    { label: 'Document deleted', value: 'DOCUMENT_DELETED' },
     { label: 'Edit', value: 'ASSET_EDIT' },
     { label: 'Transfer', value: 'TRANSFER' },
     { label: 'Transfer In', value: 'CHECK_IN' }, // mapped from CHECK_IN events
@@ -698,7 +702,8 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
             </ScrollView>
           </View>
         )}
-        {filters.user && (
+          {filters.user && (
+            
           <View style={[mStyles.row, { marginTop: 6 }]}>
             <TouchableOpacity onPress={() => setUser(null)} style={[mStyles.chip, mStyles.chipActive, { flexDirection: 'row', alignItems: 'center' }]}>
               <Text style={[mStyles.chipText, mStyles.chipTextActive, { flex: 1 }]} numberOfLines={1}>{filters.user}</Text>

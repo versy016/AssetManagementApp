@@ -156,15 +156,16 @@ model field_types {
 }
 
 model users {
-  id         String       @id @default(dbgenerated("uuid_generate_v4()"))
-  name       String
-  userassets String[]
-  useremail  String?      @unique
-  role       UserRole     @default(USER)
-  created_at DateTime?    @default(now()) @db.Timestamptz(6)
-  updated_at DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
-  asset_logs asset_logs[]
-  assets     assets[]     @relation("AssetAssignment")
+  id             String       @id @default(dbgenerated("uuid_generate_v4()"))
+  name           String
+  userassets     String[]
+  useremail      String?      @unique
+  role           UserRole     @default(USER)
+  expo_push_token String?     // Expo push token for mobile task notifications
+  created_at     DateTime?    @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
+  asset_logs     asset_logs[]
+  assets         assets[]     @relation("AssetAssignment")
 
   // Backrefs for action relations
   performed_actions asset_actions[] @relation("ActionPerformer")

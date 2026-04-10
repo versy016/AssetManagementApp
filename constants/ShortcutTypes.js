@@ -74,6 +74,16 @@ export const SHORTCUT_TYPES = {
         color: '#DC2626',
         bgColor: '#FEE2E2',
     },
+    HIRE_DISCLAIMER: {
+        id: 'hire_disclaimer',
+        label: 'Hire disclaimer',
+        icon: 'description',
+        description: 'Equipment hire lease form & export',
+        requiresAdmin: false,
+        webOnly: true,
+        color: '#0D9488',
+        bgColor: '#CCFBF1',
+    },
 };
 
 // Helper to get shortcut type by ID
@@ -82,9 +92,12 @@ export const getShortcutType = (id) => {
 };
 
 // Get all available shortcut types for a user
-export const getAvailableShortcutTypes = (isAdmin = false) => {
+export const getAvailableShortcutTypes = (isAdmin = false, webOnly = false) => {
     return Object.values(SHORTCUT_TYPES).filter((type) => {
         if (type.requiresAdmin && !isAdmin) {
+            return false;
+        }
+        if (type.webOnly && !webOnly) {
             return false;
         }
         return true;
@@ -98,6 +111,50 @@ export const canUseShortcut = (shortcutId, isAdmin = false) => {
     if (shortcut.requiresAdmin && !isAdmin) return false;
     return true;
 };
+
+// 5 curated colour palettes for shortcut cards.
+// Each palette is derived from the app's existing semantic colour system.
+export const SHORTCUT_COLOR_PALETTES = [
+    {
+        key: 'blue',
+        name: 'Ocean Blue',
+        fg: '#0B63CE',
+        bg: '#E7F3FF',
+        border: '#BFDBFE',
+    },
+    {
+        key: 'emerald',
+        name: 'Emerald',
+        fg: '#047857',
+        bg: '#ECFDF5',
+        border: '#A7F3D0',
+    },
+    {
+        key: 'violet',
+        name: 'Violet',
+        fg: '#5B21B6',
+        bg: '#EDE9FE',
+        border: '#C4B5FD',
+    },
+    {
+        key: 'amber',
+        name: 'Amber',
+        fg: '#B45309',
+        bg: '#FFFBEB',
+        border: '#FDE68A',
+    },
+    {
+        key: 'rose',
+        name: 'Rose',
+        fg: '#BE123C',
+        bg: '#FFF1F2',
+        border: '#FECDD3',
+    },
+];
+
+// Helper to resolve a palette by key (falls back to blue)
+export const getShortcutPalette = (key) =>
+    SHORTCUT_COLOR_PALETTES.find((p) => p.key === key) || SHORTCUT_COLOR_PALETTES[0];
 
 // Default shortcuts for new users
 export const DEFAULT_SHORTCUTS = [

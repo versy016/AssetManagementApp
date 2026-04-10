@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -14,11 +15,14 @@ import {
   Modal,
   Platform,
   Image,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { BlurView } from 'expo-blur';
 import { DatePickerModal } from 'react-native-paper-dates';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { auth } from '../../firebaseConfig';
 import { useRouter } from 'expo-router';
@@ -26,13 +30,22 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AppTextInput from '../../components/ui/AppTextInput';
+import EmptyState from '../../components/ui/EmptyState';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useTheme } from 'react-native-paper';
 import { useTasksCount } from '../../contexts/TasksCountContext';
 
 export default function TasksScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { setTaskCount } = useTasksCount();
+
+  // Sub-tab: 'tasks' | 'hire'
+  const [activeTab, setActiveTab] = useState('tasks');
+  const [hires, setHires] = useState([]);
+  const [hiresLoading, setHiresLoading] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [dbAdmin, setDbAdmin] = useState(false);
@@ -42,6 +55,7 @@ export default function TasksScreen() {
   const [taskWidth, setTaskWidth] = useState(Math.max(1, Dimensions.get('window')?.width - 48));
   const taskListRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
+  const actionScrollRef = useRef(null);
 
   const [dateOpen, setDateOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
@@ -51,9 +65,11 @@ export default function TasksScreen() {
   const [actionDocSlug, setActionDocSlug] = useState('');
   const [actionDocFieldId, setActionDocFieldId] = useState(null);
   const [actionDocPicked, setActionDocPicked] = useState(null);
+  const [actionPhoto, setActionPhoto] = useState(null);
   const [actionNote, setActionNote] = useState('');
   const [signoffReport, setSignoffReport] = useState(null);
   const [signoffChoice, setSignoffChoice] = useState('yes');
+  const [relevantDocName, setRelevantDocName] = useState('');
   const [actionNeedsNextService, setActionNeedsNextService] = useState(false);
 
   useEffect(() => {
@@ -68,6 +84,26 @@ export default function TasksScreen() {
     });
     return unsub;
   }, []);
+
+  // Fetch hires whenever the Hire sub-tab is active
+  useEffect(() => {
+    if (activeTab !== 'hire') return;
+    let cancelled = false;
+    (async () => {
+      setHiresLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/hires`);
+        if (!res.ok) throw new Error('Failed to fetch hires');
+        const json = await res.json();
+        if (!cancelled) setHires(Array.isArray(json.hires) ? json.hires : []);
+      } catch {
+        if (!cancelled) setHires([]);
+      } finally {
+        if (!cancelled) setHiresLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -258,7 +294,7 @@ export default function TasksScreen() {
                     k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
                   items.push({
                     assetId: a.id,
-                    title: `${label} Reminder`,
+                    title: label,
                     subtitle,
                     model,
                     assetTypeName,
@@ -416,9 +452,11 @@ export default function TasksScreen() {
     setActionDocPicked(null);
     setActionDocFieldId(null);
     setActionNeedsNextService(false);
+    setActionPhoto(null);
     setNextMonths(6);
     setSignoffChoice('yes');
     setSignoffReport(null);
+    setRelevantDocName('');
     try {
       // For signoff tasks, fetch asset actions to get fresh action images (in case list was stale)
       if (task?.kind === 'signoff' && task?.actionId && task?.assetId) {
@@ -439,6 +477,8 @@ export default function TasksScreen() {
         );
         const defs = await defsRes.json();
         const arr = Array.isArray(defs) ? defs : [];
+        let linkedSlug = '';
+        let linkedFieldId = null;
         if (task.fieldKey) {
           const def = arr.find(
             (d) =>
@@ -448,19 +488,49 @@ export default function TasksScreen() {
           if (def) {
             try {
               const vr =
-                (def.validation_rules && typeof def.validation_rules === 'object') ||
-                (def.validation_rules ? JSON.parse(def.validation_rules) : null);
-              const link = vr && (vr.requires_document_slug || vr.require_document_slug);
+                (def.validation_rules && typeof def.validation_rules === 'object')
+                  ? def.validation_rules
+                  : (def.validation_rules ? JSON.parse(def.validation_rules) : null);
+              const opts = (def.options && typeof def.options === 'object') ? def.options : null;
+              const link = (vr && (vr.requires_document_slug || vr.require_document_slug)) ||
+                (opts && (opts.requires_document_slug || opts.require_document_slug));
               const slug = Array.isArray(link) ? link[0] || '' : link || '';
-              if (slug) setActionDocSlug(String(slug));
+              if (slug) { linkedSlug = String(slug); }
               const docDef = arr.find(
-                (d) =>
-                  String(d.slug || '').toLowerCase() === String(slug).toLowerCase()
+                (d) => {
+                  const linkNorm = String(linkedSlug).toLowerCase().replace(/\s+/g, '_');
+                  const dSlug = String(d.slug || '').toLowerCase();
+                  const dName = String(d.name || '').toLowerCase();
+                  const linkLower = String(linkedSlug).toLowerCase();
+                  return dSlug === linkNorm || dSlug === linkLower || dName === linkLower;
+                }
               );
-              if (docDef?.id) setActionDocFieldId(String(docDef.id));
+              if (docDef?.id) linkedFieldId = String(docDef.id);
             } catch {}
           }
         }
+        if (!linkedSlug) {
+          try {
+            const urlTypeFields = arr.filter(
+              (d) => String(d?.field_type?.slug || d?.field_type?.name || '').toLowerCase() === 'url'
+            );
+            const dateSlug = String(task.fieldKey || '').toLowerCase();
+            for (const u of urlTypeFields) {
+              const uOpts = (u.options && typeof u.options === 'object') ? u.options : null;
+              const uVr = (u.validation_rules && typeof u.validation_rules === 'object') ? u.validation_rules : (u.validation_rules ? JSON.parse(u.validation_rules) : null);
+              const relatedDate = (uOpts && (uOpts.related_date_slug || uOpts.linked_date_slug || uOpts.requires_date_slug)) ||
+                (uVr && (uVr.related_date_slug || uVr.linked_date_slug || uVr.requires_date_slug));
+              const rel = Array.isArray(relatedDate) ? relatedDate[0] : relatedDate;
+              if (rel && String(rel).toLowerCase() === dateSlug) {
+                linkedSlug = String(u.slug || u.name || '');
+                if (u.id) linkedFieldId = String(u.id);
+                break;
+              }
+            }
+          } catch {}
+        }
+        if (linkedSlug) setActionDocSlug(linkedSlug);
+        if (linkedFieldId) setActionDocFieldId(linkedFieldId);
         try {
           const nextDef = arr.find(
             (d) => String(d.slug || '').toLowerCase() === 'next_service_date'
@@ -481,6 +551,14 @@ export default function TasksScreen() {
   const handleSubmitTaskAction = async () => {
     if (!actionTask) {
       setActionOpen(false);
+      return;
+    }
+    // For cert/document reminder tasks, require document upload when linked category exists
+    if (actionTask.scope === 'field' && actionDocSlug && !actionDocPicked) {
+      Alert.alert(
+        'Document required',
+        'Please attach the relevant document (e.g. updated certificate) for this task.'
+      );
       return;
     }
     try {
@@ -578,13 +656,57 @@ export default function TasksScreen() {
               fd.append('title', label);
               fd.append('kind', label);
               fd.append('related_date_label', label);
-              fd.append('related_date', new Date().toISOString());
+              // Use next service date as Valid until for service/repair report (e.g. 04 Mar 2027)
+              const reportValidUntil = (actionNextDate && String(actionNextDate).trim()) ? String(actionNextDate).trim().slice(0, 10) : new Date().toISOString().slice(0, 10);
+              fd.append('related_date', reportValidUntil);
               await fetch(
                 `${API_BASE_URL}/assets/${actionTask.assetId}/documents/upload`,
                 { method: 'POST', headers: userHeaders, body: fd }
               );
             } catch (e) {
               console.warn('Failed to upload sign-off report', e);
+            }
+          }
+          if (actionPhoto?.uri) {
+            try {
+              const fd = new FormData();
+              if (Platform.OS === 'web') {
+                const resp = await fetch(actionPhoto.uri);
+                const blob = await resp.blob();
+                const file = new File([blob], actionPhoto.name || 'task-photo.jpg', { type: actionPhoto.mimeType || blob.type || 'image/jpeg' });
+                fd.append('file', file, file.name);
+              } else {
+                fd.append('file', { uri: actionPhoto.uri, name: actionPhoto.name || 'task-photo.jpg', type: actionPhoto.mimeType || 'image/jpeg' });
+              }
+              const photoLabel = String(actionTask.actionType || '').toUpperCase() === 'REPAIR' ? 'Repair photos' : 'Service photos';
+              fd.append('title', photoLabel);
+              fd.append('kind', photoLabel);
+              // No date for sign-off photo so it doesn't show a date in document history
+              await fetch(`${API_BASE_URL}/assets/${actionTask.assetId}/documents/upload`, { method: 'POST', headers: userHeaders, body: fd });
+            } catch (e) {
+              console.warn('Failed to upload task photo', e);
+            }
+          }
+          if (actionDocPicked?.uri) {
+            try {
+              let fileObj;
+              if (Platform.OS === 'web') {
+                const resp = await fetch(actionDocPicked.uri);
+                const blob = await resp.blob();
+                fileObj = new File([blob], actionDocPicked.name || 'document.pdf', { type: actionDocPicked.mimeType || blob.type || 'application/pdf' });
+              } else {
+                fileObj = { uri: actionDocPicked.uri, name: actionDocPicked.name || 'document.pdf', type: actionDocPicked.mimeType || 'application/pdf' };
+              }
+              const fd = new FormData();
+              fd.append('file', fileObj);
+              if (actionDocFieldId) fd.append('asset_type_field_id', String(actionDocFieldId));
+              const docLabel = (relevantDocName && relevantDocName.trim()) ? String(relevantDocName).trim() : (actionDocSlug ? String(actionDocSlug).replace(/_/g, ' ') : 'Other relevant document');
+              fd.append('title', docLabel);
+              fd.append('kind', docLabel);
+              // Other documents: no date as Valid until (leave blank)
+              await fetch(`${API_BASE_URL}/assets/${actionTask.assetId}/documents/upload`, { method: 'POST', headers: userHeaders, body: fd });
+            } catch (e) {
+              console.warn('Failed to upload relevant document', e);
             }
           }
         }
@@ -632,13 +754,18 @@ export default function TasksScreen() {
         }
 
         if (signoffChoice === 'yes') {
+          const completedAssetId = actionTask.assetId || actionTask.asset_id || null;
+          const completedActionId = actionTask.actionId || null;
           setTasks((prev) => {
-            const assetId = actionTask.assetId || actionTask.asset_id || null;
             const items = (prev.items || []).filter((t) => {
               if (t === actionTask) return false;
-              if (!assetId) return true;
+              if (t.kind === 'signoff' && completedActionId != null && completedAssetId != null) {
+                const tid = t.assetId || t.asset_id || null;
+                if (String(tid) === String(completedAssetId) && String(t.actionId || '') === String(completedActionId)) return false;
+              }
+              if (!completedAssetId) return true;
               const tid = t.assetId || t.asset_id || null;
-              if (!tid || String(tid) !== String(assetId)) return true;
+              if (!tid || String(tid) !== String(completedAssetId)) return true;
               const k = String(t.fieldKey || '').toLowerCase();
               const title = String(t.title || '').toLowerCase();
               if (k.includes('service') || k.includes('maint')) return false;
@@ -648,8 +775,17 @@ export default function TasksScreen() {
             return { items, loading: false };
           });
         }
-        setActionOpen(false);
-        setActionSubmitting(false);
+        if (signoffChoice === 'yes') {
+          const actionTypeLabel = String(actionTask.actionType || '').toUpperCase() === 'REPAIR' ? 'Repair' : 'Service';
+          Alert.alert(
+            'Signed off',
+            `${actionTypeLabel} has been signed off successfully.`,
+            [{ text: 'OK', onPress: () => { setActionOpen(false); setActionSubmitting(false); } }]
+          );
+        } else {
+          setActionOpen(false);
+          setActionSubmitting(false);
+        }
         return;
       }
 
@@ -686,7 +822,7 @@ export default function TasksScreen() {
         if (!body.next_service_date) body.next_service_date = actionNextDate;
       }
 
-      if (actionDocSlug && actionDocPicked) {
+      if (actionDocPicked) {
         try {
           let fileObj;
           if (Platform.OS === 'web') {
@@ -725,7 +861,9 @@ export default function TasksScreen() {
               )
               .join(' ');
           };
-          const niceName = toTitle(actionDocSlug);
+          const niceName = actionDocSlug
+            ? toTitle(actionDocSlug)
+            : toTitle(actionTask?.fieldKey || actionTask?.title) || 'Task document';
           fd.append('title', niceName);
           fd.append('kind', niceName);
           fd.append(
@@ -736,14 +874,18 @@ export default function TasksScreen() {
             )
           );
           fd.append('related_date', actionNextDate);
+          const uploadHeaders = { ...headers };
+          delete uploadHeaders['Content-Type'];
           const up = await fetch(
             `${API_BASE_URL}/assets/${actionTask.assetId}/documents/upload`,
-            { method: 'POST', body: fd }
+            { method: 'POST', headers: uploadHeaders, body: fd }
           );
           const upj = await up.json().catch(() => ({}));
           if (up.ok && upj?.document?.url) {
-            body.fields[actionDocSlug] = upj.document.url;
-            body.documentation_url = upj.document.url;
+            if (actionDocSlug) {
+              body.fields[actionDocSlug] = upj.document.url;
+              body.documentation_url = upj.document.url;
+            }
           }
         } catch {}
       }
@@ -751,6 +893,9 @@ export default function TasksScreen() {
       if (actionNote && String(actionNote).trim()) {
         body.notes = String(actionNote).trim();
       }
+
+      // Skip required-document validation when logging (not sign-off); required docs are enforced on sign-off
+      body.skip_required_documents = true;
 
       const res = await fetch(url, {
         method: 'PUT',
@@ -780,6 +925,31 @@ export default function TasksScreen() {
           }),
         });
       } catch {}
+
+      if (actionPhoto?.uri) {
+        try {
+          const photoHeaders = { ...headers };
+          delete photoHeaders['Content-Type'];
+          const u = auth?.currentUser;
+          if (u?.uid) photoHeaders['X-User-Id'] = String(u.uid);
+          const fd = new FormData();
+          if (Platform.OS === 'web') {
+            const resp = await fetch(actionPhoto.uri);
+            const blob = await resp.blob();
+            const file = new File([blob], actionPhoto.name || 'task-photo.jpg', { type: actionPhoto.mimeType || blob.type || 'image/jpeg' });
+            fd.append('file', file, file.name);
+          } else {
+            fd.append('file', { uri: actionPhoto.uri, name: actionPhoto.name || 'task-photo.jpg', type: actionPhoto.mimeType || 'image/jpeg' });
+          }
+          const photoLabel = String(actionTask.actionType || '').toUpperCase() === 'REPAIR' ? 'Repair photos' : 'Service photos';
+          fd.append('title', photoLabel);
+          fd.append('kind', photoLabel);
+          // No date for task photo so it doesn't show a date in document history
+          await fetch(`${API_BASE_URL}/assets/${actionTask.assetId}/documents/upload`, { method: 'POST', headers: photoHeaders, body: fd });
+        } catch (e) {
+          console.warn('Failed to upload task photo', e);
+        }
+      }
 
       setTasks((prev) => {
         const rest = (prev.items || []).filter((t) =>
@@ -880,14 +1050,148 @@ export default function TasksScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#1E90FF" />
+        <LoadingSpinner />
       </View>
     );
   }
 
+  // Helper: format date as "12 Mar 2026"
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(+d)) return iso;
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   return (
     <ScreenWrapper style={styles.safeArea}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
+
+        {/* ── Sub-tab bar — mobile only (web has Hire in the navbar) ── */}
+        {Platform.OS !== 'web' && (
+          <View style={styles.subTabBar}>
+            {['tasks', 'hire'].map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.subTab, activeTab === tab && styles.subTabActive]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.subTabText, activeTab === tab && styles.subTabTextActive]}>
+                  {tab === 'tasks' ? 'Tasks' : 'Hire'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* ── Hire tab — mobile only ────────────────────────────── */}
+        {Platform.OS !== 'web' && activeTab === 'hire' && (
+          <ScrollView
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.hireHeaderRow}>
+              <Text style={styles.sectionTitle}>Hire</Text>
+              {hires.length > 0 && (
+                <View style={styles.hireBadge}>
+                  <MaterialIcons name="assignment" size={13} color="#065F46" />
+                  <Text style={styles.hireBadgeText}>{hires.length} record{hires.length !== 1 ? 's' : ''}</Text>
+                </View>
+              )}
+            </View>
+
+            {hiresLoading ? (
+              <LoadingSpinner flex={false} size="large" />
+            ) : hires.length === 0 ? (
+              <EmptyState
+                icon="assignment"
+                iconColor="#065F46"
+                iconBg="#ECFDF5"
+                title="No hire records"
+                subtitle="Hire records will appear here once equipment has been hired out."
+              />
+            ) : (
+              hires.map((h) => {
+                const signed = h.signatureStatus === 'signed';
+                return (
+                  <View key={h.id} style={styles.hireCard}>
+                    {/* Equipment row */}
+                    <View style={styles.hireCardTopRow}>
+                      <View style={styles.hireCardIconWrap}>
+                        <MaterialIcons name="construction" size={18} color="#065F46" />
+                      </View>
+                      <View style={styles.hireCardEquipCol}>
+                        <Text style={styles.hireCardEquip} numberOfLines={1}>
+                          {h.assetType || 'Equipment'}
+                        </Text>
+                        {h.serial ? (
+                          <Text style={styles.hireCardSerial}>Serial: {h.serial}</Text>
+                        ) : null}
+                      </View>
+                      <View style={[styles.hireStatusBadge, signed ? styles.hireStatusSigned : styles.hireStatusPending]}>
+                        <MaterialIcons
+                          name={signed ? 'verified' : 'pending'}
+                          size={11}
+                          color={signed ? '#065F46' : '#92400E'}
+                        />
+                        <Text style={[styles.hireStatusText, { color: signed ? '#065F46' : '#92400E' }]}>
+                          {signed ? 'Signed' : 'Pending'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Divider */}
+                    <View style={styles.hireCardDivider} />
+
+                    {/* Contact */}
+                    <View style={styles.hireCardRow}>
+                      <MaterialIcons name="person" size={14} color="#64748B" style={styles.hireCardRowIcon} />
+                      <Text style={styles.hireCardValue} numberOfLines={1}>{h.contactName || '—'}</Text>
+                    </View>
+                    {h.phone && h.phone !== '—' ? (
+                      <View style={styles.hireCardRow}>
+                        <MaterialIcons name="phone" size={14} color="#64748B" style={styles.hireCardRowIcon} />
+                        <Text style={styles.hireCardValue}>{h.phone}</Text>
+                      </View>
+                    ) : null}
+                    {h.email ? (
+                      <View style={styles.hireCardRow}>
+                        <MaterialIcons name="email" size={14} color="#64748B" style={styles.hireCardRowIcon} />
+                        <Text style={styles.hireCardValue} numberOfLines={1}>{h.email}</Text>
+                      </View>
+                    ) : null}
+
+                    {/* Dates */}
+                    <View style={styles.hireCardDivider} />
+                    <View style={styles.hireDatesRow}>
+                      <View style={styles.hireDateBlock}>
+                        <Text style={styles.hireDateLabel}>FROM</Text>
+                        <Text style={styles.hireDateValue}>{fmtDate(h.fromDate)}</Text>
+                      </View>
+                      <MaterialIcons name="arrow-forward" size={16} color="#94A3B8" />
+                      <View style={[styles.hireDateBlock, { alignItems: 'flex-end' }]}>
+                        <Text style={styles.hireDateLabel}>TO</Text>
+                        <Text style={styles.hireDateValue}>{fmtDate(h.toDate)}</Text>
+                      </View>
+                    </View>
+
+                    {/* Project / client if present */}
+                    {(h.project || h.client) ? (
+                      <View style={styles.hireCardTagRow}>
+                        <MaterialIcons name="work" size={13} color="#64748B" style={styles.hireCardRowIcon} />
+                        <Text style={styles.hireCardTag} numberOfLines={1}>{h.project || h.client}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        )}
+
+        {/* ── Tasks — always visible on web; gated by tab on mobile ── */}
+        {(Platform.OS === 'web' || activeTab === 'tasks') && (
         <ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
         >
@@ -910,21 +1214,18 @@ export default function TasksScreen() {
 
             {tasks.loading ? (
               <View style={styles.toDoCard}>
-                <ActivityIndicator color="#2563EB" />
+                <LoadingSpinner flex={false} size="small" />
               </View>
             ) : filteredTaskItems.length === 0 ? (
-              <View style={[styles.toDoCard, styles.emptyStateCard]}>
-                <View style={styles.emptyStateIconWrap}>
-                  <MaterialIcons name="celebration" size={26} color="#1D4ED8" />
-                </View>
-                <Text style={styles.emptyStateTitle}>You're all caught up</Text>
-                <Text style={styles.emptyStateSubtitle}>
-                  No {taskFilter === 'all' ? '' : `${taskFilter} `}tasks right
-                  now. Enjoy the calm or jump into something else.
-                </Text>
-                <Text style={styles.emptyStateHint}>
-                  Tip: Scan an asset to log new work.
-                </Text>
+              <View style={styles.toDoCard}>
+                <EmptyState
+                  icon="celebration"
+                  iconColor="#1D4ED8"
+                  iconBg="#EEF2FF"
+                  title="You're all caught up"
+                  subtitle={`No ${taskFilter === 'all' ? '' : `${taskFilter} `}tasks right now. Enjoy the calm or jump into something else.`}
+                  hint="Tip: Scan an asset to log new work."
+                />
               </View>
             ) : (
               <View
@@ -1387,6 +1688,7 @@ export default function TasksScreen() {
             )}
           </View>
         </ScrollView>
+        )}
       </SafeAreaView>
 
       <Modal
@@ -1398,7 +1700,11 @@ export default function TasksScreen() {
         <View
           style={[
             styles.menuOverlay,
-            { justifyContent: 'center', alignItems: 'center' },
+            {
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: '4%',
+            },
           ]}
         >
           <BlurView
@@ -1410,18 +1716,45 @@ export default function TasksScreen() {
             style={styles.menuBackdrop}
             onPress={() => setActionOpen(false)}
           />
-          <View style={styles.taskModalCard}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              ...(Platform.OS === 'web' ? { maxHeight: '85vh' } : {}),
+              ...(Platform.OS !== 'web' ? { marginTop: insets.top, marginBottom: insets.bottom, maxHeight: '90%' } : {}),
+            }}
+          >
+          <View style={[
+            styles.taskModalCard,
+            Platform.OS === 'web' && { maxHeight: '85vh' },
+            Platform.OS !== 'web' && {
+              paddingTop: Math.max(16, insets.top + 8),
+              paddingBottom: Math.max(16, insets.bottom + 8),
+            },
+          ]}>
+            <ScrollView
+              ref={actionScrollRef}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                paddingBottom: Platform.OS === 'web' ? 32 : 16,
+                ...(Platform.OS !== 'web' ? { paddingTop: 4 } : {}),
+              }}
+              showsVerticalScrollIndicator={true}
+              style={Platform.OS === 'web' ? { maxHeight: '75vh' } : undefined}
+            >
             <Text
               style={{
                 fontSize: 18,
                 fontWeight: '900',
-                marginBottom: 6,
+                marginBottom: 8,
               }}
             >
               {actionTask?.title || 'Action Task'}
             </Text>
             <Text
-              style={{ color: '#6B7280', marginBottom: 12 }}
+              style={{ color: '#6B7280', marginBottom: 14 }}
             >
               {actionTask?.subtitle || ''}
             </Text>
@@ -1652,6 +1985,136 @@ export default function TasksScreen() {
                       )}
                     </View>
                   )}
+
+                {signoffChoice === 'yes' && (
+                  <>
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+                        {actionDocSlug
+                          ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
+                          : 'Other relevant document (optional)'}
+                      </Text>
+                      {actionDocPicked ? (
+                        <Text style={{ marginBottom: 6, fontStyle: 'italic', color: '#374151' }}>
+                          Attached: {actionDocPicked.name || 'document'}
+                        </Text>
+                      ) : null}
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity
+                          style={[styles.btn, styles.btnGhost, { paddingVertical: 10, flex: 1 }]}
+                          onPress={async () => {
+                            try {
+                              const res = await DocumentPicker.getDocumentAsync({
+                                type: [
+                                  'application/pdf',
+                                  'application/msword',
+                                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                ],
+                                multiple: false,
+                              });
+                              if (res.canceled) return;
+                              const asset = res.assets?.[0];
+                              if (!asset) return;
+                              setActionDocPicked(asset);
+                            } catch (e) {
+                              Alert.alert('Error', e.message || 'Failed to select document');
+                            }
+                          }}
+                        >
+                          <Text style={{ fontWeight: '700', color: '#2563EB' }}>
+                            {actionDocPicked
+                              ? `Replace ${String(actionDocSlug || 'document').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`
+                              : `Upload ${String(actionDocSlug || 'document').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`}
+                          </Text>
+                        </TouchableOpacity>
+                        {actionDocPicked ? (
+                          <TouchableOpacity
+                            style={[styles.btn, { paddingVertical: 10, backgroundColor: '#fdecea', flex: 1 }]}
+                            onPress={() => setActionDocPicked(null)}
+                          >
+                            <Text style={{ color: '#b00020' }}>Remove</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+                        Other relevant document name
+                      </Text>
+                      <TextInput
+                        placeholder="e.g. Certificate, Invoice, Compliance doc"
+                        placeholderTextColor="#9CA3AF"
+                        value={relevantDocName}
+                        onChangeText={setRelevantDocName}
+                        style={{
+                          height: 36,
+                          fontSize: 14,
+                          borderWidth: 1,
+                          borderColor: '#E5E7EB',
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          backgroundColor: theme.colors.surface,
+                          color: theme.dark ? '#fff' : '#111',
+                        }}
+                      />
+                    </View>
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>Photo (optional)</Text>
+                      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {Platform.OS !== 'web' && (
+                          <TouchableOpacity
+                            style={[styles.btn, styles.btnGhost, { paddingVertical: 10 }]}
+                            onPress={async () => {
+                              try {
+                                const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                                if (status !== 'granted') {
+                                  Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+                                  return;
+                                }
+                                const res = await ImagePicker.launchCameraAsync({
+                                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                  allowsEditing: true,
+                                  quality: 0.8,
+                                });
+                                if (!res.canceled && res.assets?.[0]) setActionPhoto(res.assets[0]);
+                              } catch (e) {
+                                Alert.alert('Error', e?.message || 'Failed to take photo');
+                              }
+                            }}
+                          >
+                            <Text style={{ fontWeight: '700', color: '#2563EB' }}>Take photo</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={[styles.btn, styles.btnGhost, { paddingVertical: 10 }]}
+                          onPress={async () => {
+                            try {
+                              const res = await ImagePicker.launchImageLibraryAsync({
+                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                allowsEditing: true,
+                                quality: 0.8,
+                              });
+                              if (!res.canceled && res.assets?.[0]) setActionPhoto(res.assets[0]);
+                            } catch (e) {
+                              Alert.alert('Error', e?.message || 'Failed to pick photo');
+                            }
+                          }}
+                        >
+                          <Text style={{ fontWeight: '700', color: '#2563EB' }}>{Platform.OS === 'web' ? 'Choose photo' : 'Choose from library'}</Text>
+                        </TouchableOpacity>
+                        {actionPhoto ? (
+                          <>
+                            <Image source={{ uri: actionPhoto.uri }} style={{ width: 48, height: 48, borderRadius: 8 }} resizeMode="cover" />
+                            <TouchableOpacity style={[styles.btn, { paddingVertical: 10, backgroundColor: '#fdecea' }]} onPress={() => setActionPhoto(null)}>
+                              <Text style={{ color: '#b00020' }}>Remove</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : null}
+                      </View>
+                    </View>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -1723,91 +2186,151 @@ export default function TasksScreen() {
                 value={actionNote}
                 onChangeText={setActionNote}
                 multiline
+                onFocus={() => {
+                  if (Platform.OS !== 'web') {
+                    setTimeout(
+                      () => actionScrollRef.current?.scrollToEnd({ animated: true }),
+                      150
+                    );
+                  }
+                }}
               />
+              {Platform.OS !== 'web' && (
+                <TouchableOpacity
+                  onPress={() => Keyboard.dismiss()}
+                  style={{ alignSelf: 'flex-end', marginTop: 4 }}
+                >
+                  <Text style={{ fontSize: 12, color: '#2563EB', fontWeight: '600' }}>
+                    Hide keyboard
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {actionDocSlug ? (
-              <View style={{ marginTop: 10 }}>
-                <Text
-                  style={{
-                    color: '#6B7280',
-                    fontSize: 12,
-                    marginBottom: 6,
+            {actionTask?.kind !== 'signoff' ? (
+              <>
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+                {actionDocSlug
+                  ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
+                  : 'Other relevant document (optional)'}
+              </Text>
+              {actionDocPicked ? (
+                <Text style={{ marginBottom: 6, fontStyle: 'italic', color: '#374151' }}>
+                  Attached: {actionDocPicked.name || 'document'}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.btn,
+                    styles.btnGhost,
+                    { paddingVertical: 10, flex: 1 },
+                  ]}
+                  onPress={async () => {
+                    try {
+                      const res =
+                        await DocumentPicker.getDocumentAsync({
+                          type: [
+                            'application/pdf',
+                            'application/msword',
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                          ],
+                          multiple: false,
+                        });
+                      if (res.canceled) return;
+                      const asset = res.assets?.[0];
+                      if (!asset) return;
+                      setActionDocPicked(asset);
+                    } catch (e) {
+                      Alert.alert(
+                        'Error',
+                        e.message || 'Failed to select document'
+                      );
+                    }
                   }}
                 >
-                  Linked document category:{' '}
-                  {String(actionDocSlug).replace(/_/g, ' ')}
-                </Text>
-                {actionDocPicked ? (
-                  <Text
-                    style={{
-                      marginBottom: 6,
-                      fontStyle: 'italic',
-                      color: '#374151',
-                    }}
-                  >
-                    Attached: {actionDocPicked.name || 'document'}
+                  <Text style={{ fontWeight: '700', color: '#2563EB' }}>
+                    {actionDocPicked
+                      ? `Replace ${String(actionDocSlug || 'document').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`
+                      : `Upload ${String(actionDocSlug || 'document').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`}
                   </Text>
-                ) : null}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                </TouchableOpacity>
+                {actionDocPicked ? (
                   <TouchableOpacity
                     style={[
                       styles.btn,
-                      styles.btnGhost,
-                      { paddingVertical: 10, flex: 1 },
+                      {
+                        paddingVertical: 10,
+                        backgroundColor: '#fdecea',
+                        flex: 1,
+                      },
                     ]}
+                    onPress={() => setActionDocPicked(null)}
+                  >
+                    <Text style={{ color: '#b00020' }}>Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={{ marginTop: 14 }}>
+              <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>Photo (optional)</Text>
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                {Platform.OS !== 'web' && (
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnGhost, { paddingVertical: 10 }]}
                     onPress={async () => {
                       try {
-                        const res =
-                          await DocumentPicker.getDocumentAsync({
-                            type: [
-                              'application/pdf',
-                              'application/msword',
-                              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                            ],
-                            multiple: false,
-                          });
-                        if (res.canceled) return;
-                        const asset = res.assets?.[0];
-                        if (!asset) return;
-                        setActionDocPicked(asset);
+                        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                        if (status !== 'granted') {
+                          Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+                          return;
+                        }
+                        const res = await ImagePicker.launchCameraAsync({
+                          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                          allowsEditing: true,
+                          quality: 0.8,
+                        });
+                        if (!res.canceled && res.assets?.[0]) setActionPhoto(res.assets[0]);
                       } catch (e) {
-                        Alert.alert(
-                          'Error',
-                          e.message || 'Failed to select document'
-                        );
+                        Alert.alert('Error', e?.message || 'Failed to take photo');
                       }
                     }}
                   >
-                    <Text
-                      style={{
-                        fontWeight: '700',
-                        color: '#2563EB',
-                      }}
-                    >
-                      {actionDocPicked
-                        ? 'Replace Document'
-                        : 'Upload Document'}
-                    </Text>
+                    <Text style={{ fontWeight: '700', color: '#2563EB' }}>Take photo</Text>
                   </TouchableOpacity>
-                  {actionDocPicked ? (
-                    <TouchableOpacity
-                      style={[
-                        styles.btn,
-                        {
-                          paddingVertical: 10,
-                          backgroundColor: '#fdecea',
-                          flex: 1,
-                        },
-                      ]}
-                      onPress={() => setActionDocPicked(null)}
-                    >
+                )}
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnGhost, { paddingVertical: 10 }]}
+                  onPress={async () => {
+                    try {
+                      const res = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                        allowsEditing: true,
+                        quality: 0.8,
+                      });
+                      if (!res.canceled && res.assets?.[0]) setActionPhoto(res.assets[0]);
+                    } catch (e) {
+                      Alert.alert('Error', e?.message || 'Failed to pick photo');
+                    }
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#2563EB' }}>{Platform.OS === 'web' ? 'Choose photo' : 'Choose from library'}</Text>
+                </TouchableOpacity>
+                {actionPhoto ? (
+                  <>
+                    <Image source={{ uri: actionPhoto.uri }} style={{ width: 48, height: 48, borderRadius: 8 }} resizeMode="cover" />
+                    <TouchableOpacity style={[styles.btn, { paddingVertical: 10, backgroundColor: '#fdecea' }]} onPress={() => setActionPhoto(null)}>
                       <Text style={{ color: '#b00020' }}>Remove</Text>
                     </TouchableOpacity>
-                  ) : null}
-                </View>
+                  </>
+                ) : null}
               </View>
+            </View>
+              </>
             ) : null}
+            </ScrollView>
 
             <View
               style={{
@@ -1855,6 +2378,7 @@ export default function TasksScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </KeyboardAvoidingView>
         </View>
         <DatePickerModal
           locale="en-GB"
@@ -1900,7 +2424,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    width: '92%',
+    width: '100%',
     maxWidth: 520,
     borderWidth: 1,
     borderColor: '#E9F1FF',
@@ -2092,4 +2616,168 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   quickDateChipText: { color: '#2563EB', fontWeight: '800' },
+
+  // ── Sub-tab bar ────────────────────────────────────────────────
+  subTabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  subTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -1,
+  },
+  subTabActive: {
+    borderBottomColor: '#1E90FF',
+  },
+  subTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  subTabTextActive: {
+    color: '#1E90FF',
+  },
+
+  // ── Hire cards ─────────────────────────────────────────────────
+  hireHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  hireBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  hireBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  hireCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  hireCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  hireCardIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hireCardEquipCol: {
+    flex: 1,
+  },
+  hireCardEquip: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  hireCardSerial: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  hireStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  hireStatusSigned: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  hireStatusPending: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  hireStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  hireCardDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 10,
+  },
+  hireCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  hireCardRowIcon: {
+    marginRight: 8,
+  },
+  hireCardValue: {
+    fontSize: 13,
+    color: '#334155',
+    flex: 1,
+  },
+  hireDatesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hireDateBlock: {
+    flex: 1,
+  },
+  hireDateLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  hireDateValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  hireCardTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  hireCardTag: {
+    fontSize: 12,
+    color: '#64748B',
+    flex: 1,
+  },
 });

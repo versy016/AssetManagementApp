@@ -33,30 +33,30 @@ import QRCode from 'react-native-qrcode-svg';
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
 const STATUS_CONFIG = {
-  in_service:        { label: 'In Service',         bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
-  end_of_life:       { label: 'End of Life',        bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
-  repair:      { label: 'Repair',       bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
-  maintenance: { label: 'Maintenance',  bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
+  in_service:  { label: 'In Service',  bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
+  end_of_life: { label: 'End of Life', bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
+  repair:      { label: 'Repair',      bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
+  maintenance: { label: 'Maintenance', bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
+  on_hire:     { label: 'On Hire',     bg: '#ecfdf5', fg: '#065f46', icon: 'assignment' },
 };
 function normalizeStatus(s) {
   if (!s) return 'in_service';
   const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
 
-  // Back-compat / synonyms mapping
   const alias = {
-    // exact new set
-    in_service: 'in_service',
-    end_of_life: 'end_of_life',
-    repair: 'repair',
-    maintenance: 'maintenance',
-
-    // legacy/common variants
-    available: 'in_service',
-    checked_out: 'repair', // or pick 'in_service' if you prefer
-    rented: 'repair',
-    reserved: 'in_service',
-    lost: 'end_of_life',
-    retired: 'end_of_life',
+    in_service:     'in_service',
+    end_of_life:    'end_of_life',
+    repair:         'repair',
+    maintenance:    'maintenance',
+    on_hire:        'on_hire',
+    hire:           'on_hire',
+    rented:         'on_hire',
+    on_rent:        'on_hire',
+    available:      'in_service',
+    checked_out:    'in_service',
+    reserved:       'in_service',
+    lost:           'end_of_life',
+    retired:        'end_of_life',
   };
 
   return alias[key] || 'in_service';
@@ -209,6 +209,7 @@ export default function AssetDetailPage() {
   const navigation = useNavigation();
   const [isAdmin, setIsAdmin] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
+  const [notesSectionExpanded, setNotesSectionExpanded] = useState(false);
   const { width } = useWindowDimensions();
   const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
   const [qrOpen, setQrOpen] = useState(false);
@@ -549,6 +550,36 @@ export default function AssetDetailPage() {
     }
   };
 
+  const [docDeletingId, setDocDeletingId] = useState(null);
+  const handleDeleteDocument = useCallback(async (docId) => {
+    const ok = Platform.OS === 'web'
+      ? window.confirm('Remove this document from the asset?')
+      : await new Promise((resolve) => {
+          Alert.alert('Remove document', 'Remove this document from the asset?', [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
+    if (!ok) return;
+    const aId = asset?.id || assetId;
+    if (!aId || !docId) return;
+    setDocDeletingId(docId);
+    try {
+      const uid = auth.currentUser?.uid;
+      const headers = { 'Content-Type': 'application/json', ...(uid ? { 'X-User-Id': uid } : {}) };
+      const res = await fetch(`${API_BASE_URL}/asset-documents/${aId}/documents/${docId}`, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || 'Failed to delete document');
+      }
+      await load();
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to delete document');
+    } finally {
+      setDocDeletingId(null);
+    }
+  }, [asset?.id, assetId, load]);
+
   // Helper: build ordered dynamic rows with doc shown beneath its date.
   // Any additional (older) DB-backed documents are returned as a separate
   // history list so we only show the latest per field in Additional Fields.
@@ -677,7 +708,7 @@ export default function AssetDetailPage() {
             if (fieldId && Array.isArray(assetDocs) && assetDocs.length) {
               const sorted = assetDocs
                 .filter(d => String(d.asset_type_field_id || '') === fieldId)
-                .sort((a,b) => new Date(b.related_date || b.created_at || 0) - new Date(a.related_date || a.created_at || 0));
+                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0));
               if (sorted[0]?.url) v = sorted[0].url;
               if (sorted[0]?.id) consumedDocIds.add(String(sorted[0].id));
             }
@@ -687,7 +718,7 @@ export default function AssetDetailPage() {
               const tokens = [norm(label), lower];
               const cand = assetDocs
                 .filter(d => docMatchesTokens(d, tokens))
-                .sort((a,b) => new Date(b.related_date || b.created_at || 0) - new Date(a.related_date || a.created_at || 0))[0];
+                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0))[0];
               if (cand?.url) v = cand.url;
               if (cand?.id) consumedDocIds.add(String(cand.id));
             }
@@ -702,7 +733,7 @@ export default function AssetDetailPage() {
       if (Array.isArray(assetDocs) && assetDocs.length) {
         const leftovers = assetDocs
           .filter((d) => d && d.url && !consumedDocIds.has(String(d.id)))
-          .sort((a,b) => new Date(b.related_date || b.created_at || 0) - new Date(a.related_date || a.created_at || 0));
+          .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0));
         for (const d of leftovers) {
           let label = d.title || d.kind || 'Attachment';
           try {
@@ -874,6 +905,7 @@ export default function AssetDetailPage() {
     } catch { return []; }
   }, [latestMatchingAction, assetDocs]);
   const [docHistoryOpen, setDocHistoryOpen] = useState(false);
+  const [maintenanceExpanded, setMaintenanceExpanded] = useState(false);
   const prettyDateTime = (d) => {
     try {
       const t = typeof d === 'string' ? new Date(d) : new Date(d);
@@ -986,17 +1018,24 @@ export default function AssetDetailPage() {
           // Only use base.notes so we don't duplicate a.note when it was already used as summary
           const notes = base.notes ?? null;
           const images = Array.isArray(a?.data?.images) ? a.data.images.filter(Boolean) : [];
+          const signed_off_at = a?.data?.signed_off_at || null;
           return {
             id: a.id,
             type: String(a.type || '').toUpperCase(),
             date,
             occurred_at: a.occurred_at,
+            signed_off_at,
             summary,
             priority: base.priority,
             estimated_cost: base.estimated_cost,
             notes,
             images,
           };
+        })
+        .sort((a, b) => {
+          const ta = (a.signed_off_at || a.occurred_at || a.date) ? new Date(a.signed_off_at || a.occurred_at || a.date).getTime() : 0;
+          const tb = (b.signed_off_at || b.occurred_at || b.date) ? new Date(b.signed_off_at || b.occurred_at || b.date).getTime() : 0;
+          return tb - ta;
         });
     } catch { return []; }
   }, [actions]);
@@ -1130,24 +1169,6 @@ export default function AssetDetailPage() {
 
           {/* Core fields */}
           {(() => {
-            // Hide common Next Service when the type defines a custom next_service_date field
-            // or when the current asset already has a dynamic field key named next_service_date.
-            const hasCustomNext = (() => {
-              try {
-                const byType = Array.isArray(typeFields)
-                  && typeFields.some(tf => String(tf.slug || '').toLowerCase() === 'next_service_date'
-                    && String(tf?.field_type?.slug || tf?.field_type?.name || '').toLowerCase() === 'date');
-                if (byType) return true;
-                const f = asset?.fields && typeof asset.fields === 'object' ? asset.fields : null;
-                if (!f) return false;
-                // Look for an existing dynamic field named next_service_date (normalized)
-                for (const k of Object.keys(f)) {
-                  const norm = String(k || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-                  if (norm === 'next_service_date') return true;
-                }
-                return false;
-              } catch { return false; }
-            })();
             const coreRows = [
               { label: 'Status', value: <StatusBadge status={asset.status} /> },
               { label: 'Assigned To', value: asset.users?.name || 'N/A' },
@@ -1156,51 +1177,32 @@ export default function AssetDetailPage() {
               { label: 'Other ID', value: asset.other_id || 'N/A' },
               { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : 'N/A' },
             ];
-            // Only show the common Next Service when there is no custom field for it
-            if (!hasCustomNext) {
-              coreRows.push({
-                label: 'Next Service',
-                value: nextService ? (
-                  <Text style={{ color: isOverdue ? '#b00020' : '#065f46', fontWeight: '600' }}>
-                    {format(nextService, 'dd MMM yyyy')}
-                    {isOverdue ? `  • ${overdueDays}d overdue` : ''}
-                  </Text>
-                ) : 'N/A',
-                right: false,
-              });
-              // If Next Service date links to a document, insert the document row just after it
-              try {
-                const docSlug = dateDocLinks['next_service_date'];
-                if (docSlug) {
-                  let docUrl = (docSlug === 'documentation_url') ? (asset?.documentation_url || '') : '';
-                  if (!docUrl && asset?.fields) {
-                    if (asset.fields[docSlug]) docUrl = asset.fields[docSlug];
-                    else {
-                      for (const [k, v] of Object.entries(asset.fields)) {
-                        const norm = String(k || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-                        if (norm === docSlug) { docUrl = v; break; }
-                      }
-                    }
-                  }
-                  if (!docUrl && asset?.documentation_url) docUrl = asset.documentation_url;
-                  const docLabel = docLabels[docSlug] ? String(docLabels[docSlug]) : formatFieldLabel(docSlug);
-                  const idx = coreRows.findIndex(r => r.label === 'Next Service');
-                  const row = { label: docLabel, value: renderFieldValue(docSlug, docUrl || 'N/A'), right: false };
-                  if (idx >= 0) coreRows.splice(idx + 1, 0, row); else coreRows.push(row);
-                }
-              } catch {}
-            }
             coreRows.push(
               { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
               { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
               { label: 'Description', value: asset.description || 'No description' },
             );
             if (isWebWide) {
-              return <DetailsGrid rows={coreRows} />;
+              return (
+                <>
+                  <Text style={styles.sectionH}>Overview</Text>
+                  <DetailsGrid rows={coreRows} />
+                </>
+              );
             }
-            return coreRows.map((r, i) => (
-              <Row key={`core-${i}`} label={r.label} value={r.value} rightAlign={r.right !== false} />
-            ));
+            return (
+              <>
+                <Text style={styles.sectionH}>Overview</Text>
+                {coreRows.map((r, i) => (
+                  <Row
+                    key={`core-${i}`}
+                    label={r.label}
+                    value={r.value}
+                    rightAlign={r.right !== false}
+                  />
+                ))}
+              </>
+            );
           })()}
 
           {currentDetails && (
@@ -1232,39 +1234,59 @@ export default function AssetDetailPage() {
                   return <DetailsGrid rows={rows} />;
                 })()
               ) : (
-                <>
-                  {currentDetails.date && (
-                    <Row label="Date" value={prettyDate(currentDetails.date)} rightAlign={false} />
-                  )}
+                <View style={styles.currentWorkCard}>
                   {currentDetails.summary && (
-                    <Row label="Summary" value={currentDetails.summary} rightAlign={false} />
+                    <Text style={styles.currentWorkSummary}>{currentDetails.summary}</Text>
                   )}
-                  {currentDetails.priority && (
-                    <Row label="Priority" value={String(currentDetails.priority)} rightAlign={false} />
-                  )}
-                  {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
-                    <Row label="Estimated Cost" value={`$${Number(currentDetails.estimated_cost).toFixed(2)}`} rightAlign={false} />
-                  )}
+                  <View style={styles.currentWorkMetaRow}>
+                    {currentDetails.date && (
+                      <View style={styles.currentWorkMetaItem}>
+                        <MaterialIcons name="event" size={14} color="#4B5563" />
+                        <Text style={styles.currentWorkMetaLabel}>Date</Text>
+                        <Text style={styles.currentWorkMetaValue}>{prettyDate(currentDetails.date)}</Text>
+                      </View>
+                    )}
+                    {currentDetails.priority && (
+                      <View style={styles.currentWorkMetaItem}>
+                        <MaterialIcons name="flag" size={14} color="#4B5563" />
+                        <Text style={styles.currentWorkMetaLabel}>Priority</Text>
+                        <Text style={styles.currentWorkMetaValue}>{String(currentDetails.priority)}</Text>
+                      </View>
+                    )}
+                    {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
+                      <View style={styles.currentWorkMetaItem}>
+                        <MaterialIcons name="attach-money" size={14} color="#4B5563" />
+                        <Text style={styles.currentWorkMetaLabel}>Est. Cost</Text>
+                        <Text style={styles.currentWorkMetaValue}>{`$${Number(currentDetails.estimated_cost).toFixed(2)}`}</Text>
+                      </View>
+                    )}
+                  </View>
                   {currentDetails.eol_reason && (
-                    <Row label="Reason" value={currentDetails.eol_reason} rightAlign={false} />
+                    <Text style={styles.currentWorkNote}>
+                      {currentDetails.eol_reason}
+                    </Text>
                   )}
                   {currentDetails.notes && (
-                    <Row label="Notes" value={currentDetails.notes} rightAlign={false} />
+                    <Text style={styles.currentWorkNote}>
+                      {currentDetails.notes}
+                    </Text>
                   )}
                   {currentActionImages.length > 0 && (
-                    <Row
-                      label="Work photo"
-                      value={(
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
-                          {currentActionImages.map((url, idx) => (
-                            <Image key={`curr-wp-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                          ))}
-                        </ScrollView>
-                      )}
-                      rightAlign={false}
-                    />
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={{ marginTop: 8 }}
+                    >
+                      {currentActionImages.map((url, idx) => (
+                        <Image
+                          key={`curr-wp-${idx}`}
+                          source={{ uri: url }}
+                          style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }}
+                        />
+                      ))}
+                    </ScrollView>
                   )}
-                </>
+                </View>
               )}
             </>
           )}
@@ -1292,25 +1314,155 @@ export default function AssetDetailPage() {
           {!assetNote && typedNotes.length === 0 ? (
             <Text style={{ color: '#666' }}>No notes yet.</Text>
           ) : (
-            <View style={{ gap: 10 }}>
-              {!!assetNote && (
-                <View key="asset-note" style={styles.noteCard}>
-                  <Text style={styles.noteText}>{assetNote}</Text>
+            <>
+              <View style={{ gap: 10 }}>
+                {!!assetNote && (
+                  <View key="asset-note" style={styles.noteCard}>
+                    <Text style={styles.noteText}>{assetNote}</Text>
+                  </View>
+                )}
+                {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 3 - (assetNote ? 1 : 0))).map((n) => (
+                  <View key={n.id} style={styles.noteCard}>
+                    <View style={styles.noteHead}>
+                      <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
+                        <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.noteText}>{n.note}</Text>
+                  </View>
+                ))}
+              </View>
+              {(assetNote ? 1 : 0) + typedNotes.length > 3 && (
+                <View style={{ marginTop: 10 }}>
+                  <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
+                    <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
+                  </TouchableOpacity>
                 </View>
               )}
-              {typedNotes.map((n) => (
-                <View key={n.id} style={styles.noteCard}>
-                  <View style={styles.noteHead}>
-                    <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
-                      <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                    </View>
+            </>
+          )}
+
+          {/* Document history (older attachments) */}
+          {(() => {
+            try {
+              const { history } = buildDynamicData();
+              if (!history || !history.length) return null;
+              const rows = history.map((h) => ({
+                label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
+                value: (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {renderFieldValue('documentation_url', h.url)}
+                    <TouchableOpacity
+                      onPress={() => handleDeleteDocument(h.id)}
+                      disabled={docDeletingId === h.id}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ padding: 4 }}
+                    >
+                      <MaterialIcons name="delete" size={20} color={docDeletingId === h.id ? '#999' : '#c00'} />
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.noteText}>{n.note}</Text>
-                </View>
-              ))}
-            </View>
+                ),
+                right: false,
+              }));
+              const visible = docHistoryOpen ? rows : rows.slice(0, 2); // collapsed shows last 1–2 items
+              return (
+                <>
+                  <View style={styles.collapsibleHead}>
+                    <Text style={[styles.sectionH, { marginTop: 16, marginBottom: 0 }]}>All Documents</Text>
+                  </View>
+                  {isWebWide ? (
+                    <>
+                      {!!visible.length && <DetailsGrid rows={visible} />}
+                      {!docHistoryOpen && rows.length > visible.length ? (
+                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                          <Text style={styles.noteToggleText}>Show more</Text>
+                        </TouchableOpacity>
+                      ) : docHistoryOpen ? (
+                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                          <Text style={styles.noteToggleText}>Show less</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {visible.map((r, i) => (
+                        <Row key={`hist-${i}`} label={r.label} value={r.value} />
+                      ))}
+                      {!docHistoryOpen && rows.length > visible.length ? (
+                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                          <Text style={styles.noteToggleText}>Show more</Text>
+                        </TouchableOpacity>
+                      ) : docHistoryOpen ? (
+                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                          <Text style={styles.noteToggleText}>Show less</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </>
+                  )}
+                </>
+              );
+            } catch { return null; }
+          })()}
+
+          {/* Maintenance record (REPAIR / MAINTENANCE with full details and photos) */}
+          <Text style={[styles.sectionH, { marginTop: 16 }]}>Maintenance record</Text>
+          {workDetailHistory.length === 0 ? (
+            <Text style={{ color: '#666' }}>No maintenance record yet.</Text>
+          ) : (
+            <>
+              <View style={{ gap: 12 }}>
+                {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 1)).map((w) => {
+                  const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
+                  const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
+                  const isService = w.type === 'MAINTENANCE';
+                  const summaryWithNext = [
+                    (w.summary || '').trim(),
+                    isService && asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
+                  ].filter(Boolean).join('. ');
+                  return (
+                    <View key={w.id} style={styles.noteCard}>
+                      <View style={styles.noteHead}>
+                        <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
+                          <Text style={styles.noteWhen}>{prettyDateTime(w.signed_off_at || w.occurred_at || w.date)}</Text>
+                        </View>
+                        <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                          <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                        </View>
+                      </View>
+                      <View style={{ marginTop: 8, gap: 4 }}>
+                        {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
+                        {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
+                        {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
+                          <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
+                        )}
+                        {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
+                      </View>
+                      {!!(w.images && w.images.length) && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                          {w.images.map((url, idx) => (
+                            <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              {workDetailHistory.length > 1 && (
+                <TouchableOpacity
+                  onPress={() => setMaintenanceExpanded((v) => !v)}
+                  style={[styles.noteToggle, { marginTop: 12 }]}
+                >
+                  <Text style={styles.noteToggleText}>
+                    {maintenanceExpanded ? 'Show less' : 'Show more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
 
           {/* History (all actions) */}
@@ -1364,101 +1516,6 @@ export default function AssetDetailPage() {
             </>
           )}
 
-          {/* Maintenance record (REPAIR / MAINTENANCE with full details and photos) */}
-          <Text style={[styles.sectionH, { marginTop: 16 }]}>Maintenance record</Text>
-          {workDetailHistory.length === 0 ? (
-            <Text style={{ color: '#666' }}>No maintenance record yet.</Text>
-          ) : (
-            <View style={{ gap: 12 }}>
-              {workDetailHistory.map((w) => {
-                const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
-                const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
-                const summaryWithNext = [
-                  w.summary || '',
-                  asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
-                ].filter(Boolean).join('. ');
-                return (
-                  <View key={w.id} style={styles.noteCard}>
-                    <View style={styles.noteHead}>
-                      <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
-                        <Text style={styles.noteWhen}>{prettyDateTime(w.occurred_at || w.date)}</Text>
-                      </View>
-                      <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                        <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                      </View>
-                    </View>
-                    <View style={{ marginTop: 8, gap: 4 }}>
-                      {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
-                      {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
-                      {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
-                        <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
-                      )}
-                      {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
-                    </View>
-                    {!!(w.images && w.images.length) && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                        {w.images.map((url, idx) => (
-                          <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                        ))}
-                      </ScrollView>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Document history (older attachments) */}
-          {(() => {
-            try {
-              const { history } = buildDynamicData();
-              if (!history || !history.length) return null;
-              const rows = history.map((h) => ({
-                label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
-                value: renderFieldValue('documentation_url', h.url),
-                right: false,
-              }));
-              const visible = docHistoryOpen ? rows : rows.slice(0, 2); // collapsed shows last 1–2 items
-              return (
-                <>
-                  <View style={styles.collapsibleHead}>
-                    <Text style={[styles.sectionH, { marginTop: 16, marginBottom: 0 }]}>Document History</Text>
-                  </View>
-                  {isWebWide ? (
-                    <>
-                      {!!visible.length && <DetailsGrid rows={visible} />}
-                      {!docHistoryOpen && rows.length > visible.length ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                          <Text style={{ color: '#0B63CE', fontWeight: '800' }}>Show more</Text>
-                        </TouchableOpacity>
-                      ) : docHistoryOpen ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                          <Text style={{ color: '#0B63CE', fontWeight: '800' }}>Show less</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      {visible.map((r, i) => (
-                        <Row key={`hist-${i}`} label={r.label} value={r.value} />
-                      ))}
-                      {!docHistoryOpen && rows.length > visible.length ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                          <Text style={{ color: '#0B63CE', fontWeight: '800' }}>Show more</Text>
-                        </TouchableOpacity>
-                      ) : docHistoryOpen ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                          <Text style={{ color: '#0B63CE', fontWeight: '800' }}>Show less</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  )}
-                </>
-              );
-            } catch { return null; }
-          })()}
           {/* Linked assets */}
           {linkedAssetIds.length > 0 && (
             <>
@@ -1645,7 +1702,9 @@ function Row({ label, value, rightAlign = true }) {
   }
 
   const text = value == null ? 'N/A' : String(value);
-  const shouldStack = !rightAlign || text.length > 28;
+  // Allow longer values (like locations) to stay in the right-hand column;
+  // only stack when they are very long or explicitly requested.
+  const shouldStack = !rightAlign || text.length > 60;
 
   if (shouldStack) {
     return (
@@ -1835,14 +1894,15 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   sectionH: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#666',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
+    color: '#0F172A',
+    textTransform: 'none',
+    letterSpacing: 0.3,
+    marginTop: 24,
+    marginBottom: 10,
+    textAlign: 'left',
+    alignSelf: 'flex-start',
   },
   linkedWrap: {
     flexDirection: 'row',
@@ -2005,4 +2065,54 @@ const styles = StyleSheet.create({
   },
   collapsibleHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   collapsibleMeta: { marginLeft: 6, color: '#64748B', fontWeight: '700' },
+
+  // Current work (mobile card)
+  currentWorkCard: {
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  currentWorkSummary: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  currentWorkMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  currentWorkMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
+  },
+  currentWorkMetaLabel: {
+    marginLeft: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B5563',
+    textTransform: 'uppercase',
+  },
+  currentWorkMetaValue: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  currentWorkNote: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#374151',
+  },
 });

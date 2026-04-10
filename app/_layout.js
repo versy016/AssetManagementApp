@@ -1,5 +1,5 @@
 // app/_layout.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -12,6 +12,10 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { theme } from '../constants/uiTheme';
 import { TourProvider } from '../components/TourGuide';
 import { TasksCountProvider } from '../contexts/TasksCountContext';
+import TaskCountLoader from '../components/TaskCountLoader';
+
+// Persist across RootLayout remounts (e.g. after router.replace) to avoid redirect loop / "maximum update depth"
+let hasRedirectedToLoginSession = false;
 
 export default function RootLayout() {
   const router = useRouter();
@@ -39,11 +43,14 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Only redirect to login if user is null AND we're not on an auth page
-    // This allows registration success screen to display
-    if (user === null && layoutReady && !isAuthPage) {
-      router.replace('/(auth)/login');
+    if (user !== null) {
+      hasRedirectedToLoginSession = false;
+      return;
     }
+    if (!layoutReady || isAuthPage) return;
+    if (hasRedirectedToLoginSession) return;
+    hasRedirectedToLoginSession = true;
+    router.replace('/(auth)/login');
   }, [user, layoutReady, isAuthPage]);
 
   // 3) Web-only: ensure global scrolling is enabled (guard against hidden overflow)
@@ -80,6 +87,7 @@ export default function RootLayout() {
         <PaperProvider theme={theme}>
           <TourProvider>
             <TasksCountProvider>
+              <TaskCountLoader />
               <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
                 {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
                 <View style={{ flex: 1 }}>

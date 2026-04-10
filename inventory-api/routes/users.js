@@ -46,6 +46,31 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * Register Expo push token for the current user (for task notifications).
+ * POST /users/push-token
+ * Body: { expo_push_token: string }
+ * Requires X-User-Id (or Bearer token). Updates the user's expo_push_token.
+ */
+router.post('/push-token', authRequired, async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+  const { expo_push_token } = req.body || {};
+  if (!expo_push_token || typeof expo_push_token !== 'string') {
+    return res.status(400).json({ error: 'expo_push_token required' });
+  }
+  try {
+    await prisma.users.update({
+      where: { id: uid },
+      data: { expo_push_token: expo_push_token.trim() || null },
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Push token update error:', e);
+    return res.status(500).json({ error: 'Failed to save push token' });
+  }
+});
+
+/**
  * Assign asset to user
  * POST /users/:userId/assign-asset
  */

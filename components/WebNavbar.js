@@ -129,6 +129,7 @@ export default function WebNavbar() {
     shortcuts: onDashboard && view === 'shortcuts',
     tasks: onDashboard && view === 'tasks',
     certs: onCertsPage || (onDashboard && view === 'certs'),
+    hire: onDashboard && view === 'hire',
     inventory: isPath('/inventory', '/Inventory', '/(tabs)/Inventory'),
     activity: isPath('/activity'),
     admin: isPath('/admin'),
@@ -165,6 +166,9 @@ export default function WebNavbar() {
           </TourTarget>
           <TourTarget id="web-nav-certs">
             <NavLink href="/certs" label="Certs" isActive={active.certs} theme={theme} />
+          </TourTarget>
+          <TourTarget id="web-nav-hire">
+            <NavLink href="/(tabs)/dashboard?view=hire" label="Hire" isActive={active.hire} theme={theme} />
           </TourTarget>
           <TourTarget id="nav-inventory-tab">
             <NavLink href="/(tabs)/Inventory" label="Inventory" isActive={active.inventory} theme={theme} />

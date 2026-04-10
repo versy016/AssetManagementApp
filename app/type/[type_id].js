@@ -20,46 +20,11 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-
-/* ---- status mapping & badge (aligned with assetId screen) ---- */
-const STATUS_CONFIG = {
-  in_service:        { label: 'In Service',         bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
-  end_of_life:       { label: 'End of Life',        bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
-  repair:      { label: 'Repair',       bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
-  maintenance: { label: 'Maintenance',  bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
-};
-
-function normalizeStatus(s) {
-  if (!s) return 'in_service';
-  const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
-
-  // Back-compat / synonyms mapping
-  const alias = {
-    // exact new set
-    in_service: 'in_service',
-    end_of_life: 'end_of_life',
-    repair: 'repair',
-    maintenance: 'maintenance',
-    rented: 'rented',
-
-    // legacy/common variants
-    lost: 'end_of_life',
-    retired: 'end_of_life',
-  };
-
-  return alias[key] || 'in_service';
-}
-
-function StatusBadge({ status }) {
-  const k = normalizeStatus(status);
-  const cfg = STATUS_CONFIG[k] || STATUS_CONFIG.in_service;
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-      <MaterialIcons name={cfg.icon} size={16} color={cfg.fg} style={{ marginRight: 6 }} />
-      <Text style={[styles.statusText, { color: cfg.fg }]}>{cfg.label}</Text>
-    </View>
-  );
-}
+import StatusBadge, {
+  STATUS_CONFIG,
+  normalizeStatus,
+} from '../../components/ui/StatusBadge';
+import EmptyState from '../../components/ui/EmptyState';
 
 /* ---------------------------- main ---------------------------- */
 export default function AssetsType() {
@@ -205,10 +170,10 @@ export default function AssetsType() {
   const counts = useMemo(() => {
     const c = {
       in_service: 0,
-      end_of_life: 0,
+      on_hire: 0,
       repair: 0,
       maintenance: 0,
-      rented: 0,
+      end_of_life: 0,
     };
     for (const a of assets) {
       const k = normalizeStatus(a?.status);
@@ -276,11 +241,11 @@ export default function AssetsType() {
         <View style={styles.contentWrap}>
           {/* stats chips (now color-coded by status config) */}
           <View style={styles.metaRow}>
-            <StatChip code="in_service"        count={counts.in_service} />
-            <StatChip code="repair"            count={counts.repair} />
-            <StatChip code="maintenance"       count={counts.maintenance} />
-            <StatChip code="rented"            count={counts.rented} />
-            <StatChip code="end_of_life"       count={counts.end_of_life} />
+            <StatChip code="in_service"  count={counts.in_service} />
+            <StatChip code="on_hire"     count={counts.on_hire} />
+            <StatChip code="repair"      count={counts.repair} />
+            <StatChip code="maintenance" count={counts.maintenance} />
+            <StatChip code="end_of_life" count={counts.end_of_life} />
             <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
               <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
               <Text style={[styles.metaChipText, { color: '#1E90FF' }]}>Total: {counts.total}</Text>
@@ -289,7 +254,11 @@ export default function AssetsType() {
 
           {/* list / empty state */}
           {assets.length === 0 ? (
-            <Text style={styles.noData}>No assets found for this type.</Text>
+            <EmptyState
+              icon="search-off"
+              title="No assets found"
+              subtitle="No assets have been assigned to this type yet."
+            />
           ) : (
             <FlatList
               data={grouped}

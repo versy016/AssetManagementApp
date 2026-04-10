@@ -5,12 +5,14 @@
  */
 const request = require('supertest');
 const { app, prisma } = require('../server');
+const { adminHeader, ensureTestUsers } = require('./helpers');
 
 describe('Asset Types API', () => {
   let createdId;
 
   beforeAll(async () => {
     await prisma.$connect();
+    await ensureTestUsers();
   });
 
   afterAll(async () => {
@@ -30,6 +32,7 @@ describe('Asset Types API', () => {
   test('POST /asset-types should create a new asset type', async () => {
     const res = await request(app)
       .post('/asset-types')
+      .set(adminHeader())
       .send({ name: 'Test Type A', image_url: 'https://example.com/img.png' });
 
     expect(res.status).toBe(201);
@@ -66,6 +69,7 @@ describe('Asset Types API', () => {
   test('PUT /asset-types/:id should update name', async () => {
     const res = await request(app)
       .put(`/asset-types/${createdId}`)
+      .set(adminHeader())
       .send({ name: 'Test Type A (Updated)' });
 
     expect(res.status).toBe(200);
@@ -76,7 +80,7 @@ describe('Asset Types API', () => {
     // Create a disposable type to delete (avoid conflicts with `createdId` if later used)
     const toDelete = await prisma.asset_types.create({ data: { name: 'Disposable Type' } });
 
-    const res = await request(app).delete(`/asset-types/${toDelete.id}`);
+    const res = await request(app).delete(`/asset-types/${toDelete.id}`).set(adminHeader());
     expect(res.status).toBe(200);
     expect(res.body?.message).toMatch(/Deleted/i);
   });
@@ -86,13 +90,13 @@ describe('Asset Types API', () => {
     const type = await prisma.asset_types.create({ data: { name: 'Linked Type' } });
     await prisma.assets.create({
       data: {
-        id: undefined,            // DB default UUID
         type_id: type.id,
-        status: 'active',
+        status: 'In Service',
+        serial_number: `types-test-${Date.now()}`,
       },
     });
 
-    const res = await request(app).delete(`/asset-types/${type.id}`);
+    const res = await request(app).delete(`/asset-types/${type.id}`).set(adminHeader());
     expect(res.status).toBe(400);
     expect(res.body?.message).toMatch(/Cannot delete asset type with existing assets/);
 
@@ -104,5 +108,26 @@ describe('Asset Types API', () => {
   test('GET /asset-types/:id returns 404 for unknown id', async () => {
     const res = await request(app).get('/asset-types/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Asset types — dashboard / legacy list routes', () => {
+  test('GET /assets/asset-types-summary returns an array with count fields per type', async () => {
+    const res = await request(app).get('/assets/asset-types-summary');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    if (res.body.length) {
+      const row = res.body[0];
+      expect(row).toHaveProperty('id');
+      expect(row).toHaveProperty('name');
+      expect(row).toHaveProperty('inService');
+      expect(row).toHaveProperty('onHire');
+    }
+  });
+
+  test('GET /assets/asset_types returns a plain array of types', async () => {
+    const res = await request(app).get('/assets/asset_types');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
   });
 });

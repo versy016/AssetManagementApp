@@ -18,6 +18,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { ALGOLIA_INDEX_CLIENTS, ALGOLIA_INDEX_PROJECTS, algoliaSearch } from '../config/algolia';
 import { getAuth } from 'firebase/auth';
+import { useTasksCount } from '../contexts/TasksCountContext';
+import { fetchTaskCount } from '../utils/fetchTaskCount';
+import { API_BASE_URL } from '../inventory-api/apiBase';
 
 const Colors = {
   bg: '#FFFFFF',
@@ -46,8 +49,8 @@ const STATUS_MAP = {
   'Repair': 'Repair',
   'Maintenance': 'Maintenance',
   'End of Life': 'End of Life',
-  // Lost / Stolen / Hire do not forcibly change status by default.
-  // You can override via props.statusMap if needed.
+  'Hire': 'On Hire',
+  // Lost / Stolen do not forcibly change status by default.
 };
 
 // Map display label -> API action enum
@@ -74,6 +77,7 @@ export default function ActionsForm({
 }) {
   const scrollRef = React.useRef(null);
   const [submitting, setSubmitting] = useState(false);
+  const { setTaskCount } = useTasksCount();
 
   // Common fields across forms
   const [date, setDate] = useState(new Date().toISOString().slice(0,10)); // ISO (YYYY-MM-DD)
@@ -304,8 +308,8 @@ export default function ActionsForm({
       const auth = getAuth();
       const current = auth?.currentUser;
       // Build update payload; Next Service Date is now captured at review/sign‑off time,
-      // so we only update the status here.
-      const bodyPatch = { status: newStatus };
+      // so we only update the status here. Skip required-document validation when logging (enforced on sign-off).
+      const bodyPatch = { status: newStatus, skip_required_documents: true };
         const res = await fetch(`${apiBaseUrl}/assets/${asset?.id}`, {
           method: 'PUT',
           headers: {
@@ -428,7 +432,7 @@ export default function ActionsForm({
         // Bulk: apply same action to additional assets (no images/report upload)
         const extraIds = Array.isArray(additionalAssetIds) ? additionalAssetIds : [];
         if (extraIds.length > 0 && !hasImages) {
-          const bodyPatch = newStatus ? { status: newStatus } : null;
+          const bodyPatch = newStatus ? { status: newStatus, skip_required_documents: true } : null;
           const actionBody = {
             type: enumType,
             note: fields === 'service' ? summary : (notes || undefined),
@@ -465,6 +469,26 @@ export default function ActionsForm({
 
       // Let parent update UI (optimistic or refetch)
       onSubmitted && onSubmitted(updated, meta);
+
+      // Refresh Tasks tab badge when this action creates a sign-off task (Repair / Maintenance / Hire)
+      if (['Repair', 'Maintenance', 'Hire'].includes(action)) {
+        const uid = getAuth()?.currentUser?.uid;
+        // Optimistic: bump badge immediately so it updates before the modal closes
+        setTaskCount((prev) => (typeof prev === 'number' ? prev + 1 : 1));
+        if (uid) {
+          (async () => {
+            try {
+              // Short delay so the server has committed the new action before we refetch count
+              await new Promise((r) => setTimeout(r, 400));
+              const res = await fetch(`${API_BASE_URL}/users/${uid}`);
+              const data = res.ok ? await res.json() : null;
+              const canAdmin = String(data?.role || '').toUpperCase() === 'ADMIN';
+              const count = await fetchTaskCount(uid, canAdmin);
+              setTaskCount(count);
+            } catch (_) {}
+          })();
+        }
+      }
 
       // Close the sheet immediately on success (no blocking alert)
       onClose && onClose();

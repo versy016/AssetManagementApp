@@ -28,6 +28,13 @@ import { TourTarget } from '../../components/TourGuide';
 import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import SearchInput from '../../components/ui/SearchInput';
+import EmptyState from '../../components/ui/EmptyState';
+import {
+  STATUS_CONFIG,
+  normalizeStatus,
+  prettyStatus,
+  statusToColor,
+} from '../../components/ui/StatusBadge';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
@@ -46,34 +53,7 @@ const COLORS = {
   dangerFg: '#D32F2F',
 };
 
-/** ---------- New unified status config ---------- */
-const STATUS_CONFIG = {
-  in_service: { label: 'In Service', bg: '#E7F3FF', fg: '#084AA0', bd: '#D6E8FF', icon: 'build-circle' },
-  end_of_life: { label: 'End of Life', bg: '#EDE9FE', fg: '#5B21B6', bd: '#E3D9FF', icon: 'block' },
-  repair: { label: 'Repair', bg: '#FFEDD5', fg: '#9A3412', bd: '#FFD9B5', icon: 'build' },
-  maintenance: { label: 'Maintenance', bg: '#FEF9C3', fg: '#854D0E', bd: '#FFF3B0', icon: 'build' },
-};
-const normalizeStatus = (s) => {
-  if (!s) return 'in_service';
-  const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
-  const alias = {
-    in_service: 'in_service',
-    end_of_life: 'end_of_life',
-    repair: 'repair',
-    maintenance: 'maintenance',
-    // legacy/common variants
-    available: 'in_service',
-    'in use': 'in_service',
-    checked_out: 'repair',
-    rented: 'repair',
-    reserved: 'in_service',
-    lost: 'end_of_life',
-    retired: 'end_of_life',
-  };
-  return alias[key] || 'in_service';
-};
-const prettyStatus = (s) => STATUS_CONFIG[normalizeStatus(s)]?.label ?? '—';
-const statusToColor = (s) => STATUS_CONFIG[normalizeStatus(s)] ?? STATUS_CONFIG.in_service;
+// STATUS_CONFIG, normalizeStatus, prettyStatus, statusToColor imported from components/ui/StatusBadge
 
 /** ------- helpers -------- */
 const truncate = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
@@ -407,12 +387,10 @@ const AssetTypesTab = ({ query, filters }) => {
       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24, paddingTop: 8 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       ListEmptyComponent={
-        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-          <Ionicons name="folder-open-outline" size={24} color={COLORS.sub2} />
-          <Text style={{ color: COLORS.sub2, marginTop: 6 }}>
-            {loaded ? 'No asset types found' : 'Loading…'}
-          </Text>
-        </View>
+        <EmptyState
+          icon={loaded ? 'folder-open' : 'hourglass-empty'}
+          title={loaded ? 'No asset types found' : 'Loading…'}
+        />
       }
     />
   );
@@ -540,7 +518,6 @@ const AllAssetsTab = ({ query, filters }) => {
     const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
 
     const datePurchased = item?.date_purchased ?? item?.fields?.date_purchased;
-    const nextService = item?.next_service_date ?? item?.fields?.next_service_date;
     const updatedAt = item?.updated_at ?? item?.fields?.updated_at;
     const notes = item?.notes ?? item?.fields?.notes ?? item?.description ?? '';
 
@@ -594,7 +571,6 @@ const AllAssetsTab = ({ query, filters }) => {
               const chips = [];
               if (assignedTo) chips.push({ icon: 'user', text: truncate(String(assignedTo), 24) });
               if (loc) chips.push({ icon: 'map-pin', text: truncate(String(loc), 18) });
-              if (nextService) chips.push({ icon: 'tool', text: `Service ${daysUntil(nextService)}` });
               // Fallbacks to reach at least 3 chips
               if (chips.length < 3 && type) chips.push({ icon: 'tag', text: truncate(String(type), 18) });
               if (chips.length < 3 && model) chips.push({ icon: 'cpu', text: truncate(String(model), 18) });
@@ -611,7 +587,6 @@ const AllAssetsTab = ({ query, filters }) => {
               <DetailRow icon="hash" label="ID" value={String(item.id)} />
               {model ? <DetailRow icon="cpu" label="Model" value={String(model)} /> : null}
               {datePurchased ? <DetailRow icon="calendar" label="Purchased" value={prettyDate(datePurchased)} /> : null}
-              {nextService ? <DetailRow icon="tool" label="Next Service" value={prettyDate(nextService)} /> : null}
               {updatedAt ? <DetailRow icon="clock" label="Updated" value={prettyDate(updatedAt)} /> : null}
               {loc ? <DetailRow icon="map" label="Location" value={String(loc)} /> : null}
               {notes ? (
@@ -665,12 +640,11 @@ const AllAssetsTab = ({ query, filters }) => {
       )}
       contentContainerStyle={{ paddingBottom: 28, paddingTop: 10 }}
       ListEmptyComponent={
-        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-          <Ionicons name="folder-open-outline" size={24} color={COLORS.sub2} />
-          <Text style={{ color: COLORS.sub2, marginTop: 6 }}>
-            {loaded ? 'No assets found' : 'Loading…'}
-          </Text>
-        </View>
+        <EmptyState
+          icon={loaded ? 'search-off' : 'hourglass-empty'}
+          title={loaded ? 'No assets found' : 'Loading…'}
+          subtitle={loaded ? 'Try adjusting your search or filters.' : undefined}
+        />
       }
     />
   );
@@ -845,7 +819,7 @@ const Inventory = () => {
                   >
                     <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
                   </TouchableOpacity>
-                  {['In Service', 'Repair', 'Maintenance', 'End of Life', 'Hire'].map(s => (
+                  {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
                     <TouchableOpacity
                       key={s}
                       style={[styles.filterChip, filters.status === s && styles.filterChipActive]}

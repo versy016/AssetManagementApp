@@ -25,7 +25,7 @@ const AddShortcutModal = ({
     const [showList, setShowList] = useState(false);
     const scrollRef = React.useRef(null);
     const availableTypes = useMemo(() => {
-        return getAvailableShortcutTypes(isAdmin);
+        return getAvailableShortcutTypes(isAdmin, Platform.OS === 'web');
     }, [isAdmin]);
     const regularTypes = useMemo(
         () => availableTypes.filter((t) => !t.requiresAdmin),
@@ -54,10 +54,9 @@ const AddShortcutModal = ({
     }, [existingShortcuts]);
 
     const handleSelectShortcut = (shortcutType) => {
-        if (!isShortcutAdded(shortcutType.id)) {
-            onAddShortcut(shortcutType.id);
-            onClose();
-        }
+        if (isShortcutAdded(shortcutType.id)) return;
+        onAddShortcut(shortcutType.id);
+        onClose();
     };
 
     return (
@@ -257,6 +256,7 @@ const AddShortcutModal = ({
                     </View>
                 </View>
             </View>
+
         </Modal>
     );
 };

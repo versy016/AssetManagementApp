@@ -27,6 +27,8 @@ import SearchInput from '../../components/ui/SearchInput';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Chip from '../../components/ui/Chip';
 import InlineButton from '../../components/ui/InlineButton';
+import EmptyState from '../../components/ui/EmptyState';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors as COLORS } from '../../constants/uiTheme';
 import { Colors } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
@@ -47,7 +49,6 @@ const SORT_OPTIONS = [
   { label: 'Service Due', field: 'service_due' },
   { label: 'Status', field: 'status' },
   { label: 'Asset Type', field: 'type' },
-  { label: 'Location', field: 'location' },
   { label: 'Assigned To', field: 'assigned_to' },
   { label: 'Asset ID', field: 'id' },
 ];
@@ -104,7 +105,6 @@ export default function SearchScreen(props = {}) {
   const [filters, setFilters] = useState({
     types: [],
     status: null,
-    location: null,
     assignedTo: null,
     assignedToUserId: null,
     onlyMine: false,
@@ -218,7 +218,6 @@ export default function SearchScreen(props = {}) {
       const types = filters.types;
       const typeOk = !types || types.length === 0 || types.some(t => it.asset_type === t || it.type === t || it.asset_types?.name === t);
       const statusOk = !filters.status || (it.status === filters.status);
-      const locOk = !filters.location || String(it.location || '').toLowerCase().includes(filters.location.toLowerCase());
 
       const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email;
       const assignedUid = it.assigned_to_id || it.assigned_to_uid || it.assigned_to_user_id;
@@ -239,7 +238,7 @@ export default function SearchScreen(props = {}) {
       const awaitingQR = isUUID(String(it.id || ''));
       const awaitingOk = filters.awaitingQROnly ? awaitingQR : !awaitingQR;
 
-      const baseOk = keywordOk && typeOk && statusOk && locOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
+      const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
       return filters.onlyUnassigned ? (baseOk && unassignedOk) : baseOk;
     });
 
@@ -261,6 +260,12 @@ export default function SearchScreen(props = {}) {
         case 'assigned_to': return it?.assigned_to ?? it?.users?.name ?? it?.users?.email ?? '';
         case 'next_service_date': return it?.next_service_date ?? it?.fields?.next_service_date ?? '';
         case 'id': return it?.id ?? it?.fields?.id ?? '';
+        case 'serial_number': return it?.serial_number ?? it?.fields?.serial_number ?? '';
+        case 'model': return it?.model ?? it?.fields?.model ?? '';
+        case 'description': return it?.notes ?? it?.description ?? it?.fields?.notes ?? it?.fields?.description ?? '';
+        case 'other_id': return it?.other_id ?? it?.asset_tag ?? it?.asset_name ?? it?.name ?? '';
+        case 'date_purchased': return it?.date_purchased ?? it?.purchase_date ?? it?.fields?.date_purchased ?? it?.fields?.purchase_date ?? '';
+        case 'updated_by': return it?.last_changed_by_name ?? it?.last_changed_by_email ?? '';
         default: return it?.[f] ?? it?.fields?.[f];
       }
     };
@@ -511,7 +516,6 @@ export default function SearchScreen(props = {}) {
     setFilters({
       types: [],
       status: null,
-      location: null,
       assignedTo: null,
       assignedToUserId: null,
       onlyMine: false,
@@ -527,7 +531,6 @@ export default function SearchScreen(props = {}) {
     !!debouncedQuery,
     !!(filters.types && filters.types.length > 0),
     !!filters.status,
-    !!filters.location,
     !!filters.assignedTo,
     !!filters.assignedToUserId,
     !!filters.onlyMine,
@@ -624,6 +627,21 @@ export default function SearchScreen(props = {}) {
     });
     return map;
   }, [columns]);
+
+  // Map table column key -> sort field for header sorting (web list view)
+  const columnKeyToSortField = useMemo(() => ({
+    id: 'id',
+    other_id: 'other_id',
+    type: 'type',
+    serial: 'serial_number',
+    description: 'description',
+    model: 'model',
+    assigned: 'assigned_to',
+    status: 'status',
+    purchased: 'date_purchased',
+    updated: 'updated_at',
+    updated_by: 'updated_by',
+  }), []);
 
   const lastColumnKey = useMemo(() => (columns.length ? columns[columns.length - 1].key : null), [columns]);
 
@@ -727,8 +745,9 @@ export default function SearchScreen(props = {}) {
   const statusToColor = (s) => {
     const t = String(s || '').toLowerCase();
     if (['available', 'in service', 'reserved'].includes(t)) return { bg: '#DCFCE7', fg: '#166534', bd: '#BBF7D0' };
+    if (['on hire', 'hire', 'rented', 'on_hire'].includes(t)) return { bg: '#ECFDF5', fg: '#065F46', bd: '#A7F3D0' };
     if (['maintenance', 'repair'].includes(t)) return { bg: '#FEF9C3', fg: '#854D0E', bd: '#FEF08A' };
-    if (['checked out', 'rented'].includes(t)) return { bg: '#DBEAFE', fg: '#1E40AF', bd: '#BFDBFE' };
+    if (['checked out'].includes(t)) return { bg: '#DBEAFE', fg: '#1E40AF', bd: '#BFDBFE' };
     if (['end of life', 'lost', 'retired'].includes(t)) return { bg: '#FEE2E2', fg: '#991B1B', bd: '#FECACA' };
     return { bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
   };
@@ -804,7 +823,8 @@ export default function SearchScreen(props = {}) {
           </View>
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            {/* Sort Button */}
+            {/* Sort button: only in grid view; list view uses column header arrows */}
+            {(viewMode === 'grid' || isCompact) && (
             <TourTarget id="web-search-sort-btn">
               <TouchableOpacity style={[styles.iconBtn, styles.actionBtn, { marginRight: 0, height: 32, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' }]} onPress={() => setSortModalOpen(true)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -815,6 +835,7 @@ export default function SearchScreen(props = {}) {
                 </View>
               </TouchableOpacity>
             </TourTarget>
+            )}
 
             {!isCompact && (
               <TourTarget id="web-search-view-mode">
@@ -857,10 +878,7 @@ export default function SearchScreen(props = {}) {
       {/* Inline Filters REMOVED per user request */}
 
       {loading && !items.length ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={{ marginTop: 12, color: COLORS.sub }}>Searching...</Text>
-        </View>
+        <LoadingSpinner label="Searching…" style={styles.center} />
       ) : error ? (
         <View style={styles.center}>
           <MaterialIcons name="error-outline" size={48} color={COLORS.dangerFg} />
@@ -870,11 +888,15 @@ export default function SearchScreen(props = {}) {
           </TouchableOpacity>
         </View>
       ) : items.length === 0 ? (
-        <View style={styles.center}>
-          <MaterialIcons name="search-off" size={48} color="#CBD5E1" />
-          <Text style={{ marginTop: 12, color: COLORS.sub, fontSize: 16, fontWeight: '600' }}>No assets found</Text>
-          <Text style={{ marginTop: 4, color: COLORS.sub2 }}>Try adjusting your search or filters</Text>
-        </View>
+        <EmptyState
+          icon="search-off"
+          iconSize={40}
+          iconColor="#CBD5E1"
+          iconBg="#F1F5F9"
+          title="No assets found"
+          subtitle="Try adjusting your search or filters."
+          style={styles.center}
+        />
       ) : (
         /* Responsive View Switch */
         (viewMode === 'grid') ? (
@@ -1005,11 +1027,49 @@ export default function SearchScreen(props = {}) {
             >
                 <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
                 <View style={styles.tableHeader}>
-                  {columns.map((c) => (
-                    <View key={c.key} style={[styles.th, columnStyle(c.key)]}>
-                      <Text style={styles.thText} numberOfLines={1} ellipsizeMode="tail">{c.label}</Text>
-                    </View>
-                  ))}
+                  {columns.map((c) => {
+                    const sortField = columnKeyToSortField[c.key];
+                    const isSortable = !!sortField;
+                    const isActive = sort.field === sortField;
+                    const handleSort = () => {
+                      if (!isSortable) return;
+                      if (isActive) {
+                        setSort((s) => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }));
+                      } else {
+                        const defaultDir = (sortField === 'updated_at' || sortField === 'date_purchased') ? 'desc' : 'asc';
+                        setSort({ field: sortField, dir: defaultDir });
+                      }
+                    };
+                    const content = (
+                      <>
+                        <Text style={[styles.thText, isActive && { color: COLORS.primary }]} numberOfLines={1} ellipsizeMode="tail">{c.label}</Text>
+                        {isSortable && (
+                          <View style={{ marginLeft: 4 }}>
+                            {isActive ? (
+                              sort.dir === 'asc' ? (
+                                <Feather name="chevron-up" size={14} color={COLORS.primary} />
+                              ) : (
+                                <Feather name="chevron-down" size={14} color={COLORS.primary} />
+                              )
+                            ) : (
+                              <Feather name="chevron-down" size={12} color="#94A3B8" />
+                            )}
+                          </View>
+                        )}
+                      </>
+                    );
+                    return (
+                      <View key={c.key} style={[styles.th, columnStyle(c.key)]}>
+                        {isSortable ? (
+                          <TouchableOpacity onPress={handleSort} style={styles.thSortTouch} activeOpacity={0.7}>
+                            {content}
+                          </TouchableOpacity>
+                        ) : (
+                          content
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
                 <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator={false}>
                   {paginatedItems.map((item, idx) => {
@@ -1237,7 +1297,7 @@ export default function SearchScreen(props = {}) {
                   <Text style={styles.groupTitle}>Status</Text>
                   <View style={[styles.filterMenuRow, styles.chipsRow]}>
                     <Chip label="Any status" active={!filters.status} onPress={() => setFilters(f => ({ ...f, status: null }))} />
-                    {['In Service', 'Repair', 'Maintenance', 'End of Life', 'Hire'].map(s => (
+                    {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
                       <Chip key={s} label={s} active={filters.status === s} onPress={() => setFilters(f => ({ ...f, status: s }))} />
                     ))}
                   </View>
@@ -1287,17 +1347,6 @@ export default function SearchScreen(props = {}) {
                   </ScrollView>
                 </View>
 
-                {/* Location */}
-                <View>
-                  <Text style={styles.groupTitle}>Location</Text>
-                  <TextInput
-                    style={styles.filterInput}
-                    placeholder="Office / Site"
-                    value={filters.location || ''}
-                    onChangeText={(t) => setFilters(f => ({ ...f, location: t || null }))}
-                  />
-                </View>
-
                 {/* Switches */}
                 <View style={{ gap: 12 }}>
                   <View style={styles.switchRow}>
@@ -1325,7 +1374,7 @@ export default function SearchScreen(props = {}) {
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
               <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
-                setFilters({ types: [], status: null, location: null, assignedTo: null, assignedToUserId: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
+                setFilters({ types: [], status: null, assignedTo: null, assignedToUserId: null, onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
                 closeFilterModal();
               }}>
                 <Text style={[styles.btnText, { color: COLORS.primary }]}>Cancel</Text>
@@ -1448,6 +1497,7 @@ const styles = StyleSheet.create({
   tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', alignItems: 'stretch' },
   tableContent: { flex: 1 },
   th: { paddingVertical: 10, paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center' },
+  thSortTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
   thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' },
   tableBodyScroll: { flex: 1 },
   tableBodyContent: { paddingRight: 0 },

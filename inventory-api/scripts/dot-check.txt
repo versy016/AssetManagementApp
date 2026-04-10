@@ -1,0 +1,4 @@
+V3 RUNNING UPDATED SCRIPT. Leader dot count: 0
+Dot-only runs: 2
+HasDot Len 216: "The Equipment is, and shall at all times be and remain, the sole and exclusive p"
+HasDot Len 57: " agreement cannot and will not change after it is signed."

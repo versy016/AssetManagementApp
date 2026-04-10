@@ -2,7 +2,8 @@
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
 const SERVICE_STATUSES = new Set(['In Service', 'Available', 'available', 'in service']);
-const EOL_STATUSES     = new Set(['End of Life', 'end of life', 'eol', 'retired', 'maintenance']);
+const ON_HIRE_STATUSES = new Set(['On Hire', 'on hire', 'on_hire', 'hire', 'rented']);
+const EOL_STATUSES     = new Set(['End of Life', 'end of life', 'eol', 'retired']);
 
 // Small utility so we don’t repeat pagination math
 function getPagination({ page = 1, pageSize = 20 }) {
@@ -24,9 +25,10 @@ async function buildStatusCountsByType(prisma) {
     const status = String(row.status || '');
     const count = row._count._all;
 
-    const acc = map.get(id) || { inService: 0, endOfLife: 0 };
-    if (SERVICE_STATUSES.has(status)) acc.inService += count;
-    if (EOL_STATUSES.has(status))     acc.endOfLife += count;
+    const acc = map.get(id) || { inService: 0, endOfLife: 0, onHire: 0 };
+    if (SERVICE_STATUSES.has(status))  acc.inService += count;
+    if (ON_HIRE_STATUSES.has(status))  acc.onHire    += count;
+    if (EOL_STATUSES.has(status))      acc.endOfLife += count;
     map.set(id, acc);
   }
   return map;

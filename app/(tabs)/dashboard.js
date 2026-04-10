@@ -16,10 +16,11 @@ import InventoryScreen from './Inventory';
 import TasksScreen from './tasks';
 import CertsView from '../../components/CertsView';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import HireView from '../../components/HireView';
 import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AddShortcutModal from '../../components/AddShortcutModal';
-import { getShortcutType } from '../../constants/ShortcutTypes';
+import { getShortcutType, getShortcutPalette, SHORTCUT_COLOR_PALETTES } from '../../constants/ShortcutTypes';
 import ShortcutManager from '../../utils/ShortcutManager';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
 import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
@@ -30,6 +31,9 @@ const Dashboard = ({ isAdmin }) => {
   const theme = useTheme();
   const [shortcuts, setShortcuts] = useState([]);
   const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
+  const [colorPickerVisible, setColorPickerVisible] = useState(false);
+  const [colorPickerShortcut, setColorPickerShortcut] = useState(null);
+  const [cpApplyAll, setCpApplyAll] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -243,15 +247,22 @@ const Dashboard = ({ isAdmin }) => {
     })();
   }, [user?.uid, canAdmin]);
 
-  const handleAddShortcut = async (shortcutType) => {
+  const handleAddShortcut = async (shortcutType, colorKey) => {
     if (!user?.uid) return;
-    const success = await ShortcutManager.addShortcut(user.uid, shortcutType, canAdmin);
+    const success = await ShortcutManager.addShortcut(user.uid, shortcutType, canAdmin, colorKey);
     if (success) {
       const updated = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
       setShortcuts(updated);
     } else {
       Alert.alert('Error', 'Could not add shortcut. You may have reached the maximum limit.');
     }
+  };
+
+  const handleUpdateShortcutColor = async (shortcutId, colorKey) => {
+    if (!user?.uid) return;
+    await ShortcutManager.updateShortcutColor(user.uid, shortcutId, colorKey);
+    const updated = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
+    setShortcuts(updated);
   };
 
   const handleRemoveShortcut = async (shortcutId) => {
@@ -319,15 +330,29 @@ const Dashboard = ({ isAdmin }) => {
       <View ref={shortcutsRef} style={styles.shortcutsSection}>
         <View style={styles.shortcutsHeaderRow}>
           <Text style={styles.sectionTitle}>Shortcuts</Text>
-          <TouchableOpacity
-            style={styles.manageShortcutsBtn}
-            onPress={() => setShortcutModalVisible(true)}
-          >
-            <MaterialIcons name="tune" size={16} color="#1D4ED8" />
-            <Text style={styles.manageShortcutsBtnText}>
-              {shortcuts.length ? 'Manage' : 'Add shortcuts'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {Platform.OS === 'ios' && shortcuts.length > 0 && (
+              <TouchableOpacity
+                style={styles.manageShortcutsBtn}
+                onPress={() => {
+                  setColorPickerShortcut(shortcuts[0]);
+                  setColorPickerVisible(true);
+                }}
+              >
+                <MaterialIcons name="palette" size={16} color="#1D4ED8" />
+                <Text style={styles.manageShortcutsBtnText}>Colours</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.manageShortcutsBtn}
+              onPress={() => setShortcutModalVisible(true)}
+            >
+              <MaterialIcons name="tune" size={16} color="#1D4ED8" />
+              <Text style={styles.manageShortcutsBtnText}>
+                {shortcuts.length ? 'Manage' : 'Add shortcuts'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {shortcuts.length === 0 ? (
           <TouchableOpacity
@@ -343,21 +368,30 @@ const Dashboard = ({ isAdmin }) => {
             {shortcuts.map((shortcut) => {
               const shortcutType = getShortcutType(shortcut.type);
               if (!shortcutType) return null;
+              const palette = getShortcutPalette(shortcut.colorKey);
 
               return (
                 <TouchableOpacity
                   key={shortcut.id}
-                  style={[styles.shortcutCard, styles.shortcutCardScanStyle]}
+                  style={[
+                    styles.shortcutCard,
+                    {
+                      backgroundColor: palette.bg,
+                      borderColor: palette.border,
+                      borderWidth: 1,
+                      shadowColor: palette.fg,
+                    },
+                  ]}
                   onPress={() => handleExecuteShortcut(shortcut.type)}
                   onLongPress={() => handleRemoveShortcut(shortcut.id)}
                 >
                   <MaterialIcons
                     name={shortcutType.icon}
                     size={20}
-                    color="#2563EB"
+                    color={palette.fg}
                   />
                   <Text
-                    style={[styles.shortcutText, { color: '#2563EB' }]}
+                    style={[styles.shortcutText, { color: palette.fg }]}
                     numberOfLines={1}
                   >
                     {shortcutType.label}
@@ -377,6 +411,7 @@ const Dashboard = ({ isAdmin }) => {
           </View>
         )}
       </View>
+
     );
   };
 
@@ -438,6 +473,13 @@ const Dashboard = ({ isAdmin }) => {
       return (
         <View style={styles.webPane}>
           <TasksScreen />
+        </View>
+      );
+    }
+    if (key === 'hire') {
+      return (
+        <View style={styles.webPane}>
+          <HireView />
         </View>
       );
     }
@@ -578,6 +620,117 @@ const Dashboard = ({ isAdmin }) => {
         existingShortcuts={shortcuts}
         isAdmin={canAdmin}
       />
+
+      {/* ─── Shortcut Colour Picker (iOS only) ─── */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={colorPickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setColorPickerVisible(false)}
+        >
+          <View style={styles.cpOverlay}>
+            <View style={styles.cpSheet}>
+              <View style={styles.cpHandle} />
+              <Text style={styles.cpTitle}>Shortcut Colours</Text>
+              <Text style={styles.cpSub}>
+                {cpApplyAll ? 'Tap a colour to apply it to all shortcuts' : 'Select a shortcut then pick its colour'}
+              </Text>
+
+              {/* Shortcut selector row — hidden when Apply All is on */}
+              {!cpApplyAll && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 2 }}>
+                    {shortcuts.map((sc) => {
+                      const st = getShortcutType(sc.type);
+                      const pal = getShortcutPalette(sc.colorKey);
+                      const isSelected = colorPickerShortcut?.id === sc.id;
+                      return (
+                        <TouchableOpacity
+                          key={sc.id}
+                          onPress={() => setColorPickerShortcut(sc)}
+                          style={[
+                            styles.cpShortcutChip,
+                            { backgroundColor: pal.bg, borderColor: isSelected ? pal.fg : pal.border },
+                            isSelected && { borderWidth: 2 },
+                          ]}
+                        >
+                          <MaterialIcons name={st?.icon || 'star'} size={18} color={pal.fg} />
+                          <Text style={[styles.cpChipLabel, { color: pal.fg }]} numberOfLines={1}>
+                            {st?.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              )}
+
+              {/* Apply-to-all toggle */}
+              <TouchableOpacity
+                style={[styles.cpAllToggle, cpApplyAll && styles.cpAllToggleActive]}
+                onPress={() => setCpApplyAll((v) => !v)}
+              >
+                <MaterialIcons
+                  name={cpApplyAll ? 'check-box' : 'check-box-outline-blank'}
+                  size={18}
+                  color={cpApplyAll ? '#fff' : '#0B63CE'}
+                />
+                <Text style={[styles.cpAllToggleText, cpApplyAll && { color: '#fff' }]}>
+                  Apply to all shortcuts
+                </Text>
+              </TouchableOpacity>
+
+              {/* Colour swatches */}
+              {(cpApplyAll || colorPickerShortcut) && (
+                <View style={styles.cpSwatchGrid}>
+                  {SHORTCUT_COLOR_PALETTES.map((palette) => {
+                    const activeKey = cpApplyAll ? null : (colorPickerShortcut?.colorKey || 'blue');
+                    const isActive = !cpApplyAll && activeKey === palette.key;
+                    return (
+                      <TouchableOpacity
+                        key={palette.key}
+                        style={[
+                          styles.cpSwatch,
+                          { backgroundColor: palette.bg, borderColor: palette.border },
+                          isActive && { borderColor: palette.fg, borderWidth: 2.5 },
+                        ]}
+                        onPress={async () => {
+                          if (cpApplyAll) {
+                            await Promise.all(
+                              shortcuts.map((sc) => handleUpdateShortcutColor(sc.id, palette.key))
+                            );
+                          } else if (colorPickerShortcut) {
+                            await handleUpdateShortcutColor(colorPickerShortcut.id, palette.key);
+                            setColorPickerShortcut((prev) => prev ? { ...prev, colorKey: palette.key } : prev);
+                          }
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <View style={[styles.cpSwatchDot, { backgroundColor: palette.fg }]} />
+                        {isActive && (
+                          <MaterialIcons name="check" size={13} color={palette.fg} style={styles.cpSwatchCheck} />
+                        )}
+                        <Text style={[styles.cpSwatchName, { color: palette.fg }]}>{palette.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={styles.cpDoneBtn}
+                onPress={() => {
+                  setColorPickerVisible(false);
+                  setCpApplyAll(false);
+                }}
+              >
+                <Text style={styles.cpDoneBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </ScreenWrapper>
   );
 };
@@ -932,6 +1085,120 @@ const styles = StyleSheet.create({
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 4 },
   quickDateChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
   quickDateChipText: { color: '#2563EB', fontWeight: '800' },
+
+  // ─── Colour Picker Sheet (iOS) ───
+  cpOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  cpSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  cpHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+    marginBottom: 16,
+  },
+  cpTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  cpSub: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  cpShortcutChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  cpChipLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cpAllToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    marginBottom: 20,
+  },
+  cpAllToggleActive: {
+    backgroundColor: '#0B63CE',
+    borderColor: '#0B63CE',
+  },
+  cpAllToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0B63CE',
+  },
+  cpSwatchGrid: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 28,
+  },
+  cpSwatch: {
+    width: 60,
+    height: 76,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    position: 'relative',
+  },
+  cpSwatchDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  cpSwatchCheck: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
+  cpSwatchName: {
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  cpDoneBtn: {
+    backgroundColor: '#0B63CE',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  cpDoneBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
 });
 
 export default Dashboard;

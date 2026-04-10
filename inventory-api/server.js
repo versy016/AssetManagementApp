@@ -14,6 +14,7 @@ const config = require('./config');
 
 const express = require('express');
 const cors = require('cors');
+const { handleDocusignConnectWebhook } = require('./services/docusignConnectWebhook');
 
 // ---- Prisma ---------------------------------------------------------------
 const { PrismaClient } = require('./generated/prisma');
@@ -39,8 +40,23 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+
+// DocuSign Connect — must use raw body for HMAC verification (before JSON parser)
+app.post(
+  '/hire-disclaimer/docusign/webhook',
+  express.raw({ type: () => true, limit: '5mb' }),
+  (req, res) => handleDocusignConnectWebhook(req, res)
+);
+
+// Only parse JSON when Content-Type is explicitly application/json (never parse multipart as JSON)
+app.use(express.json({
+  limit: '10mb',
+  type: (req) => {
+    const ct = (req.get('Content-Type') || '').toLowerCase();
+    return ct.startsWith('application/json') && !ct.includes('multipart');
+  },
+}));
+app.use(express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded' }));
 
 // ---- Routes ---------------------------------------------------------------
 const assetRoutes = require('./routes/assets');
@@ -52,6 +68,7 @@ const placesRoutes = require('./routes/places');
 const activityRoutes = require('./routes/activity');
 const labelsRoutes = require('./routes/labels');
 const assetDocumentsRoutes = require('./routes/assetDocuments');
+const hireDisclaimerRoutes = require('./routes/hireDisclaimer');
 
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
@@ -63,6 +80,7 @@ app.use('/activity', activityRoutes);
 app.use('/labels', labelsRoutes);
 app.use('/assets', assetDocumentsRoutes);
 app.use('/asset-documents', assetDocumentsRoutes);
+app.use('/hire-disclaimer', hireDisclaimerRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)

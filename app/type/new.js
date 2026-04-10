@@ -12,7 +12,10 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import FormButton from '../../components/ui/FormButton';
+import FormActions from '../../components/ui/FormActions';
 import { TourTarget, TourContext } from '../../components/TourGuide';
+import { MaterialIcons } from '@expo/vector-icons';
 
 // ---- Default fields (always present on assets) -----------------------------
 const DEFAULT_FIELDS = [
@@ -40,7 +43,7 @@ const PRESET_LIBRARY = [
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
   // Moved common fields (now optional)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
-  { key: 'documentation_url', label: 'Documentation URL', fieldTypeSlug: 'url' },
+  { key: 'documentation_url', label: 'Document', fieldTypeSlug: 'url' },
   { key: 'location', label: 'Location', fieldTypeSlug: 'text' },
   // Suggestions
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
@@ -111,6 +114,11 @@ export default function NewAssetType() {
   const [editingOpen, setEditingOpen] = useState(false);
   const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '' });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
+  const showToast = (text, kind = 'success') => {
+    setToast({ visible: true, text, kind });
+    setTimeout(() => setToast({ visible: false, text: '', kind }), 2500);
+  };
 
   const { ensureVisible, currentStep } = useContext(TourContext);
   const scrollViewRef = useRef(null);
@@ -246,7 +254,9 @@ export default function NewAssetType() {
   }, []);
 
   const fieldTypeItems = useMemo(() => (
-    fieldTypes.map(ft => ({
+    fieldTypes
+      .filter((ft) => (ft.slug || '').toLowerCase() !== 'datetime')
+      .map(ft => ({
       label: `${ft.slug === 'url' ? 'Document' : ft.name}${ft.has_options ? ' (options)' : ''}`,
       value: ft.id,
       has_options: ft.has_options,
@@ -422,12 +432,12 @@ export default function NewAssetType() {
       const toCreate = [...presetPayloads, ...manualPayloads];
 
       if (toCreate.length === 0) {
-        Alert.alert('Success', 'Asset type created successfully');
-        if (normalizedReturnTo) {
-          router.replace(String(normalizedReturnTo));
-          return;
-        }
-        return router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+        showToast('Asset type created successfully');
+        setTimeout(() => {
+          if (normalizedReturnTo) router.replace(String(normalizedReturnTo));
+          else router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+        }, 1000);
+        return;
       }
 
       const errors = [];
@@ -446,7 +456,12 @@ export default function NewAssetType() {
       if (errors.length) {
         Alert.alert('Type created, some fields failed', errors.slice(0, 6).join('\n'));
       } else {
-        Alert.alert('Success', 'Asset type and fields created successfully');
+        showToast('Asset type and fields created successfully');
+        setTimeout(() => {
+          if (normalizedReturnTo) router.replace(String(normalizedReturnTo));
+          else router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
+        }, 1000);
+        return;
       }
       if (normalizedReturnTo) {
         router.replace(String(normalizedReturnTo));
@@ -492,9 +507,15 @@ export default function NewAssetType() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {toast.visible && (
+        <View style={[s.toast, s.toastSuccess]}>
+          <MaterialIcons name="check-circle" size={20} color="#047857" />
+          <Text style={s.toastText}>{toast.text}</Text>
+        </View>
+      )}
       <ScreenHeader
         title="Create Asset Type"
-        backLabel="Inventory"
+        backLabel="Go back"
         onBack={() => {
           if (normalizedReturnTo) {
             router.replace(String(normalizedReturnTo));
@@ -779,14 +800,12 @@ export default function NewAssetType() {
                     </>
                   );
                 })()}
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-                  <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={cancelEditor}>
-                    <Text>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.btn, s.submit, { flex: 1 }]} onPress={saveEditor}>
-                    <Text style={{ color: '#fff' }}>Save field</Text>
-                  </TouchableOpacity>
-                </View>
+                <FormActions
+                  onCancel={cancelEditor}
+                  cancelLabel="Cancel"
+                  onConfirm={saveEditor}
+                  confirmLabel="Add & save"
+                />
               </View>
             )}
 
@@ -803,9 +822,12 @@ export default function NewAssetType() {
             <View
               ref={(r) => { sectionRefs.current.save = r; }}
             >
-            <TouchableOpacity style={[s.btn, s.submit, { marginTop: 16 }]} onPress={handleSubmit} disabled={submitting}>
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff' }}>Create Asset Type</Text>}
-            </TouchableOpacity>
+            <FormButton
+              label="Create Asset Type"
+              onPress={handleSubmit}
+              loading={submitting}
+              fullWidth
+            />
             </View>
           </TourTarget>
 
@@ -869,4 +891,8 @@ const s = StyleSheet.create({
   // Required toggle on grid item
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
   reqLabel: { fontSize: 11, color: '#516B8E', marginBottom: 4 },
+
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
+  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
 });

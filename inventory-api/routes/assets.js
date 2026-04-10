@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+const { sendExpoPush } = require('../utils/push');
 
 const AWS = require('aws-sdk');
 const multer = require('multer');
@@ -137,7 +138,7 @@ const slugify = (s) =>
 const isISODate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 const isQRId = (s) => typeof s === 'string' && /^[A-Z0-9]{6,12}$/i.test(s); // your QR short-id style
-const ALLOWED_STATUSES = new Set(['In Service', 'End of Life', 'Repair', 'Maintenance']);
+const ALLOWED_STATUSES = new Set(['In Service', 'End of Life', 'Repair', 'Maintenance', 'On Hire']);
 const ACTION_TYPES = new Set([
   'REPAIR', 'MAINTENANCE', 'HIRE', 'END_OF_LIFE', 'LOST', 'STOLEN', 'CHECK_IN', 'CHECK_OUT', 'TRANSFER', 'STATUS_CHANGE'
 ]);
@@ -343,7 +344,9 @@ function normalizeDetails(type, src = {}) {
 }
 
 // Validate the dynamic fields payload against the schema (presence + type + options)
-async function validateDynamicFields(reqId, typeId, fieldsObj) {
+// options.skipRequiredLinkedDocuments: when true, do not require linked document for date fields (e.g. for "logging" service; require on sign-off)
+async function validateDynamicFields(reqId, typeId, fieldsObj, options = {}) {
+  const skipRequiredLinkedDocuments = options.skipRequiredLinkedDocuments === true;
   const defs = await prisma.asset_type_fields.findMany({
     where: { asset_type_id: typeId },
     include: { field_type: true },
@@ -407,7 +410,7 @@ async function validateDynamicFields(reqId, typeId, fieldsObj) {
               if (typeof v === 'string') return v.toLowerCase() === 'true';
               return true;
             })();
-            if (linkSlug && requireDocFlag) {
+            if (linkSlug && requireDocFlag && !skipRequiredLinkedDocuments) {
               const requiredSlugs = Array.isArray(linkSlug) ? linkSlug : [linkSlug];
               for (const s of requiredSlugs) {
                 const docVal = getDynamicValue(s);
@@ -529,7 +532,7 @@ router.get('/asset-options', async (req, res) => {
   try {
     const assetTypes = await prisma.asset_types.findMany();
     const users = await prisma.users.findMany();
-    const statuses = ['In Service', 'End of Life', 'Repair', 'Maintenance'];
+    const statuses = ['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'];
 
     const placeholders = await prisma.assets.findMany({
       where: {
@@ -587,6 +590,7 @@ router.get('/asset-types-summary', async (_req, res) => {
         endOfLife: filtered.filter(a => lower(a.status) === 'end of life').length,
         repair: filtered.filter(a => lower(a.status) === 'repair').length,
         maintenance: filtered.filter(a => lower(a.status) === 'maintenance').length,
+        onHire: filtered.filter(a => lower(a.status) === 'on hire').length,
       };
     });
 
@@ -634,6 +638,10 @@ router.post('/asset-types/:id/fields', authRequired, adminOnly, async (req, res)
 
     if (!name || !field_type_id) {
       return errJson(res, 400, 'name and field_type_id are required');
+    }
+
+    if (Array.isArray(options) && new Set(options).size !== options.length) {
+      return errJson(res, 400, 'Options must be unique');
     }
 
     const ft = await prisma.field_types.findUnique({ where: { id: field_type_id } });
@@ -804,10 +812,9 @@ router.post('/', authRequired, adminOnly, upload, async (req, res) => {
 
     // Prepare dynamic fields: if a URL-type field is present and empty, and a document was uploaded,
     // auto-fill it with the S3 documentation_url so required URL fields pass validation.
-    // defsBySlug already loaded above
+    // Also fill any document field required by a date field (e.g. Calibration Certificate Expiry → Calibration Certificate).
     try {
       if (docUpload?.Location || doc) {
-        // Prefer explicit slugs indicated by client (if provided)
         let targets = [];
         try {
           if (req.body?.url_doc_slugs) {
@@ -816,16 +823,42 @@ router.post('/', authRequired, adminOnly, upload, async (req, res) => {
           }
         } catch { }
 
+        // Add document slugs required by date fields so the uploaded doc satisfies validation
+        for (const def of Object.values(defsBySlug || {})) {
+          const code = (def.field_type?.slug || def.field_type?.name || '').toLowerCase();
+          if (code !== 'date' && code !== 'datetime') continue;
+          const val = dynamicFields?.[def.slug || slugify(def.name)];
+          if (val == null || String(val).trim() === '') continue;
+          try {
+            const vr = def.validation_rules && typeof def.validation_rules === 'object'
+              ? def.validation_rules
+              : (def.validation_rules ? JSON.parse(def.validation_rules) : null);
+            const opts = def.options && typeof def.options === 'object' ? def.options : null;
+            const linkSlug = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+            if (!linkSlug) continue;
+            const requiredSlugs = Array.isArray(linkSlug) ? linkSlug : [linkSlug];
+            for (const s of requiredSlugs) {
+              const sStr = String(s || '').trim();
+              if (!sStr) continue;
+              const sNorm = slugify(sStr);
+              if (!targets.includes(sNorm)) targets.push(sNorm);
+              const docDef = defsBySlug[sNorm];
+              if (docDef && (docDef.field_type?.slug || docDef.field_type?.name || '').toLowerCase() === 'url') {
+                const key = docDef.slug || slugify(docDef.name);
+                if (key && !targets.includes(key)) targets.push(key);
+              }
+            }
+          } catch { }
+        }
+
         const docValue = docUpload?.Location || 'attached';
 
         if (targets.length) {
           for (const slug of targets) {
             const def = defsBySlug[slug];
-            const tslug = (def?.field_type?.slug || '').toLowerCase();
+            const tslug = def ? (def.field_type?.slug || '').toLowerCase() : '';
             const val = dynamicFields?.[slug];
             const empty = val == null || String(val).trim() === '';
-            // Even if a formal URL field does not exist yet for this slug, set it in the dynamic payload
-            // so validation for linked date → document can pass; upsert step will ignore unknown slugs.
             if (empty) {
               if (!def) {
                 dynamicFields[slug] = docValue;
@@ -1195,19 +1228,50 @@ router.put('/:id', async (req, res) => {
 
     // Canonicalize dynamic field keys to match defined slugs (accept labels as keys)
     let canonicalFields = null;
-    if (fieldsPatch && effectiveTypeId) {
+    if (effectiveTypeId) {
       const defsBySlug = await getTypeFieldDefsBySlug(effectiveTypeId);
       const slugifyLocal = (s) => String(s || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-      canonicalFields = {};
-      for (const [k, v] of Object.entries(fieldsPatch)) {
-        const kNorm = slugifyLocal(k);
-        if (defsBySlug[kNorm]) canonicalFields[kNorm] = v; else canonicalFields[k] = v;
+
+      // Load existing field values so we validate the merged state (partial update must not require re-sending unchanged document)
+      let existingFields = {};
+      try {
+        const rows = await prisma.asset_field_values.findMany({
+          where: { asset_id: assetId },
+          include: { asset_type_field: { include: { field_type: true } } },
+        });
+        for (const row of rows) {
+          const slug = row.asset_type_field?.slug || slugifyLocal(row.asset_type_field?.name);
+          const code = row.asset_type_field?.field_type?.slug || row.asset_type_field?.field_type?.name;
+          if (slug) existingFields[slug] = decodeValue(code, row.value);
+        }
+      } catch (_) { /* non-fatal */ }
+
+      if (fieldsPatch && typeof fieldsPatch === 'object') {
+        const fromPatch = {};
+        for (const [k, v] of Object.entries(fieldsPatch)) {
+          const kNorm = slugifyLocal(k);
+          if (defsBySlug[kNorm]) fromPatch[kNorm] = v; else fromPatch[k] = v;
+        }
+        const mergedForValidation = { ...existingFields, ...fromPatch };
+        if (fromPatch.documentation_url && !patch.documentation_url) {
+          patch.documentation_url = fromPatch.documentation_url;
+        }
+        // Skip required-linked-document check when: client asked to skip, or no actual field updates (status-only/logging).
+        const noActualFieldUpdates = Object.keys(fromPatch).length === 0;
+        const skipRequiredLinkedDocuments = noActualFieldUpdates
+          || req.body.skip_required_documents === true
+          || req.body.skip_required_documents === '1'
+          || req.body.skip_required_documents === 'true';
+        await validateDynamicFields(reqId, effectiveTypeId, mergedForValidation, { skipRequiredLinkedDocuments });
+        canonicalFields = fromPatch;
+      } else {
+        // No fields in request (e.g. status-only update when logging): skip required-linked-document
+        // validation so logging Repair/Maintenance does not require documents; enforce on sign-off when fields are sent.
+        if (Object.keys(existingFields).length) {
+          await validateDynamicFields(reqId, effectiveTypeId, existingFields, { skipRequiredLinkedDocuments: true });
+        }
+        canonicalFields = null;
       }
-      // If documentation_url was sent via fields, mirror to top-level patch so it persists
-      if (canonicalFields.documentation_url && !patch.documentation_url) {
-        patch.documentation_url = canonicalFields.documentation_url;
-      }
-      await validateDynamicFields(reqId, effectiveTypeId, canonicalFields);
     }
 
     // Write top-level columns + audit
@@ -1371,6 +1435,8 @@ router.post('/:id/actions', async (req, res) => {
   const assetId = req.params.id;
   try {
     if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const assetExists = await prisma.assets.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!assetExists) return errJson(res, 404, 'Asset not found');
     const { type, note, data, performed_by, from_user_id, to_user_id, occurred_at, details } = req.body || {};
     if (!type || !ACTION_TYPES.has(String(type))) return errJson(res, 400, 'Invalid action type');
     const actorInfo = getActorInfo(req);
@@ -1443,6 +1509,36 @@ router.post('/:id/actions', async (req, res) => {
       }
     }
 
+    // Notify assigned user via push when a sign-off task is created (REPAIR / MAINTENANCE / HIRE)
+    const isSignoff = (req.body?.data && (req.body.data.requires_signoff === true || req.body.data.requires_sign_off === true));
+    if (isSignoff && ['REPAIR', 'MAINTENANCE', 'HIRE'].includes(String(type).toUpperCase())) {
+      (async () => {
+        try {
+          const asset = await prisma.assets.findUnique({
+            where: { id: assetId },
+            select: { assigned_to_id: true },
+          });
+          const userId = asset?.assigned_to_id || null;
+          if (!userId) return;
+          const user = await prisma.users.findUnique({
+            where: { id: userId },
+            select: { expo_push_token: true },
+          });
+          const token = user?.expo_push_token;
+          if (!token || typeof token !== 'string') return;
+          const actionLabel = type === 'REPAIR' ? 'Repair' : type === 'MAINTENANCE' ? 'Service' : 'Hire';
+          await sendExpoPush([{
+            to: token,
+            title: 'New task',
+            body: `${actionLabel} sign-off required`,
+            data: { screen: 'tasks', assetId },
+          }]);
+        } catch (e) {
+          log(reqId, 'WARN', 'push-on-task-created-failed', { message: e?.message });
+        }
+      })();
+    }
+
     log(reqId, 'INFO', 'create-action-ok', { assetId, type, actionId: action.id });
     res.status(201).json({ action });
   } catch (e) {
@@ -1509,6 +1605,21 @@ router.post('/:id/actions/upload', (req, res) => {
       if (occurred_at) {
         try { await prisma.asset_actions.update({ where: { id: action.id }, data: { occurred_at: new Date(occurred_at) } }); } catch { }
       }
+      // Push notification for sign-off task (upload always creates requires_signoff)
+      (async () => {
+        try {
+          const asset = await prisma.assets.findUnique({ where: { id: assetId }, select: { assigned_to_id: true } });
+          const userId = asset?.assigned_to_id || null;
+          if (!userId) return;
+          const user = await prisma.users.findUnique({ where: { id: userId }, select: { expo_push_token: true } });
+          const token = user?.expo_push_token;
+          if (!token || typeof token !== 'string') return;
+          const actionLabel = t === 'REPAIR' ? 'Repair' : 'Service';
+          await sendExpoPush([{ to: token, title: 'New task', body: `${actionLabel} sign-off required`, data: { screen: 'tasks', assetId } }]);
+        } catch (e) {
+          log(reqId, 'WARN', 'push-on-task-upload-failed', { message: e?.message });
+        }
+      })();
       log(reqId, 'INFO', 'create-action-with-images-ok', { assetId, type: t, actionId: action.id, images: urls.length });
       res.status(201).json({ action });
     } catch (e) {

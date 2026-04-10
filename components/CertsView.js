@@ -8,22 +8,31 @@ import PropTypes from 'prop-types';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { formatDisplayDate } from '../utils/date';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { formatDisplayDate, formatDisplayDateLong } from '../utils/date';
 import { Colors } from '../constants/uiTheme';
 import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
 import SearchInput from './ui/SearchInput';
 import ScreenHeader from './ui/ScreenHeader';
+import TableIconButton from './ui/TableIconButton';
+import TablePagination from './ui/TablePagination';
 import { TourTarget } from './TourGuide';
 
 const openDocumentLink = (url) => {
   if (!url) return;
   try {
+    let href = String(url).trim();
+    // On native, relative or path-only URLs must be made absolute (API may return path-only in some setups).
+    if (Platform.OS !== 'web' && href && !/^https?:\/\//i.test(href)) {
+      const base = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? String(API_BASE_URL).replace(/\/+$/, '') : '';
+      href = base ? `${base}${href.startsWith('/') ? '' : '/'}${href}` : href;
+    }
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(url, '_blank', 'noopener');
+      window.open(href, '_blank', 'noopener');
     } else {
-      Linking.openURL(url);
+      Linking.openURL(href);
     }
   } catch (error) {
     console.error('Error opening document link:', error);
@@ -67,9 +76,31 @@ export default function CertsView({ visible: initialVisible }) {
   const [me, setMe] = useState({ uid: null, email: null });
   const [hoverRowId, setHoverRowId] = useState(null);
   const [renderReady, setRenderReady] = useState(Platform.OS === 'web');
+  // Document type labels from asset type fields (field_id -> name)
+  const [fieldIdToLabel, setFieldIdToLabel] = useState({});
+  // Create new document modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState(1);
+  const [createAssetSearch, setCreateAssetSearch] = useState('');
+  const [allAssetsForPicker, setAllAssetsForPicker] = useState([]);
+  const [createAssetsLoading, setCreateAssetsLoading] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [createTypeFields, setCreateTypeFields] = useState([]);
+  const [createTypeFieldsLoading, setCreateTypeFieldsLoading] = useState(false);
+  const [selectedDocField, setSelectedDocField] = useState(null);
+  const [createFile, setCreateFile] = useState(null);
+  const [createDate, setCreateDate] = useState('');
+  const [createDateLabel, setCreateDateLabel] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [editDocFieldId, setEditDocFieldId] = useState(null);
+  const [editTypeFields, setEditTypeFields] = useState([]);
+  // Date fields that link to a document type + asset's current date values (for create step 2)
+  const [createDateDocLinks, setCreateDateDocLinks] = useState([]);
+  const [createAssetDetails, setCreateAssetDetails] = useState(null);
 
   // Use useWindowDimensions hook
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const isCompact = Platform.OS === 'web' ? (screenWidth < 1024) : true;
   const isNative = Platform.OS !== 'web';
@@ -79,16 +110,23 @@ export default function CertsView({ visible: initialVisible }) {
 
   // Pagination state
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState({ field: 'updated', dir: 'desc' });
   const [pageSize, setPageSize] = useState(25);
 
 
   // Determine if we should render anything based on visibility
   const shouldRender = initialVisible && state !== null && renderReady;
 
+  // On native, renderReady is set after interactions (or fallback timeout) so the certs list can paint.
+  // If runAfterInteractions never fires (e.g. some navigators), fallback after 200ms so mobile always shows content.
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
     const task = InteractionManager.runAfterInteractions(() => setRenderReady(true));
-    return () => task.cancel();
+    const fallback = setTimeout(() => setRenderReady(true), 200);
+    return () => {
+      task.cancel();
+      clearTimeout(fallback);
+    };
   }, []);
 
   useEffect(() => {
@@ -100,7 +138,21 @@ export default function CertsView({ visible: initialVisible }) {
         setState(prev => ({ ...prev, loading: true, error: null }));
         const res = await fetch(`${API_BASE_URL}/asset-documents/documents`);
         const j = await res.json().catch(() => ({}));
-        const list = Array.isArray(j?.items) ? j.items : Array.isArray(j) ? j : [];
+        const rawList = Array.isArray(j?.items) ? j.items : Array.isArray(j) ? j : [];
+        // Normalize keys (API may return snake_case or camelCase)
+        const list = rawList.map((d) => {
+          if (!d || typeof d !== 'object') return d;
+          return {
+            ...d,
+            asset_id: d.asset_id ?? d.assetId,
+            url: d.url,
+            created_at: d.created_at ?? d.createdAt,
+            updated_at: d.updated_at ?? d.updatedAt,
+            related_date: d.related_date ?? d.relatedDate,
+            related_date_label: d.related_date_label ?? d.relatedDateLabel,
+            asset_type_field_id: d.asset_type_field_id ?? d.assetTypeFieldId,
+          };
+        });
 
         if (!cancelled) {
           const trimmed = list.slice(0, 300);
@@ -135,11 +187,14 @@ export default function CertsView({ visible: initialVisible }) {
   useEffect(() => {
     if (!initialVisible) return undefined;
     if (!enrichAssets) {
-      setAssetMap({});
+      setAssetMap((prev) => (Object.keys(prev || {}).length === 0 ? prev : {}));
       return undefined;
     }
     const ids = Array.from(new Set((state.items || []).map((d) => d?.asset_id).filter(Boolean)));
-    if (!ids.length) { setAssetMap({}); return undefined; }
+    if (!ids.length) {
+      setAssetMap((prev) => (Object.keys(prev || {}).length === 0 ? prev : {}));
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -165,9 +220,192 @@ export default function CertsView({ visible: initialVisible }) {
     return () => { cancelled = true; };
   }, [initialVisible, state.items, enrichAssets]);
 
+  // Create document: load assets when modal opens (step 1)
+  useEffect(() => {
+    if (!createOpen || createStep !== 1) return;
+    setCreateAssetsLoading(true);
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/assets`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+        const filtered = list
+          .filter((a) => (a?.description || '').toLowerCase() !== 'qr reserved asset')
+          .filter((a) => !isUUID(String(a?.id || '')));
+        setAllAssetsForPicker(filtered);
+      })
+      .catch(() => { if (!cancelled) setAllAssetsForPicker([]); })
+      .finally(() => { if (!cancelled) setCreateAssetsLoading(false); });
+    return () => { cancelled = true; };
+  }, [createOpen, createStep]);
+
+  // Create document: when asset selected, load type fields (URL + date→doc links) and asset details for step 2
+  useEffect(() => {
+    if (!createOpen || !selectedAsset || createStep !== 2) {
+      if (!selectedAsset) {
+        setCreateTypeFields([]);
+        setCreateDateDocLinks([]);
+        setCreateAssetDetails(null);
+      }
+      return;
+    }
+    const assetId = selectedAsset.id;
+    let cancelled = false;
+
+    const parseLinkSlug = (f) => {
+      try {
+        const vr = (f.validation_rules && typeof f.validation_rules === 'object')
+          ? f.validation_rules
+          : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+        const opts = (f.options && typeof f.options === 'object') ? f.options : (f.options ? JSON.parse(f.options) : null);
+        const link = (vr && (vr.requires_document_slug || vr.require_document_slug)) ||
+          (opts && (opts.requires_document_slug || opts.require_document_slug));
+        const slug = Array.isArray(link) ? link[0] || '' : (link || '');
+        return slug ? String(slug) : '';
+      } catch { return ''; }
+    };
+
+    function isDocumentField(f) {
+      const slug = String(f?.field_type?.slug || f?.field_type?.name || '').toLowerCase();
+      const name = String(f?.field_type?.name || f?.field_type?.slug || '').toLowerCase();
+      if (slug === 'url' || name === 'url') return true;
+      if (slug === 'document' || name === 'document') return true;
+      if (name === 'documentation' || slug === 'documentation') return true;
+      return false;
+    }
+
+    function applyFields(fieldList, assetDetails) {
+      if (cancelled) return;
+      const urlFields = fieldList.filter(isDocumentField);
+      const docTypeFields = urlFields.length > 0 ? urlFields : fieldList;
+      setCreateTypeFields(docTypeFields);
+      if (docTypeFields.length && !selectedDocField) setSelectedDocField(docTypeFields[0]);
+      else if (!docTypeFields.length) setSelectedDocField(null);
+
+      const dateFields = fieldList.filter(
+        (f) => String(f?.field_type?.slug || f?.field_type?.name || '').toLowerCase() === 'date'
+      );
+      const links = [];
+      for (const dateF of dateFields) {
+        const docSlug = parseLinkSlug(dateF);
+        if (!docSlug) continue;
+        const linkedDoc = docTypeFields.find(
+          (u) => String(u?.slug || '').toLowerCase() === String(docSlug).toLowerCase()
+        );
+        if (!linkedDoc) continue;
+        const assetFields = (assetDetails && assetDetails.fields && typeof assetDetails.fields === 'object') ? assetDetails.fields : {};
+        const dateValue = assetFields[dateF.slug] ?? assetFields[dateF.name] ?? null;
+        const dateValueStr = dateValue != null ? (typeof dateValue === 'string' ? dateValue.split('T')[0] : String(dateValue).split('T')[0]) : null;
+        links.push({
+          dateField: { id: dateF.id, name: dateF.name || dateF.slug, slug: dateF.slug },
+          linkedDocField: { id: linkedDoc.id, name: linkedDoc.name || linkedDoc.slug, slug: linkedDoc.slug },
+          dateValue: dateValueStr,
+        });
+      }
+      setCreateDateDocLinks(links);
+      if (assetDetails) setCreateAssetDetails(assetDetails);
+    }
+
+    setCreateTypeFieldsLoading(true);
+    setCreateDateDocLinks([]);
+    setCreateAssetDetails(null);
+
+    (async () => {
+      try {
+        let assetDetails = null;
+        if (assetId) {
+          const assetRes = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}`);
+          if (assetRes.ok) assetDetails = await assetRes.json();
+          if (cancelled) return;
+        }
+        const typeId = selectedAsset.type_id || selectedAsset.asset_types?.id || (assetDetails && (assetDetails.type_id || (assetDetails.asset_types && assetDetails.asset_types.id)));
+        let fields = [];
+
+        if (typeId) {
+          const fieldsRes = await fetch(`${API_BASE_URL}/assets/asset-types/${encodeURIComponent(typeId)}/fields`);
+          if (fieldsRes.ok) {
+            const raw = await fieldsRes.json();
+            fields = Array.isArray(raw) ? raw : [];
+          }
+          if (cancelled) return;
+
+          if (fields.length === 0) {
+            const typeRes = await fetch(`${API_BASE_URL}/asset-types/${encodeURIComponent(typeId)}?include=fields`);
+            if (typeRes.ok) {
+              const typeJson = await typeRes.json();
+              const typeData = typeJson?.data || typeJson;
+              const typeFields = Array.isArray(typeData?.fields) ? typeData.fields : [];
+              if (typeFields.length > 0) {
+                const ftRes = await fetch(`${API_BASE_URL}/field-types`);
+                const ftList = (ftRes.ok && await ftRes.json()) || [];
+                const ftArray = Array.isArray(ftList) ? ftList : (ftList?.data || []);
+                const ftById = Object.fromEntries((ftArray).map((t) => [t.id, t]));
+                fields = typeFields.map((f) => ({
+                  ...f,
+                  field_type: f.field_type || (f.field_type_id && ftById[f.field_type_id]) || {},
+                }));
+              }
+            }
+            if (cancelled) return;
+          }
+        }
+
+        if (!cancelled) applyFields(fields, assetDetails);
+      } catch {
+        if (!cancelled) {
+          setCreateTypeFields([]);
+          setCreateDateDocLinks([]);
+          setCreateAssetDetails(null);
+        }
+      } finally {
+        if (!cancelled) setCreateTypeFieldsLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [createOpen, selectedAsset, createStep]);
+
+  // Load type fields for document type labels (field_id -> name). Used to show "Warranty" etc from asset type.
+  useEffect(() => {
+    if (!initialVisible || !enrichAssets) return;
+    const typeIds = Array.from(new Set(
+      (state.items || [])
+        .map((d) => (assetMap[d?.asset_id] || {})?.type_id || (assetMap[d?.asset_id] || {})?.asset_types?.id)
+        .filter(Boolean)
+    ));
+    if (!typeIds.length) { setFieldIdToLabel({}); return; }
+    let cancelled = false;
+    (async () => {
+      const map = {};
+      for (const typeId of typeIds) {
+        try {
+          const r = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
+          if (!r.ok || cancelled) continue;
+          const arr = Array.isArray(await r.json()) ? await r.json() : [];
+          for (const f of arr) {
+            const slug = String(f?.field_type?.slug || '').toLowerCase();
+            const name = String(f?.field_type?.name || '').toLowerCase();
+            const isDoc = slug === 'url' || name === 'url' || slug === 'document' || name === 'document' || name === 'documentation' || slug === 'documentation';
+            if (isDoc && f.id) map[f.id] = f.name || f.slug || 'Document';
+          }
+        } catch { }
+      }
+      if (!cancelled) setFieldIdToLabel(map);
+    })();
+    return () => { cancelled = true; };
+  }, [initialVisible, state.items, assetMap, enrichAssets]);
+
   const rows = useMemo(() => {
     if (!state.items) return [];
-    const items = Array.isArray(state.items) ? state.items : [];
+    const rawItems = Array.isArray(state.items) ? state.items : [];
+    // Exclude all photos from certs (task sign-off photos, images, etc. — not certificates)
+    const isPhotoDoc = (label) => /photo|image|picture|task photo/i.test(String(label || ''));
+    const items = rawItems.filter((d) => {
+      const k = (d?.kind || d?.title || '').trim();
+      return !isPhotoDoc(k);
+    });
     // Normalize and dedupe by assetId+url; prefer those with a related_date
     const best = new Map();
     for (const d of items) {
@@ -203,8 +441,10 @@ export default function CertsView({ visible: initialVisible }) {
       const entry = ({
         id: d.id || String(idx),
         assetId: d.asset_id,
-        docLabel: toTitle(d.title || d.kind || 'Document'),
-        dateLabel: d.related_date_label || '',
+        docLabel: (d.asset_type_field_id && fieldIdToLabel[d.asset_type_field_id])
+          ? fieldIdToLabel[d.asset_type_field_id]
+          : toTitle(d.title || d.kind || 'Document'),
+        dateLabel: (d.related_date_label || '').replace(/\s*reminder\s*$/i, '').trim() || (d.related_date ? 'Valid Until' : ''),
         dateValue: d.related_date || null,
         docUrl: d.url,
         createdAt: d.created_at || null,
@@ -222,17 +462,17 @@ export default function CertsView({ visible: initialVisible }) {
       }
       return entry;
     }).filter(Boolean);
-    // Sort by date desc, then createdAt desc
+    // Sort by latest added first (createdAt desc), then by related date desc
     arr.sort((a, b) => {
-      const ad = a.dateValue ? new Date(a.dateValue).getTime() : 0;
-      const bd = b.dateValue ? new Date(b.dateValue).getTime() : 0;
-      if (bd !== ad) return bd - ad;
       const ac = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bc = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bc - ac;
+      if (bc !== ac) return bc - ac;
+      const ad = a.dateValue ? new Date(a.dateValue).getTime() : 0;
+      const bd = b.dateValue ? new Date(b.dateValue).getTime() : 0;
+      return bd - ad;
     });
     return arr;
-  }, [state.items, assetMap]);
+  }, [state.items, assetMap, fieldIdToLabel]);
 
   // Show only the most recent document per asset + (field or label) by default.
   // When the user selects the Expired filter, we will switch to the full rows list
@@ -246,13 +486,13 @@ export default function CertsView({ visible: initialVisible }) {
       return `${id}|${k}`;
     };
     const newer = (a, b) => {
-      // pick latest by related date, then by createdAt
-      const ad = a?.dateValue ? new Date(a.dateValue).getTime() : 0;
-      const bd = b?.dateValue ? new Date(b.dateValue).getTime() : 0;
-      if (ad !== bd) return ad - bd;
+      // prefer latest added (createdAt), then latest by related date
       const ac = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bc = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return ac - bc;
+      if (ac !== bc) return ac - bc;
+      const ad = a?.dateValue ? new Date(a.dateValue).getTime() : 0;
+      const bd = b?.dateValue ? new Date(b.dateValue).getTime() : 0;
+      return ad - bd;
     };
     for (const r of rows) {
       if (!r) continue;
@@ -345,7 +585,7 @@ export default function CertsView({ visible: initialVisible }) {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [filterText, filterType, filterAssigned, onlyMine, filterDoc, filterRange, filterExp, showHistory]);
+  }, [filterText, filterType, filterAssigned, onlyMine, filterDoc, filterRange, filterExp, showHistory, sort.field, sort.dir]);
 
 
   // Ensure filteredRows is always an array
@@ -358,13 +598,60 @@ export default function CertsView({ visible: initialVisible }) {
     }
   }, [filteredRows]);
 
-  // Paginated rows
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return safeFilteredRows.slice(start, start + pageSize);
-  }, [safeFilteredRows, page, pageSize]);
+  // Column key -> row property for sorting (skip attachment and actions)
+  const columnKeyToSortField = useMemo(() => ({
+    asset: 'assetId',
+    type: 'typeName',
+    model: 'model',
+    assigned: 'assigned',
+    documentType: 'docLabel',
+    date: 'dateValue',
+    updated: 'updatedAt',
+  }), []);
 
-  const totalPages = Math.ceil(safeFilteredRows.length / pageSize);
+  const sortableColumnKeys = useMemo(() => Object.keys(columnKeyToSortField), [columnKeyToSortField]);
+
+  const getRowVal = (r, field) => {
+    if (!r || !field) return '';
+    const v = r[field];
+    if (v == null || v === '') return '';
+    return v;
+  };
+
+  const sortedRows = useMemo(() => {
+    const list = [...(safeFilteredRows || [])];
+    const rowField = columnKeyToSortField[sort.field] || sort.field;
+    const dir = sort.dir || 'desc';
+    const isDate = rowField === 'dateValue' || rowField === 'updatedAt';
+    list.sort((a, b) => {
+      const av = getRowVal(a, rowField);
+      const bv = getRowVal(b, rowField);
+      const aEmpty = av === '' || av == null;
+      const bEmpty = bv === '' || bv == null;
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return dir === 'asc' ? 1 : 1;
+      if (bEmpty) return dir === 'asc' ? -1 : -1;
+      let cmp = 0;
+      if (isDate) {
+        const at = new Date(av).getTime();
+        const bt = new Date(bv).getTime();
+        if (!Number.isNaN(at) && !Number.isNaN(bt)) cmp = at - bt;
+      } else {
+        const as = String(av).toLowerCase();
+        const bs = String(bv).toLowerCase();
+        cmp = as < bs ? -1 : as > bs ? 1 : 0;
+      }
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [safeFilteredRows, sort.field, sort.dir, columnKeyToSortField]);
+
+  // Paginated rows (from sorted list)
+  const paginatedRows = useMemo(() => {
+    if (pageSize === 'All') return sortedRows;
+    const start = (page - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageSize]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -420,6 +707,30 @@ export default function CertsView({ visible: initialVisible }) {
     } catch { return dateString || ''; }
   };
 
+  // Load edit type fields when edit modal opens (for document type dropdown)
+  useEffect(() => {
+    if (!editOpen || !editRow) { setEditTypeFields([]); setEditDocFieldId(null); return; }
+    setEditDocFieldId(editRow.asset_type_field_id || null);
+    const typeId = assetMap[editRow.assetId]?.type_id || assetMap[editRow.assetId]?.asset_types?.id;
+    if (!typeId) { setEditTypeFields([]); return; }
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`)
+      .then((r) => r.json())
+      .then((arr) => {
+        if (cancelled) return;
+        const fields = Array.isArray(arr) ? arr : [];
+        const isDoc = (f) => {
+          const s = String(f?.field_type?.slug || '').toLowerCase();
+          const n = String(f?.field_type?.name || '').toLowerCase();
+          return s === 'url' || n === 'url' || s === 'document' || n === 'document' || n === 'documentation' || s === 'documentation';
+        };
+        const urlFields = fields.filter(isDoc);
+        setEditTypeFields(urlFields);
+      })
+      .catch(() => { if (!cancelled) setEditTypeFields([]); });
+    return () => { cancelled = true; };
+  }, [editOpen, editRow, assetMap]);
+
   const renderEditModal = () => (
       <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -428,7 +739,29 @@ export default function CertsView({ visible: initialVisible }) {
             {!!editRow && (
               <>
                 <Text style={styles.modalLabel}>Document Type</Text>
-                <Text style={styles.modalValue}>{editRow.docLabel}</Text>
+                {editTypeFields.length > 0 ? (
+                  <View style={{ marginTop: 6 }}>
+                    {editTypeFields.map((f) => (
+                      <TouchableOpacity
+                        key={f.id}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderWidth: 1,
+                          borderColor: editDocFieldId === f.id ? Colors.primary : '#E2E8F0',
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          backgroundColor: editDocFieldId === f.id ? '#EFF6FF' : '#fff',
+                        }}
+                        onPress={() => setEditDocFieldId(f.id)}
+                      >
+                        <Text style={{ fontWeight: '600', color: '#0F172A' }}>{f.name || f.slug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.modalValue}>{editRow.docLabel ? (isPhotoDoc(editRow.docLabel) ? `Image ${editRow.docLabel}` : editRow.docLabel) : '—'}</Text>
+                )}
 
                 <View style={{ marginTop: 8 }}>
                   <Text style={styles.modalLabel}>Current Document</Text>
@@ -442,11 +775,14 @@ export default function CertsView({ visible: initialVisible }) {
                   )}
                 </View>
 
-                <Text style={[styles.modalLabel, { marginTop: 12 }]}>Related Date</Text>
+                <Text style={[styles.modalLabel, { marginTop: 12 }]}>Valid Until</Text>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 }}>
-                  <TouchableOpacity style={[styles.inputLike, { flex: 1 }]} onPress={() => setEditDateOpen(true)}>
-                    <Text style={styles.inputLikeText}>{editDate ? formatDisplayDate(editDate) : 'Select date'}</Text>
-                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.inputLike, { flex: 1 }]}
+                    placeholder="Select date"
+                    value={editDate ? formatDisplayDateLong(editDate) : ''}
+                    editable={false}
+                  />
                   {!!editDate && (
                     <TouchableOpacity style={[styles.btn, { backgroundColor: '#fdecea' }]} onPress={() => setEditDate('')}>
                       <Text style={{ color: '#b00020' }}>Clear</Text>
@@ -491,9 +827,13 @@ export default function CertsView({ visible: initialVisible }) {
                     <Text>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity disabled={editBusy} style={[styles.btn, styles.btnPrimary, { flex: 1, opacity: editBusy ? 0.6 : 1 }]} onPress={async () => {
-                    if (!editRow) return; const assetId = editRow.assetId; const docId = editRow.id; const fieldId = editRow.asset_type_field_id;
+                    if (!editRow) return;
+                    const assetId = editRow.assetId;
+                    const docId = editRow.id;
+                    const fieldId = editDocFieldId ?? editRow.asset_type_field_id;
                     const toTitle = (s) => { const txt = String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim(); return txt.split(' ').map(w => w ? (w[0].toUpperCase() + w.slice(1)) : '').join(' '); };
-                    const niceName = toTitle(editRow.docLabel);
+                    const selectedField = editTypeFields.find((f) => f.id === fieldId);
+                    const niceName = selectedField ? (selectedField.name || selectedField.slug) : toTitle(editRow.docLabel);
                     const prevHadFile = !!editRow.docUrl;
                     try {
                       setEditBusy(true);
@@ -530,15 +870,23 @@ export default function CertsView({ visible: initialVisible }) {
                         if (fieldId) fd.append('asset_type_field_id', String(fieldId));
                         fd.append('title', niceName); fd.append('kind', niceName);
                         if (editRow.dateLabel) fd.append('related_date_label', editRow.dateLabel);
-                        if (editDate) fd.append('related_date', String(editDate));
-                        const up = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, { method: 'POST', body: fd });
+                        const dateToSend = editDate || (editRow.dateValue ? String(editRow.dateValue).split('T')[0] : '');
+                        if (dateToSend) fd.append('related_date', dateToSend);
+                        const uid = auth?.currentUser?.uid;
+                        const headers = uid ? { 'X-User-Id': uid } : {};
+                        const up = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, { method: 'POST', body: fd, headers });
                         if (!up.ok) throw new Error(await up.text());
-                        try { await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${docId}`, { method: 'DELETE' }); } catch { }
+                        try { await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${docId}`, { method: 'DELETE', headers }); } catch { }
                       } else {
                         const body = {};
                         if (editRow.dateLabel) body.related_date_label = editRow.dateLabel;
                         if (editDate) body.related_date = editDate; else body.related_date = null;
-                        const pr = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${docId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                        if (fieldId !== undefined && fieldId !== null) body.asset_type_field_id = fieldId;
+                        body.title = niceName;
+                        body.kind = niceName;
+                        const uid = auth?.currentUser?.uid;
+                        const headers = { 'Content-Type': 'application/json', ...(uid ? { 'X-User-Id': uid } : {}) };
+                        const pr = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${docId}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
                         if (!pr.ok) throw new Error(await pr.text());
                       }
                       setEditOpen(false);
@@ -560,19 +908,289 @@ export default function CertsView({ visible: initialVisible }) {
       </Modal>
   );
 
+  // Create new document modal
+  const createFilteredAssets = useMemo(() => {
+    if (!createAssetSearch.trim()) return allAssetsForPicker;
+    const q = createAssetSearch.trim().toLowerCase();
+    return allAssetsForPicker.filter(
+      (a) =>
+        String(a?.id || '').toLowerCase().includes(q) ||
+        String(a?.model || '').toLowerCase().includes(q) ||
+        String(a?.serial_number || '').toLowerCase().includes(q) ||
+        String(a?.asset_types?.name || a?.type || '').toLowerCase().includes(q)
+    );
+  }, [allAssetsForPicker, createAssetSearch]);
+
+  const renderCreateModal = () => (
+    <Modal visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { maxWidth: 520 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Text style={styles.modalTitle}>
+              {createStep === 1 ? 'Select asset' : createStep === 2 ? 'Select document type' : 'Upload document'}
+            </Text>
+            <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.inlineIconBtn}>
+              <Feather name="x" size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {createStep === 1 && (
+            <>
+              <Text style={styles.modalLabel}>Search assets by ID, model, serial or type</Text>
+              <TextInput
+                style={[styles.inputLike, { marginTop: 6, marginBottom: 12 }]}
+                placeholder="Type to search..."
+                value={createAssetSearch}
+                onChangeText={setCreateAssetSearch}
+                autoCapitalize="none"
+              />
+              {createAssetsLoading ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 20 }} />
+              ) : (
+                <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator>
+                  {createFilteredAssets.slice(0, 100).map((a) => (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={{
+                        paddingVertical: 12,
+                        paddingHorizontal: 12,
+                        borderWidth: 1,
+                        borderColor: selectedAsset?.id === a.id ? Colors.primary : '#E2E8F0',
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        backgroundColor: selectedAsset?.id === a.id ? '#EFF6FF' : '#fff',
+                      }}
+                      onPress={() => setSelectedAsset(a)}
+                    >
+                      <Text style={{ fontWeight: '700', color: '#0F172A' }}>{a.id}</Text>
+                      <Text style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
+                        {a.asset_types?.name || a.type || '—'} {a.model ? `• ${a.model}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {createFilteredAssets.length === 0 && !createAssetsLoading && (
+                    <Text style={{ color: '#64748B', paddingVertical: 20 }}>No assets match your search.</Text>
+                  )}
+                </ScrollView>
+              )}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity style={[styles.btn, styles.btnGhost, { flex: 1 }]} onPress={() => setCreateOpen(false)}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnPrimary, { flex: 1, opacity: selectedAsset ? 1 : 0.5 }]}
+                  disabled={!selectedAsset}
+                  onPress={() => setCreateStep(2)}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Next</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {createStep === 2 && (
+            <>
+              {selectedAsset && (
+                <View style={{ marginBottom: 12, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8 }}>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Asset</Text>
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>{selectedAsset.id}</Text>
+                  <TouchableOpacity onPress={() => setCreateStep(1)} style={{ marginTop: 6 }}>
+                    <Text style={styles.inlineBtnText}>Change asset</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {createTypeFieldsLoading ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 20 }} />
+              ) : createTypeFields.length === 0 ? (
+                <View style={{ marginVertical: 16 }}>
+                  <Text style={{ color: '#64748B', marginBottom: 12 }}>
+                    No document fields were found for this asset&apos;s type. If you added custom fields (e.g. Calibration certificate, Calibration certificate expiry) in Asset Type settings, make sure this asset has that type assigned. Otherwise add Document and Date fields in the asset type settings.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnPrimary]}
+                    onPress={() => {
+                      const typeId = createAssetDetails?.type_id || selectedAsset?.type_id || selectedAsset?.asset_types?.id;
+                      setCreateOpen(false);
+                      if (typeId) router.push({ pathname: '/type/edit', params: { id: typeId } });
+                      else router.push('/');
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>{createAssetDetails?.type_id || selectedAsset?.asset_types?.id ? 'Open asset type settings' : 'Back'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.modalLabel}>Document type</Text>
+                  <View style={{ marginTop: 6, marginBottom: 16 }}>
+                    {createTypeFields.map((f) => (
+                      <TouchableOpacity
+                        key={f.id}
+                        style={{
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          borderWidth: 1,
+                          borderColor: selectedDocField?.id === f.id ? Colors.primary : '#E2E8F0',
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          backgroundColor: selectedDocField?.id === f.id ? '#EFF6FF' : '#fff',
+                        }}
+                        onPress={() => setSelectedDocField(f)}
+                      >
+                        <Text style={{ fontWeight: '600', color: '#0F172A' }}>{f.name || f.slug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {createDateDocLinks.length > 0 ? (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={[styles.modalLabel, { marginBottom: 6 }]}>Dates with linked documents</Text>
+                      <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+                        This asset has date fields linked to document types. Tap a row to use that date for the new document.
+                      </Text>
+                      <View style={{ gap: 6 }}>
+                        {createDateDocLinks.map((link) => (
+                          <TouchableOpacity
+                            key={`${link.dateField.id}-${link.linkedDocField.id}`}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingVertical: 8,
+                              paddingHorizontal: 10,
+                              borderWidth: 1,
+                              borderColor: createDate === link.dateValue ? Colors.primary : '#E2E8F0',
+                              borderRadius: 8,
+                              backgroundColor: createDate === link.dateValue ? '#EFF6FF' : '#F8FAFC',
+                            }}
+                            onPress={() => {
+                              setCreateDate(link.dateValue || '');
+                              setCreateDateLabel(link.dateField.name || '');
+                              setSelectedDocField(createTypeFields.find((f) => f.id === link.linkedDocField.id) || selectedDocField);
+                            }}
+                          >
+                            <Feather name="calendar" size={14} color="#64748B" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: 13 }}>{link.dateField.name}</Text>
+                              <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                                {link.dateValue ? formatDisplayDate(link.dateValue) : 'No date set'} → {link.linkedDocField.name}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                  <Text style={[styles.modalLabel, { marginTop: 8 }]}>File (required)</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={styles.btn}
+                      onPress={async () => {
+                        try {
+                          const res = await DocumentPicker.getDocumentAsync({
+                            multiple: false,
+                            type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/*'],
+                          });
+                          if (res.canceled) return;
+                          const a = res.assets?.[0];
+                          if (a) setCreateFile(a);
+                        } catch (e) {
+                          Alert.alert('Error', e?.message || 'Failed to select file');
+                        }
+                      }}
+                    >
+                      <Text>{createFile ? 'Change file' : 'Choose file'}</Text>
+                    </TouchableOpacity>
+                    {createFile ? (
+                      <Text style={{ alignSelf: 'center', color: '#64748B' }} numberOfLines={1}>{createFile.name}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.modalLabel, { marginTop: 12 }]}>Valid Until (optional)</Text>
+                  <TextInput
+                    style={[styles.inputLike, { marginTop: 6 }]}
+                    placeholder="YYYY-MM-DD"
+                    value={createDate}
+                    onChangeText={setCreateDate}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                    <TouchableOpacity style={[styles.btn, styles.btnGhost, { flex: 1 }]} onPress={() => setCreateStep(1)}>
+                      <Text>Back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      disabled={createBusy || !selectedDocField || !createFile}
+                      style={[styles.btn, styles.btnPrimary, { flex: 1, opacity: createFile && selectedDocField ? 1 : 0.5 }]}
+                      onPress={async () => {
+                        if (!selectedAsset || !selectedDocField || !createFile) return;
+                        setCreateBusy(true);
+                        try {
+                          const fd = new FormData();
+                          if (Platform.OS === 'web') {
+                            try {
+                              const resp = await fetch(createFile.uri);
+                              const blob = await resp.blob();
+                              const file = new File([blob], createFile.name || 'document.pdf', {
+                                type: createFile.mimeType || blob.type || 'application/pdf',
+                              });
+                              fd.append('file', file, file.name);
+                            } catch {
+                              fd.append('file', { uri: createFile.uri, name: createFile.name || 'document.pdf', type: createFile.mimeType || 'application/pdf' });
+                            }
+                          } else {
+                            fd.append('file', { uri: createFile.uri, name: createFile.name || 'document.pdf', type: createFile.mimeType || 'application/pdf' });
+                          }
+                          fd.append('asset_type_field_id', selectedDocField.id);
+                          fd.append('title', selectedDocField.name || selectedDocField.slug);
+                          fd.append('kind', selectedDocField.name || selectedDocField.slug);
+                          if (createDate) {
+                            fd.append('related_date', createDate);
+                            fd.append('related_date_label', createDateLabel || selectedDocField.name || selectedDocField.slug || 'Valid Until');
+                          }
+                          const uid = auth?.currentUser?.uid;
+                          const headers = uid ? { 'X-User-Id': uid } : {};
+                          const r = await fetch(`${API_BASE_URL}/assets/${selectedAsset.id}/documents/upload`, {
+                            method: 'POST',
+                            body: fd,
+                            headers,
+                          });
+                          if (!r.ok) throw new Error(await r.text());
+                          setCreateOpen(false);
+                          setRefreshKey((k) => k + 1);
+                        } catch (e) {
+                          Alert.alert('Error', e?.message || 'Failed to upload document');
+                        } finally {
+                          setCreateBusy(false);
+                        }
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>{createBusy ? 'Uploading…' : 'Upload'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+              {createTypeFields.length > 0 && (
+                <TouchableOpacity style={{ marginTop: 12 }} onPress={() => setCreateStep(1)}>
+                  <Text style={styles.inlineBtnText}>← Back to asset selection</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
   // Palette via centralized tokens
 
   const columns = [
-    { key: 'asset', label: 'Asset ID', width: 140 },
-    { key: 'type', label: 'Asset Type', width: 180 },
-    // Make these flexible to fill remaining space like search table
-    { key: 'model', label: 'Model', flex: 1, minWidth: 160 },
-    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 200 },
-    { key: 'doc', label: 'Document Type', flex: 2, minWidth: 260 },
-    { key: 'date', label: 'Related Date', width: 200 },
-    { key: 'updated', label: 'Last Updated', width: 180 },
-    { key: 'actions', label: 'Actions', width: 180 },
+    { key: 'asset', label: 'Asset ID', flex: 1, minWidth: 100 },
+    { key: 'type', label: 'Asset Type', flex: 1, minWidth: 100 },
+    { key: 'model', label: 'Model', flex: 1, minWidth: 100 },
+    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 100 },
+    { key: 'documentType', label: 'Document Type', flex: 1, minWidth: 100 },
+    { key: 'attachment', label: 'Document / Attachment', flex: 1, minWidth: 100 },
+    { key: 'date', label: 'Valid Until', flex: 1.4, minWidth: 180 },
+    { key: 'updated', label: 'Last Updated', flex: 1, minWidth: 100 },
+    { key: 'actions', label: 'Actions', flex: 1, minWidth: 100 },
   ];
+
+  const isPhotoDoc = (label) => /photo|image|picture|task photo/i.test(String(label || ''));
 
   const computedWidths = useMemo(() => {
     const map = {};
@@ -670,15 +1288,35 @@ export default function CertsView({ visible: initialVisible }) {
             }
           />
         </View>
-        {/* My documents quick chip under search */}
-        <View style={[styles.quickRow, { marginTop: 8 }]}>
-          <Chip label="My documents" icon="user" active={onlyMine} onPress={() => setOnlyMine((v) => !v)} />
-          <Chip label="Expiring soon" tone="warning" active={filterExp === 'soon'} onPress={() => setFilterExp((prev) => (prev === 'soon' ? '' : 'soon'))} />
-          <Chip label="Expired" tone="danger" active={filterExp === 'expired'} onPress={() => setFilterExp((prev) => (prev === 'expired' ? '' : 'expired'))} />
+        {/* My documents quick chip under search + New document on the right */}
+        <View style={[styles.quickRow, { marginTop: 8, justifyContent: 'space-between', flexWrap: 'wrap' }]}>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Chip label="My documents" icon="user" active={onlyMine} onPress={() => setOnlyMine((v) => !v)} />
+            <Chip label="Expiring soon" tone="warning" active={filterExp === 'soon'} onPress={() => setFilterExp((prev) => (prev === 'soon' ? '' : 'soon'))} />
+            <Chip label="Expired" tone="danger" active={filterExp === 'expired'} onPress={() => setFilterExp((prev) => (prev === 'expired' ? '' : 'expired'))} />
+          </View>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+            onPress={() => {
+              setCreateOpen(true);
+              setCreateStep(1);
+              setCreateAssetSearch('');
+              setSelectedAsset(null);
+              setSelectedDocField(null);
+              setCreateTypeFields([]);
+              setCreateFile(null);
+              setCreateDate('');
+              setCreateDateLabel('');
+            }}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700' }}>New document</Text>
+          </TouchableOpacity>
         </View>
         </TourTarget>
       </View>
       {renderEditModal()}
+      {renderCreateModal()}
       {/* <DatePickerModal
         locale="en"
         mode="single"
@@ -769,12 +1407,16 @@ export default function CertsView({ visible: initialVisible }) {
         {safeFilteredRows.length} document{safeFilteredRows.length === 1 ? '' : 's'}
       </Text>
 
-      {/* Mobile Card View */}
+      {/* Mobile Card View - match search iOS: list is a flex child so it takes remaining height */}
       {Platform.OS !== 'web' || isCompact ? (
-        <TourTarget id="web-certs-list">
+        <TourTarget id="web-certs-list" style={(Platform.OS !== 'web' || isCompact) ? { flex: 1, minHeight: 0 } : undefined}>
         <ScrollView
           style={styles.mobileScroll}
-          contentContainerStyle={[styles.mobileScrollContent, { paddingBottom: 80 }]}
+          contentContainerStyle={[
+            styles.mobileScrollContent,
+            { paddingBottom: 24 + (isNative ? insets.bottom : 0) },
+            safeFilteredRows.length > 0 && (Platform.OS !== 'web' ? { flexGrow: 1 } : undefined),
+          ]}
           showsVerticalScrollIndicator
         >
           {safeFilteredRows.length === 0 ? (
@@ -813,10 +1455,13 @@ export default function CertsView({ visible: initialVisible }) {
                     <View style={styles.mobileCardHeader}>
                       <View style={{ flexDirection: 'row', gap: 12, flex: 1 }}>
                         <View style={styles.mobileThumb}>
-                          <MaterialIcons name="description" size={22} color={Colors.primary} />
+                          <MaterialIcons name={isPhotoDoc(r.docLabel) ? 'insert-photo' : 'description'} size={22} color={Colors.primary} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.mobileCardTitle} numberOfLines={1}>{r.docLabel}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <MaterialIcons name={isPhotoDoc(r.docLabel) ? 'insert-photo' : 'description'} size={16} color="#64748B" />
+                            <Text style={styles.mobileCardTitle} numberOfLines={1}>{isPhotoDoc(r.docLabel) ? `Image ${r.docLabel}` : r.docLabel}</Text>
+                          </View>
                           <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
                             {String(r.assetId || '')}{r.typeName ? ` • ${String(r.typeName)}` : ''}
                           </Text>
@@ -852,10 +1497,9 @@ export default function CertsView({ visible: initialVisible }) {
                         <Text style={styles.mobileDetailLabel}>Assigned:</Text>
                         <Text style={styles.mobileDetailValue} numberOfLines={1}>{String(r.assigned || 'Unassigned')}</Text>
                       </View>
-                      {r.dateLabel ? (
+                      {r.dateLabel || r.dateValue ? (
                         <View style={styles.mobileDetailRow}>
                           <Feather name="calendar" size={14} color="#64748B" />
-                          <Text style={styles.mobileDetailLabel}>{String(r.dateLabel || '')}:</Text>
                           <Text style={[
                             styles.mobileDetailValue,
                             status === 'soon' && styles.mobileDetailValueSoon,
@@ -875,13 +1519,20 @@ export default function CertsView({ visible: initialVisible }) {
                     </View>
 
                     <View style={styles.mobileCardActions}>
-                      <TouchableOpacity
-                        onPress={() => openDocumentLink(r.docUrl)}
-                        style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}
-                      >
-                        <MaterialIcons name="open-in-new" size={18} color="#fff" />
-                        <Text style={styles.mobileActionBtnText}>Open</Text>
-                      </TouchableOpacity>
+                      {r.docUrl ? (
+                        <TouchableOpacity
+                          onPress={() => openDocumentLink(r.docUrl)}
+                          style={[styles.mobileActionBtn, styles.mobileActionBtnPrimary]}
+                        >
+                          <MaterialIcons name="insert-photo" size={18} color="#fff" />
+                          <Text style={styles.mobileActionBtnText}>Open</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={[styles.mobileActionBtn, { backgroundColor: '#E2E8F0', opacity: 0.9 }]}>
+                          <MaterialIcons name="insert-photo" size={18} color="#64748B" />
+                          <Text style={[styles.mobileActionBtnText, { color: '#64748B' }]}>No photos</Text>
+                        </View>
+                      )}
                       <TouchableOpacity
                         onPress={() => {
                           setEditRow(r);
@@ -905,7 +1556,11 @@ export default function CertsView({ visible: initialVisible }) {
                             if (!proceed) return;
                             setDeleteBusyId(r.id);
                             const url = `${API_BASE_URL}/assets/${encodeURIComponent(r.assetId)}/documents/${encodeURIComponent(r.id)}`;
-                            const resp = await fetch(url, { method: 'DELETE' });
+                            const uid = auth?.currentUser?.uid;
+                            const delHeaders = uid ? { 'X-User-Id': uid } : {};
+                            if (auth?.currentUser?.displayName) delHeaders['X-User-Name'] = auth.currentUser.displayName;
+                            if (auth?.currentUser?.email) delHeaders['X-User-Email'] = auth.currentUser.email;
+                            const resp = await fetch(url, { method: 'DELETE', headers: delHeaders });
                             if (!resp.ok) {
                               const t = await resp.text();
                               throw new Error(t || 'Failed to delete');
@@ -937,26 +1592,57 @@ export default function CertsView({ visible: initialVisible }) {
         </TourTarget>
       ) : (
         /* Desktop Table View */
-        <TourTarget id="web-certs-list">
-      <View style={styles.tableWrap}>
+        <TourTarget id="web-certs-list" style={{ flex: 1, minHeight: 0 }}>
+      <View style={[styles.tableWrap, { flex: 1 }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
           ref={contentRef}
           onLayout={(e) => { const vw = e?.nativeEvent?.layout?.width || 0; setHViewportW(vw); }}
           onContentSizeChange={(w/*, h*/) => { setHContentW(w || 0); }}
         >
-          <View>
+          <View style={{ flex: 1 }}>
             <View style={styles.tableHeader}>
-              {columns.map((c) => (
-                <View key={c.key} style={[styles.th, { width: computedWidths[c.key] }]}>
-                  <Text style={styles.thText}>{
-                    c.key === 'asset' ? 'Asset Id' :
-                      c.key === 'type' ? 'Asset type' :
-                        c.label
-                  }</Text>
-                </View>
-              ))}
+              {columns.map((c) => {
+                const isSortable = sortableColumnKeys.includes(c.key);
+                const isActive = sort.field === c.key;
+                const label = c.key === 'asset' ? 'Asset Id' : c.key === 'type' ? 'Asset type' : c.label;
+                if (!isSortable) {
+                  return (
+                    <View key={c.key} style={[styles.th, { width: computedWidths[c.key] }]}>
+                      <Text style={styles.thText}>{label}</Text>
+                    </View>
+                  );
+                }
+                return (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[styles.th, styles.thSortable, { width: computedWidths[c.key] }]}
+                    onPress={() => {
+                      const nextDir = isActive
+                        ? (sort.dir === 'asc' ? 'desc' : 'asc')
+                        : (c.key === 'date' || c.key === 'updated' ? 'desc' : 'asc');
+                      setSort({ field: c.key, dir: nextDir });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.thSortableInner, Platform.OS === 'web' && { direction: 'ltr' }]}>
+                      <Text style={[styles.thText, isActive && { color: Colors.primary }]} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
+                      {isActive ? (
+                        <Feather
+                          name={sort.dir === 'asc' ? 'chevron-up' : 'chevron-down'}
+                          size={14}
+                          color={Colors.primary}
+                          style={styles.thSortIcon}
+                        />
+                      ) : (
+                        <Feather name="chevron-down" size={12} color="#94A3B8" style={[styles.thSortIcon, { opacity: 0.7 }]} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
                 {paginatedRows.map((r, idx) => {
@@ -989,16 +1675,30 @@ export default function CertsView({ visible: initialVisible }) {
                     <View style={[styles.td, { width: computedWidths['model'] }]}><Text style={styles.tdText} numberOfLines={1}>{r.model || '—'}</Text></View>
                     {/* Assigned */}
                     <View style={[styles.td, { width: computedWidths['assigned'] }]}><Text style={styles.tdText} numberOfLines={1}>{r.assigned || '—'}</Text></View>
-                    {/* Doc: clickable label (no raw URL below) */}
-                    <View style={[styles.td, { width: computedWidths['doc'] }]}>
-                      <TouchableOpacity style={styles.link} onPress={() => openDocumentLink(r.docUrl)}>
-                        <Text style={styles.linkText} numberOfLines={1}>{r.docLabel}</Text>
-                        <MaterialIcons name="open-in-new" size={16} color={Colors.primary} />
-                      </TouchableOpacity>
+                    {/* Document type (text) */}
+                    <View style={[styles.td, { width: computedWidths['documentType'] }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <MaterialIcons name={isPhotoDoc(r.docLabel) ? 'insert-photo' : 'description'} size={18} color="#64748B" />
+                        <Text style={styles.tdText} numberOfLines={1}>{isPhotoDoc(r.docLabel) ? `Image ${r.docLabel || ''}` : (r.docLabel || '—')}</Text>
+                      </View>
+                    </View>
+                    {/* Document / Attachment (link) */}
+                    <View style={[styles.td, { width: computedWidths['attachment'] }]}>
+                      {r.docUrl ? (
+                        <TouchableOpacity style={styles.link} onPress={() => openDocumentLink(r.docUrl)}>
+                          <MaterialIcons name={isPhotoDoc(r.docLabel) ? 'insert-photo' : 'description'} size={16} color={Colors.primary} />
+                          <Text style={styles.linkText} numberOfLines={1}>Open document</Text>
+                          <MaterialIcons name="open-in-new" size={16} color={Colors.primary} />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <MaterialIcons name="insert-photo" size={16} color="#94A3B8" />
+                          <Text style={[styles.tdText, { color: '#94A3B8', fontStyle: 'italic' }]} numberOfLines={1}>No photos</Text>
+                        </View>
+                      )}
                     </View>
                     {/* Date */}
                     <View style={[styles.td, { width: computedWidths['date'] }]}>
-                      <Text style={styles.dateLabel} numberOfLines={1}>{r.dateLabel || '—'}</Text>
                       <Text style={[styles.dateValue, status === 'soon' && styles.dateValueSoon, status === 'expired' && styles.dateValueExpired]} numberOfLines={1}>{dateDisplay}</Text>
                     </View>
                     {/* Last Updated (date only) */}
@@ -1006,15 +1706,32 @@ export default function CertsView({ visible: initialVisible }) {
                       <Text style={styles.dateValue} numberOfLines={1}>{updatedDisplay}</Text>
                     </View>
                     {/* Actions */}
-                    <View style={[styles.td, { width: computedWidths['actions'], alignItems: 'center' }]}>
+                    <View style={[styles.td, styles.tdActions, { width: computedWidths['actions'] }]}>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity onPress={() => openDocumentLink(r.docUrl)} style={[styles.btnIcon, styles.btnDownload]}>
-                          <MaterialIcons name="download" size={18} color="#fff" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => { setEditRow(r); setEditDate((r.dateValue ? String(r.dateValue).split('T')[0] : '')); setEditFile(null); setDocOptional(null); setEditOpen(true); }} style={[styles.btnIcon, styles.btnEdit]}>
-                          <MaterialIcons name="edit" size={18} color="#fff" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                        <TableIconButton
+                          icon="download"
+                          tone="download"
+                          onPress={() => openDocumentLink(r.docUrl)}
+                          accessibilityLabel="Download document"
+                        />
+                        <TableIconButton
+                          icon="edit"
+                          tone="edit"
+                          onPress={() => {
+                            setEditRow(r);
+                            setEditDate((r.dateValue ? String(r.dateValue).split('T')[0] : ''));
+                            setEditFile(null);
+                            setDocOptional(null);
+                            setEditOpen(true);
+                          }}
+                          accessibilityLabel="Edit document"
+                        />
+                        <TableIconButton
+                          icon="delete"
+                          tone="delete"
+                          loading={deleteBusyId === r.id}
+                          disabled={deleteBusyId === r.id}
+                          accessibilityLabel="Delete document"
                           onPress={async () => {
                             try {
                               const proceed = Platform.OS === 'web'
@@ -1026,7 +1743,11 @@ export default function CertsView({ visible: initialVisible }) {
                               if (!proceed) return;
                               setDeleteBusyId(r.id);
                               const url = `${API_BASE_URL}/assets/${encodeURIComponent(r.assetId)}/documents/${encodeURIComponent(r.id)}`;
-                              const resp = await fetch(url, { method: 'DELETE' });
+                              const uid = auth?.currentUser?.uid;
+                              const headers = uid ? { 'X-User-Id': uid } : {};
+                              if (auth?.currentUser?.displayName) headers['X-User-Name'] = auth.currentUser.displayName;
+                              if (auth?.currentUser?.email) headers['X-User-Email'] = auth.currentUser.email;
+                              const resp = await fetch(url, { method: 'DELETE', headers });
                               if (!resp.ok) {
                                 const t = await resp.text();
                                 throw new Error(t || 'Failed to delete');
@@ -1038,11 +1759,7 @@ export default function CertsView({ visible: initialVisible }) {
                               setDeleteBusyId(null);
                             }
                           }}
-                          style={[styles.btnIcon, styles.btnDelete, deleteBusyId === r.id && { opacity: 0.6 }]}
-                          disabled={deleteBusyId === r.id}
-                        >
-                          <MaterialIcons name="delete" size={18} color="#fff" />
-                        </TouchableOpacity>
+                        />
                       </View>
                     </View>
                   </View>
@@ -1053,29 +1770,13 @@ export default function CertsView({ visible: initialVisible }) {
         </ScrollView>
           {/* Pagination Controls */}
           {safeFilteredRows.length > 0 && (
-            <View style={styles.paginationRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={styles.pageText}>Rows per page:</Text>
-                <View style={{ flexDirection: 'row', gap: 4 }}>
-                  {[25, 50, 100].map(sz => (
-                    <TouchableOpacity key={sz} onPress={() => setPageSize(sz)} style={[styles.pageSizeBtn, pageSize === sz && styles.pageSizeBtnActive]}>
-                      <Text style={[styles.pageSizeText, pageSize === sz && styles.pageSizeTextActive]}>{sz}</Text>
-                    </TouchableOpacity>
-                  ))}
-      </View>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Text style={styles.pageText}>{((page - 1) * pageSize) + 1}-{Math.min(page * pageSize, safeFilteredRows.length)} of {safeFilteredRows.length}</Text>
-                <View style={{ flexDirection: 'row', gap: 4 }}>
-                  <TouchableOpacity disabled={page <= 1} onPress={() => setPage(p => p - 1)} style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}>
-                    <MaterialIcons name="chevron-left" size={20} color={page <= 1 ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
-                  <TouchableOpacity disabled={page >= totalPages} onPress={() => setPage(p => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}>
-                    <MaterialIcons name="chevron-right" size={20} color={page >= totalPages ? '#CBD5E1' : '#0F172A'} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={safeFilteredRows.length}
+              onPageChange={setPage}
+              onPageSizeChange={(sz) => { setPageSize(sz); setPage(1); }}
+            />
           )}
         </View>
         </TourTarget>
@@ -1104,13 +1805,17 @@ const styles = StyleSheet.create({
   countDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   tableWrap: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
   tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center' },
-  thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
-  tableBodyScroll: { maxHeight: 500 },
+  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 },
+  thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 },
+  thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'flex-start' },
+  thSortIcon: { marginLeft: 6, flexShrink: 0 },
+  thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 1, minWidth: 0 },
+  tableBodyScroll: { flex: 1 },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff' },
   rowAlt: { backgroundColor: '#FAFAFA' },
   rowHover: { backgroundColor: '#F0F9FF' },
   td: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center' },
+  tdActions: { alignItems: 'flex-start' },
   tdText: { fontSize: 13, color: '#334155', fontWeight: '500' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   linkText: { fontSize: 13, color: '#2563EB', fontWeight: '600', textDecorationLine: 'underline' },
@@ -1118,10 +1823,6 @@ const styles = StyleSheet.create({
   dateValue: { fontSize: 13, color: '#334155', fontWeight: '600' },
   dateValueSoon: { color: '#D97706' },
   dateValueExpired: { color: '#DC2626' },
-  btnIcon: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  btnDownload: { backgroundColor: '#3B82F6' },
-  btnEdit: { backgroundColor: '#F59E0B' },
-  btnDelete: { backgroundColor: '#EF4444' },
   errorText: { color: '#DC2626', fontWeight: '600', marginVertical: 10 },
   emptyText: { color: '#64748B', fontStyle: 'italic', marginTop: 10 },
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#EFF6FF' },
@@ -1293,13 +1994,4 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 4,
   },
-  // Pagination
-  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
-  pageText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
-  pageSizeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
-  pageSizeBtnActive: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
-  pageSizeText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  pageSizeTextActive: { color: '#2563EB' },
-  pageBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
-  pageBtnDisabled: { opacity: 0.5, backgroundColor: '#F1F5F9' },
 });

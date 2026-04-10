@@ -33,6 +33,21 @@ export function formatDisplayDate(d, fallback = '—') {
   }
 }
 
+/** "09 March 2026" style - day, full month name, year */
+export function formatDisplayDateLong(d, fallback = '') {
+  const dt = coerceDate(d);
+  if (!dt) return fallback;
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(dt).replace(/\u00A0/g, ' ');
+  } catch {
+    return fallback;
+  }
+}
+
 export function formatDisplayDateTime(d, fallback = '') {
   const dt = coerceDate(d);
   if (!dt) return fallback;

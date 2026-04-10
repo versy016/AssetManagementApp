@@ -929,14 +929,23 @@ export default function CheckInScreen() {
       Alert.alert('Admins only', 'Please contact an administrator for this action.');
       return;
     }
-    // Map keys from the list to the EXACT action labels ActionsForm expects
+    setShowOtherModal(false);
+
+    // Hire uses the full Equipment Hire Lease Disclaimer form (full-screen route)
+    if (key === 'hire') {
+      router.push({
+        pathname: '/hire',
+        params: asset?.id ? { assetId: asset.id } : {},
+      });
+      return;
+    }
+
+    // Other actions use the existing ActionsForm modal
     const map = {
-      hire: 'Hire',
       eol: 'End of Life',
       lost: 'Report Lost',
       stolen: 'Report Stolen',
     };
-    setShowOtherModal(false);
     setActionsFormType(map[key]);
     setActionsFormOpen(true);
   };

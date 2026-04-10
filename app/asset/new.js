@@ -16,6 +16,9 @@ import { LogBox } from 'react-native';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { formatDisplayDate } from '../../utils/date';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import FormButton from '../../components/ui/FormButton';
+import { useTasksCount } from '../../contexts/TasksCountContext';
+import { fetchTaskCount } from '../../utils/fetchTaskCount';
 
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -44,6 +47,7 @@ export default function NewAsset() {
 
   const { ensureVisible, currentStep } = useContext(TourContext);
   const scrollViewRef = useRef(null);
+  const { setTaskCount } = useTasksCount();
 
   // ---------- scroll & focus helpers (web-safe) ----------
   const scrollRef = useRef(null);
@@ -176,6 +180,11 @@ export default function NewAsset() {
   const [typeOpen, setTypeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
+  const showToast = (text, kind = 'success') => {
+    setToast({ visible: true, text, kind });
+    setTimeout(() => setToast({ visible: false, text: '', kind }), 2500);
+  };
 
   // qr picker
   const [showQRs, setShowQRs] = useState(false);
@@ -206,7 +215,6 @@ export default function NewAsset() {
   // classic top-level fields
   const [model, setModel] = useState('');
   const [description, setDescription] = useState('');
-  const [nextServiceDate, setNextServiceDate] = useState('');
   // Default purchase date to today (YYYY-MM-DD)
   const __today = (() => {
     const d = new Date();
@@ -240,9 +248,11 @@ export default function NewAsset() {
         assetIds: normAssetIds,
       });
       setFilteredAssetIds(normAssetIds);
-      // If a preselected QR id is provided (from check-in), set it
+      // If a preselected QR id is provided (from check-in), set it (and searchTerm so web input shows it)
       if (preselectId && normAssetIds.includes(String(preselectId))) {
-        setId(String(preselectId));
+        const sid = String(preselectId);
+        setId(sid);
+        setSearchTerm(sid);
       }
     });
 
@@ -262,7 +272,6 @@ export default function NewAsset() {
           setNotes(data.notes || '');
           setSerialNumber(data.serial_number || '');
           setOtherId(data.other_id || '');
-          setNextServiceDate(toYMD(data.next_service_date));
           setDatePurchased(toYMD(data.date_purchased));
 
           // Dynamic fields
@@ -331,6 +340,7 @@ export default function NewAsset() {
             const t = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
             if (t === 'boolean') seed[slug] = false;
             else if (t === 'multiselect') seed[slug] = [];
+            else if (t === 'datetime') seed[slug] = ''; // treat datetime as date (date picker)
             else seed[slug] = '';
           }
         });
@@ -366,7 +376,7 @@ export default function NewAsset() {
 
       // Known slugs
       const known = new Set([
-        'id', 'type_id', 'assigned_to_id', 'status', 'location', 'model', 'description', 'other_id', 'next_service_date', 'date_purchased', 'notes', 'image', 'document'
+        'id', 'type_id', 'assigned_to_id', 'status', 'location', 'model', 'description', 'other_id', 'date_purchased', 'notes', 'image', 'document'
       ]);
       for (const f of fieldsSchema) known.add(f.slug || normSlug(f.name));
 
@@ -557,7 +567,7 @@ export default function NewAsset() {
         if (empty) newErrors[slug] = 'Required';
       }
       // If a date field links to a document slug, and the date is set, ensure the doc exists or is attached
-      if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'date') {
+      if (['date', 'datetime'].includes(((f.field_type?.slug || f.field_type?.name || '')).toLowerCase())) {
         let linkSlug = '';
         try {
           const vr = f.validation_rules && typeof f.validation_rules === 'object'
@@ -597,7 +607,7 @@ export default function NewAsset() {
           newErrors[slug] = 'Must be a number';
         }
       }
-      if (((f.field_type?.slug || f.field_type?.name || '')).toLowerCase() === 'date') {
+      if (['date', 'datetime'].includes(((f.field_type?.slug || f.field_type?.name || '')).toLowerCase())) {
         const v = fieldValues[slug];
         if (v && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) {
           newErrors[slug] = 'Must be YYYY-MM-DD';
@@ -624,20 +634,23 @@ export default function NewAsset() {
     data.append('type_id', typeId);
     if (assignedToId) data.append('assigned_to_id', assignedToId);
     if (status) data.append('status', status);
-    // Build dynamic fields payload (no placeholders)
+    // Build dynamic fields payload (include next_service_date when type has it and user filled it)
     data.append('fields', JSON.stringify(fieldValues));
     if (model) data.append('model', model);
     if (description) data.append('description', description); if (datePurchased) data.append('date_purchased', datePurchased); if (serialNumber) data.append('serial_number', serialNumber);
     if (otherId) data.append('other_id', otherId);
 
     if (image?.file) data.append('image', image.file, image.file.name || 'upload.jpg');
-    // We no longer bundle per-field documents in the create request.
-    // They will be uploaded to /assets/:id/documents/upload after the asset is created.
-    // Keep the legacy top-level 'document' only if user picked the generic Document picker and no URL-field docs were chosen.
+    // When user picked document(s) for URL fields (e.g. Calibration Certificate), send the first one
+    // in the create request and tell the API which slugs to fill so validation passes.
+    // Otherwise use the legacy top-level document picker if no URL-field docs were chosen.
     const urlDocEntries = Object.entries(urlDocMap).filter(([, v]) => !!v);
-    const shouldSendLegacyDoc = urlDocEntries.length === 0 && !!document;
-    if (shouldSendLegacyDoc) {
-      const docToUpload = document;
+    const docToUpload = urlDocEntries.length > 0 ? urlDocEntries[0][1] : document;
+    const shouldSendDoc = !!docToUpload;
+    if (shouldSendDoc) {
+      if (urlDocEntries.length > 0) {
+        data.append('url_doc_slugs', JSON.stringify(urlDocEntries.map(([slug]) => slug)));
+      }
       if (Platform.OS === 'web') {
         try {
           const resp = await fetch(docToUpload.uri);
@@ -736,7 +749,7 @@ export default function NewAsset() {
           for (const df of (fieldsSchema || [])) {
             const slug = df.slug || norm(df.name);
             const typeCode = (df.field_type?.slug || df.field_type?.name || '').toLowerCase();
-            if (typeCode === 'date') {
+            if (typeCode === 'date' || typeCode === 'datetime') {
               const vr = parseJsonMaybe(df.validation_rules) || {};
               const opts = parseJsonMaybe(df.options) || {};
               const link = vr.requires_document_slug || vr.require_document_slug || opts.requires_document_slug || opts.require_document_slug;
@@ -790,12 +803,28 @@ export default function NewAsset() {
         }
       } catch { }
 
-      Alert.alert('Success', 'Asset created!');
-      if (normalizedReturnTo) {
-        try { router.replace(String(normalizedReturnTo)); } catch { router.back(); }
-      } else {
-        router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+      showToast('Asset created!');
+      // Refresh Tasks tab badge so reminder tasks from this asset (e.g. cert expiry) are reflected
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        (async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/users/${uid}`);
+            const data = res.ok ? await res.json() : null;
+            const canAdmin = String(data?.role || '').toUpperCase() === 'ADMIN';
+            const count = await fetchTaskCount(uid, canAdmin);
+            setTaskCount(count);
+          } catch (_) {}
+        })();
       }
+
+      setTimeout(() => {
+        if (normalizedReturnTo) {
+          try { router.replace(String(normalizedReturnTo)); } catch { router.back(); }
+        } else {
+          router.replace({ pathname: '/Inventory', params: { tab: 'all' } });
+        }
+      }, 1000);
     } catch (_e) {
       // handled above
     } finally {
@@ -872,7 +901,8 @@ export default function NewAsset() {
   // ---------- UI pieces ----------
   const renderField = (f) => {
     const slug = f.slug || normSlug(f.name);
-    const typeCode = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
+    let typeCode = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
+    if (typeCode === 'datetime') typeCode = 'date';
     const isReq = !!f.is_required;
     const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
 
@@ -977,7 +1007,8 @@ export default function NewAsset() {
           </View>
         );
 
-      case 'date': {
+      case 'date':
+      case 'datetime': {
         // Try to read a linked document slug from validation_rules
         let requiredDocSlug = '';
         try {
@@ -1147,6 +1178,11 @@ export default function NewAsset() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {toast.visible && (
+        <View style={[styles.toast, styles.toastSuccess]}>
+          <Text style={styles.toastText}>{toast.text}</Text>
+        </View>
+      )}
       <ScreenHeader
         title="Create New Asset"
         backLabel="Inventory"
@@ -1225,6 +1261,26 @@ export default function NewAsset() {
               </View>
             ) : (
               <>
+                {id ? (
+                  <View style={{
+                    backgroundColor: '#E6F3FF',
+                    borderWidth: 2,
+                    borderColor: '#1E90FF',
+                    borderRadius: 8,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    marginBottom: 10,
+                  }}>
+                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Selected Asset ID</Text>
+                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
+                    <TouchableOpacity
+                      onPress={() => { setId(''); setSearchTerm(''); setErrors(prev => ({ ...prev, id: undefined })); }}
+                      style={{ marginTop: 8, alignSelf: 'flex-start' }}
+                    >
+                      <Text style={{ color: '#b00020', fontWeight: '600', fontSize: 14 }}>Clear selection</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 <TextInput
                   ref={setInputRef('id')}
                   style={styles.input}
@@ -1232,6 +1288,7 @@ export default function NewAsset() {
                   value={searchTerm}
                   onChangeText={text => {
                     setSearchTerm(text);
+                    if (text !== id) setId('');
                   }}
                 />
                 <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
@@ -1255,12 +1312,14 @@ export default function NewAsset() {
                 key={qrId}
                 style={[styles.qrCard, id === String(qrId) && styles.qrCardSelected]}
                 onPress={() => {
-                  setId(String(qrId));
-                  setShowQRs(false);                 // ⬅ close menu immediately
+                  const sid = String(qrId);
+                  setId(sid);
+                  setSearchTerm(sid);                // show selected ID in text box (web)
+                  setShowQRs(false);
                   setErrors(prev => ({ ...prev, id: undefined }));
-                  setSearchTerm('');                 // optional: clear search
-                  setFilteredAssetIds(options.assetIds || []); // optional: reset list
-                }}              >
+                  setFilteredAssetIds(options.assetIds || []);
+                }}
+              >
                 <View style={{ width: 80, height: 80 }}>
                   <Image
                     source={{ uri: `${API_BASE_URL}/qr/${qrId}.png` }}
@@ -1460,21 +1519,13 @@ export default function NewAsset() {
 
         {/* Submit */}
         <TourTarget id="asset-save">
-          <TouchableOpacity
+          <FormButton
+            label={uploading && uploadProgress ? `Creating… ${uploadProgress}%` : 'Create Asset'}
             onPress={submit}
+            loading={uploading && !uploadProgress}
             disabled={uploading}
-            style={[styles.btn, styles.submit, uploading && styles.submitDisabled]}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: uploading, busy: uploading }}
-          >
-            {uploading ? (
-              <Text style={{ color: '#fff', fontWeight: '700' }}>
-                Creating… {uploadProgress ? `${uploadProgress}%` : ''}
-              </Text>
-            ) : (
-              <Text style={{ color: '#fff' }}>Create Asset</Text>
-            )}
-          </TouchableOpacity>
+            fullWidth
+          />
         </TourTarget>
 
         {uploading ? (
@@ -1506,15 +1557,13 @@ export default function NewAsset() {
           if (!date || isNaN(new Date(date).getTime())) {
             // keep the modal open so they can pick; just warn them
             const label =
-              datePicker.slug === '__next_service_date' ? 'Next Service Date' :
-                datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Date';
+              datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Date';
             warn(`Please choose a valid ${label} before confirming.`);
             return;
           }
           if (datePicker.slug) {
             const iso = new Date(date).toISOString().split('T')[0];
-            if (datePicker.slug === '__next_service_date') setNextServiceDate(iso);
-            else if (datePicker.slug === '__date_purchased') setDatePurchased(iso);
+            if (datePicker.slug === '__date_purchased') setDatePurchased(iso);
             else updateField(datePicker.slug, iso);
           }
           setDatePicker({ open: false, slug: null });
@@ -1647,6 +1696,10 @@ const styles = StyleSheet.create({
   locSuggestMain: { color: '#111', fontWeight: '600' },
   locSuggestSecondary: { color: '#666', fontSize: 12 },
   locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: '#666', fontStyle: 'italic' },
+
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
+  toastText: { color: '#047857', fontWeight: '700' },
 });
 
 

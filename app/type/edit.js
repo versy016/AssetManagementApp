@@ -32,7 +32,7 @@ const PRESET_LIBRARY = [
   { key: 'last_serviced', label: 'Last serviced', fieldTypeSlug: 'date' },
   // Common fields moved to library (optional per type)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
-  { key: 'documentation_url', label: 'Documentation URL', fieldTypeSlug: 'url' },
+  { key: 'documentation_url', label: 'Document', fieldTypeSlug: 'url' },
   { key: 'location', label: 'Location', fieldTypeSlug: 'text' },
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
@@ -98,6 +98,11 @@ export default function EditAssetType() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [addModel, setAddModel] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '', reminderLeadDays: 0 });
   const [conflictModalMessage, setConflictModalMessage] = useState(null);
+  const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
+  const showToast = (text, kind = 'success') => {
+    setToast({ visible: true, text, kind });
+    setTimeout(() => setToast({ visible: false, text: '', kind }), 2500);
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -118,7 +123,9 @@ export default function EditAssetType() {
   // ------ Helpers ------
   const fieldTypeItems = useMemo(
     () =>
-      fieldTypes.map((ft) => ({
+      fieldTypes
+        .filter((ft) => (ft.slug || '').toLowerCase() !== 'datetime')
+        .map((ft) => ({
         label: `${ft.slug === 'url' ? 'Document' : ft.name}${ft.has_options ? ' (options)' : ''}`,
         value: ft.id,
         has_options: ft.has_options,
@@ -708,10 +715,11 @@ export default function EditAssetType() {
 
       if (presetErrors.length || newErrors.length || editErrors.length) {
         Alert.alert('Saved with warnings', [...presetErrors, ...editErrors, ...newErrors].slice(0, 8).join('\n'));
-      } else if (Platform.OS !== 'web') {
-        Alert.alert('Saved', 'Asset type updated');
+      } else {
+        showToast('Asset type updated');
+        setTimeout(() => router.replace('/Inventory?tab=types'), 1000);
+        return;
       }
-
       router.replace('/Inventory?tab=types');
     } catch (e) {
       Alert.alert('Error', e.message || 'Update failed');
@@ -778,9 +786,15 @@ export default function EditAssetType() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {toast.visible && (
+        <View style={[s.toast, s.toastSuccess]}>
+          <MaterialIcons name="check-circle" size={20} color="#047857" />
+          <Text style={s.toastText}>{toast.text}</Text>
+        </View>
+      )}
       <ScreenHeader
         title="Edit Asset Type"
-        backLabel="Inventory"
+        backLabel="Go back"
         onBack={() => {
           if (normalizedReturnTo) {
             router.replace(normalizedReturnTo);
@@ -1149,7 +1163,7 @@ export default function EditAssetType() {
                     <Text>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[s.btn, s.submit, { flex: 1 }]} onPress={queueNewCustom}>
-                    <Text style={{ color: '#fff' }}>Queue field</Text>
+                    <Text style={{ color: '#fff' }}>Add & save</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1159,7 +1173,7 @@ export default function EditAssetType() {
               </TouchableOpacity>
             )}
 
-            {/* queued */}
+            {/* New fields (saved when you tap Save) */}
             {newCustomQueue.map((q) => (
               <View key={q.id} style={[s.card, { marginTop: 8 }]}>
                 <Text style={s.cardTitle}>{q.name}</Text>
@@ -1171,7 +1185,7 @@ export default function EditAssetType() {
                   <Text style={{ color: '#666', marginTop: 4 }}>Options: {q.optionsCsv}</Text>
                 )}
                 <TouchableOpacity onPress={() => removeQueuedCustom(q.id)} style={[s.btn, { marginTop: 8 }]}>
-                  <Text style={{ color: '#b00020', fontWeight: '700' }}>Remove from queue</Text>
+                  <Text style={{ color: '#b00020', fontWeight: '700' }}>Remove</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -1183,9 +1197,16 @@ export default function EditAssetType() {
 
       {/* Bottom actions */}
       <View style={s.bottomBar}>
-        <TouchableOpacity onPress={handleDelete} style={[s.actionBtn, s.deleteBtn]} accessibilityRole="button">
-          <MaterialIcons name="delete" size={18} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={s.actionText}>Delete</Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (normalizedReturnTo) router.replace(normalizedReturnTo);
+            else router.replace('/Inventory?tab=types');
+          }}
+          style={[s.actionBtn, s.backBtn]}
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="arrow-back" size={18} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={s.actionText}>Go back</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1416,6 +1437,7 @@ const s = StyleSheet.create({
     elevation: 2,
   },
   saveBtn: { backgroundColor: '#1E90FF' },
+  backBtn: { backgroundColor: '#64748B' },
   deleteBtn: { backgroundColor: '#b00020' },
   actionText: { color: '#fff', fontWeight: '700' },
 
@@ -1434,4 +1456,8 @@ const s = StyleSheet.create({
   summaryTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
   summaryH: { fontWeight: '800', color: '#0F172A', marginTop: 6 },
   summaryItem: { color: '#334155', marginTop: 4 },
+
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
+  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
 });

@@ -1,0 +1,23 @@
+Checking DocuSign credentials...
+  Integration Key: 8b355e7b-6823-46a8-a863-55a68cdb639f
+  User ID:         00ddcea0-95c1-45fe-ad1e-bec33a63261a
+  OAuth base:      account-d.docusign.com
+
+JWT auth succeeded. Fetching user info...
+
+User name:   Shivam Verma
+User email:  sverma@engsurveys.com.au
+
+Accounts:
+
+  [1] Account ID:   26f4f62a-ac87-4e86-bd19-27e844383d3d
+       Account name: Engineering Surveys
+       Base URI:     https://demo.docusign.net
+       Is default:   true
+
+-----------------------------------------
+Set these in your .env:
+
+DOCUSIGN_ACCOUNT_ID=26f4f62a-ac87-4e86-bd19-27e844383d3d
+DOCUSIGN_BASE_PATH=https://demo.docusign.net/restapi
+-----------------------------------------

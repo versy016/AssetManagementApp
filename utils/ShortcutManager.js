@@ -2,7 +2,12 @@
 // Manages user shortcuts with AsyncStorage persistence
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_SHORTCUTS, getShortcutType, canUseShortcut } from '../constants/ShortcutTypes';
+import {
+    DEFAULT_SHORTCUTS,
+    getShortcutType,
+    canUseShortcut,
+    SHORTCUT_COLOR_PALETTES,
+} from '../constants/ShortcutTypes';
 
 const STORAGE_KEY_PREFIX = 'shortcuts_';
 const MAX_SHORTCUTS = 6;
@@ -82,9 +87,10 @@ export const saveShortcuts = async (userId, shortcuts) => {
  * @param {string} userId - User ID
  * @param {string} shortcutType - Shortcut type ID
  * @param {boolean} isAdmin - Whether user is admin
+ * @param {string} [colorKey] - Optional palette key (e.g. 'blue', 'emerald'). Defaults to first palette.
  * @returns {Promise<boolean>} Success status
  */
-export const addShortcut = async (userId, shortcutType, isAdmin = false) => {
+export const addShortcut = async (userId, shortcutType, isAdmin = false, colorKey = null) => {
     try {
         // Validate permission
         if (!canUseShortcut(shortcutType, isAdmin)) {
@@ -106,10 +112,17 @@ export const addShortcut = async (userId, shortcutType, isAdmin = false) => {
             return false;
         }
 
+        // Validate colorKey against the palette list
+        const validKey =
+            colorKey && SHORTCUT_COLOR_PALETTES.some((p) => p.key === colorKey)
+                ? colorKey
+                : SHORTCUT_COLOR_PALETTES[0].key;
+
         // Add new shortcut
         const newShortcut = {
             id: `${shortcutType}_${Date.now()}`,
             type: shortcutType,
+            colorKey: validKey,
             addedAt: new Date().toISOString(),
             order: shortcuts.length,
         };
@@ -181,6 +194,26 @@ export const getDefaultShortcuts = (isAdmin = false) => {
 };
 
 /**
+ * Update the colour of an existing shortcut
+ * @param {string} userId
+ * @param {string} shortcutId - The shortcut's `id` field
+ * @param {string} colorKey   - Palette key (e.g. 'blue', 'emerald')
+ * @returns {Promise<boolean>}
+ */
+export const updateShortcutColor = async (userId, shortcutId, colorKey) => {
+    try {
+        const shortcuts = await loadShortcuts(userId);
+        const updated = shortcuts.map((s) =>
+            s.id === shortcutId ? { ...s, colorKey } : s
+        );
+        return await saveShortcuts(userId, updated);
+    } catch (error) {
+        console.error('[ShortcutManager] Error updating shortcut colour:', error);
+        return false;
+    }
+};
+
+/**
  * Clear all shortcuts for a user
  * @param {string} userId - User ID
  * @returns {Promise<boolean>} Success status
@@ -215,5 +248,6 @@ export default {
     getDefaultShortcuts,
     clearShortcuts,
     canAddMoreShortcuts,
+    updateShortcutColor,
     MAX_SHORTCUTS,
 };

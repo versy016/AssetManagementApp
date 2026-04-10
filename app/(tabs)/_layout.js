@@ -46,14 +46,15 @@ export default function TabsLayout() {
           ),
         }}
       />
-      {/* Tasks tab (iOS & Android) */}
+      {/* Other tab (iOS & Android) — contains Tasks and Hire sub-tabs */}
       <Tabs.Screen
         name="tasks"
         options={{
-          title: 'Tasks',
+          title: 'Other',
+          tabBarBadge: taskCount > 0 ? (taskCount > 99 ? '99+' : taskCount) : undefined,
           tabBarIcon: ({ color, size }) => (
             <View style={{ position: 'relative' }}>
-              <Ionicons name="checkbox-outline" size={size} color={color} />
+              <Ionicons name="apps-outline" size={size} color={color} />
               {taskCount > 0 && (
                 <View
                   style={{
