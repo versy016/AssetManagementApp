@@ -7,7 +7,7 @@ const config = {
     STATIC_MOUNT: '/qrcodes' // only used as a string if you really need it on client
   },
   production: {
-    API_URL: 'http://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com:3000',
+    API_URL: 'https://api.gearops.com.au',
     STATIC_MOUNT: '/qrcodes'
   }
 };

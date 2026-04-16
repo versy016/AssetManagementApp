@@ -9,7 +9,7 @@ export const linking = {
   // Prefixes for deep linking
   prefixes: [
     prefix,
-    'assetmanager://', // Custom URL scheme
+    'gearops://', // Custom URL scheme
     'https://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com', // Your domain
   ],
   
@@ -36,7 +36,7 @@ export function generateDeepLink(path, params = {}) {
   }
   
   // For app deep links
-  const baseUrl = `assetmanager://app${path.startsWith('/') ? '' : '/'}${path}`;
+  const baseUrl = `gearops://app${path.startsWith('/') ? '' : '/'}${path}`;
   const queryParams = Object.entries(params)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join('&');

@@ -5,7 +5,7 @@ const prefix = Linking.createURL('/');
 export default {
   prefixes: [
     prefix,
-    'assetmanager://',
+    'gearops://',
     'https://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com',
   ],
   config: {
