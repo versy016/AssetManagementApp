@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main # or your deployment branch
+  workflow_dispatch: # Actions tab → Deploy Expo Web and API to EC2 → Run workflow
 
 jobs:
   build-and-deploy:
@@ -22,10 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Expo CLI
-        run: npm install -g expo-cli
-
       - name: Build Expo Web
+        env:
+          EXPO_PUBLIC_API_URL: https://api.gearops.com.au
         run: npx expo export --platform web
 
       - name: List build output
