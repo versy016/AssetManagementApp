@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.sub,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
   },
   sizeBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.sub,
     fontWeight: '700',
   },
@@ -151,16 +151,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   countPrimary: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.text,
     fontWeight: '900',
-    lineHeight: 20,
+    lineHeight: 19,
   },
   countSecondary: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.sub2,
     fontWeight: '600',
-    lineHeight: 17,
+    lineHeight: 16,
   },
   navGroup: {
     flexDirection: 'row',

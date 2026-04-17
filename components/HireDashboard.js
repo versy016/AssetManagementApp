@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   thText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
     textTransform: 'uppercase',
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
   },
   tdActions: { alignItems: 'flex-start' },
   tdText: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.text,
     fontWeight: '500',
   },
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.warningBg,
   },
   statusPillText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.2,
   },
@@ -589,12 +589,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
   },
-  detailsTitle: { fontSize: 14, fontWeight: '700', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailsTitle: { fontSize: 13, fontWeight: '700', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   detailsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
   },
-  detailsLabel: { fontSize: 14, color: Colors.sub, width: '30%', minWidth: 100 },
-  detailsValue: { fontSize: 14, color: Colors.text, width: '65%', flex: 1 },
+  detailsLabel: { fontSize: 13, color: Colors.sub, width: '30%', minWidth: 100 },
+  detailsValue: { fontSize: 13, color: Colors.text, width: '65%', flex: 1 },
 });

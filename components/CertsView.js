@@ -1194,7 +1194,7 @@ export default function CertsView({ visible: initialVisible }) {
 
   const computedWidths = useMemo(() => {
     const map = {};
-    const pad = 24; // rough gutter/padding like search
+    const pad = 0;
     const base = columns.reduce((sum, c) => sum + (c.flex ? (c.minWidth || 120) : (c.width || 120)), 0);
     const totalFlex = columns.reduce((sum, c) => sum + (c.flex || 0), 0);
     const avail = Math.max(0, (hViewportW || 0) - pad);
@@ -1602,7 +1602,7 @@ export default function CertsView({ visible: initialVisible }) {
           onLayout={(e) => { const vw = e?.nativeEvent?.layout?.width || 0; setHViewportW(vw); }}
           onContentSizeChange={(w/*, h*/) => { setHContentW(w || 0); }}
         >
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: hViewportW || '100%' }}>
             <View style={styles.tableHeader}>
               {columns.map((c) => {
                 const isSortable = sortableColumnKeys.includes(c.key);
@@ -1809,18 +1809,18 @@ const styles = StyleSheet.create({
   thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 },
   thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'flex-start' },
   thSortIcon: { marginLeft: 6, flexShrink: 0 },
-  thText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
+  thText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
   tableBodyScroll: { flex: 1 },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.line, backgroundColor: '#FFFFFF' },
   rowAlt: { backgroundColor: '#F8F7F5' },
   rowHover: { backgroundColor: Colors.accentLight },
   td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center' },
   tdActions: { alignItems: 'flex-start' },
-  tdText: { fontSize: 15, color: Colors.text, fontWeight: '500' },
+  tdText: { fontSize: 14, color: Colors.text, fontWeight: '500' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkText: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
-  dateLabel: { fontSize: 13, color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
-  dateValue: { fontSize: 15, color: Colors.text, fontWeight: '600' },
+  linkText: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  dateLabel: { fontSize: 12, color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
+  dateValue: { fontSize: 14, color: Colors.text, fontWeight: '600' },
   dateValueSoon: { color: Colors.warningFg },
   dateValueExpired: { color: Colors.dangerFg },
   errorText: { color: Colors.dangerFg, fontWeight: '700', marginVertical: 10 },
