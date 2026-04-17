@@ -62,6 +62,12 @@ export default function RootLayout() {
     styleEl.innerHTML = `
       html, body, #root { min-height: 100vh !important; height: auto !important; overflow-y: auto !important; }
       body { overscroll-behavior-y: auto !important; }
+      /* Prevent browser text autoscaling differences between environments */
+      html, body {
+        -webkit-text-size-adjust: 100% !important;
+        text-size-adjust: 100% !important;
+        zoom: 1 !important;
+      }
     `;
     document.head.appendChild(styleEl);
     // Also clear any inline overflow locks
