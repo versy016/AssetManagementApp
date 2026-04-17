@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { getAuth } from 'firebase/auth';
 import { getShortcutType, SHORTCUT_TYPES } from '../../constants/ShortcutTypes';
@@ -528,7 +529,7 @@ export default function QRScannerScreen() {
                       <MaterialIcons
                         name="close"
                         size={24}
-                        color={isProcessing ? "#ccc" : "#ff4444"}
+                        color={isProcessing ? Colors.sub2 : Colors.dangerFg}
                       />
                     </TouchableOpacity>
                   </View>
@@ -553,9 +554,9 @@ export default function QRScannerScreen() {
           <MaterialIcons
             name={toast.kind === 'warn' ? 'warning-amber' : toast.kind === 'success' ? 'check-circle' : 'error-outline'}
             size={18}
-            color={toast.kind === 'warn' ? '#92400E' : toast.kind === 'success' ? '#047857' : '#B91C1C'}
+            color={toast.kind === 'warn' ? Colors.warningFg : toast.kind === 'success' ? Colors.successFg : Colors.dangerFg}
           />
-          <Text style={[styles.toastText, { color: toast.kind === 'warn' ? '#92400E' : toast.kind === 'success' ? '#047857' : '#B91C1C' }]}>
+          <Text style={[styles.toastText, { color: toast.kind === 'warn' ? Colors.warningFg : toast.kind === 'success' ? Colors.successFg : Colors.dangerFg }]}>
             {toast.text}
           </Text>
         </View>
@@ -567,7 +568,7 @@ export default function QRScannerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.bg,
   },
   cameraContainer: {
     flex: 1,
@@ -615,50 +616,50 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
     paddingVertical: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
   shortcutBannerText: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: Colors.text,
   },
   shortcutBannerSubtext: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.sub,
     marginLeft: 'auto',
   },
   toast: {
     position: 'absolute',
     left: 16,
     right: 16,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   toastCenter: {
     top: '50%',
     transform: [{ translateY: -30 }],
   },
-  toastWarn: { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
-  toastError: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
-  toastSuccess: { backgroundColor: '#D1FAE5', borderColor: '#A7F3D0' },
-  toastText: { fontWeight: '800' },
+  toastWarn: { backgroundColor: Colors.warningBg, borderColor: Colors.warningFg },
+  toastError: { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerFg },
+  toastSuccess: { backgroundColor: Colors.successBg, borderColor: Colors.successFg },
+  toastText: { fontWeight: '800', color: Colors.text },
   overlayText: {
     color: 'white',
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '900',
   },
   center: {
     flex: 1,
@@ -670,51 +671,52 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    backgroundColor: Colors.card,
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
   },
   controlButton: {
     marginHorizontal: 10,
     padding: 12,
-    borderRadius: 30,
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   flipButton: {
-    backgroundColor: '#1E90FF',
+    backgroundColor: Colors.primary,
   },
   startButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: Colors.successFg,
   },
   stopButton: {
-    backgroundColor: '#f44336',
+    backgroundColor: Colors.dangerFg,
   },
   submitButton: {
-    backgroundColor: '#1E90FF',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 20,
   },
   button: {
-    backgroundColor: '#1E90FF',
+    backgroundColor: Colors.primary,
     padding: 15,
-    borderRadius: 5,
+    borderRadius: Radius.md,
     alignItems: 'center',
     marginTop: 20,
   },
   buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: Colors.card,
+    fontWeight: '900',
   },
   scannedItems: {
     flex: 1,
     padding: 15,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.card,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '900',
     marginBottom: 10,
-    color: '#333',
+    color: Colors.text,
+    textTransform: 'uppercase',
   },
   item: {
     flexDirection: 'row',
@@ -722,21 +724,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: Colors.line,
   },
   itemText: {
     fontSize: 16,
+    color: Colors.text,
   },
   emptyText: {
     textAlign: 'center',
-    color: '#888',
+    color: Colors.sub2,
     marginTop: 20,
   },
   disabledButton: {
     opacity: 0.5,
   },
   processingText: {
-    color: '#1E90FF',
+    color: Colors.accent,
     fontWeight: 'normal',
     fontSize: 14,
   },

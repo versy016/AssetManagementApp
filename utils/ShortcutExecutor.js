@@ -22,6 +22,11 @@ export const executeShortcut = (shortcutType, router, user) => {
         router.push('/hire');
         return;
     }
+    // Office Gear: show all assets assigned to the office (no scan)
+    if (shortcutType === SHORTCUT_TYPES.OFFICE_ASSETS.id) {
+        router.push({ pathname: '/search', params: { preset: 'office' } });
+        return;
+    }
 
     // Navigate to QR scanner with shortcut context
     router.push({
@@ -178,10 +183,12 @@ const handleQuickTransferIn = async (assetId, assetData, user, onSuccess, onErro
             }),
         });
 
-        const sn = assetData?.serial_number || assetData?.id || assetId;
-        const model = assetData?.model || 'N/A';
+        const id = assetData?.id || assetId;
+        const sn = assetData?.serial_number;
+        const type = assetData?.asset_type || assetData?.type || assetData?.asset_types?.name;
         const adminLabel = adminUser.name || adminUser.useremail || 'admin';
-        onSuccess?.(`✓ SN: ${sn}, Model: ${model} transferred to ${adminLabel}`);
+        const parts = [id, sn, type].filter(Boolean);
+        onSuccess?.(`✓ Transferred in — ${parts.join(' · ')} → ${adminLabel}`);
     } catch (error) {
         onError?.(error.message || 'Failed to transfer in');
     }
@@ -233,8 +240,11 @@ const handleQuickTransferOut = async (assetId, assetData, user, onSuccess, onErr
             }),
         });
 
-        const assetName = assetData?.id || assetId;
-        onSuccess?.(`✓ ${assetName} assigned to you`);
+        const id = assetData?.id || assetId;
+        const sn = assetData?.serial_number;
+        const type = assetData?.asset_type || assetData?.type || assetData?.asset_types?.name;
+        const parts = [id, sn, type].filter(Boolean);
+        onSuccess?.(`✓ Transferred out — ${parts.join(' · ')} → you`);
     } catch (error) {
         onError?.(error.message || 'Failed to transfer out');
     }
@@ -252,9 +262,11 @@ const handleQuickTransfer = async (assetId, assetData, router, user, onSuccess, 
             returnTo: returnTarget,
         },
     });
-    const sn = assetData?.serial_number || assetData?.id || assetId;
-    const model = assetData?.model || 'N/A';
-    onSuccess?.(`Select a user to transfer. SN: ${sn}, Model: ${model}`);
+    const id = assetData?.id || assetId;
+    const sn = assetData?.serial_number;
+    const type = assetData?.asset_type || assetData?.type || assetData?.asset_types?.name;
+    const parts = [id, sn, type].filter(Boolean);
+    onSuccess?.(`Select a user — ${parts.join(' · ')}`);
 };
 
 /**

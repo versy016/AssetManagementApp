@@ -10,7 +10,7 @@ import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { MaterialIcons } from '@expo/vector-icons';
 import PageHeader from '../../components/ui/PageHeader';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius } from '../../constants/uiTheme';
 import { TourContext, resetTour } from '../../components/TourGuide';
 
 export default function ProfileScreen() {
@@ -203,27 +203,27 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 20 },
-  container: { flex: 1, padding: 20, backgroundColor: '#fff' },
+  safe: { flex: 1, backgroundColor: Colors.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg, padding: 20 },
+  container: { flex: 1, padding: 20, backgroundColor: Colors.bg },
   heading: { fontSize: 22, fontWeight: '700', marginBottom: 16 },
   field: { marginBottom: 16 },
-  label: { fontSize: 14, color: '#444', marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
-  readonly: { backgroundColor: '#f6f6f6' },
-  hint: { fontSize: 12, color: '#777', marginTop: 6 },
+  label: { fontSize: 14, color: Colors.sub, marginBottom: 6, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 14, fontSize: 15, color: Colors.text },
+  readonly: { backgroundColor: Colors.chip, color: Colors.sub },
+  hint: { fontSize: 12, color: Colors.sub2, marginTop: 6 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 20, gap: 8 },
-  badgeLabel: { fontSize: 14, color: '#555' },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', fontWeight: '700' },
-  admin: { backgroundColor: '#E7F3FF', color: '#0B63CE' },
-  user: { backgroundColor: '#F5F5F5', color: '#444' },
-  button: { backgroundColor: '#0B63CE', padding: 14, borderRadius: 10, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  buttonSecondary: { borderWidth: 1, borderColor: '#0B63CE', padding: 14, borderRadius: 10, alignItems: 'center' },
-  buttonSecondaryText: { color: '#0B63CE', fontWeight: '700', fontSize: 16 },
-  buttonGhost: { padding: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ddd' },
-  buttonGhostText: { color: '#333', fontWeight: '700', fontSize: 16 },
-  note: { color: '#666', marginTop: 10 },
+  badgeLabel: { fontSize: 14, color: Colors.sub },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.sm, overflow: 'hidden', fontWeight: '800' },
+  admin: { backgroundColor: Colors.accentLight, color: Colors.accent },
+  user: { backgroundColor: Colors.chip, color: Colors.sub },
+  button: { backgroundColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center', borderWidth: 2, borderColor: Colors.primaryDark },
+  buttonText: { color: '#fff', fontWeight: '800', fontSize: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  buttonSecondary: { borderWidth: 2, borderColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
+  buttonSecondaryText: { color: Colors.primary, fontWeight: '800', fontSize: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  buttonGhost: { padding: 14, borderRadius: Radius.md, alignItems: 'center', borderWidth: 2, borderColor: Colors.line },
+  buttonGhostText: { color: Colors.text, fontWeight: '700', fontSize: 16 },
+  note: { color: Colors.sub2, marginTop: 10 },
   topbar: { },
   topbarTitle: { },
   backBtn: { padding: 6, marginRight: 6 },

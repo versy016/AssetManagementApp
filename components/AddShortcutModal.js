@@ -12,6 +12,7 @@ import {
     Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
 import { getAvailableShortcutTypes, getShortcutType } from '../constants/ShortcutTypes';
 
 const AddShortcutModal = ({
@@ -72,7 +73,7 @@ const AddShortcutModal = ({
                     <View style={styles.header}>
                         <Text style={styles.title}>Add Shortcut</Text>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <MaterialIcons name="close" size={24} color="#64748B" />
+                            <MaterialIcons name="close" size={24} color={Colors.sub} />
                         </TouchableOpacity>
                     </View>
 
@@ -105,7 +106,7 @@ const AddShortcutModal = ({
                                         {/* Admin Badge */}
                                         {shortcutType.requiresAdmin && (
                                             <View style={styles.adminBadge}>
-                                                <MaterialIcons name="shield" size={12} color="#DC2626" />
+                                                <MaterialIcons name="shield" size={12} color={Colors.dangerFg} />
                                                 <Text style={styles.adminBadgeText}>Admin</Text>
                                             </View>
                                         )}
@@ -115,7 +116,7 @@ const AddShortcutModal = ({
                                             <MaterialIcons
                                                 name={shortcutType.icon}
                                                 size={28}
-                                                color="#2563EB"
+                                                color={Colors.accent}
                                             />
                                         </View>
 
@@ -176,7 +177,7 @@ const AddShortcutModal = ({
                                                 </View>
                                                 {added && (
                                                     <View style={styles.addedIndicator}>
-                                                        <MaterialIcons name="check-circle" size={20} color="#16A34A" />
+                                                        <MaterialIcons name="check-circle" size={20} color={Colors.successFg} />
                                                         <Text style={styles.addedText}>Added</Text>
                                                     </View>
                                                 )}
@@ -203,7 +204,7 @@ const AddShortcutModal = ({
                                             style={styles.removeBtn}
                                             onPress={() => onRemoveShortcut(shortcut.id)}
                                         >
-                                            <MaterialIcons name="delete-outline" size={18} color="#B91C1C" />
+                                            <MaterialIcons name="delete-outline" size={18} color={Colors.dangerFg} />
                                             <Text style={styles.removeBtnText}>Remove</Text>
                                         </TouchableOpacity>
                                     </View>
@@ -215,9 +216,7 @@ const AddShortcutModal = ({
                     {/* Footer */}
                     <View style={styles.footer}>
                         <View style={styles.footerRow}>
-                            <Text style={styles.footerText}>
-                                {existingShortcuts.length} of 6 shortcuts added
-                            </Text>
+
                             {onRemoveShortcut && addedShortcutMeta.length > 0 && (
                             <View style={styles.manageRow}>
                                 {addedShortcutMeta.length > 0 && (
@@ -238,7 +237,7 @@ const AddShortcutModal = ({
                                         <MaterialIcons
                                             name={showList ? 'visibility-off' : 'visibility'}
                                             size={16}
-                                            color={showList ? '#fff' : '#1D4ED8'}
+                                            color={showList ? '#fff' : Colors.accent}
                                         />
                                         <Text
                                             style={[
@@ -268,16 +267,16 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     container: {
-        backgroundColor: '#FFFFFF',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
+        backgroundColor: Colors.card,
+        borderTopLeftRadius: Radius.lg,
+        borderTopRightRadius: Radius.lg,
         maxHeight: '85%',
         ...Platform.select({
             web: {
                 maxWidth: 600,
                 alignSelf: 'center',
                 width: '100%',
-                borderRadius: 20,
+                borderRadius: Radius.lg,
                 marginBottom: 20,
             },
         }),
@@ -289,20 +288,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 20,
         paddingBottom: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#E2EEFF',
+        borderBottomWidth: 2,
+        borderBottomColor: Colors.line,
     },
     title: {
         fontSize: 20,
         fontWeight: '800',
-        color: '#0F172A',
+        color: Colors.text,
     },
     closeButton: {
         padding: 4,
     },
     subtitle: {
         fontSize: 14,
-        color: '#64748B',
+        color: Colors.sub,
         paddingHorizontal: 20,
         paddingTop: 12,
         paddingBottom: 16,
@@ -323,32 +322,32 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#EEF2FF',
+        borderBottomColor: Colors.line,
         gap: 12,
     },
     iconSmall: {
         width: 36,
         height: 36,
-        borderRadius: 10,
+        borderRadius: Radius.md,
         alignItems: 'center',
         justifyContent: 'center',
     },
     iconSmallScan: {
         width: 36,
         height: 36,
-        borderRadius: 10,
+        borderRadius: Radius.md,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#EFF6FF',
+        backgroundColor: Colors.accentMuted,
     },
     addedRowLabel: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#0F172A',
+        color: Colors.text,
     },
     addedRowSub: {
         fontSize: 12,
-        color: '#64748B',
+        color: Colors.sub,
     },
     removeBtn: {
         flexDirection: 'row',
@@ -356,15 +355,15 @@ const styles = StyleSheet.create({
         gap: 4,
         paddingVertical: 6,
         paddingHorizontal: 10,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: '#FCA5A5',
-        backgroundColor: '#FEF2F2',
+        borderRadius: Radius.sm,
+        borderWidth: 2,
+        borderColor: Colors.dangerFg,
+        backgroundColor: Colors.dangerBg,
     },
     removeBtnText: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#B91C1C',
+        color: Colors.dangerFg,
     },
     grid: {
         flexDirection: 'row',
@@ -374,25 +373,21 @@ const styles = StyleSheet.create({
     shortcutCard: {
         width: '48%',
         margin: '1%',
-        borderRadius: 12,
+        borderRadius: Radius.lg,
         padding: 16,
         borderWidth: 2,
         borderColor: 'transparent',
         position: 'relative',
     },
     shortcutCardScanStyle: {
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#E9F1FF',
-        shadowColor: '#0B63CE',
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 2,
+        backgroundColor: Colors.card,
+        borderWidth: 2,
+        borderColor: Colors.line,
+        ...Shadows.card,
     },
     shortcutCardAdded: {
         opacity: 0.6,
-        borderColor: '#16A34A',
+        borderColor: Colors.successFg,
     },
     adminBadge: {
         position: 'absolute',
@@ -400,8 +395,8 @@ const styles = StyleSheet.create({
         right: 8,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FEE2E2',
-        borderRadius: 8,
+        backgroundColor: Colors.dangerBg,
+        borderRadius: Radius.sm,
         paddingHorizontal: 6,
         paddingVertical: 2,
         gap: 2,
@@ -409,7 +404,7 @@ const styles = StyleSheet.create({
     adminBadgeText: {
         fontSize: 10,
         fontWeight: '700',
-        color: '#DC2626',
+        color: Colors.dangerFg,
     },
     adminSection: {
         paddingHorizontal: 12,
@@ -418,8 +413,9 @@ const styles = StyleSheet.create({
     sectionLabel: {
         fontSize: 13,
         fontWeight: '700',
-        color: '#0F172A',
+        color: Colors.text,
         marginBottom: 8,
+        textTransform: 'uppercase',
     },
     adminPill: {
         position: 'absolute',
@@ -430,18 +426,18 @@ const styles = StyleSheet.create({
         gap: 4,
         paddingHorizontal: 8,
         paddingVertical: 2,
-        borderRadius: 999,
-        backgroundColor: '#FEE2E2',
+        borderRadius: Radius.sm,
+        backgroundColor: Colors.dangerBg,
     },
     adminPillText: {
         fontSize: 10,
         fontWeight: '700',
-        color: '#B91C1C',
+        color: Colors.dangerFg,
     },
     iconContainer: {
         width: 56,
         height: 56,
-        borderRadius: 12,
+        borderRadius: Radius.md,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -449,27 +445,27 @@ const styles = StyleSheet.create({
     iconContainerScan: {
         width: 56,
         height: 56,
-        borderRadius: 12,
+        borderRadius: Radius.md,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
-        backgroundColor: '#EFF6FF',
+        backgroundColor: Colors.accentMuted,
     },
     shortcutLabel: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#0F172A',
+        color: Colors.text,
         marginBottom: 4,
     },
     shortcutLabelScan: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#2563EB',
+        color: Colors.accent,
         marginBottom: 4,
     },
     shortcutDescription: {
         fontSize: 12,
-        color: '#64748B',
+        color: Colors.sub,
         lineHeight: 16,
     },
     addedIndicator: {
@@ -480,20 +476,20 @@ const styles = StyleSheet.create({
     },
     addedText: {
         fontSize: 12,
-        fontWeight: '600',
-        color: '#16A34A',
+        fontWeight: '700',
+        color: Colors.successFg,
     },
     footer: {
         paddingHorizontal: 20,
         paddingVertical: 16,
-        borderTopWidth: 1,
-        borderTopColor: '#E2EEFF',
+        borderTopWidth: 2,
+        borderTopColor: Colors.line,
         alignItems: 'center',
     },
     footerText: {
         fontSize: 13,
-        color: '#64748B',
-        fontWeight: '600',
+        color: Colors.sub,
+        fontWeight: '700',
     },
     manageRow: { marginTop: 8 },
     manageListBtn: {
@@ -502,19 +498,19 @@ const styles = StyleSheet.create({
         gap: 6,
         paddingHorizontal: 16,
         paddingVertical: 10,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: '#DBEAFE',
-        backgroundColor: '#F8FAFF',
+        borderRadius: Radius.sm,
+        borderWidth: 2,
+        borderColor: Colors.accent,
+        backgroundColor: Colors.accentMuted,
     },
     manageListBtnActive: {
-        backgroundColor: '#1D4ED8',
-        borderColor: '#1D4ED8',
+        backgroundColor: Colors.accent,
+        borderColor: Colors.accent,
     },
     manageListBtnText: {
         fontSize: 13,
         fontWeight: '700',
-        color: '#1D4ED8',
+        color: Colors.accent,
     },
 });
 

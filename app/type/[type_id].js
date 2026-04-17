@@ -248,7 +248,7 @@ export default function AssetsType() {
             <StatChip code="end_of_life" count={counts.end_of_life} />
             <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
               <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
-              <Text style={[styles.metaChipText, { color: '#1E90FF' }]}>Total: {counts.total}</Text>
+              <Text style={[styles.metaChipText, { color: Colors.accent }]}>Total: {counts.total}</Text>
             </View>
           </View>
 
@@ -277,11 +277,11 @@ export default function AssetsType() {
           )}
         </View>
         <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FFA500' }]} onPress={goEditType}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accent }]} onPress={goEditType}>
             <Text style={styles.actionText}>✏️ Edit Type</Text>
           </TouchableOpacity>
           {isAdmin && (
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b00020' }]} onPress={doDeleteType}>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.dangerFg }]} onPress={doDeleteType}>
               <Text style={styles.actionText}>🗑 Delete Type</Text>
             </TouchableOpacity>
           )}
@@ -325,45 +325,70 @@ export default function AssetsType() {
   );
 }
 
+/* Colors and Radius */
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 /* ----------------- styles ----------------- */
 const styles = StyleSheet.create({
   centerWrap: {
-    flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
+    flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center',
   },
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: Colors.bg },
   contentWrap: { flex: 1, minHeight: 0 },
   /* meta chips row (counts) */
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 14,
+    paddingVertical: 6, paddingHorizontal: 10, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line,
   },
-  metaChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
+  metaChipText: { color: Colors.accent, fontWeight: '700', fontSize: 12 },
 
   /* list cards */
   card: {
-    flexDirection: 'row', backgroundColor: '#f9f9f9',
-    borderRadius: 10, marginBottom: 15, alignItems: 'center', padding: 10,
+    flexDirection: 'row', backgroundColor: Colors.card,
+    borderRadius: Radius.lg, marginBottom: 15, alignItems: 'center', padding: 10, borderWidth: 2, borderColor: Colors.line, ...CardShadow,
   },
   image: {
-    width: 60, height: 60, borderRadius: 8, marginRight: 12, backgroundColor: '#eee',
+    width: 60, height: 60, borderRadius: Radius.md, marginRight: 12, backgroundColor: Colors.chip,
   },
   details: { flex: 1 },
-  name: { fontWeight: 'bold', fontSize: 16, marginBottom: 4, color: '#333', flex: 1, flexShrink: 1, minWidth: 0, marginRight: 8 },
-  subtext: { fontSize: 13, color: '#666' },
+  name: { fontWeight: '900', fontSize: 16, marginBottom: 4, color: Colors.text, flex: 1, flexShrink: 1, minWidth: 0, marginRight: 8 },
+  subtext: { fontSize: 13, color: Colors.sub, fontWeight: '600' },
 
   /* status badge */
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 16, flexShrink: 0 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: Radius.lg, flexShrink: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center' },
-  statusText: { fontWeight: '700', fontSize: 12 },
+  statusText: { fontWeight: '800', fontSize: 12 },
 
   /* empty state */
-  noData: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#777' },
+  noData: { textAlign: 'center', marginTop: 50, fontSize: 16, color: Colors.sub2, fontWeight: '600' },
 
   /* footer actions styled like asset page; sticky on web */
   actionsRow: {
     flexDirection: 'row', justifyContent: 'space-between', gap: 8,
-    padding: 16, borderTopColor: '#ddd', borderTopWidth: 1, backgroundColor: '#fff',
+    padding: 16, borderTopColor: Colors.line, borderTopWidth: 2, backgroundColor: Colors.card,
   },
   actionsRowSticky: {
     position: 'fixed',
@@ -373,11 +398,11 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   actionBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', elevation: 2,
+    flex: 1, paddingVertical: 14, borderRadius: Radius.lg, alignItems: 'center', elevation: 2, ...CardShadow,
   },
-  actionText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  actionText: { color: Colors.card, fontWeight: '800', fontSize: 15 },
 
   /* section headers */
   sectionHeader: { paddingVertical: 6, paddingHorizontal: 6 },
-  sectionHeaderText: { fontSize: 13, fontWeight: '800', color: '#1E90FF' },
+  sectionHeaderText: { fontSize: 13, fontWeight: '900', color: Colors.accent },
 });

@@ -850,13 +850,13 @@ export default function NewAsset() {
           el.style.alignItems = 'center';
           el.style.justifyContent = 'center';
           el.innerHTML = `
-            <div style="text-align:center;font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; color:#0F172A">
-              <div class="spin" style="width:32px;height:32px;border:3px solid #D0E2FF;border-top-color:#0B63CE;border-radius:50%;margin:0 auto;animation:rnwspin 0.9s linear infinite"></div>
+            <div style="text-align:center;font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; color:#1E293B">
+              <div class="spin" style="width:32px;height:32px;border:3px solid #FFEDD5;border-top-color:#EA580C;border-radius:50%;margin:0 auto;animation:rnwspin 0.9s linear infinite"></div>
               <div style="margin-top:10px">Uploading <span id="pct">0%</span></div>
-              <div style="width:260px;height:8px;background:#E6EDF3;border-radius:6px;overflow:hidden;margin:8px auto 0">
-                <div id="bar" style="height:8px;background:#0B63CE;width:0;border-radius:6px"></div>
+              <div style="width:260px;height:8px;background:#EDEAE6;border-radius:6px;overflow:hidden;margin:8px auto 0">
+                <div id="bar" style="height:8px;background:#EA580C;width:0;border-radius:6px"></div>
               </div>
-              <div id="secs" style="margin-top:6px;color:#64748B"></div>
+              <div id="secs" style="margin-top:6px;color:#57534E"></div>
             </div>
             <style>@keyframes rnwspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
           `;
@@ -957,14 +957,14 @@ export default function NewAsset() {
               </TouchableOpacity>
               {urlDocMap[slug] ? (
                 <TouchableOpacity
-                  style={[styles.btn, { backgroundColor: '#fdecea', paddingVertical: 10 }]}
+                  style={[styles.btn, { backgroundColor: Colors.dangerBg, paddingVertical: 10 }]}
                   onPress={() => {
                     setUrlDocMap((m) => { const n = { ...m }; delete n[slug]; return n; });
                     // Clear error; validation will re-add if needed on submit
                     setErrors((prev) => ({ ...prev, [slug]: undefined }));
                   }}
                 >
-                  <Text style={{ color: '#b00020' }}>Remove</Text>
+                  <Text style={{ color: Colors.dangerFg }}>Remove</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1065,13 +1065,13 @@ export default function NewAsset() {
                   </TouchableOpacity>
                   {pickedDoc ? (
                     <TouchableOpacity
-                      style={[styles.btn, { backgroundColor: '#fdecea', paddingVertical: 10 }]}
+                      style={[styles.btn, { backgroundColor: Colors.dangerBg, paddingVertical: 10 }]}
                       onPress={() => {
                         setUrlDocMap((m) => { const n = { ...m }; delete n[docSlug]; return n; });
                         setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
                       }}
                     >
-                      <Text style={{ color: '#b00020' }}>Remove</Text>
+                      <Text style={{ color: Colors.dangerFg }}>Remove</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -1169,7 +1169,7 @@ export default function NewAsset() {
         <TouchableOpacity onPress={() => {
           if (normalizedReturnTo) { try { router.replace(String(normalizedReturnTo)); } catch { router.back(); } }
           else { router.replace('/Inventory'); }
-        }} style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}>
+        }} style={{ padding: 12, borderRadius: Radius.md, backgroundColor: Colors.primary }}>
           <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -1233,27 +1233,27 @@ export default function NewAsset() {
                 ) : (
                   <View style={{ width: '100%', alignItems: 'center' }}>
                     <View style={{
-                      backgroundColor: '#E6F3FF',
+                      backgroundColor: Colors.accentMuted,
                       borderWidth: 2,
-                      borderColor: '#1E90FF',
-                      borderRadius: 8,
+                      borderColor: Colors.accent,
+                      borderRadius: Radius.md,
                       paddingVertical: 16,
                       paddingHorizontal: 20,
                       marginVertical: 12,
                       width: '100%',
                       alignItems: 'center',
                     }}>
-                      <Text style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Selected Asset ID</Text>
-                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.sub, marginBottom: 6 }}>Selected Asset ID</Text>
+                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
                     </View>
                     <TouchableOpacity
-                      style={[styles.btn, { backgroundColor: '#fdecea', minWidth: 180 }]}
+                      style={[styles.btn, { backgroundColor: Colors.dangerBg, minWidth: 180 }]}
                       onPress={() => {
                         setId('');
                         setErrors(prev => ({ ...prev, id: undefined }));
                       }}
                     >
-                      <Text style={{ color: '#b00020' }}>Remove selected QR</Text>
+                      <Text style={{ color: Colors.dangerFg }}>Remove selected QR</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1263,21 +1263,21 @@ export default function NewAsset() {
               <>
                 {id ? (
                   <View style={{
-                    backgroundColor: '#E6F3FF',
+                    backgroundColor: Colors.accentMuted,
                     borderWidth: 2,
-                    borderColor: '#1E90FF',
-                    borderRadius: 8,
+                    borderColor: Colors.accent,
+                    borderRadius: Radius.md,
                     paddingVertical: 12,
                     paddingHorizontal: 16,
                     marginBottom: 10,
                   }}>
-                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Selected Asset ID</Text>
-                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E90FF', letterSpacing: 1 }}>{id}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.sub, marginBottom: 4 }}>Selected Asset ID</Text>
+                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
                     <TouchableOpacity
                       onPress={() => { setId(''); setSearchTerm(''); setErrors(prev => ({ ...prev, id: undefined })); }}
                       style={{ marginTop: 8, alignSelf: 'flex-start' }}
                     >
-                      <Text style={{ color: '#b00020', fontWeight: '600', fontSize: 14 }}>Clear selection</Text>
+                      <Text style={{ color: Colors.dangerFg, fontWeight: '600', fontSize: 14 }}>Clear selection</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -1292,7 +1292,7 @@ export default function NewAsset() {
                   }}
                 />
                 <TouchableOpacity onPress={() => setShowQRs(!showQRs)} style={styles.qrToggle}>
-                  <Text style={{ color: '#1E90FF', fontWeight: 'bold' }}>
+                  <Text style={{ color: Colors.accent, fontWeight: '900' }}>
                     {showQRs ? 'Hide QR Options ▲' : 'Show QR Options ▼'}
                   </Text>
                 </TouchableOpacity>
@@ -1479,11 +1479,11 @@ export default function NewAsset() {
                   <Image source={{ uri: image.uri }} style={styles.preview} />
                 )}
                 <TouchableOpacity
-                  style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
+                  style={[styles.btn, { backgroundColor: Colors.dangerBg, opacity: uploading ? 0.6 : 1 }]}
                   onPress={() => { if (!uploading) { setImage(null); setErrors(prev => ({ ...prev, image: undefined })); } }}
                   disabled={uploading}
                 >
-                  <Text style={{ color: '#b00020' }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
+                  <Text style={{ color: Colors.dangerFg }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1507,11 +1507,11 @@ export default function NewAsset() {
             </TouchableOpacity>
             {document ? (
               <TouchableOpacity
-                style={[styles.btn, { backgroundColor: '#fdecea', opacity: uploading ? 0.6 : 1 }]}
+                style={[styles.btn, { backgroundColor: Colors.dangerBg, opacity: uploading ? 0.6 : 1 }]}
                 onPress={() => { if (!uploading) setDocument(null); }}
                 disabled={uploading}
               >
-                <Text style={{ color: '#b00020' }}>Remove</Text>
+                <Text style={{ color: Colors.dangerFg }}>Remove</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1640,29 +1640,53 @@ function WebOverlayPortal({ visible, children }) {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 12, marginVertical: 8, color: '#000' },
-  label: { marginTop: 10, marginBottom: 6, fontWeight: '600' },
-  subtleLabel: { color: '#475569', fontSize: 12, marginTop: 6 },
+  container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
+  label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
+  subtleLabel: { color: Colors.sub, fontSize: 12, marginTop: 6, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  btn: { backgroundColor: '#eee', padding: 15, alignItems: 'center', borderRadius: 5, marginVertical: 8 },
+  btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
   // Consistent width for media pickers (image/doc) so buttons look same size
   pickerBtn: { minWidth: 180, alignSelf: 'center' },
-  submit: { backgroundColor: '#1E90FF' },
+  submit: { backgroundColor: Colors.primary },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },
-  preview: { width: '100%', height: 200, borderRadius: 5, marginVertical: 10 },
-  dropdown: { borderColor: '#ccc', marginBottom: 16 },
-  dropdownContainer: { borderColor: '#ccc' },
+  preview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: 10, ...CardShadow },
+  dropdown: { borderColor: Colors.line, marginBottom: 16, borderWidth: 2, borderRadius: Radius.sm },
+  dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.sm },
   qrGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginVertical: 10 },
-  qrCard: { width: '30%', backgroundColor: '#f9f9f9', padding: 6, marginBottom: 10, alignItems: 'center', borderRadius: 6, borderWidth: 1, borderColor: '#ccc' },
-  qrCardSelected: { borderColor: 'green', borderWidth: 3, backgroundColor: '#d0f0c0' },
-  qrLabel: { marginTop: 4, fontSize: 10, fontWeight: '600' },
+  qrCard: { width: '30%', backgroundColor: Colors.card, padding: 6, marginBottom: 10, alignItems: 'center', borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, ...CardShadow },
+  qrCardSelected: { borderColor: Colors.successFg, borderWidth: 3, backgroundColor: Colors.successBg },
+  qrLabel: { marginTop: 4, fontSize: 10, fontWeight: '700', color: Colors.text },
   qrToggle: { alignSelf: 'flex-end', marginBottom: 4 },
 
   // error styles
-  errorTop: { marginTop: 8, color: '#b00020', textAlign: 'center' },
-  errorBelow: { marginTop: 4, color: '#b00020' },
+  errorTop: { marginTop: 8, color: Colors.dangerFg, textAlign: 'center', fontWeight: '700' },
+  errorBelow: { marginTop: 4, color: Colors.dangerFg, fontWeight: '600' },
 
   // overlay
   modalBackdrop: {
@@ -1672,34 +1696,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   webOverlay: { display: 'none' },
-  progressBar: { width: 260, height: 8, borderRadius: 6, backgroundColor: '#E6EDF3', marginTop: 8, overflow: 'hidden' },
-  progressFill: { height: 8, backgroundColor: '#0B63CE', borderRadius: 6 },
+  progressBar: { width: 260, height: 8, borderRadius: Radius.sm, backgroundColor: Colors.chip, marginTop: 8, overflow: 'hidden' },
+  progressFill: { height: 8, backgroundColor: Colors.accent, borderRadius: Radius.sm },
   portalOverlayCard: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
 
   // location suggestions
   locSuggestBox: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     paddingVertical: 6,
     marginTop: -6,
     marginBottom: 8,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.card,
     // shadow/elevation for native
+    ...CardShadow,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
-      android: { elevation: 2 },
+      ios: {},
+      android: {},
       default: {},
     }),
   },
   locSuggestItem: { paddingHorizontal: 12, paddingVertical: 8 },
-  locSuggestMain: { color: '#111', fontWeight: '600' },
-  locSuggestSecondary: { color: '#666', fontSize: 12 },
-  locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: '#666', fontStyle: 'italic' },
+  locSuggestMain: { color: Colors.text, fontWeight: '700' },
+  locSuggestSecondary: { color: Colors.sub, fontSize: 12 },
+  locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: Colors.sub, fontStyle: 'italic' },
 
-  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
-  toastText: { color: '#047857', fontWeight: '700' },
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
+  toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
+  toastText: { color: Colors.successFg, fontWeight: '700' },
 });
 
 

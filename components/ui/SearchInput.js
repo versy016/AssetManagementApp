@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
 
 export default function SearchInput({
     value,
@@ -13,33 +13,32 @@ export default function SearchInput({
     right,
     ...inputProps
 }) {
-    const theme = useTheme();
+    const [focused, setFocused] = useState(false);
 
     return (
         <View
             style={[
                 styles.container,
-                {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.outline,
-                },
+                focused && styles.containerFocused,
                 style,
             ]}
         >
             <MaterialIcons
                 name="search"
                 size={20}
-                color={theme.colors.onSurfaceVariant}
+                color={focused ? Colors.primary : Colors.sub}
                 style={styles.icon}
             />
             <TextInput
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={placeholder}
-                placeholderTextColor={theme.colors.onSurfaceVariant}
+                placeholderTextColor={Colors.sub2}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 style={[
                     styles.input,
-                    { color: theme.colors.onSurface },
+                    { color: Colors.text },
                     inputStyle,
                 ]}
                 {...inputProps}
@@ -51,11 +50,12 @@ export default function SearchInput({
                         onChangeText('');
                         if (onClear) onClear();
                     }}
+                    hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                 >
                     <MaterialIcons
                         name="close"
                         size={18}
-                        color={theme.colors.onSurfaceVariant}
+                        color={Colors.sub2}
                         style={styles.clearIcon}
                     />
                 </TouchableOpacity>
@@ -69,19 +69,26 @@ const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: 40,
-        borderRadius: 10,
-        borderWidth: 1,
-        paddingHorizontal: 12,
+        height: 46,
+        borderRadius: Radius.pill,
+        paddingHorizontal: 14,
+        backgroundColor: Colors.chip,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
+    },
+    containerFocused: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.card,
     },
     icon: {
         marginRight: 8,
     },
     input: {
         flex: 1,
-        fontSize: 14,
+        fontSize: 15,
+        fontWeight: FontWeights.regular,
         height: '100%',
-        padding: 0, // Remove default padding
+        padding: 0,
     },
     clearIcon: {
         marginLeft: 8,

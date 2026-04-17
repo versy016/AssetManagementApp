@@ -1,47 +1,46 @@
+// components/ui/StatusBadge.js — Bold Industrial Status Badges
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 /**
- * Canonical asset status configuration and helpers.
- * Import STATUS_CONFIG and normalizeStatus wherever you need to
- * display or filter by asset status — avoids duplicating these
- * across Inventory, type detail, search, and asset detail screens.
+ * Canonical asset status configuration — Bold Industrial palette.
+ * Squared-off badges with uppercase text and thick borders.
  */
 export const STATUS_CONFIG = {
   in_service: {
     label: 'In Service',
-    bg: '#E7F3FF',
-    fg: '#084AA0',
-    bd: '#D6E8FF',
+    bg: '#F0FDFA',
+    fg: '#0D9488',
+    bd: '#99F6E4',
     icon: 'build-circle',
   },
   end_of_life: {
     label: 'End of Life',
-    bg: '#EDE9FE',
-    fg: '#5B21B6',
-    bd: '#E3D9FF',
+    bg: '#F5F5F4',
+    fg: '#78716C',
+    bd: '#D6D3D1',
     icon: 'block',
   },
   repair: {
     label: 'Repair',
-    bg: '#FFEDD5',
-    fg: '#9A3412',
-    bd: '#FFD9B5',
+    bg: '#FEF2F2',
+    fg: '#DC2626',
+    bd: '#FECACA',
     icon: 'build',
   },
   maintenance: {
     label: 'Maintenance',
-    bg: '#FEF9C3',
-    fg: '#854D0E',
-    bd: '#FFF3B0',
+    bg: '#FFFBEB',
+    fg: '#D97706',
+    bd: '#FDE68A',
     icon: 'build',
   },
   on_hire: {
     label: 'On Hire',
-    bg: '#ECFDF5',
-    fg: '#065F46',
-    bd: '#A7F3D0',
+    bg: '#EEF2FF',
+    fg: '#4F46E5',
+    bd: '#C7D2FE',
     icon: 'assignment',
   },
 };
@@ -85,19 +84,36 @@ export function statusToColor(s) {
 }
 
 /**
- * Pill badge showing asset status.
+ * Bold Industrial status badge — squared corners, uppercase text, thick border.
  *
  * Props:
  *  status  – raw status string (normalised internally)
- *  size    – icon size (default 14)
+ *  size    – 'sm' | 'md' (default 'md')
  *  style   – additional style for the outer View
  */
-export default function StatusBadge({ status, size = 14, style }) {
+export default function StatusBadge({ status, size = 'md', style }) {
   const cfg = STATUS_CONFIG[normalizeStatus(status)] || STATUS_CONFIG.in_service;
+  const isSmall = size === 'sm' || (typeof size === 'number' && size < 14);
+
   return (
-    <View style={[styles.badge, { backgroundColor: cfg.bg, borderColor: cfg.bd || cfg.bg }, style]}>
-      <MaterialIcons name={cfg.icon} size={size} color={cfg.fg} style={styles.icon} />
-      <Text style={[styles.label, { color: cfg.fg }]}>{cfg.label}</Text>
+    <View
+      style={[
+        styles.badge,
+        { backgroundColor: cfg.bg, borderColor: cfg.bd || cfg.bg },
+        isSmall && styles.badgeSm,
+        style,
+      ]}
+    >
+      <Text
+        style={[
+          styles.label,
+          { color: cfg.fg },
+          isSmall && styles.labelSm,
+        ]}
+        numberOfLines={1}
+      >
+        {cfg.label}
+      </Text>
     </View>
   );
 }
@@ -106,12 +122,24 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 11,
     paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: Radius.sm,
+    borderWidth: 1.5,
     alignSelf: 'flex-start',
   },
-  icon: { marginRight: 4 },
-  label: { fontSize: 12, fontWeight: '600' },
+  badgeSm: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  labelSm: {
+    fontSize: 10,
+  },
 });

@@ -93,26 +93,48 @@ export default function MyAssets() {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f9f9f9' },
-  container: { padding: 16, backgroundColor: '#f9f9f9' },
+  safeArea: { flex: 1, backgroundColor: Colors.bg },
+  container: { padding: 16, backgroundColor: Colors.bg },
   center: { alignItems: 'center', paddingVertical: 24 },
-  noAssets: { textAlign: 'center', color: '#666', marginTop: 12 },
+  noAssets: { textAlign: 'center', color: Colors.sub, marginTop: 12, fontWeight: '600' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: Colors.card,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: Radius.lg,
     marginBottom: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...CardShadow,
   },
-  image: { width: 50, height: 50, borderRadius: 5, marginRight: 10, backgroundColor: '#eee' },
+  image: { width: 50, height: 50, borderRadius: Radius.sm, marginRight: 10, backgroundColor: Colors.chip },
   info: { flex: 1, justifyContent: 'center' },
-  name: { fontWeight: 'bold', fontSize: 16, color: '#111' },
-  serial: { fontSize: 14, color: '#555', marginTop: 2 },
+  name: { fontWeight: '900', fontSize: 16, color: Colors.text },
+  serial: { fontSize: 14, color: Colors.sub, marginTop: 2, fontWeight: '600' },
 });

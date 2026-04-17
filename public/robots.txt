@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Private and tokenized app paths should not be indexed.
+Disallow: /admin
+Disallow: /asset/
+Disallow: /quick-action/
+Disallow: /quick-note/
+Disallow: /transfer/
+Disallow: /check-in/
+Disallow: /qr/
+Disallow: /type/
+Disallow: /multi-scan/
+
+Sitemap: https://www.gearops.com.au/sitemap.xml

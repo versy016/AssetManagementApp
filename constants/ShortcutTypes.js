@@ -1,51 +1,57 @@
 // constants/ShortcutTypes.js
 // Defines all available shortcut types with metadata
 
+// Colors derived from the Bold Industrial design system (mockup-2-bold-industrial)
 export const SHORTCUT_TYPES = {
     QUICK_TRANSFER: {
         id: 'quick_transfer',
-        label: 'Quick Transfer',
+        label: 'Transfer',
         icon: 'swap-horiz',
         description: 'Scan asset to transfer to another user',
         requiresAdmin: false,
-        color: '#0B63CE',
-        bgColor: '#E7F3FF',
+        color: '#D97706',   // amber
+        bgColor: '#FFFBEB',
+        borderColor: '#FDE68A',
     },
     QUICK_TRANSFER_IN: {
         id: 'quick_transfer_in',
-        label: 'Quick Transfer Office',
+        label: 'Transfer In',
         icon: 'login',
         description: 'Scan asset to transfer into admin inventory',
         requiresAdmin: false,
-        color: '#16A34A',
-        bgColor: '#DCFCE7',
+        color: '#0D9488',   // teal
+        bgColor: '#F0FDFA',
+        borderColor: '#99F6E4',
     },
     QUICK_TRANSFER_OUT: {
         id: 'quick_transfer_out',
-        label: 'Transfer-To Me',
+        label: 'Transfer Out',
         icon: 'logout',
         description: 'Scan asset to transfer out to yourself',
         requiresAdmin: false,
-        color: '#B45309',
-        bgColor: '#FFEDD5',
+        color: '#EA580C',   // orange
+        bgColor: '#FFF7ED',
+        borderColor: '#FED7AA',
     },
     QUICK_SERVICE: {
         id: 'quick_service',
-        label: 'Quick Service',
+        label: 'Log Service',
         icon: 'build',
         description: 'Scan asset to mark for service',
         requiresAdmin: false,
-        color: '#854D0E',
-        bgColor: '#FEF9C3',
+        color: '#EA580C',   // orange
+        bgColor: '#FFEDD5',
+        borderColor: '#FED7AA',
     },
     QUICK_REPAIR: {
         id: 'quick_repair',
-        label: 'Quick Repair',
+        label: 'Log Repair',
         icon: 'build-circle',
         description: 'Scan asset to mark for repair',
         requiresAdmin: false,
-        color: '#9A3412',
-        bgColor: '#FFEDD5',
+        color: '#DC2626',   // red
+        bgColor: '#FEF2F2',
+        borderColor: '#FECACA',
     },
     QUICK_VIEW: {
         id: 'quick_view',
@@ -53,8 +59,9 @@ export const SHORTCUT_TYPES = {
         icon: 'visibility',
         description: 'Scan asset to view details',
         requiresAdmin: false,
-        color: '#5B21B6',
-        bgColor: '#EDE9FE',
+        color: '#4F46E5',   // indigo
+        bgColor: '#EEF2FF',
+        borderColor: '#C7D2FE',
     },
     QUICK_NOTE: {
         id: 'quick_note',
@@ -62,27 +69,40 @@ export const SHORTCUT_TYPES = {
         icon: 'note-add',
         description: 'Scan asset to add a quick note',
         requiresAdmin: false,
-        color: '#0D9488',
-        bgColor: '#CCFBF1',
+        color: '#0D9488',   // teal
+        bgColor: '#F0FDFA',
+        borderColor: '#99F6E4',
     },
     GENERATE_QR_SHEET: {
         id: 'generate_qr_sheet',
-        label: 'Generate QR Sheet',
+        label: 'QR Sheet',
         icon: 'qr-code-2',
         description: 'Generate 1 page of QR codes',
         requiresAdmin: true,
-        color: '#DC2626',
-        bgColor: '#FEE2E2',
+        color: '#1E293B',   // navy/stone
+        bgColor: '#E2E8F0',
+        borderColor: '#CBD5E1',
     },
     HIRE_DISCLAIMER: {
         id: 'hire_disclaimer',
-        label: 'Hire disclaimer',
+        label: 'Hire Form',
         icon: 'description',
         description: 'Equipment hire lease form & export',
         requiresAdmin: false,
         webOnly: true,
-        color: '#0D9488',
-        bgColor: '#CCFBF1',
+        color: '#0D9488',   // teal
+        bgColor: '#F0FDFA',
+        borderColor: '#99F6E4',
+    },
+    OFFICE_ASSETS: {
+        id: 'office_assets',
+        label: 'Office Gear',
+        icon: 'business',
+        description: 'View all assets assigned to the office',
+        requiresAdmin: false,
+        color: '#1D4ED8',   // blue
+        bgColor: '#EFF6FF',
+        borderColor: '#BFDBFE',
     },
 };
 
@@ -117,10 +137,10 @@ export const canUseShortcut = (shortcutId, isAdmin = false) => {
 export const SHORTCUT_COLOR_PALETTES = [
     {
         key: 'blue',
-        name: 'Ocean Blue',
-        fg: '#0B63CE',
-        bg: '#E7F3FF',
-        border: '#BFDBFE',
+        name: 'Navy',
+        fg: '#1E293B',
+        bg: '#E2E8F0',
+        border: '#CBD5E1',
     },
     {
         key: 'emerald',

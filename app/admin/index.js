@@ -10,6 +10,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { TourTarget } from '../../components/TourGuide';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 
 export default function AdminConsole() {
   const router = useRouter();
@@ -198,8 +199,8 @@ export default function AdminConsole() {
   if (!isAdmin) {
     return (
       <View style={styles.center}>
-        <MaterialIcons name="lock" size={40} color="#999" />
-        <Text style={{ marginTop: 10, fontSize: 16, color: '#333' }}>
+        <MaterialIcons name="lock" size={40} color={Colors.sub2} />
+        <Text style={{ marginTop: 10, fontSize: 16, color: Colors.text }}>
           Admin access required.
         </Text>
         <TouchableOpacity onPress={() => router.replace('/')} style={[styles.button, { marginTop: 16 }]}>
@@ -221,7 +222,7 @@ export default function AdminConsole() {
         <View style={styles.topbar}>
           {Platform.OS !== 'web' && (
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <MaterialIcons name="arrow-back" size={24} color="#0B63CE" />
+              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
             </TouchableOpacity>
           )}
           <Text style={styles.topbarTitle}>Admin Console</Text>
@@ -293,7 +294,7 @@ export default function AdminConsole() {
             />
 
             {/* Display count */}
-            <Text style={{ marginTop: 6, color: '#555' }}>
+            <Text style={{ marginTop: 6, color: Colors.sub }}>
               Will generate: <Text style={{ fontWeight: '700' }}>{qrCountNum || 0}</Text> QR codes
             </Text>
 
@@ -309,7 +310,7 @@ export default function AdminConsole() {
                 <Text style={styles.subTitle}>Generated Excel File</Text>
                 <TourTarget id="web-admin-qr-download-btn">
                   <View style={styles.qrRow}>
-                    <Text style={{ fontSize: 14, color: '#333' }}>{excelFile.name}</Text>
+                    <Text style={{ fontSize: 14, color: Colors.text }}>{excelFile.name}</Text>
                     <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
                       <Text style={styles.link}>Download Excel</Text>
                     </TouchableOpacity>
@@ -327,11 +328,11 @@ export default function AdminConsole() {
                 </TouchableOpacity>
               </View>
               {allSheets.length === 0 ? (
-                <Text style={{ color: '#666' }}>No files found yet.</Text>
+                <Text style={{ color: Colors.sub }}>No files found yet.</Text>
               ) : (
                 allSheets.map((s, idx) => (
                   <View key={`${s.name}-${idx}`} style={styles.qrRow}>
-                    <Text style={{ fontSize: 14, color: '#333' }}>{s.name}</Text>
+                    <Text style={{ fontSize: 14, color: Colors.text }}>{s.name}</Text>
                     <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
                       <Text style={styles.link}>{s.name.endsWith('.xlsx') ? 'Download Excel' : 'Download'}</Text>
                     </TouchableOpacity>
@@ -347,28 +348,28 @@ export default function AdminConsole() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
-  wrapper: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: '800', marginBottom: 12 },
+  safe: { flex: 1, backgroundColor: Colors.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: Colors.bg },
+  wrapper: { flex: 1, padding: 20, backgroundColor: Colors.bg },
+  title: { fontSize: 22, fontWeight: '900', textTransform: 'uppercase', marginBottom: 12 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  tab: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, alignItems: 'center' },
-  tabActive: { backgroundColor: '#0B63CE1A', borderColor: '#0B63CE' },
-  tabText: { color: '#555', fontWeight: '700' },
-  tabTextActive: { color: '#0B63CE' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#eee' },
-  label: { fontSize: 13, color: '#444', marginTop: 8, marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
-  button: { backgroundColor: '#0B63CE', padding: 14, borderRadius: 10, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  buttonOutline: { borderWidth: 1, borderColor: '#0B63CE', padding: 14, borderRadius: 10, alignItems: 'center' },
-  buttonOutlineText: { color: '#0B63CE', fontWeight: '700', fontSize: 16 },
-  helpText: { color: '#666', marginTop: 10, fontSize: 12 },
-  subTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
-  qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 14, color: '#333' },
-  link: { color: '#0B63CE', fontWeight: '700' },
+  tab: { flex: 1, paddingVertical: 10, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, alignItems: 'center' },
+  tabActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
+  tabText: { color: Colors.sub, fontWeight: '700' },
+  tabTextActive: { color: Colors.accent },
+  card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 16, borderWidth: 2, borderColor: Colors.line, ...Shadows.card },
+  label: { fontSize: 13, color: Colors.text, fontWeight: '700', textTransform: 'uppercase', marginTop: 8, marginBottom: 6 },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, fontSize: 16, backgroundColor: Colors.card, color: Colors.text },
+  button: { backgroundColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
+  buttonText: { color: Colors.card, fontWeight: '700', fontSize: 16, textTransform: 'uppercase' },
+  buttonOutline: { borderWidth: 2, borderColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
+  buttonOutlineText: { color: Colors.primary, fontWeight: '700', fontSize: 16, textTransform: 'uppercase' },
+  helpText: { color: Colors.sub, marginTop: 10, fontSize: 12 },
+  subTitle: { fontSize: 16, fontWeight: '900', textTransform: 'uppercase', marginBottom: 8, color: Colors.text },
+  qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.line },
+  qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 14, color: Colors.text },
+  link: { color: Colors.accent, fontWeight: '700' },
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  topbarTitle: { fontSize: 22, fontWeight: '800', color: '#111' },
+  topbarTitle: { fontSize: 22, fontWeight: '900', textTransform: 'uppercase', color: Colors.text },
   backBtn: { padding: 6, marginRight: 6 },
 });

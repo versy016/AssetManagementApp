@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import CertsView from '../../components/CertsView';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { Colors } from '../../constants/uiTheme';
 
 export default function CertsScreen() {
   useEffect(() => {
@@ -15,7 +16,7 @@ export default function CertsScreen() {
       <ErrorBoundary>
         <React.Suspense fallback={
           <View style={styles.loadingState}>
-            <ActivityIndicator size="large" color="#2563EB" />
+            <ActivityIndicator size="large" color={Colors.primary} />
           </View>
         }>
           <View style={styles.certsScreenWrap}>

@@ -1,10 +1,12 @@
-// dashboard.js - Main dashboard screen for authenticated users
+// dashboard.js — Bold Industrial Dashboard
+// Main dashboard screen for authenticated users
 
-import React, { useState, useEffect, useContext, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, FlatList, Animated, Dimensions, Modal, Platform, Image, useWindowDimensions } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import { BlurView } from 'expo-blur';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
+import {
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert,
+  ActivityIndicator, Dimensions, Modal, Platform, useWindowDimensions, StatusBar,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { auth } from '../../firebaseConfig';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -17,29 +19,27 @@ import TasksScreen from './tasks';
 import CertsView from '../../components/CertsView';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import HireView from '../../components/HireView';
-import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AddShortcutModal from '../../components/AddShortcutModal';
-import { getShortcutType, getShortcutPalette, SHORTCUT_COLOR_PALETTES } from '../../constants/ShortcutTypes';
+import { getShortcutType, getShortcutPalette } from '../../constants/ShortcutTypes';
 import ShortcutManager from '../../utils/ShortcutManager';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
 import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors, Radius, Spacing, Shadows } from '../../constants/uiTheme';
+
+const C = Colors; // shorthand
 
 const Dashboard = ({ isAdmin }) => {
   const router = useRouter();
-  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [shortcuts, setShortcuts] = useState([]);
   const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
-  const [colorPickerVisible, setColorPickerVisible] = useState(false);
-  const [colorPickerShortcut, setColorPickerShortcut] = useState(null);
-  const [cpApplyAll, setCpApplyAll] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [adminClaim, setAdminClaim] = useState(false); // <-- derived from Firebase custom claims
+  const [adminClaim, setAdminClaim] = useState(false);
   const [dbAdmin, setDbAdmin] = useState(false);
-  // Removed: numeric overview cards
   const [recent, setRecent] = useState({ items: [], loading: true });
   const { width: windowWidth } = useWindowDimensions();
   const SHOW_RECENT = true;
@@ -50,7 +50,7 @@ const Dashboard = ({ isAdmin }) => {
   const [mobileView, setMobileView] = useState('dashboard');
   const webViewKey = String(viewParam || '').toLowerCase() || 'dashboard';
 
-  // Auth state + fetch custom claims (admin)
+  // ─── Auth ───
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
@@ -60,7 +60,6 @@ const Dashboard = ({ isAdmin }) => {
           setAdminClaim(false);
         } else {
           setUser(currentUser);
-          // refresh token to get latest custom claims
           await currentUser.getIdToken(true);
           const tokenResult = await currentUser.getIdTokenResult();
           setAdminClaim(!!tokenResult?.claims?.admin);
@@ -75,50 +74,33 @@ const Dashboard = ({ isAdmin }) => {
   }, []);
 
   useEffect(() => {
-    if (!user?.uid) {
-      setDbAdmin(false);
-      return;
-    }
+    if (!user?.uid) { setDbAdmin(false); return; }
     let ignore = false;
     (async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/users/${user.uid}`);
         if (!res.ok) throw new Error('Failed to load user');
         const data = await res.json();
-        if (!ignore) {
-          const role = String(data?.role || '').toUpperCase();
-          setDbAdmin(role === 'ADMIN');
-        }
-      } catch {
-        if (!ignore) setDbAdmin(false);
-      }
+        if (!ignore) setDbAdmin(String(data?.role || '').toUpperCase() === 'ADMIN');
+      } catch { if (!ignore) setDbAdmin(false); }
     })();
     return () => { ignore = true; };
   }, [user?.uid]);
 
-  const canAdmin = isAdmin || adminClaim || dbAdmin; // allow prop override if you still pass it
+  const canAdmin = isAdmin || adminClaim || dbAdmin;
 
-  // Tour management
+  // ─── Tour ───
   const { startTour, finishTour, setDisabled: setTourDisabled, ensureVisible, currentStep } = useContext(TourContext);
   const [tourStarted, setTourStarted] = useState(false);
   const scrollViewRef = useRef(null);
   const shortcutsRef = useRef(null);
 
-  // Temporarily disable tour when profile menu is open
   useEffect(() => {
     if (showProfileMenu) {
-      // Immediately finish any active tour and disable it
-      if (finishTour) {
-        finishTour();
-      }
-      if (setTourDisabled) {
-        setTourDisabled(true);
-      }
+      finishTour?.();
+      setTourDisabled?.(true);
     } else {
-      // Re-enable tour when menu closes
-      if (setTourDisabled) {
-        setTourDisabled(false);
-      }
+      setTourDisabled?.(false);
     }
   }, [showProfileMenu, finishTour, setTourDisabled]);
 
@@ -126,75 +108,36 @@ const Dashboard = ({ isAdmin }) => {
     setShowProfileMenu(false);
     await resetTour();
     setTourStarted(false);
-    setTimeout(() => {
-      startTour();
-      setTourStarted(true);
-    }, 300);
+    setTimeout(() => { startTour(); setTourStarted(true); }, 300);
   };
 
-  // Auto-scroll to shortcuts section when tour step is active
   const measureAndScroll = (ref) => {
     if (!ref || !scrollViewRef.current) return;
-
     try {
-      // Measure the section to get its absolute page coordinates
       ref.measure((x, y, width, height, pageX, pageY) => {
-        // Measure the ScrollView to get its absolute page coordinates
         scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
-          // Calculate relative Y position within the ScrollView
           const relativeY = pageY - spy;
-          console.log(`Measured shortcuts: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
-
           if (relativeY >= 0) {
-            const scrollY = Math.max(0, relativeY - 100);
-            scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+            scrollViewRef.current?.scrollTo({ y: Math.max(0, relativeY - 100), animated: true });
           }
         });
       });
     } catch (e) {
-      console.error(`Error measuring shortcuts:`, e);
-      // Fallback: try scrollToEnd for bottom sections
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }
   };
 
   useEffect(() => {
-    if (currentStep && currentStep.targetId === 'section-shortcuts') {
-      // Small delay to ensure layout is complete
-      setTimeout(() => {
-        if (shortcutsRef.current) {
-          measureAndScroll(shortcutsRef.current);
-        }
-      }, 100);
+    if (currentStep?.targetId === 'section-shortcuts') {
+      setTimeout(() => { shortcutsRef.current && measureAndScroll(shortcutsRef.current); }, 100);
     }
   }, [currentStep]);
 
-  // Register ScrollView with TourContext
   useEffect(() => {
-    if (ensureVisible && scrollViewRef.current) {
-      ensureVisible(scrollViewRef.current);
-    }
+    if (ensureVisible && scrollViewRef.current) ensureVisible(scrollViewRef.current);
   }, [ensureVisible]);
 
-  // Auto-start tour disabled - users can start it manually via "Restart Tour" in profile menu
-  // useEffect(() => {
-  //   // Don't start tour if profile menu is open or tour already started
-  //   if (!user?.uid || loading || tourStarted || showProfileMenu) return;
-  //   (async () => {
-  //     const shouldShow = await shouldShowTour();
-  //     if (shouldShow) {
-  //       // Small delay to ensure UI is rendered
-  //       setTimeout(() => {
-  //         startTour();
-  //         setTourStarted(true);
-  //       }, 1000);
-  //     }
-  //   })();
-  // }, [user, loading, tourStarted, showProfileMenu, startTour]);
-
-  // Removed: numeric overview fetch
-
-  // Recent activity (best-effort, lightweight aggregation)
+  // ─── Recent Activity ───
   useEffect(() => {
     if (!SHOW_RECENT) return;
     let cancelled = false;
@@ -205,7 +148,6 @@ const Dashboard = ({ isAdmin }) => {
         const data = await res.json();
         const list = (Array.isArray(data) ? data : [])
           .filter(a => (a?.description || '').toLowerCase() !== 'qr reserved asset');
-        // Sort by updated/last_updated desc and take first 25
         const sorted = list.sort((a, b) => {
           const av = new Date(a?.updated_at || a?.last_updated || a?.date_purchased || 0).getTime();
           const bv = new Date(b?.updated_at || b?.last_updated || b?.date_purchased || 0).getTime();
@@ -218,9 +160,8 @@ const Dashboard = ({ isAdmin }) => {
             if (!r.ok) return null;
             const j = await r.json();
             const arr = Array.isArray(j?.actions) ? j.actions : [];
-            const first = arr[0];
-            if (!first) return null;
-            return { asset: a, action: first };
+            if (!arr[0]) return null;
+            return { asset: a, action: arr[0] };
           })
         );
 
@@ -231,14 +172,12 @@ const Dashboard = ({ isAdmin }) => {
           .slice(0, 10);
 
         if (!cancelled) setRecent({ items: merged, loading: false });
-      } catch {
-        if (!cancelled) setRecent({ items: [], loading: false });
-      }
+      } catch { if (!cancelled) setRecent({ items: [], loading: false }); }
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // Load shortcuts from AsyncStorage
+  // ─── Shortcuts ───
   useEffect(() => {
     if (!user?.uid) return;
     (async () => {
@@ -250,184 +189,229 @@ const Dashboard = ({ isAdmin }) => {
   const handleAddShortcut = async (shortcutType, colorKey) => {
     if (!user?.uid) return;
     const success = await ShortcutManager.addShortcut(user.uid, shortcutType, canAdmin, colorKey);
-    if (success) {
-      const updated = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
-      setShortcuts(updated);
-    } else {
-      Alert.alert('Error', 'Could not add shortcut. You may have reached the maximum limit.');
-    }
+    if (success) setShortcuts(await ShortcutManager.loadShortcuts(user.uid, canAdmin));
+    else Alert.alert('Error', 'Could not add shortcut. You may have reached the maximum limit.');
   };
 
-  const handleUpdateShortcutColor = async (shortcutId, colorKey) => {
-    if (!user?.uid) return;
-    await ShortcutManager.updateShortcutColor(user.uid, shortcutId, colorKey);
-    const updated = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
-    setShortcuts(updated);
-  };
 
   const handleRemoveShortcut = async (shortcutId) => {
     if (!user?.uid) return;
-    Alert.alert(
-      'Remove Shortcut',
-      'Are you sure you want to remove this shortcut?',
-      [
+    Alert.alert('Remove Shortcut', 'Are you sure you want to remove this shortcut?', [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
-          style: 'destructive',
+        text: 'Remove', style: 'destructive',
           onPress: async () => {
             const success = await ShortcutManager.removeShortcut(user.uid, shortcutId);
-            if (success) {
-              const updated = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
-              setShortcuts(updated);
-            }
+          if (success) setShortcuts(await ShortcutManager.loadShortcuts(user.uid, canAdmin));
           },
         },
-      ]
-    );
+    ]);
   };
 
   const handleExecuteShortcut = (shortcutType) => {
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to use shortcuts');
-      return;
-    }
+    if (!user) { Alert.alert('Error', 'You must be logged in to use shortcuts'); return; }
     executeShortcut(shortcutType, router, user);
   };
 
-  const quickActions = React.useMemo(() => {
-    const goToSearch = () => router.push('/search');
-    const goToCerts = () => router.push('/certs');
-    const base = [
-      { key: 'scan', label: 'Scan Asset', icon: 'qr-code-scanner', subtitle: 'Open camera scanner', onPress: () => router.push('/qr-scanner') },
-      { key: 'multi', label: 'Multi-Scan', icon: 'sync-alt', subtitle: 'Batch check-in / out', onPress: () => router.push('/qr-scanner?mode=multi') },
-      { key: 'search', label: 'Search', icon: 'search', subtitle: 'Find any asset fast', onPress: () => router.push('/search') },
-      { key: 'assets', label: 'My Assets', icon: 'inventory', subtitle: 'Everything assigned to you', onPress: () => router.push('/asset/assets') },
-      { key: 'activity', label: 'Activity', icon: 'history', subtitle: 'Recent asset activity', onPress: () => router.push('/activity') },
-      { key: 'certs', label: 'Certs', icon: 'verified', subtitle: 'View certifications', onPress: () => router.push('/certs') },
-    ];
-    return base;
-  }, [canAdmin, router]);
-
-  // Web-only nav is now provided by the global WebNavbar component.
+  // ─── Quick Actions ───
+  const quickActions = useMemo(() => [
+    { key: 'scan', label: 'Scan Asset', icon: 'qr-code-scanner', onPress: () => router.push('/qr-scanner') },
+    { key: 'multi', label: 'Multi-Scan', icon: 'sync-alt', onPress: () => router.push('/qr-scanner?mode=multi') },
+    { key: 'search', label: 'Search', icon: 'search', onPress: () => router.push('/search') },
+    { key: 'assets', label: 'My Assets', icon: 'inventory', onPress: () => router.push('/asset/assets') },
+    { key: 'activity', label: 'Activity', icon: 'history', onPress: () => router.push('/activity') },
+    { key: 'certs', label: 'Certs', icon: 'verified', onPress: () => router.push('/certs') },
+  ], [router]);
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      router.replace('/(auth)/login');
-    } catch (error) {
-      Alert.alert('Logout Error', error.message);
-    }
+    try { await signOut(auth); router.replace('/(auth)/login'); }
+    catch (error) { Alert.alert('Logout Error', error.message); }
   };
 
   const userName = user?.displayName || user?.email?.split('@')[0] || 'User';
   const userInitials = (user?.displayName || user?.email || 'US').substring(0, 2).toUpperCase();
 
+  // ─── Action color mapping ───
+  const ACTION_ICON_MAP = {
+    TRANSFER: { icon: 'swap-horiz', bg: '#E2E8F0', fg: C.primary },
+    CHECK_IN: { icon: 'check-circle', bg: C.successBg, fg: C.successFg },
+    CHECK_OUT: { icon: 'logout', bg: C.infoBg, fg: C.infoFg },
+    REPAIR: { icon: 'build', bg: C.accentLight, fg: C.accent },
+    MAINTENANCE: { icon: 'engineering', bg: C.warningBg, fg: C.warningFg },
+    HIRE: { icon: 'assignment', bg: C.infoBg, fg: C.infoFg },
+    STATUS_CHANGE: { icon: 'swap-vert', bg: '#E2E8F0', fg: C.primary },
+    END_OF_LIFE: { icon: 'block', bg: C.chip, fg: C.sub },
+    LOST: { icon: 'error', bg: C.dangerBg, fg: C.dangerFg },
+    STOLEN: { icon: 'warning', bg: C.dangerBg, fg: C.dangerFg },
+  };
+
+  const getRelativeTime = (date) => {
+    if (!date) return '';
+    const now = new Date();
+    const d = new Date(date);
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return 'now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+    return `${Math.floor(diff / 604800)}w`;
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Shortcuts Section
+  // ═══════════════════════════════════════════════════════
   const renderShortcutsSection = () => {
     const canAddMore = ShortcutManager.canAddMoreShortcuts(shortcuts);
-
     return (
-      <View ref={shortcutsRef} style={styles.shortcutsSection}>
-        <View style={styles.shortcutsHeaderRow}>
-          <Text style={styles.sectionTitle}>Shortcuts</Text>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            {Platform.OS === 'ios' && shortcuts.length > 0 && (
-              <TouchableOpacity
-                style={styles.manageShortcutsBtn}
-                onPress={() => {
-                  setColorPickerShortcut(shortcuts[0]);
-                  setColorPickerVisible(true);
-                }}
-              >
-                <MaterialIcons name="palette" size={16} color="#1D4ED8" />
-                <Text style={styles.manageShortcutsBtnText}>Colours</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.manageShortcutsBtn}
-              onPress={() => setShortcutModalVisible(true)}
-            >
-              <MaterialIcons name="tune" size={16} color="#1D4ED8" />
-              <Text style={styles.manageShortcutsBtnText}>
-                {shortcuts.length ? 'Manage' : 'Add shortcuts'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        {shortcuts.length === 0 ? (
-          <TouchableOpacity
-            style={styles.shortcutsEmptyCard}
-            onPress={() => setShortcutModalVisible(true)}
-          >
-            <MaterialIcons name="add-circle-outline" size={32} color="#1D4ED8" />
-            <Text style={styles.shortcutsEmptyTitle}>Add your first shortcut</Text>
-            <Text style={styles.shortcutsEmptySubtitle}>Scan, transfer and more actions in one tap</Text>
+      <View ref={shortcutsRef} style={s.shortcutsSection}>
+        <View style={s.sectionHeaderRow}>
+          <Text style={s.shortcutsHeading}>Shortcuts</Text>
+          <TouchableOpacity style={s.managePill} onPress={() => setShortcutModalVisible(true)}>
+            <MaterialIcons name="tune" size={14} color={C.accent} />
+            <Text style={s.managePillText}>{shortcuts.length ? 'Manage' : 'Add shortcuts'}</Text>
           </TouchableOpacity>
+        </View>
+
+        {shortcuts.length === 0 ? (
+          <TouchableOpacity style={s.shortcutsEmpty} onPress={() => setShortcutModalVisible(true)}>
+            <MaterialIcons name="add-circle-outline" size={32} color={C.accent} />
+            <Text style={s.shortcutsEmptyTitle}>Add your first shortcut</Text>
+            <Text style={s.shortcutsEmptySubtitle}>Scan, transfer and more actions in one tap</Text>
+          </TouchableOpacity>
+        ) : Platform.OS === 'web' ? (
+          /* Web: keep horizontal pill row */
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 10, paddingRight: 4 }}>
+              {shortcuts.map((shortcut) => {
+                const shortcutType = getShortcutType(shortcut.type);
+                if (!shortcutType) return null;
+                const palette = getShortcutPalette(shortcut.colorKey);
+                return (
+                  <TouchableOpacity
+                    key={shortcut.id}
+                    style={[s.shortcutCard, { backgroundColor: palette.bg, borderColor: palette.border }]}
+                    onPress={() => handleExecuteShortcut(shortcut.type)}
+                    onLongPress={() => handleRemoveShortcut(shortcut.id)}
+                  >
+                    <MaterialIcons name={shortcutType.icon} size={18} color={palette.fg} />
+                    <Text style={[s.shortcutText, { color: palette.fg }]} numberOfLines={1}>
+                      {shortcutType.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {canAddMore && (
+                <TouchableOpacity style={s.shortcutAddCard} onPress={() => setShortcutModalVisible(true)}>
+                  <MaterialIcons name="add" size={22} color={C.accent} />
+                  <Text style={s.shortcutAddText}>Add</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </ScrollView>
         ) : (
-          <View style={styles.shortcutsGrid}>
+          /* Mobile: 3-column grid, Bold Industrial style */
+          <View style={s.shortcutGrid}>
             {shortcuts.map((shortcut) => {
               const shortcutType = getShortcutType(shortcut.type);
               if (!shortcutType) return null;
-              const palette = getShortcutPalette(shortcut.colorKey);
-
               return (
                 <TouchableOpacity
                   key={shortcut.id}
-                  style={[
-                    styles.shortcutCard,
-                    {
-                      backgroundColor: palette.bg,
-                      borderColor: palette.border,
-                      borderWidth: 1,
-                      shadowColor: palette.fg,
-                    },
-                  ]}
+                  style={s.shortcutGridCard}
                   onPress={() => handleExecuteShortcut(shortcut.type)}
                   onLongPress={() => handleRemoveShortcut(shortcut.id)}
+                  activeOpacity={0.75}
                 >
-                  <MaterialIcons
-                    name={shortcutType.icon}
-                    size={20}
-                    color={palette.fg}
-                  />
-                  <Text
-                    style={[styles.shortcutText, { color: palette.fg }]}
-                    numberOfLines={1}
-                  >
+                  <View style={[s.shortcutGridIcon, { backgroundColor: shortcutType.bgColor }]}>
+                    <MaterialIcons name={shortcutType.icon} size={24} color={shortcutType.color} />
+                  </View>
+                  <Text style={s.shortcutGridLabel} numberOfLines={2}>
                     {shortcutType.label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
             {canAddMore && (
-              <TouchableOpacity
-                style={[styles.shortcutCard, styles.addShortcutCard]}
-                onPress={() => setShortcutModalVisible(true)}
-              >
-                <MaterialIcons name="add" size={24} color="#1E90FF" />
-                <Text style={styles.shortcutAddText}>Add shortcut</Text>
+              <TouchableOpacity style={s.shortcutGridAdd} onPress={() => setShortcutModalVisible(true)}>
+                <MaterialIcons name="add" size={24} color={C.accent} />
+                <Text style={s.shortcutAddText}>Add</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
       </View>
-
     );
   };
 
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Recent Activity
+  // ═══════════════════════════════════════════════════════
+  const renderRecentActivity = () => {
+    if (!SHOW_RECENT) return null;
+    return (
+      <View style={s.activitySection}>
+        <Text style={[s.shortcutsHeading, { marginBottom: 12 }]}>Recent Activity</Text>
+        {recent.loading ? (
+          <ActivityIndicator size="small" color={C.accent} style={{ marginTop: 16 }} />
+        ) : recent.items.length === 0 ? (
+          <View style={s.activityEmpty}>
+            <MaterialIcons name="history" size={28} color={C.sub2} />
+            <Text style={s.activityEmptyText}>No recent activity</Text>
+            </View>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {recent.items.map((item, idx) => {
+              const actionType = (item.action?.type || 'STATUS_CHANGE').toUpperCase();
+              const mapping = ACTION_ICON_MAP[actionType] || ACTION_ICON_MAP.STATUS_CHANGE;
+              const borderLeftColors = {
+                TRANSFER: C.primary,
+                REPAIR: C.accent,
+                CHECK_IN: C.successFg,
+                MAINTENANCE: C.warningFg,
+              };
+          return (
+            <TouchableOpacity
+                  key={idx}
+                  style={[s.activityRow, { borderLeftColor: borderLeftColors[actionType] || C.line }]}
+                  onPress={() => item.asset?.id && router.push(`/asset/${item.asset.id}`)}
+                >
+                  <View style={[s.activityIcon, { backgroundColor: mapping.bg }]}>
+                    <MaterialIcons name={mapping.icon} size={16} color={mapping.fg} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.activityTitle} numberOfLines={1}>
+                      {item.asset?.model || item.asset?.description || 'Asset'} — {actionType.replace(/_/g, ' ')}
+              </Text>
+                    <Text style={s.activitySub} numberOfLines={1}>
+                      {item.action?.note || item.action?.performed_by_name || ''}
+                    </Text>
+                  </View>
+                  <Text style={s.activityTime}>{getRelativeTime(item.action?.occurred_at)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+                        </View>
+                      )}
+                    </View>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Hero (Mobile)
+  // ═══════════════════════════════════════════════════════
   const renderHeroMobile = () => (
-    <View style={styles.hero}>
-      <View style={styles.heroTopRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.heroTitle}>Hi {userName},</Text>
-          <Text style={styles.heroSub}>
-            {isIos ? 'Quick actions for your assets.' : "Here's what needs your attention today."}
-          </Text>
-        </View>
+    <View style={[s.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 8 : 6) }]}>
+      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+      <View style={s.heroTopRow}>
+        <View style={s.heroStub} />
+        <Text style={s.heroTitle}>
+          <Text style={s.heroTitleGear}>GEAR</Text>
+          <Text style={s.heroTitleOps}>OPS</Text>
+        </Text>
         <TouchableOpacity onPress={() => setShowProfileMenu(!showProfileMenu)}>
           <TourTarget id="profile-btn">
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{userInitials}</Text>
+            <View style={s.avatar}>
+              <Text style={s.avatarText}>{userInitials}</Text>
             </View>
           </TourTarget>
         </TouchableOpacity>
@@ -435,183 +419,136 @@ const Dashboard = ({ isAdmin }) => {
     </View>
   );
 
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Quick Actions (Mobile)
+  // ═══════════════════════════════════════════════════════
+  const ACTION_COLORS = [
+    { bg: C.accentMuted, fg: C.accent },
+    { bg: C.infoBg, fg: C.infoFg },
+    { bg: C.chip, fg: C.sub },
+    { bg: C.successBg, fg: C.successFg },
+    { bg: '#EEF2FF', fg: C.infoFg },
+    { bg: C.warningBg, fg: C.warningFg },
+  ];
+
+  const renderQuickActions = () => (
+    <View style={s.actionsGrid}>
+      {quickActions.map((action, idx) => {
+        const ac = ACTION_COLORS[idx] || ACTION_COLORS[0];
+              return (
+          <TourTarget key={action.key} id={`qa-${action.key}`} style={{ flexBasis: '31%' }}>
+            <TouchableOpacity style={s.actionCard} onPress={action.onPress}>
+              <View style={[s.actionIconWrap, { backgroundColor: ac.bg }]}>
+                <MaterialIcons name={action.icon} size={22} color={ac.fg} />
+              </View>
+              <Text style={s.actionLabel}>{action.label}</Text>
+            </TouchableOpacity>
+          </TourTarget>
+              );
+            })}
+    </View>
+  );
+
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Web Content Area
+  // ═══════════════════════════════════════════════════════
   const renderWebContent = () => {
     const key = webViewKey;
     if (!key || key === 'dashboard' || key === 'search') {
-      return (
-        <View style={styles.webPane}>
-          <SearchScreen embed />
-        </View>
-      );
+      return <View style={s.webPane}><SearchScreen embed /></View>;
     }
-    if (key === 'certs') {
-      return (
-        <View style={styles.webPane}>
-          <ErrorBoundary>
-            <CertsView visible />
-          </ErrorBoundary>
-        </View>
-      );
-    }
-    if (key === 'inventory') {
-      return (
-        <View style={styles.webPane}>
-          <InventoryScreen />
-        </View>
-      );
-    }
+    if (key === 'certs') return <View style={s.webPane}><ErrorBoundary><CertsView visible /></ErrorBoundary></View>;
+    if (key === 'inventory') return <View style={s.webPane}><InventoryScreen /></View>;
     if (key === 'shortcuts') {
       return (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <TourTarget id="section-shortcuts">
-            {renderShortcutsSection()}
-          </TourTarget>
+        <ScrollView contentContainerStyle={s.scrollContent}>
+          <TourTarget id="section-shortcuts">{renderShortcutsSection()}</TourTarget>
         </ScrollView>
       );
     }
-    if (key === 'tasks') {
-      return (
-        <View style={styles.webPane}>
-          <TasksScreen />
-        </View>
-      );
-    }
-    if (key === 'hire') {
-      return (
-        <View style={styles.webPane}>
-          <HireView />
-        </View>
-      );
-    }
-    return (
-      <View style={styles.webPane}>
-        <SearchScreen embed />
-      </View>
-    );
+    if (key === 'tasks') return <View style={s.webPane}><TasksScreen /></View>;
+    if (key === 'hire') return <View style={s.webPane}><HireView /></View>;
+    return <View style={s.webPane}><SearchScreen embed /></View>;
   };
 
+  // ═══════════════════════════════════════════════════════
+  // RENDER: Loading
+  // ═══════════════════════════════════════════════════════
   if (loading) {
     return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#1E90FF" />
+      <View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={C.accent} />
       </View>
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // MAIN RETURN
+  // ═══════════════════════════════════════════════════════
   return (
-    <ScreenWrapper style={styles.safeArea}>
-      <View style={styles.dashboard}>
+    <ScreenWrapper style={s.safeArea} edges={['left', 'right', 'bottom']}>
+      <View style={s.dashboard}>
         {isDesktopWeb ? (
-          <View style={styles.webContent}>{renderWebContent()}</View>
+          <View style={s.webContent}>{renderWebContent()}</View>
         ) : (
           <ScrollView
             ref={scrollViewRef}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+            contentContainerStyle={s.scrollContent}
           >
             {renderHeroMobile()}
-            <View style={styles.quickRow}>
-              {quickActions.map((action) => (
-                <TourTarget key={action.key} id={`qa-${action.key}`} style={{ flexBasis: '48%' }}>
-                  <TouchableOpacity
-                    style={[styles.quickCard, { flexBasis: undefined, width: '100%' }]}
-                    onPress={action.onPress}
-                  >
-                    <MaterialIcons name={action.icon} size={20} color="#2563EB" />
-                    <Text style={styles.quickText}>{action.label}</Text>
-                  </TouchableOpacity>
-                </TourTarget>
-              ))}
+            <View style={s.scrollPad}>
+              {renderQuickActions()}
+              <TourTarget id="section-shortcuts">
+                {renderShortcutsSection()}
+              </TourTarget>
+              {renderRecentActivity()}
             </View>
-            <TourTarget id="section-shortcuts">
-              {renderShortcutsSection()}
-            </TourTarget>
-          </ScrollView>
+            </ScrollView>
         )}
 
-        {/* Tour Target for Inventory Tab (Invisible) */}
         {!isDesktopWeb && (
           <TourTarget
             id="nav-inventory-tab"
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              right: 0,
-              width: '50%',
-              height: 0 // Zero height, we'll expand the highlight in TourGuide
-            }}
+            style={{ position: 'absolute', bottom: 0, right: 0, width: '50%', height: 0 }}
           >
             <View />
           </TourTarget>
         )}
       </View>
 
+      {/* ─── Profile Menu Modal ─── */}
       <Modal
-        transparent
-        visible={showProfileMenu}
-        animationType="fade"
+        transparent visible={showProfileMenu} animationType="fade"
         onRequestClose={() => setShowProfileMenu(false)}
-        statusBarTranslucent
-        presentationStyle="overFullScreen"
+        statusBarTranslucent presentationStyle="overFullScreen"
       >
-        <View style={styles.menuOverlay} pointerEvents="box-none">
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setShowProfileMenu(false)}
-          />
-          <View
-            style={styles.profileMenuFixed}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            pointerEvents="box-none"
-          >
+        <View style={s.menuOverlay} pointerEvents="box-none">
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowProfileMenu(false)} />
+          <View style={s.profileMenu} onStartShouldSetResponder={() => true} pointerEvents="box-none">
             {canAdmin && (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setShowProfileMenu(false);
-                  setTimeout(() => router.push('/admin'), 100);
-                }}
-              >
-                <Text style={styles.menuText}>Admin Console</Text>
+              <TouchableOpacity style={s.menuItem} onPress={() => { setShowProfileMenu(false); setTimeout(() => router.push('/admin'), 100); }}>
+                <MaterialIcons name="admin-panel-settings" size={18} color={C.sub} />
+                <Text style={s.menuText}>Admin Console</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowProfileMenu(false);
-                setTimeout(() => router.push('/profile'), 100);
-              }}
-            >
-              <Text style={styles.menuText}>Profile</Text>
+            <TouchableOpacity style={s.menuItem} onPress={() => { setShowProfileMenu(false); setTimeout(() => router.push('/profile'), 100); }}>
+              <MaterialIcons name="person" size={18} color={C.sub} />
+              <Text style={s.menuText}>Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={async () => {
-                setShowProfileMenu(false);
-                setTimeout(async () => {
-                  await handleRestartTour();
-                }, 100);
-              }}
-            >
-              <Text style={styles.menuText}>Restart Tour</Text>
+            <TouchableOpacity style={s.menuItem} onPress={async () => { setShowProfileMenu(false); setTimeout(() => handleRestartTour(), 100); }}>
+              <MaterialIcons name="replay" size={18} color={C.sub} />
+              <Text style={s.menuText}>Restart Tour</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuItemLast]}
-              onPress={() => {
-                setShowProfileMenu(false);
-                setTimeout(() => handleLogout(), 100);
-              }}
-            >
-              <Text style={[styles.menuText, styles.logoutText]}>Logout</Text>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={() => { setShowProfileMenu(false); setTimeout(() => handleLogout(), 100); }}>
+              <MaterialIcons name="logout" size={18} color={C.dangerFg} />
+              <Text style={[s.menuText, { color: C.dangerFg }]}>Log Out</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Task action modal moved to (tabs)/tasks.js */}
-
-      {/* Add Shortcut Modal */}
+      {/* ─── Add Shortcut Modal ─── */}
       <AddShortcutModal
         visible={shortcutModalVisible}
         onClose={() => setShortcutModalVisible(false)}
@@ -621,172 +558,277 @@ const Dashboard = ({ isAdmin }) => {
         isAdmin={canAdmin}
       />
 
-      {/* ─── Shortcut Colour Picker (iOS only) ─── */}
-      {Platform.OS === 'ios' && (
-        <Modal
-          visible={colorPickerVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setColorPickerVisible(false)}
-        >
-          <View style={styles.cpOverlay}>
-            <View style={styles.cpSheet}>
-              <View style={styles.cpHandle} />
-              <Text style={styles.cpTitle}>Shortcut Colours</Text>
-              <Text style={styles.cpSub}>
-                {cpApplyAll ? 'Tap a colour to apply it to all shortcuts' : 'Select a shortcut then pick its colour'}
-              </Text>
-
-              {/* Shortcut selector row — hidden when Apply All is on */}
-              {!cpApplyAll && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-                  <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 2 }}>
-                    {shortcuts.map((sc) => {
-                      const st = getShortcutType(sc.type);
-                      const pal = getShortcutPalette(sc.colorKey);
-                      const isSelected = colorPickerShortcut?.id === sc.id;
-                      return (
-                        <TouchableOpacity
-                          key={sc.id}
-                          onPress={() => setColorPickerShortcut(sc)}
-                          style={[
-                            styles.cpShortcutChip,
-                            { backgroundColor: pal.bg, borderColor: isSelected ? pal.fg : pal.border },
-                            isSelected && { borderWidth: 2 },
-                          ]}
-                        >
-                          <MaterialIcons name={st?.icon || 'star'} size={18} color={pal.fg} />
-                          <Text style={[styles.cpChipLabel, { color: pal.fg }]} numberOfLines={1}>
-                            {st?.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-              )}
-
-              {/* Apply-to-all toggle */}
-              <TouchableOpacity
-                style={[styles.cpAllToggle, cpApplyAll && styles.cpAllToggleActive]}
-                onPress={() => setCpApplyAll((v) => !v)}
-              >
-                <MaterialIcons
-                  name={cpApplyAll ? 'check-box' : 'check-box-outline-blank'}
-                  size={18}
-                  color={cpApplyAll ? '#fff' : '#0B63CE'}
-                />
-                <Text style={[styles.cpAllToggleText, cpApplyAll && { color: '#fff' }]}>
-                  Apply to all shortcuts
-                </Text>
-              </TouchableOpacity>
-
-              {/* Colour swatches */}
-              {(cpApplyAll || colorPickerShortcut) && (
-                <View style={styles.cpSwatchGrid}>
-                  {SHORTCUT_COLOR_PALETTES.map((palette) => {
-                    const activeKey = cpApplyAll ? null : (colorPickerShortcut?.colorKey || 'blue');
-                    const isActive = !cpApplyAll && activeKey === palette.key;
-                    return (
-                      <TouchableOpacity
-                        key={palette.key}
-                        style={[
-                          styles.cpSwatch,
-                          { backgroundColor: palette.bg, borderColor: palette.border },
-                          isActive && { borderColor: palette.fg, borderWidth: 2.5 },
-                        ]}
-                        onPress={async () => {
-                          if (cpApplyAll) {
-                            await Promise.all(
-                              shortcuts.map((sc) => handleUpdateShortcutColor(sc.id, palette.key))
-                            );
-                          } else if (colorPickerShortcut) {
-                            await handleUpdateShortcutColor(colorPickerShortcut.id, palette.key);
-                            setColorPickerShortcut((prev) => prev ? { ...prev, colorKey: palette.key } : prev);
-                          }
-                        }}
-                        activeOpacity={0.75}
-                      >
-                        <View style={[styles.cpSwatchDot, { backgroundColor: palette.fg }]} />
-                        {isActive && (
-                          <MaterialIcons name="check" size={13} color={palette.fg} style={styles.cpSwatchCheck} />
-                        )}
-                        <Text style={[styles.cpSwatchName, { color: palette.fg }]}>{palette.name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={styles.cpDoneBtn}
-                onPress={() => {
-                  setColorPickerVisible(false);
-                  setCpApplyAll(false);
-                }}
-              >
-                <Text style={styles.cpDoneBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
     </ScreenWrapper>
   );
 };
 
-Dashboard.propTypes = {
-  isAdmin: PropTypes.bool,
-};
+Dashboard.propTypes = { isAdmin: PropTypes.bool };
+Dashboard.defaultProps = { isAdmin: false };
 
-Dashboard.defaultProps = {
-  isAdmin: false,
-};
+// ═══════════════════════════════════════════════════════
+// STYLES — Bold Industrial
+// ═══════════════════════════════════════════════════════
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
+  safeArea: { flex: 1, backgroundColor: C.bg },
+  dashboard: { flex: 1, backgroundColor: C.bg },
+  scrollContent: { paddingBottom: 24 },
+  scrollPad: { paddingHorizontal: 16, paddingTop: 16 },
+  webContent: { flex: 1 },
+  webPane: { flex: 1, minHeight: 0, overflow: 'auto' },
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7FAFF' },
-  safeArea: { flex: 1, backgroundColor: '#F7FAFF' },
-  dashboard: { flex: 1, backgroundColor: '#F7FAFF' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  loadingContainer: { justifyContent: 'center', alignItems: 'center', flex: 1 },
+  // Hero
   hero: {
-    backgroundColor: '#0B63CE',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 14,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    backgroundColor: C.primary,
+    paddingHorizontal: 16,
+    paddingBottom: 13,
     borderBottomWidth: 3,
-    borderBottomColor: '#FBBF24',
+    borderBottomColor: C.accent,
+    marginBottom: 16,
   },
-  heroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  heroTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  heroSub: { color: '#D6E8FF', marginTop: 2, fontSize: 13 },
-  heroStatsRow: { flexDirection: 'row', marginTop: 6, gap: 10 },
-  heroStatCard: {
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  heroGreeting: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  heroTitle: {
     flex: 1,
-    backgroundColor: 'rgba(251,191,36,0.15)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.3)',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(191,219,254,0.45)',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 1,
   },
-  heroStatValue: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
-  heroStatLabel: { fontSize: 11, fontWeight: '600', color: '#E0ECFF', marginTop: 2, textTransform: 'uppercase' },
+  heroTitleGear: {
+    color: '#FFFFFF',
+  },
+  heroTitleOps: {
+    color: C.accent,
+  },
   avatar: {
-    backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 25, width: 46, height: 46, justifyContent: 'center', alignItems: 'center', elevation: 2,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: Radius.md,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  avatarText: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  profileMenu: { display: 'none' },
+  avatarText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  heroStub: { width: 36, height: 36 },
+
+  // Quick Actions
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  actionCard: {
+    flexBasis: '31%',
+    backgroundColor: C.card,
+    borderRadius: Radius.lg,
+    paddingVertical: 18,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: C.line,
+    ...Shadows.card,
+  },
+  actionIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+
+  // Section headers
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: C.sub2,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+
+  // Shortcuts
+  shortcutsSection: { marginBottom: 24 },
+  shortcutsHeading: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  managePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: C.line,
+    backgroundColor: C.card,
+  },
+  managePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  shortcutsEmpty: {
+    borderWidth: 2,
+    borderColor: C.line,
+    borderRadius: Radius.lg,
+    paddingHorizontal: 18,
+    paddingVertical: 28,
+    alignItems: 'center',
+    backgroundColor: C.card,
+    gap: 6,
+  },
+  shortcutsEmptyTitle: { fontSize: 16, fontWeight: '800', color: C.text },
+  shortcutsEmptySubtitle: { fontSize: 13, color: C.sub, textAlign: 'center' },
+  // Web horizontal pill cards (unchanged)
+  shortcutCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minWidth: 110,
+  },
+  shortcutText: { fontSize: 13, fontWeight: '700' },
+  shortcutAddCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: C.accent,
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    minWidth: 90,
+  },
+  shortcutAddText: { fontSize: 11, color: C.accent, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  // Mobile 3-column Bold Industrial grid
+  shortcutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  shortcutGridCard: {
+    width: '30.5%',
+    flexGrow: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    backgroundColor: C.card,
+    borderColor: C.line,
+  },
+  shortcutGridIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutGridLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    color: C.text,
+  },
+  shortcutGridAdd: {
+    width: '30.5%',
+    flexGrow: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: C.accent,
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
+  },
+
+  // Recent Activity
+  activitySection: { marginTop: 4, marginBottom: 16 },
+  activityEmpty: { alignItems: 'center', paddingVertical: 24, gap: 8 },
+  activityEmptyText: { fontSize: 13, color: C.sub2, fontWeight: '500' },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    backgroundColor: C.card,
+    borderWidth: 2,
+    borderColor: C.line,
+    borderRadius: Radius.md,
+    borderLeftWidth: 4,
+  },
+  activityIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  activityTitle: { fontSize: 13, fontWeight: '700', color: C.text },
+  activitySub: { fontSize: 11, color: C.sub2, marginTop: 1 },
+  activityTime: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.sub2,
+    textTransform: 'uppercase',
+    flexShrink: 0,
+  },
+
+  // Profile Menu
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-start',
     alignItems: 'flex-end',
     paddingTop: 70,
@@ -794,308 +836,35 @@ const styles = StyleSheet.create({
     zIndex: 10001,
     elevation: 10001,
   },
-  menuBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)' },
-  profileMenuFixed: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+  profileMenu: {
+    backgroundColor: C.card,
+    borderRadius: Radius.lg,
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 10002,
-    minWidth: 180,
-    borderWidth: 1,
-    borderColor: '#E9F1FF',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: C.line,
+    minWidth: 200,
+    ...Shadows.lg,
     zIndex: 10002,
+    elevation: 10002,
   },
-  menuItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  menuItemLast: { borderBottomWidth: 0 },
-  menuText: { fontSize: 16, color: '#333' },
-  logoutText: { color: '#ff4444' },
-  overdueBadgeText: { color: '#B91C1C', fontWeight: '800', marginLeft: 6 },
-  reminderBadge: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#DBEAFE', borderWidth: 1, borderColor: '#BFDBFE',
-    borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8,
-  },
-  reminderBadgeText: { color: '#1D4ED8', fontWeight: '800', marginLeft: 6 },
-  neutralBadge: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB',
-    borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8,
-  },
-  neutralBadgeText: { color: '#374151', fontWeight: '800', marginLeft: 6 },
-  taskModalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    width: '92%',
-    maxWidth: 520,
-    borderWidth: 1,
-    borderColor: '#E9F1FF'
-  },
-  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8, marginBottom: 18 },
-  quickCard: { flexBasis: '48%', backgroundColor: '#fff', borderRadius: 12, paddingVertical: 16, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#E9F1FF', shadowColor: '#0B63CE', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
-  quickText: { color: '#2563EB', fontWeight: '800' },
-  webContent: { flex: 1 },
-  webPane: { flex: 1, minHeight: 0, overflow: 'auto' },
-  recentSection: { marginTop: 6, marginBottom: 16 },
-  recentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EFF4FF' },
-  recentIconWrap: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#EEF5FF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DDEBFF' },
-  recentTitle: { color: '#111', fontWeight: '800' },
-  recentSub: { color: '#666', fontSize: 12, marginTop: 2 },
-  recentWhen: { color: '#888', fontSize: 11, marginLeft: 8 },
-  shortcutsSection: { marginTop: 16, marginBottom: 20 },
-  shortcutsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  sectionTitle: { fontSize: 14, fontWeight: '900', color: '#D97706', marginBottom: 12, letterSpacing: 0.5 },
-  errorText: { color: '#B91C1C', marginTop: 8 },
-  emptyText: { color: '#6B7280', marginTop: 8 },
-  shortcutsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  shortcutCard: {
-    backgroundColor: '#fff',
-    padding: 14,
-    borderRadius: 12,
-    width: '48%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-    minHeight: 86,
-    gap: 6,
-  },
-  shortcutCardScanStyle: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E9F1FF',
-    shadowColor: '#0B63CE',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  addShortcutCard: { borderWidth: 1, borderColor: '#1E90FF', borderStyle: 'dashed', backgroundColor: 'transparent' },
-  shortcutText: { color: '#111827', fontSize: 14, fontWeight: '600', textAlign: 'center' },
-  shortcutAddText: { marginTop: 2, fontSize: 12, color: '#1D4ED8', fontWeight: '600' },
-  manageShortcutsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
-    backgroundColor: '#F8FAFF',
-  },
-  manageShortcutsBtnText: { fontSize: 12, color: '#1D4ED8', fontWeight: '700' },
-  shortcutsEmptyCard: {
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 24,
-    alignItems: 'center',
-    backgroundColor: '#F8FAFF',
-    gap: 6,
-  },
-  shortcutsEmptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
-  shortcutsEmptySubtitle: { fontSize: 13, color: '#475569', textAlign: 'center' },
-  toDoList: { marginTop: 16 },
-  toDoCard: { backgroundColor: '#fff', padding: 20, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
-  tasksHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  tasksHeaderChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    gap: 6,
-  },
-  tasksHeaderChipText: { fontSize: 12, fontWeight: '700', color: '#1D4ED8' },
-  taskSummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 18 },
-  taskSummaryCard: {
-    flexGrow: 1,
-    flexBasis: '48%',
-    minWidth: 140,
-    borderRadius: 14,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  taskSummaryIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  taskSummaryValue: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  taskSummaryLabel: { fontSize: 12, fontWeight: '600', color: '#475569' },
-  toDoTitle: { fontSize: 17, fontWeight: '600', color: '#333', marginBottom: 8 },
-  toDoText: { color: '#666', marginBottom: 15, fontSize: 15 },
-  toDoButton: { backgroundColor: '#1E90FF', paddingVertical: 8, paddingHorizontal: 20, borderRadius: 6, alignSelf: 'flex-start' },
-  taskPrimaryButton: { borderRadius: 999, paddingHorizontal: 22 },
-  toDoButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  btn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
-  btnPrimary: { backgroundColor: '#2563EB' },
-  btnGhost: { borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
-  overdueBadge: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FCA5A5',
-    borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8,
-  },
-  taskCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: Platform.OS === 'web' ? 22 : 14,
-    paddingHorizontal: Platform.OS === 'web' ? 20 : 14,
-    borderWidth: 1,
-    borderColor: '#E5EDFF',
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-    ...(Platform.OS === 'web' ? { minHeight: 210 } : null),
-  },
-  taskCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 10 },
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    gap: 6,
-  },
-  statusChipText: { fontSize: 12, fontWeight: '700' },
-  duePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    gap: 6,
-  },
-  duePillText: { fontSize: 12, fontWeight: '600', color: '#111827' },
-  taskMainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
-  taskHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
-  taskAssetThumb: { width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF' },
-  taskAssetThumbPlaceholder: { width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#EEF5FF', justifyContent: 'center', alignItems: 'center' },
-  taskAssetTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  taskTitle: { fontSize: 14, fontWeight: '600', color: '#1D4ED8', marginTop: 2 },
-  taskMetaRow: { marginTop: 6, gap: 4 },
-  taskMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  taskMetaText: { fontSize: 12, color: '#6B7280' },
-  taskFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 12 },
-  taskTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  smallTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    gap: 4,
-  },
-  smallTagOverdue: { backgroundColor: '#FEE2E2' },
-  smallTagReminder: { backgroundColor: '#DBEAFE' },
-  smallTagSignoff: { backgroundColor: '#E0E7FF' },
-  smallTagText: { fontSize: 11, fontWeight: '600', color: '#111827' },
-  smallTagMaintenance: { backgroundColor: '#CCFBF1' },
-  emptyStateCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 28,
-    gap: 10,
-  },
-  emptyStateIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  emptyStateTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  emptyStateSubtitle: { fontSize: 13, color: '#6B7280', textAlign: 'center', marginHorizontal: 10 },
-  emptyStateActionsRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  emptyStateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    paddingVertical: 12,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: Radius.sm,
   },
-  emptyStateButtonPrimary: { backgroundColor: '#1D4ED8' },
-  emptyStateButtonGhost: { backgroundColor: '#EFF6FF' },
-  emptyStateButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
-  emptyStateButtonGhostText: { color: '#1D4ED8', fontWeight: '700', fontSize: 13 },
-  emptyStateHint: { marginTop: 6, fontSize: 11, color: '#9CA3AF', textAlign: 'center' },
-  taskFiltersRow: {
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    gap: 4,
-    marginBottom: 6,
-    marginTop: 2,
-    display: Platform.OS === 'web' ? 'flex' : 'none',
-  },
-  taskFilterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    backgroundColor: '#FFFFFF',
-  },
-  taskFilterChipSelected: {
-    backgroundColor: '#1D4ED8',
-    borderColor: '#1D4ED8',
-  },
-  taskFilterChipEmpty: {
-    opacity: 0.45,
-  },
-  taskFilterChipText: { fontSize: 11, fontWeight: '600', color: '#4B5563' },
-  taskFilterChipTextSelected: { color: '#FFFFFF' },
-  tasksTimelineSection: { marginTop: 10 },
-  tasksTimelineRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
-  tasksTimelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 6,
-    backgroundColor: '#2563EB',
-  },
-  tasksTimelineTitle: { fontSize: 13, fontWeight: '600', color: '#111827' },
-  tasksTimelineSub: { fontSize: 11, color: '#6B7280' },
+  menuText: { fontSize: 14, fontWeight: '600', color: C.text },
+  menuDivider: { height: 1, backgroundColor: C.line, marginVertical: 4, marginHorizontal: 8 },
 
-  quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 4 },
-  quickDateChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
-  quickDateChipText: { color: '#2563EB', fontWeight: '800' },
-
-  // ─── Colour Picker Sheet (iOS) ───
-  cpOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
+  // Colour Picker
+  cpOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   cpSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: C.card,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 40,
@@ -1105,100 +874,57 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: C.line,
     marginBottom: 16,
   },
-  cpTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  cpSub: {
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  cpShortcutChip: {
+  cpTitle: { fontSize: 18, fontWeight: '900', color: C.text, textAlign: 'center', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cpSub: { fontSize: 13, color: C.sub, textAlign: 'center', marginBottom: 20 },
+  cpChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1.5,
   },
-  cpChipLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  cpAllToggle: {
+  cpChipLabel: { fontSize: 13, fontWeight: '700' },
+  cpToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     alignSelf: 'center',
     paddingHorizontal: 16,
     paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: C.line,
+    backgroundColor: C.chip,
     marginBottom: 20,
   },
-  cpAllToggleActive: {
-    backgroundColor: '#0B63CE',
-    borderColor: '#0B63CE',
-  },
-  cpAllToggleText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0B63CE',
-  },
-  cpSwatchGrid: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    flexWrap: 'wrap',
-    marginBottom: 28,
-  },
+  cpToggleActive: { backgroundColor: C.accent, borderColor: C.accent },
+  cpToggleText: { fontSize: 13, fontWeight: '700', color: C.accent },
+  cpSwatchGrid: { flexDirection: 'row', justifyContent: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 28 },
   cpSwatch: {
     width: 60,
     height: 76,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     position: 'relative',
   },
-  cpSwatchDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-  },
-  cpSwatchCheck: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-  },
-  cpSwatchName: {
-    fontSize: 9,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
+  cpSwatchDot: { width: 24, height: 24, borderRadius: 12 },
+  cpSwatchCheck: { position: 'absolute', top: 4, right: 4 },
+  cpSwatchName: { fontSize: 9, fontWeight: '700', textAlign: 'center' },
   cpDoneBtn: {
-    backgroundColor: '#0B63CE',
-    borderRadius: 14,
+    backgroundColor: C.primary,
+    borderRadius: Radius.md,
     paddingVertical: 15,
     alignItems: 'center',
   },
-  cpDoneBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  cpDoneBtnText: { color: '#fff', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
 
 export default Dashboard;

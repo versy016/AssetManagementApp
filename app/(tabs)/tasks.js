@@ -5,24 +5,24 @@ import {
   View,
   Text,
   TextInput,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
   ActivityIndicator,
-  Animated,
-  Dimensions,
   Modal,
   Platform,
   Image,
   KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { BlurView } from 'expo-blur';
 import { DatePickerModal } from 'react-native-paper-dates';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { auth } from '../../firebaseConfig';
 import { useRouter } from 'expo-router';
@@ -51,10 +51,6 @@ export default function TasksScreen() {
   const [dbAdmin, setDbAdmin] = useState(false);
   const [tasks, setTasks] = useState({ items: [], loading: true });
   const [taskFilter, setTaskFilter] = useState('all');
-  const [taskIndex, setTaskIndex] = useState(0);
-  const [taskWidth, setTaskWidth] = useState(Math.max(1, Dimensions.get('window')?.width - 48));
-  const taskListRef = useRef(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
   const actionScrollRef = useRef(null);
 
   const [dateOpen, setDateOpen] = useState(false);
@@ -105,41 +101,37 @@ export default function TasksScreen() {
     return () => { cancelled = true; };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!user?.uid) {
-      setDbAdmin(false);
-      return;
-    }
-    let ignore = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/users/${user.uid}`);
-        if (!res.ok) throw new Error('Failed to load user');
-        const data = await res.json();
-        if (!ignore) {
-          const role = String(data?.role || '').toUpperCase();
-          setDbAdmin(role === 'ADMIN');
-        }
-      } catch {
-        if (!ignore) setDbAdmin(false);
-      }
-    })();
-    return () => { ignore = true; };
-  }, [user?.uid]);
-
   const canAdmin = dbAdmin;
 
-  // Build tasks from assets
+  // Build tasks from assets — fetch admin role and asset list in parallel,
+  // then fetch all asset-type field definitions concurrently.
   useEffect(() => {
+    if (!user?.uid) return;
     let cancelled = false;
     (async () => {
       try {
         setTasks((prev) => ({ ...prev, loading: true }));
-        const res = await fetch(`${API_BASE_URL}/assets`);
-        const data = await res.json();
+
+        // Fire assets + admin role check at the same time
+        const [assetsRes, userRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/assets`),
+          fetch(`${API_BASE_URL}/users/${user.uid}`),
+        ]);
+        if (cancelled) return;
+
+        const [data, userData] = await Promise.all([
+          assetsRes.json(),
+          userRes.ok ? userRes.json() : Promise.resolve({}),
+        ]);
+        if (cancelled) return;
+
+        const role = String(userData?.role || '').toUpperCase();
+        const resolvedAdmin = role === 'ADMIN';
+        setDbAdmin(resolvedAdmin);
+
         const list = Array.isArray(data) ? data : [];
         const me = auth?.currentUser?.uid || null;
-        const viewingAsAdmin = !!canAdmin;
+        const viewingAsAdmin = resolvedAdmin;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -173,7 +165,8 @@ export default function TasksScreen() {
 
         const typeIds = Array.from(new Set(list.map((a) => a.type_id).filter(Boolean)));
         const defsCache = {};
-        for (const tId of typeIds) {
+        // Fetch all asset-type field definitions concurrently
+        await Promise.all(typeIds.map(async (tId) => {
           try {
             const r = await fetch(`${API_BASE_URL}/assets/asset-types/${tId}/fields`);
             const arr = await r.json();
@@ -181,7 +174,8 @@ export default function TasksScreen() {
           } catch {
             defsCache[tId] = [];
           }
-        }
+        }));
+        if (cancelled) return;
         const leadDaysMap = {};
         for (const [tId, defs] of Object.entries(defsCache)) {
           const per = {};
@@ -340,19 +334,30 @@ export default function TasksScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, canAdmin]);
+  }, [user?.uid]); // admin role is fetched concurrently inside — no need to re-run when canAdmin changes
 
-  // Pending sign-off tasks — fetch full asset details by assetId so we show model, type, serial
+  // Pending sign-off tasks — fetch signoffs and admin role concurrently
   useEffect(() => {
+    if (!user?.uid) return;
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE_URL}/assets/actions/pending-signoff`);
-        const j = await r.json();
+        const [signoffRes, userRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/assets/actions/pending-signoff`),
+          fetch(`${API_BASE_URL}/users/${user.uid}`),
+        ]);
+        if (cancelled) return;
+        const [j, userData] = await Promise.all([
+          signoffRes.json(),
+          userRes.ok ? userRes.json() : Promise.resolve({}),
+        ]);
+        if (cancelled) return;
+        const role = String(userData?.role || '').toUpperCase();
+        const resolvedAdmin = role === 'ADMIN';
         const me = auth?.currentUser?.uid || null;
         const arr = Array.isArray(j?.items) ? j.items : [];
         const mine = arr.filter((it) => {
-          if (canAdmin) return true;
+          if (resolvedAdmin) return true;
           if (!me) return false;
           if (!it.assigned_to_id) return true;
           return String(it.assigned_to_id) === String(me);
@@ -408,7 +413,7 @@ export default function TasksScreen() {
       } catch (_) {}
     })();
     return () => { cancelled = true; };
-  }, [user, canAdmin]);
+  }, [user?.uid]); // admin role fetched concurrently inside
 
   const prettyDate = (d) => {
     try {
@@ -1065,20 +1070,22 @@ export default function TasksScreen() {
 
   return (
     <ScreenWrapper style={styles.safeArea}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
 
-        {/* ── Sub-tab bar — mobile only (web has Hire in the navbar) ── */}
+        {/* ── Sub-tab bar ── */}
         {Platform.OS !== 'web' && (
           <View style={styles.subTabBar}>
-            {['tasks', 'hire'].map((tab) => (
+            {[
+              { key: 'tasks', label: 'Tasks' },
+              { key: 'hire',  label: 'Hire'  },
+            ].map((tab) => (
               <TouchableOpacity
-                key={tab}
-                style={[styles.subTab, activeTab === tab && styles.subTabActive]}
-                onPress={() => setActiveTab(tab)}
+                key={tab.key}
+                style={[styles.subTab, activeTab === tab.key && styles.subTabActive]}
+                onPress={() => setActiveTab(tab.key)}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.subTabText, activeTab === tab && styles.subTabTextActive]}>
-                  {tab === 'tasks' ? 'Tasks' : 'Hire'}
+                <Text style={[styles.subTabText, activeTab === tab.key && styles.subTabTextActive]}>
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -1087,609 +1094,281 @@ export default function TasksScreen() {
 
         {/* ── Hire tab — mobile only ────────────────────────────── */}
         {Platform.OS !== 'web' && activeTab === 'hire' && (
-          <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
+          <FlatList
+            data={hires}
+            keyExtractor={(h) => String(h.id)}
+            contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.hireHeaderRow}>
-              <Text style={styles.sectionTitle}>Hire</Text>
-              {hires.length > 0 && (
-                <View style={styles.hireBadge}>
-                  <MaterialIcons name="assignment" size={13} color="#065F46" />
-                  <Text style={styles.hireBadgeText}>{hires.length} record{hires.length !== 1 ? 's' : ''}</Text>
-                </View>
-              )}
-            </View>
-
-            {hiresLoading ? (
-              <LoadingSpinner flex={false} size="large" />
-            ) : hires.length === 0 ? (
-              <EmptyState
-                icon="assignment"
-                iconColor="#065F46"
-                iconBg="#ECFDF5"
-                title="No hire records"
-                subtitle="Hire records will appear here once equipment has been hired out."
-              />
-            ) : (
-              hires.map((h) => {
-                const signed = h.signatureStatus === 'signed';
-                return (
-                  <View key={h.id} style={styles.hireCard}>
-                    {/* Equipment row */}
-                    <View style={styles.hireCardTopRow}>
-                      <View style={styles.hireCardIconWrap}>
-                        <MaterialIcons name="construction" size={18} color="#065F46" />
-                      </View>
-                      <View style={styles.hireCardEquipCol}>
-                        <Text style={styles.hireCardEquip} numberOfLines={1}>
-                          {h.assetType || 'Equipment'}
-                        </Text>
-                        {h.serial ? (
-                          <Text style={styles.hireCardSerial}>Serial: {h.serial}</Text>
-                        ) : null}
-                      </View>
-                      <View style={[styles.hireStatusBadge, signed ? styles.hireStatusSigned : styles.hireStatusPending]}>
-                        <MaterialIcons
-                          name={signed ? 'verified' : 'pending'}
-                          size={11}
-                          color={signed ? '#065F46' : '#92400E'}
-                        />
-                        <Text style={[styles.hireStatusText, { color: signed ? '#065F46' : '#92400E' }]}>
-                          {signed ? 'Signed' : 'Pending'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Divider */}
-                    <View style={styles.hireCardDivider} />
-
-                    {/* Contact */}
-                    <View style={styles.hireCardRow}>
-                      <MaterialIcons name="person" size={14} color="#64748B" style={styles.hireCardRowIcon} />
-                      <Text style={styles.hireCardValue} numberOfLines={1}>{h.contactName || '—'}</Text>
-                    </View>
-                    {h.phone && h.phone !== '—' ? (
-                      <View style={styles.hireCardRow}>
-                        <MaterialIcons name="phone" size={14} color="#64748B" style={styles.hireCardRowIcon} />
-                        <Text style={styles.hireCardValue}>{h.phone}</Text>
-                      </View>
-                    ) : null}
-                    {h.email ? (
-                      <View style={styles.hireCardRow}>
-                        <MaterialIcons name="email" size={14} color="#64748B" style={styles.hireCardRowIcon} />
-                        <Text style={styles.hireCardValue} numberOfLines={1}>{h.email}</Text>
-                      </View>
-                    ) : null}
-
-                    {/* Dates */}
-                    <View style={styles.hireCardDivider} />
-                    <View style={styles.hireDatesRow}>
-                      <View style={styles.hireDateBlock}>
-                        <Text style={styles.hireDateLabel}>FROM</Text>
-                        <Text style={styles.hireDateValue}>{fmtDate(h.fromDate)}</Text>
-                      </View>
-                      <MaterialIcons name="arrow-forward" size={16} color="#94A3B8" />
-                      <View style={[styles.hireDateBlock, { alignItems: 'flex-end' }]}>
-                        <Text style={styles.hireDateLabel}>TO</Text>
-                        <Text style={styles.hireDateValue}>{fmtDate(h.toDate)}</Text>
-                      </View>
-                    </View>
-
-                    {/* Project / client if present */}
-                    {(h.project || h.client) ? (
-                      <View style={styles.hireCardTagRow}>
-                        <MaterialIcons name="work" size={13} color="#64748B" style={styles.hireCardRowIcon} />
-                        <Text style={styles.hireCardTag} numberOfLines={1}>{h.project || h.client}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })
-            )}
-          </ScrollView>
-        )}
-
-        {/* ── Tasks — always visible on web; gated by tab on mobile ── */}
-        {(Platform.OS === 'web' || activeTab === 'tasks') && (
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
-        >
-          <View style={styles.toDoList}>
-            <View style={styles.tasksHeaderRow}>
-              <Text style={styles.sectionTitle}>Tasks</Text>
-              {totalTasks > 0 && (
-                <View style={styles.tasksHeaderChip}>
-                  <MaterialIcons
-                    name="assignment-turned-in"
-                    size={14}
-                    color="#2563EB"
-                  />
-                  <Text style={styles.tasksHeaderChipText}>
-                    {totalTasks} open
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {tasks.loading ? (
-              <View style={styles.toDoCard}>
-                <LoadingSpinner flex={false} size="small" />
-              </View>
-            ) : filteredTaskItems.length === 0 ? (
-              <View style={styles.toDoCard}>
-                <EmptyState
-                  icon="celebration"
-                  iconColor="#1D4ED8"
-                  iconBg="#EEF2FF"
-                  title="You're all caught up"
-                  subtitle={`No ${taskFilter === 'all' ? '' : `${taskFilter} `}tasks right now. Enjoy the calm or jump into something else.`}
-                  hint="Tip: Scan an asset to log new work."
-                />
-              </View>
-            ) : (
-              <View
-                style={[
-                  styles.toDoCard,
-                  {
-                    paddingHorizontal: Platform.OS === 'web' ? 16 : 0,
-                    paddingVertical: 12,
-                    ...(Platform.OS === 'web' && {
-                      height: Math.min(
-                        420,
-                        (Dimensions.get('window').height || 600) * 0.55
-                      ),
-                    }),
-                  },
-                ]}
-                onLayout={
-                  Platform.OS !== 'web'
-                    ? (e) => {
-                        const w = e?.nativeEvent?.layout?.width || 0;
-                        if (w && w !== taskWidth) setTaskWidth(w);
-                      }
-                    : undefined
-                }
-              >
-                <Animated.FlatList
-                  style={Platform.OS === 'web' ? { flex: 1 } : undefined}
-                  data={filteredTaskItems}
-                  ref={taskListRef}
-                  keyExtractor={(t, idx) => {
-                    if (t.key) return String(t.key);
-                    if (t.actionId) return `action-${t.actionId}`;
-                    if (t.id) return `task-${t.id}`;
-                    const aid = t.assetId || t.asset_id || 'asset';
-                    const duePart = t.due ? +new Date(t.due) : 'nodue';
-                    return `${aid}-${duePart}-${idx}`;
-                  }}
-                  horizontal={Platform.OS !== 'web'}
-                  pagingEnabled={Platform.OS !== 'web'}
-                  snapToInterval={
-                    Platform.OS !== 'web' ? taskWidth : undefined
-                  }
-                  decelerationRate="fast"
-                  showsHorizontalScrollIndicator={false}
-                  getItemLayout={
-                    Platform.OS !== 'web' && taskWidth
-                      ? (_, index) => ({
-                          length: taskWidth,
-                          offset: taskWidth * index,
-                          index,
-                        })
-                      : undefined
-                  }
-                  extraData={
-                    Platform.OS === 'web' ? null : taskWidth
-                  }
-                  ItemSeparatorComponent={
-                    Platform.OS === 'web'
-                      ? () => <View style={{ height: 12 }} />
-                      : null
-                  }
-                  contentContainerStyle={
-                    Platform.OS === 'web' ? { paddingBottom: 16 } : undefined
-                  }
-                  renderItem={({ item }) => {
-                    const todayMidLocal = (() => {
-                      const t = new Date();
-                      t.setHours(0, 0, 0, 0);
-                      return t;
-                    })();
-                    const isReminder = isReminderTask(item);
-                    const isOverdue = isOverdueTask(item);
-                    const isMaintenance = isRepairTask(item);
-                    const isService =
-                      isServiceTask(item) && !isMaintenance;
-                    const isSignoff = item.kind === 'signoff';
-                    const hasDue = !!item.due;
-
-                    let statusLabel = 'Upcoming task';
-                    let statusIcon = 'event';
-                    let statusBg = '#E5E7EB';
-                    let statusBorder = '#CBD5F5';
-                    let statusText = '#111827';
-                    let statusIconColor = '#2563EB';
-
-                    if (isSignoff) {
-                      statusLabel = 'Pending sign-off';
-                      statusIcon = 'assignment-turned-in';
-                      statusBg = '#EEF2FF';
-                      statusBorder = '#C7D2FE';
-                      statusText = '#3730A3';
-                      statusIconColor = '#4F46E5';
-                    } else if (isMaintenance) {
-                      statusLabel = 'Repair';
-                      statusIcon = 'build';
-                      statusBg = '#ECFEFF';
-                      statusBorder = '#A5F3FC';
-                      statusText = '#0F766E';
-                      statusIconColor = '#0F766E';
-                    } else if (isOverdue) {
-                      statusLabel = 'Overdue task';
-                      statusIcon = 'error-outline';
-                      statusBg = '#FEF2F2';
-                      statusBorder = '#FCA5A5';
-                      statusText = '#B91C1C';
-                      statusIconColor = '#B91C1C';
-                    } else if (isReminder) {
-                      statusLabel = 'Reminder';
-                      statusIcon = 'notifications-active';
-                      statusBg = '#EFF6FF';
-                      statusBorder = '#BFDBFE';
-                      statusText = '#1D4ED8';
-                      statusIconColor = '#1D4ED8';
-                    }
-
-                    const dueText = hasDue
-                      ? prettyDate(new Date(item.due))
-                      : 'No due date';
-
-                    return (
-                      <View
-                        style={
-                          Platform.OS === 'web'
-                            ? { paddingHorizontal: 8 }
-                            : {
-                                width: Math.max(1, taskWidth),
-                                paddingHorizontal: 24,
-                              }
-                        }
-                      >
-                        <View style={styles.taskCard}>
-                          <View style={styles.taskCardHeaderRow}>
-                            <View
-                              style={[
-                                styles.statusChip,
-                                {
-                                  backgroundColor: statusBg,
-                                  borderColor: statusBorder,
-                                },
-                              ]}
-                            >
-                              <MaterialIcons
-                                name={statusIcon}
-                                size={14}
-                                color={statusIconColor}
-                              />
-                              <Text
-                                style={[styles.statusChipText, { color: statusText }]}
-                                numberOfLines={1}
-                              >
-                                {statusLabel}
-                              </Text>
-                            </View>
-                            {hasDue && (
-                              <View style={styles.duePill}>
-                                <MaterialIcons
-                                  name="event"
-                                  size={14}
-                                  color="#0F172A"
-                                />
-                                <Text
-                                  style={styles.duePillText}
-                                  numberOfLines={1}
-                                >
-                                  {dueText}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-
-                          <View style={styles.taskMainRow}>
-                            {(item.actionImages?.[0] || item.imageUrl) ? (
-                              <Image
-                                source={{ uri: item.actionImages?.[0] || item.imageUrl }}
-                                style={styles.taskAssetThumb}
-                                resizeMode="cover"
-                              />
-                            ) : (
-                              <View style={styles.taskAssetThumbPlaceholder}>
-                                <MaterialIcons
-                                  name="inventory"
-                                  size={22}
-                                  color="#2563EB"
-                                />
-                              </View>
-                            )}
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                style={styles.taskAssetTitle}
-                                numberOfLines={1}
-                              >
-                                {[item.model, item.assetTypeName || 'Asset', `ID: ${item.assetId}`].filter(Boolean).join(' · ')}
-                              </Text>
-                              <Text
-                                style={styles.taskAssetSerial}
-                                numberOfLines={1}
-                              >
-                                Serial: {item.serialNumber != null && String(item.serialNumber).trim() !== '' ? String(item.serialNumber) : 'N/A'}
-                              </Text>
-                              <Text
-                                style={styles.taskTitle}
-                                numberOfLines={2}
-                              >
-                                {item.title}
-                              </Text>
-                              <View style={styles.taskMetaRow}>
-                                {isService && (
-                                  <View
-                                    style={[
-                                      styles.smallTag,
-                                      styles.smallTagSignoff,
-                                    ]}
-                                  >
-                                    <MaterialIcons
-                                      name="build-circle"
-                                      size={12}
-                                      color="#4F46E5"
-                                    />
-                                    <Text style={styles.smallTagText}>
-                                      Service
-                                    </Text>
-                                  </View>
-                                )}
-                                {isMaintenance && (
-                                  <View
-                                    style={[
-                                      styles.smallTag,
-                                      styles.smallTagMaintenance,
-                                    ]}
-                                  >
-                                    <MaterialIcons
-                                      name="build"
-                                      size={12}
-                                      color="#0F766E"
-                                    />
-                                    <Text style={styles.smallTagText}>
-                                      Repair
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                            </View>
-                          </View>
-
-                          <View style={styles.taskFooterRow}>
-                            <View style={styles.taskTagRow}>
-                              {isOverdue && (
-                                <View
-                                  style={[
-                                    styles.smallTag,
-                                    styles.smallTagOverdue,
-                                  ]}
-                                >
-                                  <MaterialIcons
-                                    name="priority-high"
-                                    size={12}
-                                    color="#B91C1C"
-                                  />
-                                  <Text style={styles.smallTagText}>
-                                    High priority
-                                  </Text>
-                                </View>
-                              )}
-                              {isReminder && !isOverdue && (
-                                <View
-                                  style={[
-                                    styles.smallTag,
-                                    styles.smallTagReminder,
-                                  ]}
-                                >
-                                  <MaterialIcons
-                                    name="notifications-active"
-                                    size={12}
-                                    color="#1D4ED8"
-                                  />
-                                  <Text style={styles.smallTagText}>
-                                    Reminder
-                                  </Text>
-                                </View>
-                              )}
-                              {isMaintenance && (
-                                <View
-                                  style={[
-                                    styles.smallTag,
-                                    styles.smallTagMaintenance,
-                                  ]}
-                                >
-                                  <MaterialIcons
-                                    name="build"
-                                    size={12}
-                                    color="#0F766E"
-                                  />
-                                  <Text style={styles.smallTagText}>
-                                    Repair
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <TouchableOpacity
-                              style={[
-                                styles.toDoButton,
-                                styles.taskPrimaryButton,
-                              ]}
-                              onPress={() => openTaskAction(item)}
-                            >
-                              <Text style={styles.toDoButtonText}>
-                                {isSignoff
-                                  ? 'Review & sign off'
-                                  : 'Action Task'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }}
-                  onScroll={
-                    Platform.OS !== 'web'
-                      ? Animated.event(
-                          [
-                            {
-                              nativeEvent: {
-                                contentOffset: { x: scrollX },
-                              },
-                            },
-                          ],
-                          { useNativeDriver: false }
-                        )
-                      : undefined
-                  }
-                  onMomentumScrollEnd={
-                    Platform.OS !== 'web'
-                      ? (e) => {
-                          const { contentOffset } = e.nativeEvent;
-                          const idx = taskWidth
-                            ? Math.round(contentOffset.x / taskWidth)
-                            : 0;
-                          if (idx !== taskIndex) setTaskIndex(idx);
-                        }
-                      : undefined
-                  }
-                />
-
-                {Platform.OS !== 'web' &&
-                  filteredTaskItems.length > 1 && (
-                    <View
-                      pointerEvents="box-none"
-                      style={{
-                        position: 'absolute',
-                        top: '40%',
-                        left: 8,
-                        right: 8,
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <TouchableOpacity
-                        onPress={() => {
-                          const next = Math.max(0, taskIndex - 1);
-                          setTaskIndex(next);
-                          try {
-                            taskListRef.current?.scrollToIndex({
-                              index: next,
-                              animated: true,
-                            });
-                          } catch {}
-                        }}
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          backgroundColor: '#EAF1FF',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: '#D6E8FF',
-                        }}
-                      >
-                        <MaterialIcons
-                          name="chevron-left"
-                          size={20}
-                          color="#2563EB"
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          const total = filteredTaskItems.length || 0;
-                          if (!total) return;
-                          const next = (taskIndex + 1) % total;
-                          setTaskIndex(next);
-                          try {
-                            taskListRef.current?.scrollToIndex({
-                              index: next,
-                              animated: true,
-                            });
-                          } catch {}
-                        }}
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          backgroundColor: '#EAF1FF',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: '#D6E8FF',
-                        }}
-                      >
-                        <MaterialIcons
-                          name="chevron-right"
-                          size={20}
-                          color="#2563EB"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                {Platform.OS !== 'web' && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'center',
-                      gap: 6,
-                      marginTop: 10,
-                    }}
-                  >
-                    {filteredTaskItems.map((_, i) => {
-                      const inputRange = [
-                        taskWidth * (i - 1),
-                        taskWidth * i,
-                        taskWidth * (i + 1),
-                      ];
-                      const scale = scrollX.interpolate({
-                        inputRange,
-                        outputRange: [1, 1.4, 1],
-                        extrapolate: 'clamp',
-                      });
-                      const opacity = scrollX.interpolate({
-                        inputRange,
-                        outputRange: [0.5, 1, 0.5],
-                        extrapolate: 'clamp',
-                      });
-                      return (
-                        <Animated.View
-                          key={`dot-${i}`}
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: '#2563EB',
-                            opacity,
-                            transform: [{ scale }],
-                          }}
-                        />
-                      );
-                    })}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            ListHeaderComponent={() => (
+              <View style={styles.tasksHeaderRow}>
+                <Text style={styles.sectionTitle}>Hire</Text>
+                {hires.length > 0 && (
+                  <View style={styles.tasksHeaderChip}>
+                    <MaterialIcons name="assignment" size={13} color={Colors.primary} />
+                    <Text style={styles.tasksHeaderChipText}>{hires.length} record{hires.length !== 1 ? 's' : ''}</Text>
                   </View>
                 )}
               </View>
             )}
-          </View>
-        </ScrollView>
+            ListEmptyComponent={() =>
+              hiresLoading ? (
+                <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <EmptyState
+                    icon="assignment"
+                    iconColor={Colors.primary}
+                    iconBg={Colors.primaryLight}
+                    title="No hire records"
+                    subtitle="Hire records will appear here once equipment has been hired out."
+                  />
+                </View>
+              )
+            }
+            renderItem={({ item: h }) => {
+              const signed = h.signatureStatus === 'signed';
+              return (
+                <View style={styles.hireCard}>
+                  {/* Equipment row */}
+                  <View style={styles.hireCardTopRow}>
+                    <View style={styles.hireCardIconWrap}>
+                      <MaterialIcons name="construction" size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.hireCardEquipCol}>
+                      <Text style={styles.hireCardEquip} numberOfLines={1}>{h.assetType || 'Equipment'}</Text>
+                      {h.serial ? <Text style={styles.hireCardSerial}>SN: {h.serial}</Text> : null}
+                    </View>
+                    <View style={[styles.hireStatusBadge, signed ? styles.hireStatusSigned : styles.hireStatusPending]}>
+                      <MaterialIcons name={signed ? 'verified' : 'pending'} size={11} color={signed ? Colors.successFg : Colors.warningFg} />
+                      <Text style={[styles.hireStatusText, { color: signed ? Colors.successFg : Colors.warningFg }]}>
+                        {signed ? 'Signed' : 'Pending'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.hireCardDivider} />
+
+                  {/* Contact */}
+                  <View style={styles.hireCardRow}>
+                    <MaterialIcons name="person" size={14} color={Colors.text} style={styles.hireCardRowIcon} />
+                    <Text style={styles.hireCardValue} numberOfLines={1}>{h.contactName || '—'}</Text>
+                  </View>
+                  {h.phone && h.phone !== '—' ? (
+                    <View style={styles.hireCardRow}>
+                      <MaterialIcons name="phone" size={14} color={Colors.text} style={styles.hireCardRowIcon} />
+                      <Text style={styles.hireCardValue}>{h.phone}</Text>
+                    </View>
+                  ) : null}
+                  {h.email ? (
+                    <View style={styles.hireCardRow}>
+                      <MaterialIcons name="email" size={14} color={Colors.text} style={styles.hireCardRowIcon} />
+                      <Text style={styles.hireCardValue} numberOfLines={1}>{h.email}</Text>
+                    </View>
+                  ) : null}
+
+                  {/* Dates */}
+                  <View style={styles.hireCardDivider} />
+                  <View style={styles.hireDatesRow}>
+                    <View style={styles.hireDateBlock}>
+                      <Text style={styles.hireDateLabel}>FROM</Text>
+                      <Text style={styles.hireDateValue}>{fmtDate(h.fromDate)}</Text>
+                    </View>
+                    <MaterialIcons name="arrow-forward" size={16} color={Colors.sub2} />
+                    <View style={[styles.hireDateBlock, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.hireDateLabel}>TO</Text>
+                      <Text style={styles.hireDateValue}>{fmtDate(h.toDate)}</Text>
+                    </View>
+                  </View>
+
+                  {(h.project || h.client) ? (
+                    <View style={styles.hireCardTagRow}>
+                      <MaterialIcons name="work" size={13} color={Colors.text} style={styles.hireCardRowIcon} />
+                      <Text style={styles.hireCardTag} numberOfLines={1}>{h.project || h.client}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            }}
+          />
         )}
-      </SafeAreaView>
+
+        {/* ── Tasks — always visible on web; gated by tab on mobile ── */}
+        {(Platform.OS === 'web' || activeTab === 'tasks') && (
+        <FlatList
+          data={tasks.loading ? [] : filteredTaskItems}
+          keyExtractor={(t, idx) => {
+            if (t.key) return String(t.key);
+            if (t.actionId) return `action-${t.actionId}`;
+            if (t.id) return `task-${t.id}`;
+            const aid = t.assetId || t.asset_id || 'asset';
+            const duePart = t.due ? +new Date(t.due) : 'nodue';
+            return `${aid}-${duePart}-${idx}`;
+          }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ListHeaderComponent={() => (
+            <View style={styles.tasksHeaderRow}>
+              <Text style={styles.sectionTitle}>Tasks</Text>
+              {totalTasks > 0 && (
+                <View style={styles.tasksHeaderChip}>
+                  <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
+                  <Text style={styles.tasksHeaderChipText}>{totalTasks} open</Text>
+                </View>
+              )}
+            </View>
+          )}
+          ListEmptyComponent={() =>
+            tasks.loading ? (
+              <View style={styles.emptyWrap}>
+                <LoadingSpinner flex={false} size="large" />
+              </View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  icon="celebration"
+                  iconColor={Colors.primary}
+                  iconBg={Colors.primaryLight}
+                  title="You're all caught up"
+                  subtitle={`No ${taskFilter === 'all' ? '' : `${taskFilter} `}tasks right now.`}
+                  hint="Tip: Scan an asset to log new work."
+                />
+              </View>
+            )
+          }
+          renderItem={({ item }) => {
+            const isReminder = isReminderTask(item);
+            const isOverdue = isOverdueTask(item);
+            const isMaintenance = isRepairTask(item);
+            const isService = isServiceTask(item) && !isMaintenance;
+            const isSignoff = item.kind === 'signoff';
+            const hasDue = !!item.due;
+
+            let statusLabel = 'Upcoming';
+            let statusIcon = 'event';
+            let statusBg = Colors.chip;
+            let statusBorder = Colors.line;
+            let statusFg = Colors.sub;
+            let statusIconColor = Colors.sub;
+
+            if (isSignoff) {
+              statusLabel = 'Sign-off pending';
+              statusIcon = 'assignment-turned-in';
+              statusBg = Colors.infoBg;
+              statusBorder = Colors.infoBorder;
+              statusFg = Colors.infoFg;
+              statusIconColor = Colors.infoFg;
+            } else if (isMaintenance) {
+              statusLabel = 'Repair';
+              statusIcon = 'build';
+              statusBg = Colors.warningBg;
+              statusBorder = Colors.warningBorder;
+              statusFg = Colors.warningFg;
+              statusIconColor = Colors.warningFg;
+            } else if (isOverdue) {
+              statusLabel = 'Overdue';
+              statusIcon = 'error-outline';
+              statusBg = Colors.dangerBg;
+              statusBorder = Colors.dangerBorder;
+              statusFg = Colors.dangerFg;
+              statusIconColor = Colors.dangerFg;
+            } else if (isReminder) {
+              statusLabel = 'Reminder';
+              statusIcon = 'notifications-active';
+              statusBg = Colors.accentLight;
+              statusBorder = Colors.accentMuted;
+              statusFg = Colors.accentDark;
+              statusIconColor = Colors.accentDark;
+            }
+
+            const dueText = hasDue ? prettyDate(new Date(item.due)) : 'No due date';
+
+            return (
+              <View style={styles.taskCard}>
+                <View style={styles.taskCardAccent} />
+                {/* Header row */}
+                <View style={styles.taskCardHeaderRow}>
+                  <View style={[styles.statusChip, { backgroundColor: statusBg, borderColor: statusBorder }]}>
+                    <MaterialIcons name={statusIcon} size={13} color={statusIconColor} />
+                    <Text style={[styles.statusChipText, { color: statusFg }]} numberOfLines={1}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                  {hasDue && (
+                    <View style={styles.duePill}>
+                      <MaterialIcons name="event" size={13} color={Colors.text} />
+                      <Text style={styles.duePillText} numberOfLines={1}>{dueText}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Main row */}
+                <View style={styles.taskMainRow}>
+                  {(item.actionImages?.[0] || item.imageUrl) ? (
+                    <Image
+                      source={{ uri: item.actionImages?.[0] || item.imageUrl }}
+                      style={styles.taskAssetThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.taskAssetThumbPlaceholder}>
+                      <MaterialIcons name="inventory" size={22} color={Colors.primary} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.taskAssetTitle} numberOfLines={1}>
+                      {[item.model, item.assetTypeName || 'Asset', `ID: ${item.assetId}`].filter(Boolean).join(' · ')}
+                    </Text>
+                    <Text style={styles.taskAssetSerial} numberOfLines={1}>
+                      SN: {item.serialNumber != null && String(item.serialNumber).trim() !== '' ? String(item.serialNumber) : 'N/A'}
+                    </Text>
+                    <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
+                  </View>
+                </View>
+
+                {/* Footer */}
+                <View style={styles.taskFooterRow}>
+                  <View style={styles.taskTagRow}>
+                    {isOverdue && (
+                      <View style={[styles.smallTag, { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder }]}>
+                        <MaterialIcons name="priority-high" size={11} color={Colors.dangerFg} />
+                        <Text style={[styles.smallTagText, { color: Colors.dangerFg }]}>High priority</Text>
+                      </View>
+                    )}
+                    {isService && (
+                      <View style={[styles.smallTag, { backgroundColor: Colors.infoBg, borderColor: Colors.infoBorder }]}>
+                        <MaterialIcons name="build-circle" size={11} color={Colors.infoFg} />
+                        <Text style={[styles.smallTagText, { color: Colors.infoFg }]}>Service</Text>
+                      </View>
+                    )}
+                    {isMaintenance && (
+                      <View style={[styles.smallTag, { backgroundColor: Colors.warningBg, borderColor: Colors.warningBorder }]}>
+                        <MaterialIcons name="build" size={11} color={Colors.warningFg} />
+                        <Text style={[styles.smallTagText, { color: Colors.warningFg }]}>Repair</Text>
+                      </View>
+                    )}
+                    {isReminder && !isOverdue && (
+                      <View style={[styles.smallTag, { backgroundColor: Colors.accentLight, borderColor: Colors.accentMuted }]}>
+                        <MaterialIcons name="notifications-active" size={11} color={Colors.accentDark} />
+                        <Text style={[styles.smallTagText, { color: Colors.accentDark }]}>Reminder</Text>
+                      </View>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.toDoButton, isSignoff && styles.toDoButtonSignoff]}
+                    onPress={() => openTaskAction(item)}
+                  >
+                    <Text style={styles.toDoButtonText}>
+                      {isSignoff ? 'Review & sign off' : 'Action'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          }}
+        />
+        )}
 
       <Modal
         visible={actionOpen}
@@ -2400,70 +2079,48 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F7FAFF' },
-  safeArea: { flex: 1, backgroundColor: '#F7FAFF' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flex: 1,
-  },
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  menuBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.bg },
+  listContent: { padding: 14, paddingBottom: 24 },
+  emptyWrap: { alignItems: 'center', paddingVertical: 40 },
+
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  menuBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)' },
+
   taskModalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 16,
     width: '100%',
     maxWidth: 520,
-    borderWidth: 1,
-    borderColor: '#E9F1FF',
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
-  menuText: { fontSize: 16, color: '#333' },
+  menuText: { fontSize: 16, color: Colors.text },
   btn: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
   },
-  btnPrimary: { backgroundColor: '#2563EB' },
-  btnGhost: { borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
-  toDoList: { marginTop: 0 },
-  toDoCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  btnPrimary: { backgroundColor: Colors.accent },
+  btnGhost: { borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card },
+
+  // ── Header ─────────────────────────────────────────────────────
   tasksHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '900',
-    color: '#D97706',
-    marginBottom: 12,
-    letterSpacing: 0.5,
+    color: Colors.primary,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   tasksHeaderChip: {
     flexDirection: 'row',
@@ -2471,40 +2128,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    gap: 6,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    gap: 5,
   },
-  tasksHeaderChipText: { fontSize: 12, fontWeight: '700', color: '#1D4ED8' },
-  toDoButton: {
-    backgroundColor: '#1E90FF',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  taskPrimaryButton: { borderRadius: 999, paddingHorizontal: 22 },
-  toDoButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  tasksHeaderChipText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+
+  // ── Task card ──────────────────────────────────────────────────
   taskCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: Platform.OS === 'web' ? 22 : 14,
-    paddingHorizontal: Platform.OS === 'web' ? 20 : 14,
-    borderWidth: 1,
-    borderColor: '#E5EDFF',
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-    ...(Platform.OS === 'web' ? { minHeight: 210 } : null),
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...Shadows.card,
+  },
+  taskCardAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: Colors.primary,
   },
   taskCardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
     gap: 10,
   },
   statusChip: {
@@ -2513,271 +2167,168 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: 1,
-    gap: 6,
+    borderWidth: 1.5,
+    gap: 5,
   },
-  statusChipText: { fontSize: 12, fontWeight: '700' },
+  statusChipText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
   duePill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    gap: 6,
+    backgroundColor: Colors.chip,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    gap: 5,
   },
-  duePillText: { fontSize: 12, fontWeight: '600', color: '#111827' },
-  taskMainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  duePillText: { fontSize: 12, fontWeight: '600', color: Colors.text },
+  taskMainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 10 },
   taskAssetThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    width: 52,
+    height: 52,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
   },
   taskAssetThumbPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#EEF5FF',
+    width: 52,
+    height: 52,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  taskAssetTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  taskAssetSerial: { fontSize: 13, color: '#6B7280', marginTop: 2, fontWeight: '500' },
-  taskTitle: { fontSize: 14, fontWeight: '600', color: '#1D4ED8', marginTop: 4 },
-  taskMetaRow: { marginTop: 6, gap: 4 },
-  taskMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  taskMetaText: { fontSize: 12, color: '#6B7280' },
+  taskAssetTitle: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  taskAssetSerial: { fontSize: 12, color: Colors.sub, marginTop: 2, fontWeight: '600' },
+  taskTitle: { fontSize: 13, fontWeight: '700', color: Colors.accent, marginTop: 4 },
   taskFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 12,
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
+    paddingTop: 10,
+    gap: 10,
   },
-  taskTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  taskTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, flex: 1 },
   smallTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
+    borderWidth: 1.5,
     gap: 4,
   },
-  smallTagOverdue: { backgroundColor: '#FEE2E2' },
-  smallTagReminder: { backgroundColor: '#DBEAFE' },
-  smallTagSignoff: { backgroundColor: '#E0E7FF' },
-  smallTagText: { fontSize: 11, fontWeight: '600', color: '#111827' },
-  smallTagMaintenance: { backgroundColor: '#CCFBF1' },
-  emptyStateCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 28,
-    gap: 10,
+  smallTagText: { fontSize: 11, fontWeight: '700' },
+  toDoButton: {
+    backgroundColor: Colors.accent,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: Radius.md,
+    alignSelf: 'flex-start',
   },
-  emptyStateIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  emptyStateTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  emptyStateSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginHorizontal: 10,
-  },
-  emptyStateHint: {
-    marginTop: 6,
-    fontSize: 11,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-  quickDateRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 4,
-  },
+  toDoButtonSignoff: { backgroundColor: Colors.primary },
+  toDoButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+
+  // ── Filter chips ───────────────────────────────────────────────
+  quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 4 },
   quickDateChip: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
   },
-  quickDateChipText: { color: '#2563EB', fontWeight: '800' },
+  quickDateChipText: { color: Colors.accent, fontWeight: '800' },
 
   // ── Sub-tab bar ────────────────────────────────────────────────
   subTabBar: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+    paddingHorizontal: 8,
   },
   subTab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 2,
+    paddingVertical: 12,
+    borderBottomWidth: 3,
     borderBottomColor: 'transparent',
-    marginBottom: -1,
   },
-  subTabActive: {
-    borderBottomColor: '#1E90FF',
-  },
+  subTabActive: { borderBottomColor: Colors.accent },
   subTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
-  subTabTextActive: {
-    color: '#1E90FF',
-  },
+  subTabTextActive: { color: Colors.accent },
 
   // ── Hire cards ─────────────────────────────────────────────────
-  hireHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  hireBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  hireBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#065F46',
-  },
   hireCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     padding: 14,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    ...Shadows.card,
   },
-  hireCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  hireCardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   hireCardIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: '#ECFDF5',
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
+    borderColor: Colors.line,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hireCardEquipCol: {
-    flex: 1,
-  },
-  hireCardEquip: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  hireCardSerial: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 1,
-  },
+  hireCardEquipCol: { flex: 1 },
+  hireCardEquip: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  hireCardSerial: { fontSize: 12, color: Colors.sub, marginTop: 2, fontWeight: '600' },
   hireStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  hireStatusSigned: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  hireStatusPending: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#FDE68A',
-  },
-  hireStatusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  hireCardDivider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginVertical: 10,
-  },
-  hireCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  hireCardRowIcon: {
-    marginRight: 8,
-  },
-  hireCardValue: {
-    fontSize: 13,
-    color: '#334155',
-    flex: 1,
-  },
-  hireDatesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  hireDateBlock: {
-    flex: 1,
-  },
+  hireStatusSigned: { backgroundColor: Colors.successBg, borderColor: Colors.successBorder },
+  hireStatusPending: { backgroundColor: Colors.warningBg, borderColor: Colors.warningBorder },
+  hireStatusText: { fontSize: 11, fontWeight: '800' },
+  hireCardDivider: { height: 2, backgroundColor: Colors.line, marginVertical: 10 },
+  hireCardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  hireCardRowIcon: { marginRight: 8 },
+  hireCardValue: { fontSize: 13, color: Colors.text, fontWeight: '600', flex: 1 },
+  hireDatesRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  hireDateBlock: { flex: 1 },
   hireDateLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.5,
+    color: Colors.sub2,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
-  hireDateValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
+  hireDateValue: { fontSize: 14, fontWeight: '700', color: Colors.text },
   hireCardTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
     paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
   },
-  hireCardTag: {
-    fontSize: 12,
-    color: '#64748B',
-    flex: 1,
-  },
+  hireCardTag: { fontSize: 12, color: Colors.sub, fontWeight: '600', flex: 1 },
 });

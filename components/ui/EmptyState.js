@@ -1,16 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
 
 /**
- * Centered empty-state display: icon circle, title, subtitle, optional hint.
+ * Centered empty-state display: icon square, title, subtitle, optional hint.
  *
  * Props:
  *  icon       – MaterialIcons name (default 'folder-open')
  *  iconSize   – icon size (default 28)
  *  iconColor  – icon color (default Colors.sub2)
- *  iconBg     – icon circle background (default Colors.chip)
+ *  iconBg     – icon background (default Colors.chip)
  *  title      – bold heading text (required)
  *  subtitle   – secondary description (optional)
  *  hint       – small tip line below subtitle (optional)
@@ -46,21 +46,26 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
+    width: 56,
+    height: 56,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.line,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   title: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: FontWeights.bold,
     color: Colors.text,
     textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: 13,
+    fontWeight: FontWeights.regular,
     color: Colors.sub,
     textAlign: 'center',
     lineHeight: 19,
@@ -68,6 +73,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 11,
+    fontWeight: FontWeights.medium,
     color: Colors.sub2,
     textAlign: 'center',
     marginTop: 4,

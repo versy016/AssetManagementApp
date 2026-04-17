@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ActionsForm from '../../components/ActionsForm';
 
@@ -569,11 +570,11 @@ export default function ScannedAssetsList() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.bg,
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.bg,
     padding: 16,
   },
   header: {
@@ -586,8 +587,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '900',
+    color: Colors.text,
   },
   selectAllRow: {
     flexDirection: 'row',
@@ -598,7 +599,7 @@ const styles = StyleSheet.create({
   },
   selectAllText: {
     fontSize: 15,
-    color: '#333',
+    color: Colors.text,
     marginLeft: 8,
   },
   loadingContainer: {
@@ -609,7 +610,7 @@ const styles = StyleSheet.create({
   bulkLoadingText: {
     marginTop: 8,
     fontSize: 14,
-    color: '#666',
+    color: Colors.sub,
   },
   list: {
     paddingBottom: 120,
@@ -617,16 +618,14 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 8,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
     paddingVertical: 12,
     paddingRight: 16,
     marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
   },
   checkboxWrap: {
     paddingLeft: 12,
@@ -643,42 +642,41 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 16,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: Colors.chip,
   },
   info: {
     flex: 1,
   },
   idLine: {
     fontSize: 13,
-    color: '#64748B',
+    color: Colors.sub2,
     marginBottom: 2,
   },
   name: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
+    color: Colors.text,
     marginBottom: 4,
   },
   status: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.sub,
   },
   bulkBar: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: 24,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 12,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
   },
   bulkBarLabel: {
     fontSize: 12,
-    color: '#666',
+    color: Colors.sub2,
     marginBottom: 8,
   },
   bulkActions: {
@@ -694,24 +692,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: Radius.md,
   },
   bulkBtnPrimary: {
-    backgroundColor: '#1E90FF',
+    backgroundColor: Colors.primary,
   },
   bulkBtnSecondary: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#1E90FF',
+    backgroundColor: Colors.accentLight,
+    borderWidth: 2,
+    borderColor: Colors.accent,
   },
   bulkBtnText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: Colors.card,
+    fontWeight: '800',
     fontSize: 14,
   },
   bulkBtnTextSecondary: {
-    color: '#1E90FF',
-    fontWeight: '600',
+    color: Colors.accent,
+    fontWeight: '800',
     fontSize: 14,
   },
   otherActionsList: {
@@ -723,24 +721,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: Colors.line,
     gap: 12,
   },
   otherActionLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: Colors.text,
   },
   doneButton: {
-    backgroundColor: '#1E90FF',
+    backgroundColor: Colors.primary,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: Radius.md,
     alignItems: 'center',
     marginTop: 20,
   },
   doneButtonText: {
-    color: 'white',
-    fontWeight: '600',
+    color: Colors.card,
+    fontWeight: '900',
     fontSize: 16,
   },
   modalBackdrop: {
@@ -750,32 +748,36 @@ const styles = StyleSheet.create({
   modalContent: {
     marginHorizontal: 24,
     marginVertical: 80,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
     maxHeight: '70%',
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
+    fontWeight: '900',
+    color: Colors.text,
   },
   userSearchInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     margin: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+    backgroundColor: Colors.card,
+    color: Colors.text,
   },
   userList: {
     maxHeight: 280,
@@ -783,21 +785,21 @@ const styles = StyleSheet.create({
   userRow: {
     padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: Colors.line,
   },
   userName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: Colors.text,
   },
   userEmail: {
     fontSize: 13,
-    color: '#666',
+    color: Colors.sub,
     marginTop: 2,
   },
   emptyUserText: {
     padding: 16,
-    color: '#666',
+    color: Colors.sub,
     textAlign: 'center',
   },
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 export default function ScreenHeader({
   title = '',
@@ -21,7 +21,7 @@ export default function ScreenHeader({
         ) : (
           <View style={styles.stub} />
         )}
-        <Text style={styles.title} numberOfLines={2}>{title}</Text>
+        <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{title}</Text>
         {right ? (
           <View style={styles.right}>{right}</View>
         ) : (
@@ -37,9 +37,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 8 : 6,
     paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    backgroundColor: Colors.card,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
   },
   row: {
     flexDirection: 'row',
@@ -53,14 +53,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
   },
   backText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.text,
   },
   stub: {

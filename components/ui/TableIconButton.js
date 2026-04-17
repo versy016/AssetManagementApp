@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { TouchableOpacity, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 /**
  * Small colored icon button for table/list row actions.
@@ -22,14 +23,14 @@ import { MaterialIcons } from '@expo/vector-icons';
  */
 
 const TONES = {
-  edit:     '#F59E0B',
-  delete:   '#EF4444',
+  edit:     Colors.accent,
+  delete:   Colors.dangerFg,
   view:     '#8B5CF6',
   download: '#3B82F6',
   copy:     '#10B981',
   send:     '#0EA5E9',
   open:     '#0369A1',
-  primary:  '#0B63CE',
+  primary:  Colors.primary,
 };
 
 /**
@@ -51,12 +52,12 @@ function WebTooltip({ label, children }) {
     el.style.cssText = [
       'position:fixed',
       'display:none',
-      'background:#1E293B',
+      `background:${Colors.primary}`,
       'color:#fff',
       'padding:4px 10px',
-      'border-radius:5px',
+      `border-radius:${Radius.sm}px`,
       'font-size:11px',
-      'font-weight:600',
+      'font-weight:800',
       'line-height:1.5',
       'white-space:nowrap',
       'pointer-events:none',

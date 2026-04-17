@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { Colors } from '../constants/uiTheme';
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
 import ConfirmModal from './ui/ConfirmModal';
 import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
@@ -498,8 +498,8 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 8 },
   emptySub: { fontSize: 14, color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
-  emptyCta: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, backgroundColor: Colors.primary },
-  emptyCtaText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  emptyCta: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.md, backgroundColor: Colors.accent },
+  emptyCtaText: { fontSize: 14, fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
   tableOuter: {
     flex: 1,
     width: '100%',
@@ -507,35 +507,31 @@ const styles = StyleSheet.create({
   tableWrap: {
     flex: 1,
     width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    ...Shadows.card,
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#F8FAFC',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    backgroundColor: Colors.primary,
+    borderBottomWidth: 0,
   },
   th: {
-    paddingVertical: 12,
+    paddingVertical: 13,
     paddingHorizontal: 12,
     justifyContent: 'center',
     alignItems: 'flex-start',
     minWidth: 0,
   },
   thText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     flexShrink: 1,
     minWidth: 0,
   },
@@ -543,43 +539,43 @@ const styles = StyleSheet.create({
   tr: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    backgroundColor: '#fff',
+    borderBottomColor: Colors.line,
+    backgroundColor: '#FFFFFF',
   },
-  rowAlt: { backgroundColor: '#FAFAFA' },
-  rowHover: { backgroundColor: '#F0F9FF' },
+  rowAlt: { backgroundColor: '#F8F7F5' },
+  rowHover: { backgroundColor: Colors.accentLight },
   td: {
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 12,
     justifyContent: 'center',
     minWidth: 0,
   },
   tdActions: { alignItems: 'flex-start' },
   tdText: {
-    fontSize: 13,
-    color: '#334155',
+    fontSize: 15,
+    color: Colors.text,
     fontWeight: '500',
   },
   statusPill: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: Radius.sm,
     maxWidth: '100%',
   },
   statusPillSigned: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: Colors.successBg,
   },
   statusPillPending: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.warningBg,
   },
   statusPillText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  statusPillTextSigned: { color: '#166534' },
-  statusPillTextPending: { color: '#92400E' },
+  statusPillTextSigned: { color: Colors.successFg },
+  statusPillTextPending: { color: Colors.warningFg },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -589,16 +585,16 @@ const styles = StyleSheet.create({
   details: {
     padding: 12,
     paddingLeft: 24,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: Colors.line,
   },
-  detailsTitle: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailsTitle: { fontSize: 14, fontWeight: '700', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   detailsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
   },
-  detailsLabel: { fontSize: 12, color: '#64748B', width: '30%', minWidth: 100 },
-  detailsValue: { fontSize: 12, color: '#334155', width: '65%', flex: 1 },
+  detailsLabel: { fontSize: 14, color: Colors.sub, width: '30%', minWidth: 100 },
+  detailsValue: { fontSize: 14, color: Colors.text, width: '65%', flex: 1 },
 });

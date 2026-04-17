@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 /**
  * Three-phase confirm/loading/result modal.
@@ -143,8 +143,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 24,
     width: '100%',
     maxWidth: 420,
@@ -156,14 +156,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#1E293B',
+    fontWeight: '900',
+    color: Colors.primary,
     marginBottom: 12,
   },
-  titleError: { color: '#B91C1C' },
+  titleError: { color: Colors.dangerFg },
   body: {
     fontSize: 15,
-    color: '#475569',
+    color: Colors.sub,
     lineHeight: 22,
     marginBottom: 20,
   },
@@ -176,20 +176,20 @@ const styles = StyleSheet.create({
   btn: {
     paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     minWidth: 100,
     alignItems: 'center',
   },
   btnGhost: {
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.chip,
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
-  btnGhostText: { fontSize: 15, fontWeight: '700', color: '#475569' },
+  btnGhostText: { fontSize: 15, fontWeight: '800', color: Colors.sub },
   btnPrimary: { backgroundColor: Colors.primary },
-  btnPrimaryText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
-  btnDanger: { backgroundColor: '#EF4444' },
-  btnDangerText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  btnPrimaryText: { fontSize: 15, fontWeight: '800', color: '#FFF' },
+  btnDanger: { backgroundColor: Colors.dangerFg },
+  btnDangerText: { fontSize: 15, fontWeight: '800', color: '#FFF' },
   loadingWrap: {
     alignItems: 'center',
     paddingVertical: 16,

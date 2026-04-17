@@ -24,7 +24,8 @@ import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import { Colors } from '../../constants/uiTheme';
+import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
@@ -32,46 +33,6 @@ import QRCode from 'react-native-qrcode-svg';
 
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
-const STATUS_CONFIG = {
-  in_service:  { label: 'In Service',  bg: '#e0f2fe', fg: '#075985', icon: 'build-circle' },
-  end_of_life: { label: 'End of Life', bg: '#ede9fe', fg: '#5b21b6', icon: 'block' },
-  repair:      { label: 'Repair',      bg: '#ffedd5', fg: '#9a3412', icon: 'build' },
-  maintenance: { label: 'Maintenance', bg: '#fef9c3', fg: '#854d0e', icon: 'build' },
-  on_hire:     { label: 'On Hire',     bg: '#ecfdf5', fg: '#065f46', icon: 'assignment' },
-};
-function normalizeStatus(s) {
-  if (!s) return 'in_service';
-  const key = String(s).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
-
-  const alias = {
-    in_service:     'in_service',
-    end_of_life:    'end_of_life',
-    repair:         'repair',
-    maintenance:    'maintenance',
-    on_hire:        'on_hire',
-    hire:           'on_hire',
-    rented:         'on_hire',
-    on_rent:        'on_hire',
-    available:      'in_service',
-    checked_out:    'in_service',
-    reserved:       'in_service',
-    lost:           'end_of_life',
-    retired:        'end_of_life',
-  };
-
-  return alias[key] || 'in_service';
-}
-
-function StatusBadge({ status }) {
-  const key = normalizeStatus(status);
-  const cfg = STATUS_CONFIG[key] || STATUS_CONFIG.available;
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-      <MaterialIcons name={cfg.icon} size={16} color={cfg.fg} style={{ marginRight: 6 }} />
-      <Text style={[styles.statusText, { color: cfg.fg }]}>{cfg.label}</Text>
-    </View>
-  );
-}
 
 
 
@@ -378,7 +339,7 @@ export default function AssetDetailPage() {
         onPress={() => Linking.openURL(url).catch(() => Alert.alert('Could not open the document'))}
         style={{ paddingVertical: 2 }}
       >
-        <Text style={{ color: '#0B63CE', fontWeight: '800' }}>View</Text>
+        <Text style={{ color: Colors.accent, fontWeight: '800' }}>View</Text>
       </TouchableOpacity>
     );
 
@@ -392,7 +353,7 @@ export default function AssetDetailPage() {
           onPress={() => Linking.openURL(v).catch(() => Alert.alert('Could not open the link'))}
           style={{ paddingVertical: 2 }}
         >
-          <Text style={{ color: '#0B63CE', fontWeight: '800' }}>View</Text>
+          <Text style={{ color: Colors.accent, fontWeight: '800' }}>View</Text>
         </TouchableOpacity>
       );
     }
@@ -404,11 +365,11 @@ export default function AssetDetailPage() {
       const onAttach = helpers.onAttachReport;
       return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ color: '#EF4444', fontWeight: '700' }}>Not provided</Text>
+          <Text style={{ color: Colors.dangerFg, fontWeight: '700' }}>Not provided</Text>
           {onAttach ? (
             <TouchableOpacity
               onPress={() => onAttach({ slug: normalizedSlug, label: normalizedSlug.includes('repair') ? 'Repair Report' : 'Service Report' })}
-              style={{ backgroundColor: '#0B63CE', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+              style={{ backgroundColor: Colors.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
             >
               {attachBusy ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -502,9 +463,8 @@ export default function AssetDetailPage() {
   }), [handleAttachReport, attachBusySlug]);
 
   const handleBack = () => {
-    // Prefer explicit return target when provided to keep navbar state correct
-    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
-    // Fall back to navigation history
+    // Prefer native back() so the existing stack entry is popped cleanly,
+    // avoiding duplicate entries that force the user to press back twice.
     try {
       if (router?.canGoBack?.() && router.canGoBack()) {
         router.back();
@@ -515,6 +475,8 @@ export default function AssetDetailPage() {
       router.back();
       return;
     }
+    // No history (deep link / reload): navigate to the explicit returnTo target.
+    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
     // Final fallback: Inventory tab
     router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
   };
@@ -906,6 +868,7 @@ export default function AssetDetailPage() {
   }, [latestMatchingAction, assetDocs]);
   const [docHistoryOpen, setDocHistoryOpen] = useState(false);
   const [maintenanceExpanded, setMaintenanceExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState('notes');
   const prettyDateTime = (d) => {
     try {
       const t = typeof d === 'string' ? new Date(d) : new Date(d);
@@ -1076,8 +1039,8 @@ export default function AssetDetailPage() {
   if (loading) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <ActivityIndicator size="large" color="#1E90FF" />
-        <Text style={{ marginTop: 12, color: '#666' }}>Loading asset…</Text>
+        <ActivityIndicator size="large" color={Colors.accent} />
+        <Text style={{ marginTop: 12, color: Colors.sub }}>Loading asset…</Text>
       </SafeAreaView>
     );
   }
@@ -1085,9 +1048,9 @@ export default function AssetDetailPage() {
   if (err && isImportedId) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <Ionicons name="qr-code-outline" size={36} color="#1E90FF" />
-        <Text style={{ marginTop: 12, color: '#333', fontWeight: '700' }}>Awaiting QR Assignment</Text>
-        <Text style={{ marginTop: 8, color: '#666', paddingHorizontal: 24, textAlign: 'center' }}>{err}</Text>
+        <Ionicons name="qr-code-outline" size={36} color={Colors.accent} />
+        <Text style={{ marginTop: 12, color: Colors.text, fontWeight: '700' }}>Awaiting QR Assignment</Text>
+        <Text style={{ marginTop: 8, color: Colors.sub, paddingHorizontal: 24, textAlign: 'center' }}>{err}</Text>
         <TouchableOpacity
           style={{ marginTop: 18 }}
           onPress={() => {
@@ -1096,7 +1059,7 @@ export default function AssetDetailPage() {
             router.replace('/(tabs)/Inventory');
           }}
         >
-          <Text style={{ color: '#1E90FF', fontWeight: '700' }}>Go Back</Text>
+          <Text style={{ color: Colors.accent, fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -1105,8 +1068,8 @@ export default function AssetDetailPage() {
   if (err) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <Text style={{ color: '#b00020', marginBottom: 12 }}>{err}</Text>
-        <TouchableOpacity onPress={load} style={[styles.actionBtn, { backgroundColor: '#1E90FF', paddingHorizontal: 22 }]}>
+        <Text style={{ color: Colors.dangerFg, marginBottom: 12 }}>{err}</Text>
+        <TouchableOpacity onPress={load} style={[styles.actionBtn, styles.actionBtnPrimary, { paddingHorizontal: 22 }]}>
           <Text style={styles.actionText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -1122,7 +1085,7 @@ export default function AssetDetailPage() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', ...(Platform.OS === 'web' ? { minHeight: '100vh' } : {}) }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg, ...(Platform.OS === 'web' ? { minHeight: '100vh' } : {}) }}>
       <ScreenHeader
         title="Asset Details"
         backLabel="Back"
@@ -1151,19 +1114,19 @@ export default function AssetDetailPage() {
           {/* Meta chips */}
           <View style={styles.metaRow}>
             <TouchableOpacity onPress={copyId} style={styles.metaChip}>
-              <MaterialIcons name="fingerprint" size={16} color="#1E90FF" />
+              <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
               <Text style={styles.metaChipText}>ID: {asset.id}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
-              <MaterialIcons name="link" size={16} color="#1E90FF" />
+              <MaterialIcons name="link" size={16} color={Colors.accent} />
               <Text style={styles.metaChipText}>Copy Link</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
-              <MaterialIcons name="place" size={16} color="#1E90FF" />
+              <MaterialIcons name="place" size={16} color={Colors.accent} />
               <Text style={styles.metaChipText}>Maps</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
-              <Ionicons name="qr-code-outline" size={18} color="#1E90FF" />
+              <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
             </TouchableOpacity>
           </View>
 
@@ -1306,214 +1269,233 @@ export default function AssetDetailPage() {
             </>
           )}
 
-          {/* Divider before Notes/History */}
-          <View style={styles.sectionDivider} />
-
-          {/* Notes (asset-level + typed) */}
-          <Text style={[styles.sectionH, { marginTop: 16 }]}>Notes</Text>
-          {!assetNote && typedNotes.length === 0 ? (
-            <Text style={{ color: '#666' }}>No notes yet.</Text>
-          ) : (
-            <>
-              <View style={{ gap: 10 }}>
-                {!!assetNote && (
-                  <View key="asset-note" style={styles.noteCard}>
-                    <Text style={styles.noteText}>{assetNote}</Text>
-                  </View>
-                )}
-                {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 3 - (assetNote ? 1 : 0))).map((n) => (
-                  <View key={n.id} style={styles.noteCard}>
-                    <View style={styles.noteHead}>
-                      <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
-                        <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                      </View>
+          {/* ── Tab bar ───────────────────────────────────────── */}
+          <View style={styles.tabBar}>
+            {[
+              { key: 'notes',       label: 'Notes',        count: (assetNote ? 1 : 0) + typedNotes.length },
+              { key: 'documents',   label: 'Documents',   count: (() => { try { return buildDynamicData().history.length; } catch { return 0; } })() },
+              { key: 'maintenance', label: 'Maintenance',  count: workDetailHistory.length },
+              { key: 'history',     label: 'History',     count: noteItems.length },
+            ].map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.tabItem, isActive && styles.tabItemActive]}
+                  onPress={() => setActiveTab(tab.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                    {tab.label}
+                  </Text>
+                  {tab.count > 0 && (
+                    <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
+                      <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
+                        {tab.count}
+                      </Text>
                     </View>
-                    <Text style={styles.noteText}>{n.note}</Text>
-                  </View>
-                ))}
-              </View>
-              {(assetNote ? 1 : 0) + typedNotes.length > 3 && (
-                <View style={{ marginTop: 10 }}>
-                  <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
-                    <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
-                  </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* ── Tab: History ──────────────────────────────────── */}
+          {activeTab === 'history' && (
+            <View style={styles.tabPanel}>
+              {noteItems.length === 0 ? (
+                <View style={styles.tabEmpty}>
+                  <MaterialIcons name="history" size={32} color={Colors.line} />
+                  <Text style={styles.tabEmptyText}>No history yet.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
+                    const meta = typeMeta(n.type);
+                    const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
+                    return (
+                      <View key={n.id} style={styles.noteCard}>
+                        <View style={styles.noteHead}>
+                          <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
+                              {activityDescription}
+                            </Text>
+                            <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                            <Text style={[styles.noteWhen, { fontSize: 12, color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
+                              {n.who || 'System'}
+                            </Text>
+                          </View>
+                          {!!n.type && (
+                            <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                              <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.noteText}>{n.note}</Text>
+                        {!!(n.images && n.images.length) && (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                            {n.images.map((url, idx) => (
+                              <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                            ))}
+                          </ScrollView>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {noteItems.length > 5 && (
+                    <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
+                      <Text style={styles.noteToggleText}>{notesExpanded ? 'Show less' : `Show all ${noteItems.length}`}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
-            </>
+            </View>
           )}
 
-          {/* Document history (older attachments) */}
-          {(() => {
-            try {
-              const { history } = buildDynamicData();
-              if (!history || !history.length) return null;
-              const rows = history.map((h) => ({
-                label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
-                value: (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    {renderFieldValue('documentation_url', h.url)}
-                    <TouchableOpacity
-                      onPress={() => handleDeleteDocument(h.id)}
-                      disabled={docDeletingId === h.id}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={{ padding: 4 }}
-                    >
-                      <MaterialIcons name="delete" size={20} color={docDeletingId === h.id ? '#999' : '#c00'} />
-                    </TouchableOpacity>
-                  </View>
-                ),
-                right: false,
-              }));
-              const visible = docHistoryOpen ? rows : rows.slice(0, 2); // collapsed shows last 1–2 items
-              return (
-                <>
-                  <View style={styles.collapsibleHead}>
-                    <Text style={[styles.sectionH, { marginTop: 16, marginBottom: 0 }]}>All Documents</Text>
-                  </View>
-                  {isWebWide ? (
-                    <>
-                      {!!visible.length && <DetailsGrid rows={visible} />}
-                      {!docHistoryOpen && rows.length > visible.length ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={[styles.noteToggle, { marginTop: 8 }]}>
-                          <Text style={styles.noteToggleText}>Show more</Text>
+          {/* ── Tab: Documents ────────────────────────────────── */}
+          {activeTab === 'documents' && (
+            <View style={styles.tabPanel}>
+              {(() => {
+                try {
+                  const { history } = buildDynamicData();
+                  if (!history || !history.length) {
+                    return (
+                      <View style={styles.tabEmpty}>
+                        <MaterialIcons name="insert-drive-file" size={32} color={Colors.line} />
+                        <Text style={styles.tabEmptyText}>No documents attached.</Text>
+                      </View>
+                    );
+                  }
+                  const rows = history.map((h) => ({
+                    label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
+                    value: (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {renderFieldValue('documentation_url', h.url)}
+                        <TouchableOpacity
+                          onPress={() => handleDeleteDocument(h.id)}
+                          disabled={docDeletingId === h.id}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{ padding: 4 }}
+                        >
+                          <MaterialIcons name="delete" size={20} color={docDeletingId === h.id ? '#999' : '#c00'} />
                         </TouchableOpacity>
-                      ) : docHistoryOpen ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={[styles.noteToggle, { marginTop: 8 }]}>
-                          <Text style={styles.noteToggleText}>Show less</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      {visible.map((r, i) => (
-                        <Row key={`hist-${i}`} label={r.label} value={r.value} />
-                      ))}
-                      {!docHistoryOpen && rows.length > visible.length ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(true)} style={[styles.noteToggle, { marginTop: 8 }]}>
-                          <Text style={styles.noteToggleText}>Show more</Text>
-                        </TouchableOpacity>
-                      ) : docHistoryOpen ? (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen(false)} style={[styles.noteToggle, { marginTop: 8 }]}>
-                          <Text style={styles.noteToggleText}>Show less</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </>
-                  )}
-                </>
-              );
-            } catch { return null; }
-          })()}
-
-          {/* Maintenance record (REPAIR / MAINTENANCE with full details and photos) */}
-          <Text style={[styles.sectionH, { marginTop: 16 }]}>Maintenance record</Text>
-          {workDetailHistory.length === 0 ? (
-            <Text style={{ color: '#666' }}>No maintenance record yet.</Text>
-          ) : (
-            <>
-              <View style={{ gap: 12 }}>
-                {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 1)).map((w) => {
-                  const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
-                  const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
-                  const isService = w.type === 'MAINTENANCE';
-                  const summaryWithNext = [
-                    (w.summary || '').trim(),
-                    isService && asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
-                  ].filter(Boolean).join('. ');
+                      </View>
+                    ),
+                    right: false,
+                  }));
+                  const visible = docHistoryOpen ? rows : rows.slice(0, 3);
                   return (
-                    <View key={w.id} style={styles.noteCard}>
-                      <View style={styles.noteHead}>
-                        <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
-                        <View style={{ flex: 1, paddingRight: 8 }}>
-                          <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
-                          <Text style={styles.noteWhen}>{prettyDateTime(w.signed_off_at || w.occurred_at || w.date)}</Text>
-                        </View>
-                        <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                          <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                        </View>
-                      </View>
-                      <View style={{ marginTop: 8, gap: 4 }}>
-                        {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
-                        {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
-                        {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
-                          <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
-                        )}
-                        {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
-                      </View>
-                      {!!(w.images && w.images.length) && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                          {w.images.map((url, idx) => (
-                            <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                          ))}
-                        </ScrollView>
+                    <>
+                      {isWebWide
+                        ? <DetailsGrid rows={visible} />
+                        : visible.map((r, i) => <Row key={`hist-${i}`} label={r.label} value={r.value} />)
+                      }
+                      {rows.length > 3 && (
+                        <TouchableOpacity onPress={() => setDocHistoryOpen((v) => !v)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                          <Text style={styles.noteToggleText}>{docHistoryOpen ? 'Show less' : `Show all ${rows.length}`}</Text>
+                        </TouchableOpacity>
                       )}
-                    </View>
+                    </>
                   );
-                })}
-              </View>
-              {workDetailHistory.length > 1 && (
-                <TouchableOpacity
-                  onPress={() => setMaintenanceExpanded((v) => !v)}
-                  style={[styles.noteToggle, { marginTop: 12 }]}
-                >
-                  <Text style={styles.noteToggleText}>
-                    {maintenanceExpanded ? 'Show less' : 'Show more'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </>
+                } catch { return null; }
+              })()}
+            </View>
           )}
 
-          {/* History (all actions) */}
-          <Text style={[styles.sectionH, { marginTop: 16 }]}>History</Text>
-          {noteItems.length === 0 ? (
-            <Text style={{ color: '#666' }}>No history yet.</Text>
-          ) : (
-            <>
-              <View style={{ gap: 10 }}>
-                {(notesExpanded ? noteItems : noteItems.slice(0, 3)).map((n) => {
-                  const meta = typeMeta(n.type);
-                  const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
-                  return (
+          {/* ── Tab: Maintenance ──────────────────────────────── */}
+          {activeTab === 'maintenance' && (
+            <View style={styles.tabPanel}>
+              {workDetailHistory.length === 0 ? (
+                <View style={styles.tabEmpty}>
+                  <MaterialIcons name="build" size={32} color={Colors.line} />
+                  <Text style={styles.tabEmptyText}>No maintenance record yet.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 12 }}>
+                  {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 3)).map((w) => {
+                    const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
+                    const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
+                    const isService = w.type === 'MAINTENANCE';
+                    const summaryWithNext = [
+                      (w.summary || '').trim(),
+                      isService && asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
+                    ].filter(Boolean).join('. ');
+                    return (
+                      <View key={w.id} style={styles.noteCard}>
+                        <View style={styles.noteHead}>
+                          <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
+                            <Text style={styles.noteWhen}>{prettyDateTime(w.signed_off_at || w.occurred_at || w.date)}</Text>
+                          </View>
+                          <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                            <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                          </View>
+                        </View>
+                        <View style={{ marginTop: 8, gap: 4 }}>
+                          {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
+                          {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
+                          {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
+                            <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
+                          )}
+                          {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
+                        </View>
+                        {!!(w.images && w.images.length) && (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                            {w.images.map((url, idx) => (
+                              <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                            ))}
+                          </ScrollView>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {workDetailHistory.length > 3 && (
+                    <TouchableOpacity onPress={() => setMaintenanceExpanded((v) => !v)} style={[styles.noteToggle, { marginTop: 4 }]}>
+                      <Text style={styles.noteToggleText}>{maintenanceExpanded ? 'Show less' : `Show all ${workDetailHistory.length}`}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ── Tab: Notes ────────────────────────────────────── */}
+          {activeTab === 'notes' && (
+            <View style={styles.tabPanel}>
+              {!assetNote && typedNotes.length === 0 ? (
+                <View style={styles.tabEmpty}>
+                  <MaterialIcons name="notes" size={32} color={Colors.line} />
+                  <Text style={styles.tabEmptyText}>No notes yet.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {!!assetNote && (
+                    <View key="asset-note" style={styles.noteCard}>
+                      <Text style={styles.noteText}>{assetNote}</Text>
+                    </View>
+                  )}
+                  {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)).map((n) => (
                     <View key={n.id} style={styles.noteCard}>
                       <View style={styles.noteHead}>
                         <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
                         <View style={{ flex: 1, paddingRight: 8 }}>
-                          <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
-                            {activityDescription}
-                          </Text>
+                          <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
                           <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                          <Text style={[styles.noteWhen, { fontSize: 12, color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
-                            {n.who || 'System'}
-                          </Text>
                         </View>
-                        {!!n.type && (
-                          <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                            <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                          </View>
-                        )}
                       </View>
                       <Text style={styles.noteText}>{n.note}</Text>
-                      {!!(n.images && n.images.length) && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                          {n.images.map((url, idx) => (
-                            <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                          ))}
-                        </ScrollView>
-                      )}
                     </View>
-                  );
-                })}
-              </View>
-              {noteItems.length > 3 && (
-                <View style={{ marginTop: 10 }}>
-                  <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
-                    <Text style={styles.noteToggleText}>{notesExpanded ? 'Show less' : 'Show more'}</Text>
-                  </TouchableOpacity>
+                  ))}
+                  {(assetNote ? 1 : 0) + typedNotes.length > 4 && (
+                    <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
+                      <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
-            </>
+            </View>
           )}
 
           {/* Linked assets */}
@@ -1529,7 +1511,7 @@ export default function AssetDetailPage() {
                       router.push({ pathname: '/(tabs)/asset/[assetId]', params: { assetId: id } })
                     }
                   >
-                    <MaterialIcons name="link" size={16} color="#1E90FF" />
+                    <MaterialIcons name="link" size={16} color={Colors.accent} />
                     <Text style={styles.linkedChipText}>{id}</Text>
                   </TouchableOpacity>
                 ))}
@@ -1579,18 +1561,20 @@ export default function AssetDetailPage() {
           if (isQRReserved) {
             return normalizeStatus(asset?.status) === 'available' ? (
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                style={[styles.actionBtn, styles.actionBtnSecondary]}
                 onPress={() =>
                   router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
                 }
               >
+                <MaterialIcons name="swap-horiz" size={18} color="#fff" />
                 <Text style={styles.actionText}>Transfer Out</Text>
               </TouchableOpacity>
             ) : normalizeStatus(asset?.status) === 'rented' ? (
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
                 onPress={() => router.push(`/check-in/${asset.id}`)}
               >
+                <MaterialIcons name="swap-horiz" size={18} color="#fff" />
                 <Text style={styles.actionText}>Transfer In</Text>
               </TouchableOpacity>
             ) : null;
@@ -1599,24 +1583,26 @@ export default function AssetDetailPage() {
             <>
               {normalizeStatus(asset?.status) === 'available' ? (
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                  style={[styles.actionBtn, styles.actionBtnSecondary]}
                   onPress={() =>
                     router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
                   }
                 >
+                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
                   <Text style={styles.actionText}>Transfer Out</Text>
                 </TouchableOpacity>
               ) : normalizeStatus(asset?.status) === 'rented' ? (
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                  style={[styles.actionBtn, styles.actionBtnPrimary]}
                   onPress={() => router.push(`/check-in/${asset.id}`)}
                 >
+                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
                   <Text style={styles.actionText}>Transfer In</Text>
                 </TouchableOpacity>
               ) : (
                 isAdmin ? (
                   <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#1E90FF' }]}
+                    style={[styles.actionBtn, styles.actionBtnSecondary]}
                     onPress={() => {
                       router.push({
                         pathname: '/asset/new',
@@ -1624,12 +1610,13 @@ export default function AssetDetailPage() {
                       });
                     }}
                   >
-                    <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Copy Asset</Text>
+                    <MaterialIcons name="content-copy" size={18} color="#fff" />
+                    <Text style={styles.actionText}>Copy</Text>
                   </TouchableOpacity>
                 ) : null
               )}
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#FFA500' }]}
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
                 onPress={() =>
                   router.push({
                     pathname: '/asset/edit',
@@ -1640,14 +1627,16 @@ export default function AssetDetailPage() {
                   })
                 }
               >
-                <Text style={styles.actionText}>✏️ Edit</Text>
+                <MaterialIcons name="edit" size={18} color="#fff" />
+                <Text style={styles.actionText}>Edit</Text>
               </TouchableOpacity>
               {isAdmin && (
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#b00020' }]}
+                  style={[styles.actionBtn, styles.actionBtnDanger]}
                   onPress={handleDelete}
                 >
-                  <Text style={styles.actionText}>🗑 Delete</Text>
+                  <MaterialIcons name="delete-outline" size={18} color="#fff" />
+                  <Text style={styles.actionText}>Delete</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -1664,14 +1653,14 @@ export default function AssetDetailPage() {
       >
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setQrOpen(false)} />
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#fff', padding: 18, borderRadius: 16, alignItems: 'center', width: 340, maxWidth: '90%' }}>
+          <View style={{ backgroundColor: Colors.card, padding: 18, borderRadius: Radius.lg, alignItems: 'center', width: 340, maxWidth: '90%' }}>
             <QRCode value={qrPayload()} size={260} ecl="M" />
-            <Text style={{ marginTop: 12, fontWeight: '700', color: '#333' }}>{asset?.id || assetId}</Text>
-            <Text style={{ marginTop: 8, color: '#555', textAlign: 'center' }}>
+            <Text style={{ marginTop: 12, fontWeight: '700', color: Colors.text }}>{asset?.id || assetId}</Text>
+            <Text style={{ marginTop: 8, color: Colors.sub, textAlign: 'center' }}>
               Scan this QR to open the asset and perform check-in or check-out.
             </Text>
             <TouchableOpacity onPress={() => setQrOpen(false)} style={{ marginTop: 12 }}>
-              <Text style={{ color: '#1E90FF', fontWeight: '800' }}>Close</Text>
+              <Text style={{ color: Colors.accent, fontWeight: '800' }}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1759,57 +1748,53 @@ function Shortcut({ icon, label, onPress }) {
 const styles = StyleSheet.create({
   centerWrap: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderBottomColor: '#ddd',
-    borderBottomWidth: 1,
+    backgroundColor: Colors.card,
+    borderBottomColor: Colors.line,
+    borderBottomWidth: 2,
     paddingBottom: 12,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     marginLeft: 12,
-    color: '#1E90FF',
+    color: Colors.accent,
   },
   heroImage: {
     width: '100%',
     height: 220,
     resizeMode: 'cover',
-    backgroundColor: '#eee',
+    backgroundColor: Colors.chip,
   },
   detailCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.card,
     padding: 14,
     marginHorizontal: 0,
     marginTop: 12,
     marginBottom: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E2EEFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
   },
-  image: { 
+  image: {
     height: 200,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     marginBottom: 14,
     resizeMode: 'contain',
-    backgroundColor: '#eee',
+    backgroundColor: Colors.chip,
   },
   mapCard: {
     height: 220,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     overflow: 'hidden',
-    backgroundColor: '#eee',
+    backgroundColor: Colors.chip,
     marginTop: 16,
     marginBottom: 16,
   },
@@ -1827,17 +1812,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text,
     marginRight: 8,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-  },
-  statusText: { fontWeight: '700', fontSize: 12 },
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1850,30 +1827,30 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    backgroundColor: '#f0f8ff',
-    borderRadius: 14,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.lg,
   },
-  metaChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
+  metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E6EDF3',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
     marginVertical: 0,
     gap: 8,
   },
   detailRowStack: {
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E6EDF3',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
     marginVertical: 0,
     gap: 4,
   },
   label: {
     fontWeight: '700',
-    color: '#6B7280',
+    color: Colors.sub2,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -1888,7 +1865,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   value: {
-    color: '#111827',
+    color: Colors.text,
     fontSize: 15,
     fontWeight: '500',
     textAlign: 'right',
@@ -1896,9 +1873,9 @@ const styles = StyleSheet.create({
   sectionH: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
-    textTransform: 'none',
-    letterSpacing: 0.3,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginTop: 24,
     marginBottom: 10,
     textAlign: 'left',
@@ -1915,21 +1892,21 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    backgroundColor: '#eef6ff',
-    borderRadius: 14,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.lg,
   },
-  linkedChipText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
+  linkedChipText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
 
   documentButton: {
     marginTop: 16,
     marginBottom: 16,
     padding: 2,
-    backgroundColor: '#f0f8ff',
-    borderRadius: 8,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.md,
     alignItems: 'center',
   },
   documentText: {
-    color: '#1E90FF',
+    color: Colors.accent,
     fontWeight: 'bold',
   },
   mainContentWrap: { flex: 1, minHeight: 0 },
@@ -1939,7 +1916,7 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row', justifyContent: 'center', gap: 8,
-    padding: 16, borderTopColor: '#ddd', borderTopWidth: 1, backgroundColor: '#fff',
+    padding: 16, borderTopColor: Colors.line, borderTopWidth: 2, backgroundColor: Colors.bg,
   },
   actionsRowSticky: {
     position: 'fixed',
@@ -1951,21 +1928,25 @@ const styles = StyleSheet.create({
   actionBtn: {
     flex: 1,
     minHeight: 50,
-    minWidth: 120,
-    borderRadius: 12,
+    minWidth: 100,
+    borderRadius: Radius.md,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
+    gap: 6,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 3, height: 3 } },
+      ios: { shadowColor: Colors.text, shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 3, height: 3 } },
       android: { elevation: 3 },
       default: {},
     }),
   },
+  actionBtnPrimary: { backgroundColor: Colors.accent },
+  actionBtnSecondary: { backgroundColor: Colors.primary },
+  actionBtnDanger: { backgroundColor: Colors.dangerFg },
   actionText: {
     color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
+    fontWeight: '800',
+    fontSize: 15,
   },
   shortcut: {
     flexDirection: 'row',
@@ -1973,52 +1954,52 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    backgroundColor: '#eef6ff',
-    borderRadius: 14,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.lg,
     marginRight: 8,
     marginBottom: 8,
   },
-  shortcutText: { color: '#1E90FF', fontWeight: '600', fontSize: 12 },
+  shortcutText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
 
   // Web grid (wider layout)
   webGrid: {
-    borderWidth: 1,
-    borderColor: '#E2EEFF',
-    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     overflow: 'hidden',
     marginTop: 4,
   },
   webGridRow: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EAF2FF',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
   },
   webGridLabel: {
     width: '32%',
     minWidth: 220,
-    backgroundColor: '#F9FBFF',
+    backgroundColor: Colors.chip,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRightWidth: 1,
-    borderRightColor: '#E2EEFF',
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
     justifyContent: 'center',
   },
-  webGridLabelText: { color: '#555', fontWeight: '800' },
+  webGridLabelText: { color: Colors.sub, fontWeight: '800' },
   webGridValue: {
     flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
     justifyContent: 'center',
   },
-  webGridValueText: { color: '#111', fontWeight: '600' },
+  webGridValueText: { color: Colors.text, fontWeight: '600' },
 
   // Notes styles
   noteCard: {
-    borderWidth: 1,
-    borderColor: '#E6EDF3',
-    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     padding: 10,
-    backgroundColor: '#FAFCFF',
+    backgroundColor: Colors.bg,
   },
   noteHead: {
     flexDirection: 'row',
@@ -2029,56 +2010,125 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderWidth: 2,
+    borderColor: Colors.line,
     marginRight: 10,
   },
-  noteAvatarText: { fontWeight: '800', color: '#1E40AF', fontSize: 12 },
-  noteWho: { color: '#0F172A', fontWeight: '700' },
-  noteWhen: { color: '#64748B', fontSize: 12, marginTop: 2 },
+  noteAvatarText: { fontWeight: '800', color: Colors.accent, fontSize: 12 },
+  noteWho: { color: Colors.text, fontWeight: '700' },
+  noteWhen: { color: Colors.sub2, fontSize: 12, marginTop: 2 },
   noteBadge: {
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
   noteBadgeText: { fontWeight: '800', fontSize: 10 },
-  noteText: { color: '#0F172A' },
+  noteText: { color: Colors.text },
   noteToggle: {
     alignSelf: 'flex-start',
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E6EDF3',
-    backgroundColor: '#F6FAFF',
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
   },
-  noteToggleText: { color: '#0B63CE', fontWeight: '800' },
+  noteToggleText: { color: Colors.accent, fontWeight: '800' },
   sectionDivider: {
-    height: 1,
-    backgroundColor: '#E9EEF6',
+    height: 2,
+    backgroundColor: Colors.line,
     marginTop: 16,
     marginBottom: 4,
   },
+
+  // Tab bar
+  tabBar: {
+    flexDirection: 'row',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
+    marginTop: 20,
+    marginHorizontal: -14,
+    paddingHorizontal: 4,
+    backgroundColor: Colors.bg,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 5,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  tabItemActive: {
+    borderBottomColor: Colors.accent,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.sub2,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  tabLabelActive: {
+    color: Colors.accent,
+  },
+  tabBadge: {
+    backgroundColor: Colors.chip,
+    borderRadius: 999,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  tabBadgeActive: {
+    backgroundColor: Colors.accentLight,
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.sub2,
+  },
+  tabBadgeTextActive: {
+    color: Colors.accentDark,
+  },
+  tabPanel: {
+    paddingTop: 14,
+    minHeight: 80,
+  },
+  tabEmpty: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 8,
+  },
+  tabEmptyText: {
+    color: Colors.sub2,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   collapsibleHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  collapsibleMeta: { marginLeft: 6, color: '#64748B', fontWeight: '700' },
+  collapsibleMeta: { marginLeft: 6, color: Colors.sub2, fontWeight: '700' },
 
   // Current work (mobile card)
   currentWorkCard: {
     marginTop: 8,
     padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.bg,
   },
   currentWorkSummary: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.text,
     marginBottom: 6,
   },
   currentWorkMetaRow: {
@@ -2093,26 +2143,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#E0E7FF',
+    backgroundColor: Colors.chip,
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
   currentWorkMetaLabel: {
     marginLeft: 4,
     fontSize: 11,
     fontWeight: '700',
-    color: '#4B5563',
+    color: Colors.accent,
     textTransform: 'uppercase',
   },
   currentWorkMetaValue: {
     marginLeft: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.text,
   },
   currentWorkNote: {
     marginTop: 4,
     fontSize: 13,
-    color: '#374151',
+    color: Colors.sub,
   },
 });

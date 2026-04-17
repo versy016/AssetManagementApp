@@ -1,88 +1,79 @@
-// _layout.js - Tab navigation layout for the app's main sections
+// _layout.js - Tab navigation layout — Bold Industrial design
 import { Tabs } from 'expo-router';
-import { Platform, View, Text } from 'react-native';
+import { Platform, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TourTarget } from '../../components/TourGuide';
 import { useTasksCount } from '../../contexts/TasksCountContext';
 
-// Optional settings for the router
 export const unstable_settings = {
   initialRouteName: 'dashboard',
   showDebugTools: false,
 };
 
-
-// TabsLayout defines the bottom tab navigation for the app
 export default function TabsLayout() {
   const isWeb = Platform.OS === 'web';
   const { taskCount } = useTasksCount();
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#1E90FF',
-        tabBarStyle: isWeb ? { display: 'none' } : { position: 'relative' },
+        tabBarActiveTintColor: '#EA580C',       // Orange accent active
+        tabBarInactiveTintColor: '#A8A29E',      // Muted stone inactive
+        tabBarStyle: isWeb
+          ? { display: 'none' }
+          : {
+              position: 'relative',
+              backgroundColor: '#1E293B',        // Navy background
+              borderTopWidth: 0,
+              height: 60,
+              paddingBottom: 6,
+              paddingTop: 6,
+            },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+          letterSpacing: 0.3,
+          textTransform: 'uppercase',
+        },
         headerShown: false,
       }}
     >
-      {/* Dashboard tab */}
       <Tabs.Screen
         name="dashboard"
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
-      />      
-      {/* Inventory tab */}
+      />
       <Tabs.Screen
         name="Inventory"
         options={{
           title: 'Inventory',
           tabBarIcon: ({ color, size }) => (
             <TourTarget id="nav-inventory-tab">
-              <Ionicons name="list-outline" size={size} color={color} />
+              <Ionicons name="cube" size={size} color={color} />
             </TourTarget>
           ),
         }}
       />
-      {/* Other tab (iOS & Android) — contains Tasks and Hire sub-tabs */}
       <Tabs.Screen
         name="tasks"
         options={{
-          title: 'Other',
+          title: 'Work',
           tabBarBadge: taskCount > 0 ? (taskCount > 99 ? '99+' : taskCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#EA580C',
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '800',
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+          },
           tabBarIcon: ({ color, size }) => (
-            <View style={{ position: 'relative' }}>
-              <Ionicons name="apps-outline" size={size} color={color} />
-              {taskCount > 0 && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -8,
-                    minWidth: 16,
-                    height: 16,
-                    borderRadius: 8,
-                    backgroundColor: '#E53935',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    paddingHorizontal: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: '#fff',
-                      fontSize: 10,
-                      fontWeight: '700',
-                    }}
-                    numberOfLines={1}
-                  >
-                    {taskCount > 99 ? '99+' : taskCount}
-                  </Text>
-                </View>
-              )}
-            </View>
+            <Ionicons name="construct" size={size} color={color} />
           ),
         }}
       />

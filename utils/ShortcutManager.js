@@ -7,10 +7,12 @@ import {
     getShortcutType,
     canUseShortcut,
     SHORTCUT_COLOR_PALETTES,
+    SHORTCUT_TYPES,
 } from '../constants/ShortcutTypes';
 
 const STORAGE_KEY_PREFIX = 'shortcuts_';
-const MAX_SHORTCUTS = 6;
+// Cap at total number of defined shortcut types so every type can be added
+const MAX_SHORTCUTS = Object.keys(SHORTCUT_TYPES).length;
 
 /**
  * Get storage key for a user

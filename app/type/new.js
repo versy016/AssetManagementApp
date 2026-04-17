@@ -497,9 +497,9 @@ export default function NewAssetType() {
             }
             router.replace('/Inventory?tab=types');
           }}
-          style={{ padding: 12, borderRadius: 8, backgroundColor: '#0B63CE' }}
+          style={{ padding: 12, borderRadius: Radius.md, backgroundColor: Colors.primary }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+          <Text style={{ color: '#fff', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -631,9 +631,9 @@ export default function NewAssetType() {
                             <TouchableOpacity
                               key={`lead-${p.key}-${d}`}
                               onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
-                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
                             >
-                              <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                              <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -775,7 +775,7 @@ export default function NewAssetType() {
                             onPress={() => setEditing(e => ({ ...e, reminderLeadDays: d }))}
                             style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(editing.reminderLeadDays) || 0) === d ? '#DBEAFE' : '#F3F4F6' }]}
                           >
-                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                            <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -838,61 +838,85 @@ export default function NewAssetType() {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 const s = StyleSheet.create({
-  container: { padding: 20 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginVertical: 8, justifyContent: 'center' },
-  inputError: { borderColor: '#b00020' },
-  btn: { backgroundColor: '#eee', padding: 15, alignItems: 'center', borderRadius: 8, marginVertical: 8 },
-  submit: { backgroundColor: '#1E90FF' },
-  preview: { width: '100%', height: 200, borderRadius: 8, marginVertical: 10 },
-  label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
-  errorBelow: { color: '#b00020', marginTop: -4, marginBottom: 6 },
-  subLabel: { fontSize: 14, fontWeight: '600', marginTop: 8, marginBottom: 4 },
-  card: { borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 12, padding: 12, marginBottom: 12, backgroundColor: '#FAFAFA' },
-  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  container: { padding: 20, backgroundColor: Colors.bg },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, marginVertical: 8, justifyContent: 'center', backgroundColor: Colors.card, color: Colors.text },
+  inputError: { borderColor: Colors.dangerFg },
+  btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
+  submit: { backgroundColor: Colors.primary },
+  preview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: 10, ...CardShadow },
+  label: { fontSize: 16, fontWeight: '900', marginBottom: 5, color: Colors.text },
+  errorBelow: { color: Colors.dangerFg, marginTop: -4, marginBottom: 6, fontWeight: '700' },
+  subLabel: { fontSize: 14, fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
+  card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginBottom: 12, backgroundColor: Colors.card, ...CardShadow },
+  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
-  dropdown: { borderColor: '#ccc', borderRadius: 8, marginTop: 4 },
-  dropdownContainer: { borderColor: '#ccc' },
+  dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },
+  dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
 
   // Default-fields UI
-  defaultList: { marginTop: 8, borderRadius: 12, backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#E6E6E6' },
-  defaultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#EFEFEF' },
-  defaultRowLabel: { marginLeft: 10, color: '#666', fontSize: 15 },
-  checkboxDisabled: { width: 20, height: 20, borderRadius: 4, backgroundColor: '#E0E0E0', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#C9C9C9' },
-  checkboxTick: { color: '#8C8C8C', fontSize: 14, lineHeight: 16, fontWeight: 'bold' },
+  defaultList: { marginTop: 8, borderRadius: Radius.lg, backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.line, ...CardShadow },
+  defaultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: Colors.line },
+  defaultRowLabel: { marginLeft: 10, color: Colors.sub, fontSize: 15, fontWeight: '600' },
+  checkboxDisabled: { width: 20, height: 20, borderRadius: Radius.sm, backgroundColor: Colors.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: Colors.line },
+  checkboxTick: { color: Colors.sub, fontSize: 14, lineHeight: 16, fontWeight: '700' },
 
-  // Blue checkbox rows (saved custom list)
+  // Accent checkbox rows (saved custom list)
   checkboxRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 12,
-    borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 10,
-    backgroundColor: '#F9FBFF', marginTop: 8,
+    borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md,
+    backgroundColor: Colors.accentMuted, marginTop: 8,
   },
-  checkboxRowLabel: { marginLeft: 10, fontSize: 14, fontWeight: '600', color: '#1E90FF' },
-  checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
-  checkboxBoxChecked: { borderColor: '#1E90FF', backgroundColor: '#1E90FF' },
-  checkboxBoxUnchecked: { borderColor: '#1E90FF', backgroundColor: 'transparent' },
-  checkboxBoxTick: { color: '#fff', fontWeight: 'bold', fontSize: 14, lineHeight: 16 },
+  checkboxRowLabel: { marginLeft: 10, fontSize: 14, fontWeight: '700', color: Colors.accent },
+  checkboxBox: { width: 20, height: 20, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  checkboxBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
+  checkboxBoxUnchecked: { borderColor: Colors.accent, backgroundColor: 'transparent' },
+  checkboxBoxTick: { color: Colors.card, fontWeight: '800', fontSize: 14, lineHeight: 16 },
 
   // Grid (preset library)
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   gridItem: {
-    width: '48%', borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 10,
-    paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#FBFBFB',
+    width: '48%', borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md,
+    paddingVertical: 10, paddingHorizontal: 12, backgroundColor: Colors.card,
     // Stack content vertically when a preset reveals inline config
-    flexDirection: 'column', alignItems: 'stretch',
+    flexDirection: 'column', alignItems: 'stretch', ...CardShadow,
   },
-  gridLabel: { marginLeft: 10, fontSize: 14, color: '#333', flexShrink: 1 },
-  gridBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
-  gridBoxChecked: { borderColor: '#1E90FF', backgroundColor: '#1E90FF' },
-  gridBoxUnchecked: { borderColor: '#C5DFFF', backgroundColor: 'transparent' },
-  gridTick: { color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 12 },
+  gridLabel: { marginLeft: 10, fontSize: 14, color: Colors.text, flexShrink: 1, fontWeight: '700' },
+  gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
+  gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
+  gridTick: { color: Colors.card, fontSize: 12, fontWeight: '800', lineHeight: 12 },
 
   // Required toggle on grid item
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: 11, color: '#516B8E', marginBottom: 4 },
+  reqLabel: { fontSize: 11, color: Colors.sub, marginBottom: 4, fontWeight: '700' },
 
-  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
-  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
+  toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
+  toastText: { color: Colors.successFg, fontWeight: '800', flex: 1 },
 });

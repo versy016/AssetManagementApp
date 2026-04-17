@@ -7,6 +7,7 @@ import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from 'react-native-paper';
 
+import { Colors } from '../../constants/uiTheme';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AppTextInput from '../../components/ui/AppTextInput';
 import AppButton from '../../components/ui/AppButton';
@@ -93,7 +94,8 @@ export default function Login() {
   return (
     <ScreenWrapper style={styles.container} withScrollView>
       <View style={styles.content}>
-        <Text style={[styles.title, { color: theme.colors.primary }]}>Login</Text>
+        <Text style={styles.brandText}>GearOps</Text>
+        <Text style={styles.title}>Login</Text>
 
         <AppTextInput
           label="Email"
@@ -111,7 +113,7 @@ export default function Login() {
         />
 
         <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
-          <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>Forgot Password?</Text>
+          <Text style={styles.accentLink}>Forgot Password?</Text>
         </TouchableOpacity>
 
         <ErrorMessage error={errorMessage} visible={!!errorMessage} />
@@ -129,7 +131,7 @@ export default function Login() {
           disabled={loading}
           style={styles.registerLink}
         >
-          <Text style={{ color: theme.colors.primary, fontWeight: '500' }}>
+          <Text style={styles.accentLink}>
             Don't have an account? Register
           </Text>
         </TouchableOpacity>
@@ -146,13 +148,29 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     flex: 1,
-    minHeight: 500, // Ensure vertical centering on larger screens
+    minHeight: 500,
+  },
+  brandText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 4,
   },
   title: {
     fontSize: 32,
     marginBottom: 32,
-    fontWeight: 'bold',
+    fontWeight: '900',
     textAlign: 'center',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  accentLink: {
+    color: Colors.accent,
+    fontWeight: '600',
   },
   forgotPassword: {
     alignSelf: 'flex-end',

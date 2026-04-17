@@ -5,15 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import ActionsForm from '../../components/ActionsForm';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
-
-const Colors = {
-  bg: '#FFFFFF',
-  border: '#E2E8F0',
-  text: '#0F172A',
-  subtle: '#64748B',
-  primary: '#0B63CE',
-};
 
 const ACTION_LABELS = {
   repair: 'Repair',
@@ -167,27 +160,28 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: Colors.subtle,
+    color: Colors.sub,
   },
   errorText: {
-    color: Colors.subtle,
+    color: Colors.sub,
   },
   assetCard: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.lg,
     padding: 16,
-    backgroundColor: '#F8FAFF',
+    backgroundColor: Colors.card,
     gap: 4,
+    ...Shadows.card,
   },
   assetTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     color: Colors.text,
   },
   assetMeta: {
     fontSize: 14,
-    color: Colors.subtle,
+    color: Colors.sub,
   },
 });
 

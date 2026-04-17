@@ -8,6 +8,7 @@ import { View, Alert, StyleSheet, Text, TouchableOpacity, Platform } from 'react
 import { useRouter } from 'expo-router';
 import { useTheme } from 'react-native-paper';
 
+import { Colors } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import AppTextInput from '../../components/ui/AppTextInput';
@@ -179,21 +180,22 @@ export default function Register() {
       <ScreenWrapper style={styles.container} withScrollView>
         <View style={styles.content}>
           <View style={styles.successContainer}>
-            <Text style={[styles.successIcon, { color: theme.colors.primary }]}>✓</Text>
-            <Text style={[styles.successTitle, { color: theme.colors.primary }]}>
+            <Text style={styles.brandText}>GearOps</Text>
+            <Text style={[styles.successIcon, { color: Colors.accent }]}>✓</Text>
+            <Text style={[styles.successTitle, { color: Colors.text }]}>
               Registration Successful!
             </Text>
-            <Text style={[styles.successMessage, { color: theme.colors.text }]}>
+            <Text style={[styles.successMessage, { color: Colors.subText }]}>
               We've sent a verification email to:
             </Text>
-            <Text style={[styles.successEmail, { color: theme.colors.primary }]}>
+            <Text style={[styles.successEmail, { color: Colors.accent }]}>
               {registeredEmail}
             </Text>
             <View style={styles.instructionsBox}>
-              <Text style={[styles.instructionsTitle, { color: theme.colors.text }]}>
+              <Text style={[styles.instructionsTitle, { color: Colors.text }]}>
                 Next Steps:
               </Text>
-              <Text style={[styles.instructionsText, { color: theme.colors.text }]}>
+              <Text style={[styles.instructionsText, { color: Colors.subText }]}>
                 1. Check your email inbox (and spam folder){'\n'}
                 2. Click the verification link in the email{'\n'}
                 3. The link will expire in 1 hour{'\n'}
@@ -207,7 +209,7 @@ export default function Register() {
             >
               Go to Login
             </AppButton>
-            <Text style={[styles.autoRedirectText, { color: theme.colors.text }]}>
+            <Text style={[styles.autoRedirectText, { color: Colors.subText }]}>
               Redirecting to login in a few seconds...
             </Text>
           </View>
@@ -219,7 +221,8 @@ export default function Register() {
   return (
     <ScreenWrapper style={styles.container} withScrollView>
       <View style={styles.content}>
-        <Text style={[styles.title, { color: theme.colors.primary }]}>Register</Text>
+        <Text style={styles.brandText}>GearOps</Text>
+        <Text style={styles.title}>Register</Text>
 
         <AppTextInput
           label="Full Name"
@@ -256,7 +259,7 @@ export default function Register() {
           onPress={() => router.replace('/(auth)/login')}
           style={styles.loginLink}
         >
-          <Text style={{ color: theme.colors.primary, fontWeight: '500' }}>
+          <Text style={styles.accentLink}>
             Already have an account? Login
           </Text>
         </TouchableOpacity>
@@ -275,11 +278,27 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 500,
   },
+  brandText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   title: {
     fontSize: 32,
     marginBottom: 32,
-    fontWeight: 'bold',
+    fontWeight: '900',
     textAlign: 'center',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  accentLink: {
+    color: Colors.accent,
+    fontWeight: '500',
   },
   loginLink: {
     marginTop: 24,
@@ -312,10 +331,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   instructionsBox: {
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
+    backgroundColor: Colors.accentLight,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: 6,
     padding: 16,
     marginBottom: 24,
     width: '100%',

@@ -35,23 +35,11 @@ import {
   prettyStatus,
   statusToColor,
 } from '../../components/ui/StatusBadge';
+import { Colors, Radius, Spacing, Shadows } from '../../constants/uiTheme';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
-/** 🔵 Brand palette */
-const COLORS = {
-  primary: '#0B63CE',
-  primaryDark: '#084AA0',
-  primaryLight: '#E7F3FF',
-  text: '#111',
-  sub: '#555',
-  sub2: '#777',
-  bg: '#F7FAFF',
-  card: '#FFFFFF',
-  line: '#E2EEFF',
-  dangerBg: '#FFEBEE',
-  dangerFg: '#D32F2F',
-};
+// Colors imported from constants/uiTheme
 
 // STATUS_CONFIG, normalizeStatus, prettyStatus, statusToColor imported from components/ui/StatusBadge
 
@@ -99,7 +87,7 @@ const daysUntil = (isoDate) => {
 function MetaChip({ icon, text }) {
   return (
     <View style={styles.metaChip}>
-      <Feather name={icon} size={14} color={COLORS.sub} />
+      <Feather name={icon} size={14} color={Colors.text} />
       <Text style={styles.metaText} numberOfLines={1}>{text}</Text>
     </View>
   );
@@ -108,7 +96,7 @@ function DetailRow({ icon, label, value }) {
   return (
     <View style={styles.detailRow}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Feather name={icon} size={14} color={COLORS.sub} />
+        <Feather name={icon} size={14} color={Colors.text} />
         <Text style={styles.detailLabel}>{label}</Text>
       </View>
       <Text style={styles.detailValue} numberOfLines={1}>{value || '—'}</Text>
@@ -279,7 +267,7 @@ const AssetTypesTab = ({ query, filters }) => {
           <Image source={{ uri: String(type.image_url).trim() }} style={styles.typeCover} />
         ) : (
           <View style={[styles.typeCover, styles.typeCoverPlaceholder]}>
-            <MaterialIcons name="category" size={24} color={COLORS.sub2} />
+            <MaterialIcons name="category" size={24} color={Colors.sub2} />
           </View>
         )}
 
@@ -291,7 +279,7 @@ const AssetTypesTab = ({ query, filters }) => {
             onPress={() => handleTypePress(type)}
           >
             <Text style={styles.typeTitle} numberOfLines={1}>{type?.name || 'Asset Type'}</Text>
-            <MaterialIcons name="chevron-right" size={22} color={COLORS.sub2} />
+            <MaterialIcons name="chevron-right" size={22} color={Colors.sub2} />
           </TouchableOpacity>
 
           {/* Primary chips (always visible) */}
@@ -308,19 +296,19 @@ const AssetTypesTab = ({ query, filters }) => {
               label="End of Life"
               value={endOfLife}
             />
-            <View style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}>
-              <MaterialIcons name="inventory-2" size={14} color={COLORS.sub} />
-              <Text style={[styles.typeChipText, { color: COLORS.sub }]}>Total: {total}</Text>
+            <View style={[styles.typeChip, { backgroundColor: Colors.chip, borderColor: Colors.line }]}>
+              <MaterialIcons name="inventory-2" size={14} color={Colors.sub} />
+              <Text style={[styles.typeChipText, { color: Colors.sub }]}>Total: {total}</Text>
             </View>
 
             {/* More toggle */}
             <TouchableOpacity
               onPress={() => setShowExtras(v => !v)}
-              style={[styles.typeChip, { backgroundColor: '#F5F9FF', borderColor: COLORS.line }]}
+              style={[styles.typeChip, { backgroundColor: Colors.chip, borderColor: Colors.line }]}
               activeOpacity={0.7}
             >
-              <MaterialIcons name={showExtras ? 'expand-less' : 'expand-more'} size={14} color={COLORS.sub} />
-              <Text style={[styles.typeChipText, { color: COLORS.sub }]}>
+              <MaterialIcons name={showExtras ? 'expand-less' : 'expand-more'} size={14} color={Colors.sub} />
+              <Text style={[styles.typeChipText, { color: Colors.sub }]}>
                 More{extrasTotal ? ` • ${extrasTotal}` : ''}
               </Text>
             </TouchableOpacity>
@@ -361,14 +349,14 @@ const AssetTypesTab = ({ query, filters }) => {
             style={[styles.sortChip, typeSort.field === 'name' && styles.sortChipActive]}
             onPress={() => setTypeSort((s) => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
           >
-            <Feather name={typeSort.field === 'name' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'name' ? COLORS.primary : COLORS.sub} />
+            <Feather name={typeSort.field === 'name' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'name' ? Colors.accent : Colors.sub} />
             <Text style={[styles.sortText, typeSort.field === 'name' && styles.sortTextActive]}>Name</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sortChip, typeSort.field === 'total' && styles.sortChipActive]}
             onPress={() => setTypeSort((s) => ({ field: 'total', dir: s.field === 'total' && s.dir === 'asc' ? 'desc' : 'asc' }))}
           >
-            <Feather name={typeSort.field === 'total' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'total' ? COLORS.primary : COLORS.sub} />
+            <Feather name={typeSort.field === 'total' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'total' ? Colors.accent : Colors.sub} />
             <Text style={[styles.sortText, typeSort.field === 'total' && styles.sortTextActive]}>Total</Text>
           </TouchableOpacity>
         </View>
@@ -385,7 +373,7 @@ const AssetTypesTab = ({ query, filters }) => {
         )
       )}
       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24, paddingTop: 8 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
       ListEmptyComponent={
         <EmptyState
           icon={loaded ? 'folder-open' : 'hourglass-empty'}
@@ -516,83 +504,107 @@ const AllAssetsTab = ({ query, filters }) => {
     const loc = item?.location ?? item?.fields?.location;
     const type = item?.asset_type ?? item?.type ?? item?.asset_types?.name;
     const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
-
     const datePurchased = item?.date_purchased ?? item?.fields?.date_purchased;
     const updatedAt = item?.updated_at ?? item?.fields?.updated_at;
     const notes = item?.notes ?? item?.fields?.notes ?? item?.description ?? '';
 
-    const subtitle = [type ? String(type) : null, serial ? `SN ${serial}` : null, model || null]
-      .filter(Boolean).join(' • ');
+    const subtitle = [serial ? `SN ${serial}` : null, model || null].filter(Boolean).join(' · ');
 
     const s = statusToColor(item?.status);
     const isExpanded = expandedIds.has(String(item.id));
 
+    // Relative time for last updated
+    const timeAgo = (iso) => {
+      if (!iso) return null;
+      const diff = Date.now() - new Date(iso).getTime();
+      const m = Math.floor(diff / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 30) return `${d}d ago`;
+      return prettyDate(iso);
+    };
+    const updatedLabel = timeAgo(updatedAt);
+
     return (
       <TouchableOpacity
         style={styles.card}
-        activeOpacity={0.9}
+        activeOpacity={0.88}
         onPress={() => {
-          if (onOpen) {
-            onOpen(item.id);
-            return;
-          }
-          router.push({
-            pathname: '/asset/[assetId]',
-            params: {
-              assetId: String(item.id),
-              returnTo: '/Inventory?tab=all',
-            },
-          });
+          if (onOpen) { onOpen(item.id); return; }
+          router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/Inventory?tab=all' } });
         }}
         onLongPress={() => toggleExpand(item.id)}
       >
+        {/* Coloured status accent bar on the left edge */}
+        <View style={[styles.cardAccent, { backgroundColor: Colors.primary }]} />
+
         <View style={styles.cardLeft}>
           {item?.image_url ? (
             <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
           ) : (
-            <View style={[styles.cardImage, styles.cardImagePlaceholder]}>
-              <Ionicons name="qr-code-outline" size={22} color={COLORS.sub2} />
+            <View style={[styles.cardImage, styles.cardImagePlaceholder, { backgroundColor: Colors.primaryLight, borderColor: Colors.line }]}>
+              <Feather name="package" size={20} color={Colors.primary} />
             </View>
           )}
         </View>
 
         <View style={styles.cardBody}>
+          {/* Title row with type label + status badge */}
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{name}</Text>
+            <View style={{ flex: 1, marginRight: 6 }}>
+              <Text style={styles.cardTitle} numberOfLines={1}>{name}</Text>
+              {!!type && <Text style={styles.cardTypeLabel} numberOfLines={1}>{type}</Text>}
+            </View>
             <View style={[styles.badge, { backgroundColor: s.bg, borderColor: s.bd }]}>
               <Text style={[styles.badgeText, { color: s.fg }]}>{prettyStatus(item?.status)}</Text>
             </View>
           </View>
 
-          {!!subtitle && <Text style={styles.cardSubtitle} numberOfLines={1}>{subtitle}</Text>}
+          {/* Subtitle: serial / model / updated */}
+          <View style={styles.cardMeta}>
+            {!!subtitle && <Text style={styles.cardSubtitle} numberOfLines={1}>{subtitle}</Text>}
+            {!!updatedLabel && (
+              <View style={styles.updatedPill}>
+                <Feather name="clock" size={10} color={Colors.sub2} />
+                <Text style={styles.updatedPillText}>{updatedLabel}</Text>
+              </View>
+            )}
+          </View>
 
+          {/* Chips */}
           <View style={styles.metaRow}>
             {(() => {
               const chips = [];
-              if (assignedTo) chips.push({ icon: 'user', text: truncate(String(assignedTo), 24) });
+              if (assignedTo) chips.push({ icon: 'user', text: truncate(String(assignedTo), 22) });
               if (loc) chips.push({ icon: 'map-pin', text: truncate(String(loc), 18) });
-              // Fallbacks to reach at least 3 chips
-              if (chips.length < 3 && type) chips.push({ icon: 'tag', text: truncate(String(type), 18) });
-              if (chips.length < 3 && model) chips.push({ icon: 'cpu', text: truncate(String(model), 18) });
-              if (chips.length < 3 && datePurchased) chips.push({ icon: 'calendar', text: `Purchased ${prettyDate(datePurchased)}` });
-              // Render first three
-              return chips.slice(0, 3).map((c, idx) => (
+              if (chips.length < 2 && model) chips.push({ icon: 'cpu', text: truncate(String(model), 18) });
+              if (chips.length < 2 && datePurchased) chips.push({ icon: 'calendar', text: prettyDate(datePurchased) });
+              return chips.slice(0, 2).map((c, idx) => (
                 <MetaChip key={`chip-${idx}`} icon={c.icon} text={c.text} />
               ));
             })()}
+            {/* Asset ID chip */}
+            <View style={styles.idChip}>
+              <Text style={styles.idChipText} numberOfLines={1}>#{item.id}</Text>
+            </View>
           </View>
 
+          {/* Expanded detail panel */}
           {isExpanded && (
             <View style={styles.moreWrap}>
               <DetailRow icon="hash" label="ID" value={String(item.id)} />
               {model ? <DetailRow icon="cpu" label="Model" value={String(model)} /> : null}
+              {serial ? <DetailRow icon="bar-chart-2" label="Serial" value={String(serial)} /> : null}
               {datePurchased ? <DetailRow icon="calendar" label="Purchased" value={prettyDate(datePurchased)} /> : null}
               {updatedAt ? <DetailRow icon="clock" label="Updated" value={prettyDate(updatedAt)} /> : null}
-              {loc ? <DetailRow icon="map" label="Location" value={String(loc)} /> : null}
+              {loc ? <DetailRow icon="map-pin" label="Location" value={String(loc)} /> : null}
               {notes ? (
                 <View style={styles.notesRow}>
-                  <Feather name="file-text" size={14} color={COLORS.sub} />
-                  <Text style={styles.notesText} numberOfLines={2}>{String(notes)}</Text>
+                  <Feather name="file-text" size={13} color={Colors.primary} />
+                  <Text style={styles.notesText} numberOfLines={3}>{String(notes)}</Text>
                 </View>
               ) : null}
             </View>
@@ -600,7 +612,9 @@ const AllAssetsTab = ({ query, filters }) => {
         </View>
 
         <TouchableOpacity style={styles.cardRight} onPress={() => toggleExpand(item.id)} hitSlop={8}>
-          <MaterialIcons name={isExpanded ? 'expand-less' : 'expand-more'} size={24} color={COLORS.sub2} />
+          <View style={[styles.expandBtn, isExpanded && styles.expandBtnActive]}>
+            <MaterialIcons name={isExpanded ? 'expand-less' : 'expand-more'} size={20} color={isExpanded ? Colors.accent : Colors.sub2} />
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -610,19 +624,22 @@ const AllAssetsTab = ({ query, filters }) => {
     <FlatList
       ListHeaderComponent={
         <View style={styles.sortBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sortCountText}>{sortedAssets.length} assets</Text>
+          </View>
           <Text style={styles.sortLabel}>Sort:</Text>
           <TouchableOpacity
             style={[styles.sortChip, assetSort.field === 'name' && styles.sortChipActive]}
             onPress={() => setAssetSort((s) => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
           >
-            <Feather name={assetSort.field === 'name' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'name' ? COLORS.primary : COLORS.sub} />
+            <Feather name={assetSort.field === 'name' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'name' ? Colors.accent : Colors.sub} />
             <Text style={[styles.sortText, assetSort.field === 'name' && styles.sortTextActive]}>Name</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sortChip, assetSort.field === 'updated' && styles.sortChipActive]}
             onPress={() => setAssetSort((s) => ({ field: 'updated', dir: s.field === 'updated' && s.dir === 'asc' ? 'desc' : 'asc' }))}
           >
-            <Feather name={assetSort.field === 'updated' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'updated' ? COLORS.primary : COLORS.sub} />
+            <Feather name={assetSort.field === 'updated' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={assetSort.field === 'updated' ? Colors.accent : Colors.sub} />
             <Text style={[styles.sortText, assetSort.field === 'updated' && styles.sortTextActive]}>Updated</Text>
           </TouchableOpacity>
         </View>
@@ -736,7 +753,7 @@ const Inventory = () => {
               onPress={() => setFilterModalOpen(true)}
             >
               <View style={{ position: 'relative' }}>
-                <Feather name="sliders" size={22} color={theme.colors.primary} />
+                <Feather name="sliders" size={22} color={Colors.accent} />
                 {activeFilterCount > 0 && (
                   <View style={styles.filterBadge}>
                     <Text style={styles.filterBadgeText}>{Math.min(activeFilterCount, 9)}</Text>
@@ -758,16 +775,16 @@ const Inventory = () => {
             <View style={{ position: 'relative' }}>
               <TabBar
                 {...props}
-                indicatorStyle={{ backgroundColor: COLORS.primary }}
-                style={{ backgroundColor: '#fff' }}
-                activeColor="#000"
-                inactiveColor="#555"
-                labelStyle={{ fontWeight: 'bold' }}
+                indicatorStyle={{ backgroundColor: Colors.accent }}
+                style={{ backgroundColor: Colors.card }}
+                activeColor={Colors.text}
+                inactiveColor={Colors.sub2}
+                labelStyle={{ fontWeight: '800' }}
                 renderLabel={({ route, focused }) => (
                   <Text
                     style={{
-                      color: focused ? '#000' : '#555',
-                      fontWeight: focused ? 'bold' : 'normal',
+                      color: focused ? Colors.text : Colors.sub2,
+                      fontWeight: focused ? '800' : 'normal',
                       fontSize: 14,
                     }}
                   >
@@ -805,9 +822,9 @@ const Inventory = () => {
             <TouchableOpacity style={styles.modalBackdropTouch} activeOpacity={1} onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }} />
             <View style={styles.filterSheet}>
               <View style={styles.filterSheetHeader}>
-                <Text style={styles.filterSheetTitle}>Filters</Text>
+                <Text style={styles.filterSheetTitle}>FILTERS</Text>
                 <TouchableOpacity onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }}>
-                  <MaterialIcons name="close" size={24} color={COLORS.sub} />
+                  <MaterialIcons name="close" size={24} color={Colors.sub} />
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.filterSheetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -822,10 +839,10 @@ const Inventory = () => {
                   {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
                     <TouchableOpacity
                       key={s}
-                      style={[styles.filterChip, filters.status === s && styles.filterChipActive]}
+                      style={[styles.filterChip, filters.status === s && { ...styles.filterChipActive, backgroundColor: Colors.accent }]}
                       onPress={() => setFilters(f => ({ ...f, status: f.status === s ? null : s }))}
                     >
-                      <Text style={[styles.filterChipText, filters.status === s && styles.filterChipTextActive]}>{s}</Text>
+                      <Text style={[styles.filterChipText, filters.status === s && { ...styles.filterChipTextActive, color: '#fff' }]}>{s}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -836,7 +853,7 @@ const Inventory = () => {
                       <View key={t} style={styles.filterSelectedChip}>
                         <Text style={styles.filterSelectedChipText} numberOfLines={1}>{t}</Text>
                         <TouchableOpacity onPress={() => setFilters(f => ({ ...f, assetTypes: (f.assetTypes || []).filter(x => x !== t) }))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                          <Feather name="x" size={14} color={COLORS.primary} />
+                          <Feather name="x" size={14} color={Colors.accent} />
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -881,7 +898,7 @@ const Inventory = () => {
         {isAdmin && (
           <TourTarget
             id={index === 1 ? 'btn-manage-types' : 'btn-add-asset'}
-            style={styles.fab}
+            style={[styles.fab, { backgroundColor: Colors.accent }]}
           >
             <TouchableOpacity
               style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
@@ -898,7 +915,7 @@ const Inventory = () => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  header: { flexDirection: 'row', padding: 10, backgroundColor: '#fff' },
+  header: { flexDirection: 'row', padding: 10, backgroundColor: Colors.card },
   searchInput: {
     flex: 1, backgroundColor: '#f5f5f5', padding: 10, borderRadius: 5,
     marginRight: 10, borderColor: '#ddd', borderWidth: 1, color: '#111',
@@ -908,7 +925,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: '#D32F2F',
+    backgroundColor: Colors.accent,
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -924,9 +941,9 @@ const styles = StyleSheet.create({
   },
   modalBackdropTouch: { flex: 1, width: '100%' },
   filterSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
     padding: 20,
     maxHeight: '70%',
   },
@@ -936,52 +953,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  filterSheetTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  filterSheetTitle: { fontSize: 18, fontWeight: '900', color: Colors.text, textTransform: 'uppercase' },
   filterSheetScroll: { maxHeight: 320 },
-  filterGroupTitle: { fontSize: 12, fontWeight: '700', color: COLORS.sub, marginBottom: 8, textTransform: 'uppercase' },
+  filterGroupTitle: { fontSize: 12, fontWeight: '700', color: Colors.sub, marginBottom: 8, textTransform: 'uppercase' },
   filterChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: Radius.sm,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#fff',
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
   },
-  filterChipActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: COLORS.sub },
-  filterChipTextActive: { color: COLORS.primary, fontWeight: '700' },
+  filterChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: Colors.sub },
+  filterChipTextActive: { color: Colors.accent, fontWeight: '700' },
   filterClearBtn: {
     marginTop: 16,
     paddingVertical: 10,
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.line,
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
   },
-  filterClearText: { color: COLORS.primary, fontWeight: '700', fontSize: 14 },
+  filterClearText: { color: Colors.accent, fontWeight: '800', fontSize: 14, textTransform: 'uppercase' },
   filterSelectedTypesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   filterSelectedChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    borderRadius: 999,
+    backgroundColor: Colors.accentLight,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    borderRadius: Radius.sm,
     paddingLeft: 12,
     paddingRight: 8,
     paddingVertical: 6,
   },
-  filterSelectedChipText: { fontSize: 13, fontWeight: '600', color: COLORS.primary, maxWidth: 140 },
+  filterSelectedChipText: { fontSize: 13, fontWeight: '700', color: Colors.accent, maxWidth: 140 },
   filterTypeInput: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: COLORS.text,
+    color: Colors.text,
     marginBottom: 8,
   },
   filterTypeList: { maxHeight: 180 },
@@ -989,84 +1006,111 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: Colors.line,
   },
-  filterTypeItemActive: { backgroundColor: COLORS.primaryLight },
-  filterTypeItemText: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
-  filterTypeItemTextActive: { color: COLORS.primary, fontWeight: '700' },
+  filterTypeItemActive: { backgroundColor: Colors.accentLight },
+  filterTypeItemText: { fontSize: 14, color: Colors.text, fontWeight: '500' },
+  filterTypeItemTextActive: { color: Colors.accent, fontWeight: '700' },
   extrasWrap: {
     marginTop: 8,
     paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.line,
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
   /** FAB */
   fab: {
-    position: 'absolute', right: 20, bottom: 30, backgroundColor: COLORS.primary,
-    width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5,
+    position: 'absolute', right: 20, bottom: 30, backgroundColor: Colors.accent,
+    width: 60, height: 60, borderRadius: Radius.lg, justifyContent: 'center', alignItems: 'center',
+    ...Shadows.md,
   },
 
   /** ---- All Assets card UI ---- */
   card: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 12,
-    marginHorizontal: 10, marginVertical: 6, borderRadius: 14, backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: '#E9F1FF',
-    shadowColor: '#0B63CE', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
-    elevation: 1
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 10,
+    marginVertical: 5,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...Shadows.card,
   },
-  cardLeft: { marginRight: 12 },
-  cardImage: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#D6E8FF' },
+  cardAccent: {
+    width: 4,
+    alignSelf: 'stretch',
+    minHeight: 72,
+  },
+  cardLeft: { marginLeft: 10, marginRight: 10, paddingVertical: 12 },
+  cardImage: { width: 50, height: 50, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.line },
   cardImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1 },
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: COLORS.text },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
-  badgeText: { fontSize: 11, fontWeight: '800' },
-  cardSubtitle: { color: COLORS.sub2, marginTop: 2 },
-  metaRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+  cardBody: { flex: 1, paddingVertical: 10, paddingRight: 4 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: Colors.text, lineHeight: 20 },
+  cardTypeLabel: { fontSize: 11, fontWeight: '700', color: Colors.sub2, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
+  cardSubtitle: { fontSize: 12, color: Colors.sub, fontWeight: '600', flex: 1 },
+  updatedPill: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  updatedPillText: { fontSize: 11, color: Colors.sub2, fontWeight: '600' },
+  badge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5 },
+  badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  metaRow: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#F5F9FF', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8,
-    borderWidth: 1, borderColor: COLORS.line
+    backgroundColor: Colors.chip, paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.sm,
+    borderWidth: 1.5, borderColor: Colors.line,
   },
-  metaText: { fontSize: 12, color: COLORS.sub },
-  moreWrap: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#EDF4FF', gap: 8 },
+  metaText: { fontSize: 12, color: Colors.text, fontWeight: '600' },
+  idChip: {
+    paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.sm,
+    backgroundColor: Colors.primary, borderWidth: 0,
+  },
+  idChipText: { fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.2 },
+  moreWrap: { marginTop: 8, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line, gap: 7 },
   detailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailLabel: { color: COLORS.sub, fontWeight: '600' },
-  detailValue: { color: COLORS.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12 },
+  detailLabel: { color: Colors.text, fontWeight: '600', fontSize: 13 },
+  detailValue: { color: Colors.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12, fontSize: 13 },
   // Sort bar (list header)
-  sortBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 8 },
-  sortLabel: { color: COLORS.sub2, fontWeight: '800' },
-  sortChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#F5F9FF' },
-  sortChipActive: { borderColor: COLORS.primary, backgroundColor: '#E7F3FF' },
-  sortText: { color: COLORS.sub, fontWeight: '800', fontSize: 12 },
-  sortTextActive: { color: COLORS.primary },
+  sortBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: 2, borderBottomColor: Colors.line,
+    backgroundColor: Colors.card, marginHorizontal: 10, marginTop: 6,
+    borderRadius: Radius.md, ...Shadows.card,
+  },
+  sortCountText: { fontSize: 12, color: Colors.sub, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  sortLabel: { color: Colors.sub2, fontWeight: '800', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3 },
+  sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
+  sortChipActive: { borderColor: Colors.accent, backgroundColor: Colors.accentLight },
+  sortText: { color: Colors.sub, fontWeight: '800', fontSize: 12 },
+  sortTextActive: { color: Colors.accent },
   notesRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: '#F7FBFF', borderWidth: 1, borderColor: COLORS.line,
-    padding: 8, borderRadius: 8
+    backgroundColor: Colors.accentLight, borderWidth: 1.5, borderColor: Colors.accentMuted,
+    padding: 8, borderRadius: Radius.sm,
   },
-  notesText: { color: COLORS.sub, flex: 1, lineHeight: 18 },
-  cardRight: { marginLeft: 6, paddingTop: 2 },
+  notesText: { color: Colors.text, flex: 1, lineHeight: 18, fontSize: 13 },
+  cardRight: { paddingTop: 10, paddingRight: 10 },
+  expandBtn: { width: 28, height: 28, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, alignItems: 'center', justifyContent: 'center' },
+  expandBtnActive: { borderColor: Colors.accent, backgroundColor: Colors.accentLight },
 
   /** ---- Asset Types refined UI ---- */
   typeCard: {
-    flexDirection: 'row', borderRadius: 14, backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: '#E9F1FF', marginVertical: 6, marginHorizontal: 8,
-    padding: 10, shadowColor: '#0B63CE', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
-    elevation: 1
+    flexDirection: 'row', borderRadius: Radius.lg, backgroundColor: Colors.card,
+    borderWidth: 2, borderColor: Colors.line, marginVertical: 6, marginHorizontal: 8,
+    padding: 10, ...Shadows.card,
   },
-  typeCover: { width: 56, height: 56, borderRadius: 10, marginRight: 12, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: COLORS.line },
+  typeCover: { width: 56, height: 56, borderRadius: Radius.md, marginRight: 12, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   typeCoverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   typeBody: { flex: 1 },
   typeTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  typeTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: COLORS.text },
+  typeTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: Colors.text },
   typeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: Radius.sm, borderWidth: 1.5 },
   typeChipText: { fontSize: 12, fontWeight: '700' },
 });
 

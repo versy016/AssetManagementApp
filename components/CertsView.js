@@ -10,7 +10,7 @@ import { router } from 'expo-router';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDisplayDate, formatDisplayDateLong } from '../utils/date';
-import { Colors } from '../constants/uiTheme';
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
 import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
@@ -668,7 +668,7 @@ export default function CertsView({ visible: initialVisible }) {
       <TourTarget id="web-certs-filters">
       <TouchableOpacity style={styles.iconBtn} onPress={() => setFilterOpen(true)}>
         <View style={{ position: 'relative' }}>
-          <Feather name="sliders" size={18} color={Colors.primary} />
+          <Feather name="sliders" size={18} color={Colors.accent} />
           {activeFilterCount > 0 && (
             <View style={styles.countDot}>
               <Text style={styles.countDotText}>{Math.min(activeFilterCount, 9)}</Text>
@@ -678,7 +678,7 @@ export default function CertsView({ visible: initialVisible }) {
       </TouchableOpacity>
       </TourTarget>
       <TouchableOpacity style={styles.iconBtn} onPress={() => setRefreshKey((v) => v + 1)}>
-        <Feather name="refresh-ccw" size={18} color={Colors.primary} />
+        <Feather name="refresh-ccw" size={18} color={Colors.accent} />
       </TouchableOpacity>
     </>
   );
@@ -747,15 +747,15 @@ export default function CertsView({ visible: initialVisible }) {
                         style={{
                           paddingVertical: 8,
                           paddingHorizontal: 12,
-                          borderWidth: 1,
-                          borderColor: editDocFieldId === f.id ? Colors.primary : '#E2E8F0',
-                          borderRadius: 8,
+                          borderWidth: 2,
+                          borderColor: editDocFieldId === f.id ? Colors.accent : Colors.line,
+                          borderRadius: Radius.md,
                           marginBottom: 6,
-                          backgroundColor: editDocFieldId === f.id ? '#EFF6FF' : '#fff',
+                          backgroundColor: editDocFieldId === f.id ? Colors.accentMuted : Colors.card,
                         }}
                         onPress={() => setEditDocFieldId(f.id)}
                       >
-                        <Text style={{ fontWeight: '600', color: '#0F172A' }}>{f.name || f.slug}</Text>
+                        <Text style={{ fontWeight: '700', color: Colors.text }}>{f.name || f.slug}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -767,11 +767,11 @@ export default function CertsView({ visible: initialVisible }) {
                   <Text style={styles.modalLabel}>Current Document</Text>
                   {editRow.docUrl ? (
                     <TouchableOpacity onPress={() => openDocumentLink(editRow.docUrl)} style={[styles.inlineBtn, { marginTop: 6, alignSelf: 'flex-start' }]}>
-                      <MaterialIcons name="open-in-new" size={16} color={Colors.primary} />
+                      <MaterialIcons name="open-in-new" size={16} color={Colors.accent} />
                       <Text style={styles.inlineBtnText}>Open</Text>
                     </TouchableOpacity>
                   ) : (
-                    <Text style={{ color: '#64748B', marginTop: 6 }}>No file attached</Text>
+                    <Text style={{ color: Colors.sub, marginTop: 6 }}>No file attached</Text>
                   )}
                 </View>
 
@@ -784,8 +784,8 @@ export default function CertsView({ visible: initialVisible }) {
                     editable={false}
                   />
                   {!!editDate && (
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: '#fdecea' }]} onPress={() => setEditDate('')}>
-                      <Text style={{ color: '#b00020' }}>Clear</Text>
+                    <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={() => setEditDate('')}>
+                      <Text style={{ color: Colors.dangerFg, fontWeight: '700' }}>Clear</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1036,7 +1036,7 @@ export default function CertsView({ visible: initialVisible }) {
                         }}
                         onPress={() => setSelectedDocField(f)}
                       >
-                        <Text style={{ fontWeight: '600', color: '#0F172A' }}>{f.name || f.slug}</Text>
+                        <Text style={{ fontWeight: '700', color: Colors.text }}>{f.name || f.slug}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1235,7 +1235,7 @@ export default function CertsView({ visible: initialVisible }) {
   if (state.error) {
     return (
       <View style={styles.certsWrap}>
-        <Text style={styles.sectionTitle}>Certificates & Documents</Text>
+        <Text style={styles.sectionTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Certificates & Documents</Text>
         <Text style={styles.errorText}>{String(state.error || 'An error occurred')}</Text>
         <TouchableOpacity
           style={[styles.btn]}
@@ -1628,16 +1628,16 @@ export default function CertsView({ visible: initialVisible }) {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.thSortableInner, Platform.OS === 'web' && { direction: 'ltr' }]}>
-                      <Text style={[styles.thText, isActive && { color: Colors.primary }]} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
+                      <Text style={[styles.thText, isActive && { color: Colors.accent }]} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
                       {isActive ? (
                         <Feather
                           name={sort.dir === 'asc' ? 'chevron-up' : 'chevron-down'}
                           size={14}
-                          color={Colors.primary}
+                          color={Colors.accent}
                           style={styles.thSortIcon}
                         />
                       ) : (
-                        <Feather name="chevron-down" size={12} color="#94A3B8" style={[styles.thSortIcon, { opacity: 0.7 }]} />
+                        <Feather name="chevron-down" size={12} color="rgba(255,255,255,0.45)" style={styles.thSortIcon} />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -1688,7 +1688,7 @@ export default function CertsView({ visible: initialVisible }) {
                         <TouchableOpacity style={styles.link} onPress={() => openDocumentLink(r.docUrl)}>
                           <MaterialIcons name={isPhotoDoc(r.docLabel) ? 'insert-photo' : 'description'} size={16} color={Colors.primary} />
                           <Text style={styles.linkText} numberOfLines={1}>Open document</Text>
-                          <MaterialIcons name="open-in-new" size={16} color={Colors.primary} />
+                          <MaterialIcons name="open-in-new" size={16} color={Colors.accent} />
                         </TouchableOpacity>
                       ) : (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1789,82 +1789,74 @@ CertsView.propTypes = { initialVisible: PropTypes.bool };
 CertsView.defaultProps = { initialVisible: false };
 
 const styles = StyleSheet.create({
-  certsWrap: { flex: 1, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F7FAFF' },
+  certsWrap: { flex: 1, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.bg },
   certsWrapMobile: { flex: 1 },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
-  sectionTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+  sectionTitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: 10, textTransform: 'uppercase', flexShrink: 1 },
   toolbarSurface: { marginBottom: 8 },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  inlineIconBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#BFDBFE' },
+  inlineIconBtn: { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.accentMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.accent },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  metaText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
-  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
-  actionBtn: { paddingHorizontal: 12, height: 34, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  actionBtnText: { color: Colors.primary, fontWeight: '600', fontSize: 13 },
-  countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  metaText: { fontSize: 13, color: Colors.sub, fontWeight: '700' },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { paddingHorizontal: 12, height: 34, borderRadius: Radius.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  actionBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13, textTransform: 'uppercase' },
+  countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.dangerFg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   countDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  tableWrap: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  th: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 },
+  tableWrap: { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, overflow: 'hidden', ...Shadows.card },
+  tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0 },
+  th: { paddingVertical: 13, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 },
   thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 },
   thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'flex-start' },
   thSortIcon: { marginLeft: 6, flexShrink: 0 },
-  thText: { fontSize: 12, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 1, minWidth: 0 },
+  thText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
   tableBodyScroll: { flex: 1 },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff' },
-  rowAlt: { backgroundColor: '#FAFAFA' },
-  rowHover: { backgroundColor: '#F0F9FF' },
-  td: { paddingVertical: 12, paddingHorizontal: 12, justifyContent: 'center' },
+  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.line, backgroundColor: '#FFFFFF' },
+  rowAlt: { backgroundColor: '#F8F7F5' },
+  rowHover: { backgroundColor: Colors.accentLight },
+  td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center' },
   tdActions: { alignItems: 'flex-start' },
-  tdText: { fontSize: 13, color: '#334155', fontWeight: '500' },
+  tdText: { fontSize: 15, color: Colors.text, fontWeight: '500' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkText: { fontSize: 13, color: '#2563EB', fontWeight: '600', textDecorationLine: 'underline' },
-  dateLabel: { fontSize: 11, color: '#94A3B8', marginBottom: 2, textTransform: 'uppercase', fontWeight: '700' },
-  dateValue: { fontSize: 13, color: '#334155', fontWeight: '600' },
-  dateValueSoon: { color: '#D97706' },
-  dateValueExpired: { color: '#DC2626' },
-  errorText: { color: '#DC2626', fontWeight: '600', marginVertical: 10 },
-  emptyText: { color: '#64748B', fontStyle: 'italic', marginTop: 10 },
-  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#EFF6FF' },
-  btnPrimary: { backgroundColor: '#2563EB' },
-  btnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#CBD5E1' },
+  linkText: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
+  dateLabel: { fontSize: 13, color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
+  dateValue: { fontSize: 15, color: Colors.text, fontWeight: '600' },
+  dateValueSoon: { color: Colors.warningFg },
+  dateValueExpired: { color: Colors.dangerFg },
+  errorText: { color: Colors.dangerFg, fontWeight: '700', marginVertical: 10 },
+  emptyText: { color: Colors.sub, fontStyle: 'italic', marginTop: 10 },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: Radius.md, backgroundColor: Colors.accentMuted },
+  btnPrimary: { backgroundColor: Colors.accent },
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 2, borderColor: Colors.line },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B', marginBottom: 16 },
-  modalLabel: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 4 },
-  modalValue: { fontSize: 16, color: '#0F172A', fontWeight: '600' },
-  inlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#EFF6FF' },
-  inlineBtnText: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
-  filterSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, elevation: 20, maxHeight: '78%' },
+  modalCard: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 24, width: '100%', maxWidth: 480, ...Shadows.card },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.text, marginBottom: 16, textTransform: 'uppercase' },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: Colors.sub, marginBottom: 4 },
+  modalValue: { fontSize: 16, color: Colors.text, fontWeight: '700' },
+  inlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: Radius.sm, backgroundColor: Colors.accentMuted },
+  inlineBtnText: { fontSize: 13, fontWeight: '700', color: Colors.accent },
+  filterSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.card, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg, padding: 20, ...Shadows.card, maxHeight: '78%' },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  groupTitle: { fontSize: 14, fontWeight: '800', color: '#1E293B', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  groupTitle: { fontSize: 14, fontWeight: '800', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   filterMenuRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   chipsRow: { flexWrap: 'wrap' },
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  quickDateChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
-  quickDateChipText: { color: '#374151', fontWeight: '700' },
-  inputLike: { borderWidth: 1, borderColor: '#D6E8FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF' },
-  inputLikeText: { color: '#0F172A', fontWeight: '600' },
+  quickDateChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: Radius.sm, backgroundColor: Colors.chip, borderWidth: 2, borderColor: Colors.line },
+  quickDateChipText: { color: Colors.text, fontWeight: '700' },
+  inputLike: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: Colors.card },
+  inputLikeText: { color: Colors.text, fontWeight: '700' },
   // Mobile card view
   mobileScroll: { flex: 1 },
   mobileScrollContent: { paddingHorizontal: 12, paddingBottom: 24 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -8 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   mobileCard: {
     width: '100%',
-    flexBasis: '100%',
-    flexGrow: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 16,
-    marginBottom: 12,
-    marginHorizontal: 8,
-    borderWidth: 1,
-    borderColor: '#E9F1FF',
-    shadowColor: '#0B63CE',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
   },
   desktopGridCard: { width: '48%', minWidth: 320 },
   mobileCardHeader: {
@@ -1877,57 +1869,57 @@ const styles = StyleSheet.create({
   mobileThumb: {
     width: 46,
     height: 46,
-    borderRadius: 10,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentMuted,
+    borderWidth: 2,
+    borderColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   mobileCardTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#0F172A',
+    color: Colors.text,
     marginBottom: 4,
   },
   mobileCardSubtitle: {
     fontSize: 13,
-    color: '#64748B',
-    fontWeight: '600',
+    color: Colors.sub,
+    fontWeight: '700',
   },
   mobileStatusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#DBEAFE',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   mobileStatusBadgeExpired: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
+    backgroundColor: Colors.dangerBg,
+    borderColor: Colors.dangerFg,
   },
   mobileStatusBadgeSoon: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#FCD34D',
+    backgroundColor: Colors.warningBg,
+    borderColor: Colors.warningFg,
   },
   mobileStatusText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#1D4ED8',
+    color: Colors.primary,
   },
   mobileStatusTextExpired: {
-    color: '#B91C1C',
+    color: Colors.dangerFg,
   },
   mobileStatusTextSoon: {
-    color: '#B45309',
+    color: Colors.warningFg,
   },
   mobileCardDetails: {
     gap: 10,
     marginBottom: 12,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F4F8',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
   },
   mobileDetailRow: {
     flexDirection: 'row',
@@ -1936,30 +1928,30 @@ const styles = StyleSheet.create({
   },
   mobileDetailLabel: {
     fontSize: 13,
-    color: '#64748B',
+    color: Colors.sub,
     fontWeight: '700',
     minWidth: 80,
   },
   mobileDetailValue: {
     fontSize: 13,
-    color: '#0F172A',
-    fontWeight: '600',
+    color: Colors.text,
+    fontWeight: '700',
     flex: 1,
   },
   mobileDetailValueSoon: {
-    color: '#B45309',
+    color: Colors.warningFg,
     fontWeight: '800',
   },
   mobileDetailValueExpired: {
-    color: '#B91C1C',
+    color: Colors.dangerFg,
     fontWeight: '800',
   },
   mobileCardActions: {
     flexDirection: 'row',
     gap: 8,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F4F8',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
   },
   mobileActionBtn: {
     flex: 1,
@@ -1969,14 +1961,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: Radius.md,
   },
   mobileActionBtnPrimary: {
-    backgroundColor: '#0B63CE',
+    backgroundColor: Colors.primary,
   },
-  mobileActionBtnEdit: { backgroundColor: '#B45309' },
-  mobileActionBtnDelete: { backgroundColor: '#D32F2F' },
-  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  mobileActionBtnEdit: { backgroundColor: Colors.warningFg },
+  mobileActionBtnDelete: { backgroundColor: Colors.dangerFg },
+  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
   mobileEmptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1986,12 +1978,12 @@ const styles = StyleSheet.create({
   mobileEmptyText: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#475569',
+    color: Colors.text,
     marginTop: 12,
   },
   mobileEmptySubtext: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: Colors.sub,
     marginTop: 4,
   },
 });

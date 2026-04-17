@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import HireDisclaimerForm from '../../components/HireDisclaimerForm';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 export default function HireRoute() {
@@ -133,7 +133,7 @@ export default function HireRoute() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.bg || '#fff',
+    backgroundColor: Colors.bg,
   },
   scroll: {
     flex: 1,
@@ -150,34 +150,35 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: Colors.sub || '#64748B',
+    color: Colors.sub,
   },
   assetBanner: {
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 4,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 14,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
   },
   bannerLabel: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#3B82F6',
+    fontWeight: '800',
+    color: Colors.accent,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 4,
   },
   bannerTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1E3A5F',
+    fontWeight: '900',
+    color: Colors.text,
   },
   bannerSub: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.sub2,
     marginTop: 2,
   },
 });

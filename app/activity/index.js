@@ -6,7 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 
 export default function ActivityScreen() {
@@ -264,7 +264,7 @@ export default function ActivityScreen() {
       case 'DOCUMENT_DELETED': return '#B45309';
       case 'ASSET_EDIT': return '#0EA5E9';
       case 'NEW_ASSET': return '#10B981';
-      case 'TRANSFER': return '#0B63CE';
+      case 'TRANSFER': return Colors.primary;
       case 'CHECK_IN': return '#16A34A';
       case 'CHECK_OUT': return '#7C3AED';
       case 'STATUS_CHANGE': return '#EA580C';
@@ -360,7 +360,7 @@ export default function ActivityScreen() {
             <Image source={{ uri: thumb }} style={styles.thumb} />
           ) : (
             <View style={[styles.thumb, styles.thumbPlaceholder]}>
-              <MaterialIcons name={icon} size={22} color="#1E40AF" />
+              <MaterialIcons name={icon} size={22} color={Colors.primary} />
             </View>
           )}
         </View>
@@ -391,7 +391,7 @@ export default function ActivityScreen() {
             {isAction && String(item.type).toUpperCase() === 'TRANSFER' ? (
               <View style={styles.transferRow}>
                 <View style={[styles.chip, styles.chipPrimary]}><Text style={[styles.chipText, styles.chipTextStrong]} numberOfLines={1}>{fromName}</Text></View>
-                <MaterialIcons name="east" size={16} color="#0B63CE" />
+                <MaterialIcons name="east" size={16} color={Colors.primary} />
                 <View style={[styles.chip, styles.chipPrimary]}><Text style={[styles.chipText, styles.chipTextStrong]} numberOfLines={1}>{toName}</Text></View>
               </View>
             ) : !!subTop ? (
@@ -400,7 +400,7 @@ export default function ActivityScreen() {
           </View>
           {(noteText && !(isAction && String(item.type || '').toUpperCase() === 'TRANSFER')) ? (
             <View style={styles.noteRow}>
-              <MaterialIcons name="notes" size={14} color="#64748B" />
+              <MaterialIcons name="notes" size={14} color={Colors.sub2} />
               <Text style={styles.noteLine} numberOfLines={2}>{noteText}</Text>
             </View>
           ) : null}
@@ -415,7 +415,7 @@ export default function ActivityScreen() {
       <ScreenHeader
         title="Activity"
         backLabel="Dashboard"
-        onBack={() => {
+        onBack={Platform.OS === 'web' ? undefined : () => {
           if (router.canGoBack()) {
             router.back();
           } else {
@@ -430,14 +430,14 @@ export default function ActivityScreen() {
       <TourTarget id="web-activity-filters">
       <View style={styles.filterBar}>
         <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersOpen(true)}>
-          <MaterialIcons name="tune" size={16} color="#0B63CE" />
+          <MaterialIcons name="tune" size={16} color={Colors.primary} />
           <Text style={styles.filterBtnText}>Filters</Text>
           {activeFilterCount > 0 ? (
             <View style={styles.badge}><Text style={styles.badgeText}>{activeFilterCount}</Text></View>
           ) : null}
         </TouchableOpacity>
         <TouchableOpacity style={styles.filterBtn} onPress={() => setSortOpen(true)}>
-          <MaterialIcons name="sort" size={16} color="#0B63CE" />
+          <MaterialIcons name="sort" size={16} color={Colors.primary} />
           <Text style={styles.filterBtnText}>Sort</Text>
         </TouchableOpacity>
       </View>
@@ -478,45 +478,40 @@ export default function ActivityScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFF' },
-  hero: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 8, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEF2F7' },
-  heroSub: { color: '#64748B' },
-  filterBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E6EDF3' },
-  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#F1F5FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  filterBtnText: { color: '#0B63CE', fontWeight: '800' },
-  badge: { marginLeft: 4, backgroundColor: '#0B63CE', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  safe: { flex: 1, backgroundColor: Colors.bg },
+  hero: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 8, backgroundColor: Colors.card, borderBottomColor: Colors.line, borderBottomWidth: 2 },
+  heroSub: { color: Colors.sub },
+  filterBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.card, borderBottomColor: Colors.line, borderBottomWidth: 2 },
+  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.sm },
+  filterBtnText: { color: Colors.primary, fontWeight: '800' },
+  badge: { marginLeft: 4, backgroundColor: Colors.accent, borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
   badgeText: { color: '#fff', fontWeight: '900', fontSize: 10 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E6EDF3', borderRadius: 12, padding: 12,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-      android: { elevation: 2 },
-      default: {},
-    }),
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.card,
+    borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12,
   },
   thumbWrap: { },
-  thumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#DBEAFE' },
+  thumb: { width: 52, height: 52, borderRadius: Radius.sm, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { color: '#0F172A', fontWeight: '900', letterSpacing: 0.3, fontSize: 14 },
-  strong: { fontWeight: '800', color: '#0B63CE' },
-  assetName: { color: '#0F172A', fontWeight: '700', marginTop: 2 },
-  sub: { color: '#334155' },
+  title: { color: Colors.text, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 14 },
+  strong: { fontWeight: '800', color: Colors.primary },
+  assetName: { color: Colors.text, fontWeight: '700', marginTop: 2 },
+  sub: { color: Colors.sub },
   noteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  noteLine: { color: '#475569', flex: 1 },
-  when: { color: '#64748B', marginTop: 8, fontSize: 12 },
-  pill: { borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#F1F5FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  pillText: { color: '#1E40AF', fontWeight: '800', fontSize: 11 },
+  noteLine: { color: Colors.sub, flex: 1 },
+  when: { color: Colors.sub2, marginTop: 8, fontSize: 12 },
+  pill: { borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm },
+  pillText: { color: Colors.primary, fontWeight: '800', fontSize: 11 },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   transferRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
-  chipText: { fontSize: 12, color: '#0F172A' },
+  chip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm },
+  chipText: { fontSize: 12, color: Colors.primary },
   chipTextStrong: { fontWeight: '800' },
-  chipPrimary: { backgroundColor: '#EAF2FF', borderWidth: 1, borderColor: '#DBEAFE' },
-  chipMuted: { backgroundColor: '#F4F6FA', borderWidth: 1, borderColor: '#E6EDF3' },
-  chipSoft: { backgroundColor: '#F1F5FF', borderWidth: 1, borderColor: '#DBEAFE' },
+  chipPrimary: { backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: Colors.accent },
+  chipMuted: { backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line },
+  chipSoft: { backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line },
 });
 
 // --------- Modals and small UI helpers ---------
@@ -603,7 +598,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
       <View style={mStyles.sheet}>
         <View style={mStyles.header}>
           <Text style={mStyles.title}>Filters</Text>
-          <TouchableOpacity onPress={onClose}><MaterialIcons name="close" size={20} color="#0F172A" /></TouchableOpacity>
+          <TouchableOpacity onPress={onClose}><MaterialIcons name="close" size={20} color={Colors.text} /></TouchableOpacity>
         </View>
         <ScrollView style={{ maxHeight: '75%' }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
         <Text style={mStyles.label}>Types</Text>
@@ -795,7 +790,7 @@ function SortModal({ visible, onClose, sort, setSort, onApply }) {
       <View style={mStyles.sheet}>
         <View style={mStyles.header}>
           <Text style={mStyles.title}>Sort</Text>
-          <TouchableOpacity onPress={onClose}><MaterialIcons name="close" size={20} color="#0F172A" /></TouchableOpacity>
+          <TouchableOpacity onPress={onClose}><MaterialIcons name="close" size={20} color={Colors.text} /></TouchableOpacity>
         </View>
 
         <Text style={mStyles.label}>Field</Text>
@@ -837,29 +832,29 @@ function SortModal({ visible, onClose, sort, setSort, onApply }) {
 
 const mStyles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.2)' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#FFFFFF', borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 16, gap: 10 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: Colors.card, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg, padding: 16, gap: 10 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { color: '#0F172A', fontWeight: '900', fontSize: 18 },
-  label: { color: '#334155', fontWeight: '800', marginTop: 6, marginBottom: 6 },
-  smallLabel: { color: '#475569', fontWeight: '700', marginBottom: 4 },
+  title: { color: Colors.text, fontWeight: '900', fontSize: 18, textTransform: 'uppercase' },
+  label: { color: Colors.sub, fontWeight: '800', marginTop: 6, marginBottom: 6, textTransform: 'uppercase' },
+  smallLabel: { color: Colors.sub, fontWeight: '700', marginBottom: 4 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#F1F5FF' },
-  chipActive: { backgroundColor: '#0B63CE', borderColor: '#084AA0' },
-  chipText: { color: '#0B63CE', fontWeight: '800' },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.line, backgroundColor: Colors.chip },
+  chipActive: { backgroundColor: Colors.accent, borderColor: '#C2410C' },
+  chipText: { color: Colors.primary, fontWeight: '800' },
   chipTextActive: { color: '#FFFFFF', fontWeight: '900' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  toggle: { width: 44, height: 26, borderRadius: 14, backgroundColor: '#E6EDF3', justifyContent: 'center', padding: 3 },
-  toggleOn: { backgroundColor: '#0B63CE' },
+  toggle: { width: 44, height: 26, borderRadius: 14, backgroundColor: Colors.chip, justifyContent: 'center', padding: 3 },
+  toggleOn: { backgroundColor: Colors.primary },
   knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF', transform: [{ translateX: 0 }] },
   knobOn: { transform: [{ translateX: 18 }] },
-  toggleLabel: { color: '#0F172A', fontWeight: '700' },
+  toggleLabel: { color: Colors.text, fontWeight: '700' },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
-  btn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
-  primary: { backgroundColor: '#0B63CE', borderColor: '#084AA0' },
-  secondary: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' },
+  btn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1 },
+  primary: { backgroundColor: Colors.primary, borderColor: '#0B3A5C' },
+  secondary: { backgroundColor: Colors.card, borderColor: Colors.line },
   btnPrimaryText: { color: '#FFFFFF', fontWeight: '900' },
-  btnSecondaryText: { color: '#0F172A', fontWeight: '800' },
-  input: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: Platform.OS === 'web' ? 8 : 6 },
-  suggestList: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, backgroundColor: '#FFFFFF', marginTop: 4 },
-  suggestItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  btnSecondaryText: { color: Colors.text, fontWeight: '800' },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: Platform.OS === 'web' ? 8 : 6 },
+  suggestList: { borderWidth: 1, borderColor: Colors.line, borderRadius: Radius.sm, backgroundColor: Colors.card, marginTop: 4 },
+  suggestItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.chip },
 });

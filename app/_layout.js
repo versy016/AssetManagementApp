@@ -1,4 +1,5 @@
 // app/_layout.js
+import '../global.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';
@@ -88,7 +89,7 @@ export default function RootLayout() {
           <TourProvider>
             <TasksCountProvider>
               <TaskCountLoader />
-              <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+              <View style={{ flex: 1, backgroundColor: theme.colors.background, flexDirection: 'column' }}>
                 {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
                 <View style={{ flex: 1 }}>
                   <Slot />

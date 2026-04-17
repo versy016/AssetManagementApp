@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 const DEFAULT_SIZES = [25, 50, 100, 'All'];
 
@@ -72,7 +73,7 @@ export default function TablePagination({
             <MaterialIcons
               name="chevron-left"
               size={20}
-              color={page <= 1 ? '#CBD5E1' : '#0F172A'}
+              color={page <= 1 ? Colors.sub2 : Colors.primaryDark}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -84,7 +85,7 @@ export default function TablePagination({
             <MaterialIcons
               name="chevron-right"
               size={20}
-              color={page >= totalPages ? '#CBD5E1' : '#0F172A'}
+              color={page >= totalPages ? Colors.sub2 : Colors.primaryDark}
             />
           </TouchableOpacity>
         </View>
@@ -100,9 +101,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
+    backgroundColor: Colors.bg,
   },
   leftGroup: {
     flexDirection: 'row',
@@ -111,8 +112,10 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    color: '#64748B',
-    fontWeight: '600',
+    color: Colors.sub,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   sizeGroup: {
     flexDirection: 'row',
@@ -121,22 +124,23 @@ const styles = StyleSheet.create({
   sizeBtn: {
     paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#fff',
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
   },
   sizeBtnActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
+    backgroundColor: Colors.accentLight,
+    borderColor: Colors.accent,
   },
   sizeBtnText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
+    fontSize: 14,
+    color: Colors.sub,
+    fontWeight: '700',
   },
   sizeBtnTextActive: {
-    color: '#2563EB',
+    color: Colors.accent,
+    fontWeight: '800',
   },
   rightGroup: {
     flexDirection: 'row',
@@ -147,16 +151,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   countPrimary: {
-    fontSize: 13,
-    color: '#334155',
-    fontWeight: '700',
-    lineHeight: 18,
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: '900',
+    lineHeight: 20,
   },
   countSecondary: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '500',
-    lineHeight: 15,
+    fontSize: 13,
+    color: Colors.sub2,
+    fontWeight: '600',
+    lineHeight: 17,
   },
   navGroup: {
     flexDirection: 'row',
@@ -165,15 +169,15 @@ const styles = StyleSheet.create({
   navBtn: {
     width: 28,
     height: 28,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#fff',
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navBtnDisabled: {
-    borderColor: '#F1F5F9',
-    backgroundColor: '#F8FAFC',
+    borderColor: Colors.line,
+    backgroundColor: Colors.bg,
   },
 });

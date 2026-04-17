@@ -1,43 +1,25 @@
-// components/WebNavbar.js
+// components/WebNavbar.js — Bold Industrial Top Navigation Bar (Web Desktop)
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { Link, usePathname, useLocalSearchParams } from 'expo-router';
 import { auth } from '../firebaseConfig';
-import { useTheme } from 'react-native-paper';
-import { Feather } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { TourTarget } from './TourGuide';
-// Theme options for navbar (keep only Golden Amber for consistency)
-const THEME_OPTIONS = [
-  {
-    id: 'golden',
-    name: 'Golden Amber',
-    colors: {
-      primary: '#F59E0B',
-      primaryDark: '#D97706',
-      primaryLight: '#FEF3C7',
-      border: '#FBBF24',
-      text: '#D97706',
-      background: '#FFFFFF',
-    },
-  },
-];
-const NavLink = ({ href, label, isActive, theme }) => (
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
+
+const C = Colors;
+
+const NavItem = ({ href, label, icon, isActive, badge }) => (
   <Link href={href} style={{ textDecoration: 'none' }}>
-    <View style={[
-      styles.navItem,
-      isActive && {
-        backgroundColor: '#FEF3C7',
-        borderWidth: 1,
-        borderColor: '#FBBF24',
-      }
-    ]}>
-      <Text style={[
-        styles.navText,
-        { color: isActive ? '#D97706' : '#64748B' }
-      ]}>
-        {label}
-      </Text>
+    <View style={[s.navItem, isActive && s.navItemActive]}>
+      <MaterialIcons name={icon} size={16} color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.85)'} />
+      <Text style={[s.navText, isActive && s.navTextActive]}>{label}</Text>
+      {badge ? (
+        <View style={s.badge}>
+          <Text style={s.badgeText}>{badge}</Text>
+        </View>
+      ) : null}
     </View>
   </Link>
 );
@@ -48,25 +30,16 @@ export default function WebNavbar() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState(null);
   const [searchVersion, setSearchVersion] = useState(0);
-  const theme = useTheme();
-  const selectedTheme = THEME_OPTIONS[0];
 
-  // Subscribe to auth and read custom claims + DB role to determine admin visibility
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (currentUser) => {
       try {
         setUser(currentUser);
-        if (!currentUser) {
-          setIsAdmin(false);
-          return;
-        }
-        // Check Firebase custom claims
+        if (!currentUser) { setIsAdmin(false); return; }
         await currentUser.getIdToken(true);
         const tr = await currentUser.getIdTokenResult();
         const role = String(tr?.claims?.role || '').toUpperCase();
         const adminClaim = !!tr?.claims?.admin || role === 'ADMIN';
-        
-        // Also check database role for more reliable admin check
         let dbAdmin = false;
         try {
           const res = await fetch(`${API_BASE_URL}/users/${currentUser.uid}`);
@@ -74,20 +47,13 @@ export default function WebNavbar() {
             const dbUser = await res.json();
             dbAdmin = String(dbUser?.role || '').toUpperCase() === 'ADMIN';
           }
-        } catch (e) {
-          console.warn('Failed to check DB role:', e);
-        }
-        
+        } catch (e) { console.warn('Failed to check DB role:', e); }
         setIsAdmin(!!adminClaim || dbAdmin);
-      } catch {
-        setIsAdmin(false);
-        setUser(null);
-      }
+      } catch { setIsAdmin(false); setUser(null); }
     });
     return unsub;
   }, []);
 
-  // Resolve `view` consistently on web by also reading window.location.search
   const view = useMemo(() => {
     const fromParams = (typeof viewParam === 'string' ? viewParam : Array.isArray(viewParam) ? viewParam[0] : '') || '';
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -99,7 +65,13 @@ export default function WebNavbar() {
     return fromParams;
   }, [viewParam, pathname, searchVersion]);
 
-  // Force re-compute on client-side navigation that only changes search params
+  const preset = useMemo(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try { return new URLSearchParams(window.location.search).get('preset') || ''; } catch { }
+    }
+    return '';
+  }, [pathname, searchVersion]);
+
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
     const onPop = () => setSearchVersion((v) => v + 1);
@@ -107,30 +79,28 @@ export default function WebNavbar() {
     const push = history.pushState;
     const replace = history.replaceState;
     const wrap = (fn) => function () { const r = fn.apply(this, arguments); try { setSearchVersion((v) => v + 1); } catch { } return r; };
-    try {
-      history.pushState = wrap(push);
-      history.replaceState = wrap(replace);
-    } catch { }
+    try { history.pushState = wrap(push); history.replaceState = wrap(replace); } catch { }
     return () => {
       window.removeEventListener('popstate', onPop);
       try { history.pushState = push; history.replaceState = replace; } catch { }
     };
   }, []);
-  if (Platform.OS !== 'web' || !user) {
-    return null;
-  }
+
+  if (Platform.OS !== 'web' || !user) return null;
+
   const starts = (p) => (pathname ? pathname.startsWith(p) : false);
   const isPath = (...pres) => pres.some((p) => starts(p) || pathname === p);
-  // Dashboard when path starts with dashboard routes OR exactly root '/'
   const onDashboard = isPath('/dashboard', '/(tabs)/dashboard') || pathname === '/';
   const onCertsPage = isPath('/certs');
-  const active = {
+
+      const active = {
     dashboard: onDashboard && (!view || view === 'dashboard' || view === 'search'),
     shortcuts: onDashboard && view === 'shortcuts',
     tasks: onDashboard && view === 'tasks',
     certs: onCertsPage || (onDashboard && view === 'certs'),
     hire: onDashboard && view === 'hire',
     inventory: isPath('/inventory', '/Inventory', '/(tabs)/Inventory'),
+    myAssets: isPath('/search') && preset === 'mine',
     activity: isPath('/activity'),
     admin: isPath('/admin'),
     profile: isPath('/profile'),
@@ -139,56 +109,59 @@ export default function WebNavbar() {
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.href = '/';
+    } catch (error) { console.error('Logout error:', error); }
   };
 
   return (
     <TourTarget id="web-navbar">
-      <View style={[styles.wrap, { borderBottomColor: selectedTheme.colors.border, backgroundColor: selectedTheme.colors.background, shadowColor: selectedTheme.colors.primary }]}>
-        <View style={styles.brandWrap}>
-          <Text style={[styles.brand, { color: theme.colors.primary }]}>Asset Manager</Text>
+      <View style={s.topbar}>
+        {/* Brand */}
+        <View style={s.brandWrap}>
+          <Text style={s.brand}>
+            <Text style={s.brandAccent}>Gear</Text>Ops
+          </Text>
         </View>
-        <View style={styles.navCenter}>
+
+        {/* Primary Navigation */}
+        <View style={s.navSection}>
           <TourTarget id="web-nav-dashboard">
-            <NavLink href="/(tabs)/dashboard" label="Dashboard" isActive={active.dashboard} theme={theme} />
-          </TourTarget>
-          {/* Shortcuts omitted on web; WebNavbar is web-only so no platform check needed */}
-          <TourTarget id="web-nav-tasks">
-            <NavLink href="/(tabs)/dashboard?view=tasks" label="My Tasks" isActive={active.tasks} theme={theme} />
-          </TourTarget>
-          <TourTarget id="web-nav-activity">
-            <NavLink href="/activity" label="Activity" isActive={active.activity} theme={theme} />
-          </TourTarget>
-          <TourTarget id="web-nav-certs">
-            <NavLink href="/certs" label="Certs" isActive={active.certs} theme={theme} />
-          </TourTarget>
-          <TourTarget id="web-nav-hire">
-            <NavLink href="/(tabs)/dashboard?view=hire" label="Hire" isActive={active.hire} theme={theme} />
+            <NavItem href="/(tabs)/dashboard" label="Dashboard" icon="dashboard" isActive={active.dashboard} />
           </TourTarget>
           <TourTarget id="nav-inventory-tab">
-            <NavLink href="/(tabs)/Inventory" label="Inventory" isActive={active.inventory} theme={theme} />
+            <NavItem href="/(tabs)/Inventory" label="Inventory" icon="inventory-2" isActive={active.inventory} />
           </TourTarget>
-          {isAdmin ? (
-            <TourTarget id="web-nav-admin">
-              <NavLink href="/admin" label="Admin Controls" isActive={active.admin} theme={theme} />
-            </TourTarget>
-          ) : null}
+          <TourTarget id="web-nav-tasks">
+            <NavItem href="/(tabs)/dashboard?view=tasks" label="Tasks" icon="assignment" isActive={active.tasks} badge="3" />
+          </TourTarget>
+          <NavItem href="/search?preset=mine" label="My Assets" icon="inventory" isActive={active.myAssets} />
+          <TourTarget id="web-nav-activity">
+            <NavItem href="/activity" label="Activity" icon="history" isActive={active.activity} />
+          </TourTarget>
+          <TourTarget id="web-nav-certs">
+            <NavItem href="/certs" label="Certs" icon="verified" isActive={active.certs} />
+          </TourTarget>
+          <TourTarget id="web-nav-hire">
+            <NavItem href="/(tabs)/dashboard?view=hire" label="Hire" icon="local-shipping" isActive={active.hire} />
+          </TourTarget>
         </View>
-        <View style={styles.navRight}>
+
+        {/* Right-side: Admin + Profile + Logout */}
+        <View style={s.rightSection}>
+          {isAdmin && (
+            <TourTarget id="web-nav-admin">
+              <NavItem href="/admin" label="Admin" icon="admin-panel-settings" isActive={active.admin} />
+            </TourTarget>
+          )}
           <TourTarget id="web-nav-profile">
-            <NavLink href="/profile" label="Profile" isActive={active.profile} theme={theme} />
+            <NavItem href="/profile" label="Profile" icon="person" isActive={active.profile} />
           </TourTarget>
-          <TouchableOpacity
-            onPress={handleLogout}
-            style={[styles.logoutButton, { borderColor: selectedTheme.colors.border }]}
-          >
-            <Feather name="log-out" size={16} color={selectedTheme.colors.text} />
-            <Text style={[styles.logoutText, { color: selectedTheme.colors.text }]}>Logout</Text>
+
+          <View style={s.divider} />
+
+          <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+            <MaterialIcons name="logout" size={14} color="rgba(255,255,255,0.7)" />
+            <Text style={s.logoutText}>LOG OUT</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -196,53 +169,92 @@ export default function WebNavbar() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 3,
-    borderBottomColor: '#FBBF24',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+const s = StyleSheet.create({
+  topbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: C.primary,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
+    height: 52,
+    borderBottomWidth: 2,
+    borderBottomColor: C.accent,
   },
-  brandWrap: { paddingRight: 8 },
+  brandWrap: {
+    marginRight: 24,
+  },
   brand: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0B63CE',
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    textTransform: 'uppercase',
   },
-  navCenter: { flex: 1, flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
-  navRight: { flexDirection: 'row', gap: 8, marginLeft: 'auto', alignItems: 'center' },
+  brandAccent: { color: C.accent },
+
+  navSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
   navItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    transition: 'all 0.2s ease',
-  },
-  navText: { fontWeight: '700', fontSize: 14 },
-  logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
+    borderRadius: Radius.sm,
+  },
+  navItemActive: {
+    backgroundColor: C.accent,
+  },
+  navText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  navTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  badge: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: Radius.sm,
+    marginLeft: 2,
+  },
+  badgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginLeft: 'auto',
+  },
+
+  divider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 8,
+  },
+
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.sm,
   },
   logoutText: {
-    fontWeight: '700',
-    fontSize: 14,
-    color: '#D97706',
+    fontSize: 11,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.5,
   },
-  themeSwitcher: { flexDirection: 'row', gap: 8, marginRight: 8 },
-  themeButton: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 4, borderWidth: 1 },
-  themeButtonText: { color: '#FFFFFF', fontSize: 12 },
 });

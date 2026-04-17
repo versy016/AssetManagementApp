@@ -16,15 +16,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
-
-const Colors = {
-  bg: '#FFFFFF',
-  border: '#E2E8F0',
-  text: '#0F172A',
-  subtle: '#64748B',
-  primary: '#0D9488',
-};
 
 export default function QuickNoteScreen() {
   const params = useLocalSearchParams();
@@ -212,48 +205,51 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: Colors.subtle,
+    color: Colors.sub,
   },
   errorText: {
-    color: Colors.subtle,
+    color: Colors.sub,
   },
   assetCard: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.lg,
     padding: 16,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: Colors.card,
     gap: 4,
     marginBottom: 20,
+    ...Shadows.card,
   },
   assetTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     color: Colors.text,
   },
   assetMeta: {
     fontSize: 14,
-    color: Colors.subtle,
+    color: Colors.sub,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
     color: Colors.text,
     marginBottom: 8,
+    textTransform: 'uppercase',
   },
   input: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     padding: 14,
     fontSize: 16,
     color: Colors.text,
     minHeight: 120,
     textAlignVertical: 'top',
+    backgroundColor: Colors.card,
   },
   submitBtn: {
     backgroundColor: Colors.primary,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     paddingVertical: 14,
     marginTop: 20,
     alignItems: 'center',
@@ -263,8 +259,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitBtnText: {
-    color: '#FFFFFF',
+    color: Colors.card,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '900',
   },
 });

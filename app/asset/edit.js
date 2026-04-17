@@ -386,7 +386,7 @@ export default function EditAsset() {
                 </TouchableOpacity>
                 {hasUrl ? (
                   <TouchableOpacity
-                    style={[styles.btn, { backgroundColor: '#fdecea' }]}
+                    style={[styles.btn, { backgroundColor: Colors.dangerBg }]}
                     onPress={() => { if (isReq) { Alert.alert('Required', 'This document is required and cannot be removed.'); return; } updateField(slug, ''); }}
                   >
                     <Text style={{ color: '#b00020' }}>Remove</Text>
@@ -479,10 +479,10 @@ export default function EditAsset() {
                       {fallbackUrl ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <TouchableOpacity onPress={() => { try { if (Platform.OS === 'web') window.open(fallbackUrl, '_blank'); else Linking.openURL(fallbackUrl); } catch {} }}>
-                            <Text style={{ color: '#0B63CE', fontWeight: '800' }}>{name}</Text>
+                            <Text style={{ color: Colors.accent, fontWeight: '800' }}>{name}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={[styles.btn, { backgroundColor: '#fdecea' }]}
+                            style={[styles.btn, { backgroundColor: Colors.dangerBg }]}
                             onPress={async () => {
                               try {
                                 if (best?.id) {
@@ -774,11 +774,11 @@ export default function EditAsset() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Image source={{ uri: image?.uri || currentImageUrl }} style={{ width: 80, height: 80, borderRadius: 6, backgroundColor: '#eef' }} />
               {image?.uri ? (
-                <TouchableOpacity style={[styles.btn, { backgroundColor: '#fdecea' }]} onPress={() => setImage(null)}>
+                <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={() => setImage(null)}>
                   <Text style={{ color: '#b00020' }}>Remove Selected</Text>
                 </TouchableOpacity>
               ) : currentImageUrl ? (
-                <TouchableOpacity style={[styles.btn, { backgroundColor: '#fdecea' }]} onPress={removeCurrentImage}>
+                <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={removeCurrentImage}>
                   <Text style={{ color: '#b00020' }}>Remove Current</Text>
                 </TouchableOpacity>
               ) : null}
@@ -889,27 +889,51 @@ function WebOverlayPortal({ visible, children }) {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 12, marginVertical: 8, color: '#000' },
-  label: { marginTop: 10, marginBottom: 6, fontWeight: '600' },
+  container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
+  label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  btn: { backgroundColor: '#eee', paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: 6, marginVertical: 8, justifyContent: 'center' },
-  btnLg: { minHeight: 48, borderRadius: 10, paddingVertical: 14 },
-  submit: { backgroundColor: '#1E90FF' },
+  btn: { backgroundColor: Colors.chip, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, justifyContent: 'center', borderWidth: 2, borderColor: Colors.line },
+  btnLg: { minHeight: 48, borderRadius: Radius.lg, paddingVertical: 14 },
+  submit: { backgroundColor: Colors.primary },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },
-  btnTextPrimary: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  headerId: { fontSize: 12, fontWeight: '700', color: '#475569' },
-  dropdown: { borderColor: '#ccc', marginBottom: 16 },
-  dropdownContainer: { borderColor: '#ccc' },
-  errorBelow: { marginTop: 4, color: '#b00020' },
+  btnTextPrimary: { color: Colors.card, fontWeight: '800', fontSize: 16 },
+  headerId: { fontSize: 12, fontWeight: '700', color: Colors.sub },
+  dropdown: { borderColor: Colors.line, marginBottom: 16, borderWidth: 2, borderRadius: Radius.sm },
+  dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.sm },
+  errorBelow: { marginTop: 4, color: Colors.dangerFg, fontWeight: '600' },
   // Disabled visuals for locked fields
-  disabledField: { backgroundColor: '#F8FAFC', borderColor: '#E5E7EB', ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}) },
+  disabledField: { backgroundColor: Colors.chip, borderColor: Colors.line, borderWidth: 2, borderRadius: Radius.sm, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}) },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  lockText: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },
+  lockText: { color: Colors.sub2, fontSize: 12, fontWeight: '700' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },
-  progressBar: { width: 260, height: 8, borderRadius: 6, backgroundColor: '#E6EDF3', marginTop: 8, overflow: 'hidden' },
-  progressFill: { height: 8, backgroundColor: '#0B63CE', borderRadius: 6 },
+  progressBar: { width: 260, height: 8, borderRadius: Radius.sm, backgroundColor: Colors.chip, marginTop: 8, overflow: 'hidden' },
+  progressFill: { height: 8, backgroundColor: Colors.accent, borderRadius: Radius.sm },
   webOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(255,255,255,0.85)',
@@ -919,7 +943,7 @@ const styles = StyleSheet.create({
   },
   portalOverlayCard: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
 
-  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
-  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
+  toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
+  toastText: { color: Colors.successFg, fontWeight: '700', flex: 1 },
 });

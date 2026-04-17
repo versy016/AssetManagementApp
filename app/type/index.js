@@ -31,10 +31,33 @@ export default function TypeIndexScreen() {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.bg,
   },
   container: {
     flex: 1,
@@ -44,34 +67,39 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontWeight: '900',
+    color: Colors.primaryDark,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#475569',
+    color: Colors.sub,
     textAlign: 'center',
     marginBottom: 24,
+    fontWeight: '600',
   },
   button: {
     width: '100%',
     paddingVertical: 14,
-    borderRadius: 10,
-    backgroundColor: '#2563EB',
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     marginBottom: 12,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: Colors.card,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   secondaryButton: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.line,
   },
   secondaryButtonText: {
-    color: '#1E293B',
+    color: Colors.primary,
+    fontWeight: '800',
   },
 });
 

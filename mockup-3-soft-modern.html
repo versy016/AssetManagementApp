@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GearOps — Aesthetic 3: Soft Modern</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#FAFBFD;--bg2:#FFFFFF;--bg3:#F4F6FA;--bg4:#EBEEF5;
+    --text:#1A1C2E;--sub:#5E6278;--muted:#9CA3B8;--line:#E8EBF2;--line2:#D4D8E4;
+    --violet:#6C5CE7;--violet-d:#5B4BD3;--violet-l:#F3F0FF;--violet-m:#EDE9FE;
+    --coral:#FF6B6B;--coral-d:#EE5A5A;--coral-l:#FFF5F5;
+    --sky:#00B4D8;--sky-bg:#F0FCFF;
+    --mint:#00C48C;--mint-bg:#F0FDF8;
+    --peach:#FF9F43;--peach-bg:#FFF8F0;
+    --rose:#F44663;--rose-bg:#FFF0F3;
+    --slate:#7C8DB0;--slate-bg:#F4F6FA;
+    --shadow-sm:0 1px 3px rgba(26,28,46,.04);
+    --shadow-md:0 4px 16px rgba(26,28,46,.06);
+    --shadow-lg:0 12px 40px rgba(26,28,46,.08);
+    --shadow-glow:0 0 0 4px rgba(108,92,231,.1);
+    --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:20px;--r-full:9999px;
+  }
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .page{max-width:1280px;margin:0 auto;padding:32px}
+
+  .hero{background:linear-gradient(135deg,#2D1B69 0%,#4A3298 40%,#6C5CE7 100%);border-radius:var(--r-xl);padding:48px 40px;color:#fff;margin-bottom:40px;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:-40%;right:-10%;width:500px;height:500px;background:radial-gradient(circle,rgba(255,107,107,.2) 0%,transparent 70%);pointer-events:none}
+  .hero::after{content:'';position:absolute;bottom:-20%;left:30%;width:300px;height:300px;background:radial-gradient(circle,rgba(0,180,216,.15) 0%,transparent 70%);pointer-events:none}
+  .hero .badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r-full);padding:5px 14px;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.8);margin-bottom:16px}
+  .hero .badge .dot{width:7px;height:7px;border-radius:50%;background:#00C48C}
+  .hero h1{font-size:32px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+  .hero p{font-size:15px;color:rgba(255,255,255,.55);max-width:560px}
+
+  .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:16px}
+
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:var(--r-full);font-size:11px;font-weight:600;white-space:nowrap}
+  .chip .d{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+  .c-green{background:var(--mint-bg);color:var(--mint)}.c-green .d{background:var(--mint)}
+  .c-red{background:var(--rose-bg);color:var(--rose)}.c-red .d{background:var(--rose)}
+  .c-amber{background:var(--peach-bg);color:var(--peach)}.c-amber .d{background:var(--peach)}
+  .c-purple{background:var(--violet-l);color:var(--violet)}.c-purple .d{background:var(--violet)}
+  .c-gray{background:var(--slate-bg);color:var(--slate)}.c-gray .d{background:var(--slate)}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:inherit;font-weight:600;font-size:13px;border:none;border-radius:var(--r-md);cursor:pointer;padding:10px 20px;transition:all .2s}
+  .btn-violet{background:var(--violet);color:#fff;box-shadow:0 4px 12px rgba(108,92,231,.25)}.btn-violet:hover{background:var(--violet-d);transform:translateY(-1px);box-shadow:0 6px 16px rgba(108,92,231,.3)}
+  .btn-coral{background:var(--coral);color:#fff;box-shadow:0 4px 12px rgba(255,107,107,.25)}.btn-coral:hover{background:var(--coral-d)}
+  .btn-ghost{background:var(--bg2);color:var(--sub);border:1px solid var(--line);box-shadow:var(--shadow-sm)}.btn-ghost:hover{background:var(--bg3);box-shadow:var(--shadow-md)}
+  .btn-sm{padding:7px 14px;font-size:12px;border-radius:var(--r-sm)}
+
+  /* ===== PHONE ===== */
+  .phones{display:flex;gap:40px;justify-content:center;flex-wrap:wrap;margin-bottom:48px}
+  .phone{width:375px;min-height:740px;background:var(--bg);border-radius:48px;border:8px solid #2D1B69;box-shadow:0 25px 80px rgba(108,92,231,.15),0 0 0 1px rgba(108,92,231,.1);overflow:hidden;position:relative}
+  .notch{width:150px;height:30px;background:#2D1B69;border-radius:0 0 20px 20px;margin:0 auto}
+  .status-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 24px 4px;font-size:13px;font-weight:600}
+
+  /* S3 mobile */
+  .s3-header{padding:14px 20px 12px;display:flex;justify-content:space-between;align-items:center}
+  .s3-header h2{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .s3-greeting{font-size:12px;color:var(--muted);font-weight:500}
+  .s3-avatar{width:36px;height:36px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--violet),var(--coral));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+
+  .s3-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 16px;margin-bottom:18px}
+  .s3-action{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);cursor:pointer;transition:all .2s;box-shadow:var(--shadow-sm)}
+  .s3-action:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:var(--violet)}
+  .s3-action-icon{width:42px;height:42px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-size:18px}
+  .s3-action-label{font-size:11px;font-weight:600;color:var(--sub);text-align:center}
+
+  .s3-shortcuts{padding:0 16px;margin-bottom:18px}
+  .s3-sh-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .s3-manage{font-size:12px;font-weight:600;color:var(--violet);cursor:pointer}
+  .s3-sh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .s3-sh-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);cursor:pointer;transition:all .2s;box-shadow:var(--shadow-sm)}
+  .s3-sh-item:hover{transform:translateY(-1px);box-shadow:var(--shadow-md)}
+  .s3-sh-ico{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+  .s3-sh-name{font-size:10px;font-weight:600;color:var(--sub);text-align:center}
+
+  .s3-activity{padding:0 16px}
+  .s3-feed{display:flex;flex-direction:column;gap:8px}
+  .s3-feed-item{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);transition:all .2s}
+  .s3-feed-item:hover{box-shadow:var(--shadow-md)}
+  .s3-feed-ico{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+  .s3-feed-body{flex:1;min-width:0}
+  .s3-feed-title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .s3-feed-sub{font-size:11px;color:var(--muted)}
+  .s3-feed-time{font-size:10px;color:var(--muted);font-weight:500;flex-shrink:0;background:var(--bg3);padding:3px 8px;border-radius:var(--r-full)}
+
+  .s3-tabbar{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:var(--bg2);border-top:1px solid var(--line);padding:6px 0}
+  .s3-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 18px;border-radius:var(--r-lg);cursor:pointer;position:relative;transition:all .15s}
+  .s3-tab .ico{font-size:20px}
+  .s3-tab .lbl{font-size:10px;font-weight:600}
+  .s3-tab.active{color:var(--violet);background:var(--violet-l)}
+  .s3-tab:not(.active){color:var(--muted)}
+  .s3-tab-badge{position:absolute;top:2px;right:8px;width:16px;height:16px;border-radius:50%;background:var(--coral);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center}
+
+  /* ===== WEB ===== */
+  .web{border:1px solid var(--line);border-radius:var(--r-xl);overflow:hidden;background:var(--bg);box-shadow:var(--shadow-lg);margin-bottom:48px}
+  .web-inner{display:flex;min-height:560px}
+
+  .s3-sidebar{width:230px;background:linear-gradient(180deg,#2D1B69 0%,#3D2A8A 100%);color:#fff;padding:20px 14px;flex-shrink:0;display:flex;flex-direction:column}
+  .s3-logo{font-size:18px;font-weight:800;margin-bottom:24px;padding:0 10px;letter-spacing:-.3px}
+  .s3-logo .accent{background:linear-gradient(135deg,var(--coral),#FF9F43);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .s3-nav{display:flex;flex-direction:column;gap:2px;flex:1}
+  .s3-nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-md);font-size:13px;font-weight:500;color:rgba(255,255,255,.5);cursor:pointer;transition:all .2s}
+  .s3-nav-item:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.8)}
+  .s3-nav-item.active{background:rgba(255,255,255,.12);color:#fff;font-weight:600;backdrop-filter:blur(10px)}
+  .s3-nav-item .badge-c{margin-left:auto;background:var(--coral);font-size:10px;padding:2px 8px;border-radius:var(--r-full);font-weight:700}
+  .s3-nav-divider{border-top:1px solid rgba(255,255,255,.08);margin:12px 0}
+  .s3-logout{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-md);font-size:13px;font-weight:500;color:rgba(255,255,255,.35);cursor:pointer;margin-top:auto;transition:all .15s}
+  .s3-logout:hover{background:rgba(244,70,99,.15);color:#f87171}
+
+  .s3-main{flex:1;padding:20px 28px;overflow-x:auto}
+  .s3-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .s3-topbar h2{font-size:22px;font-weight:800;letter-spacing:-.3px}
+
+  .s3-filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .s3-search{flex:1;min-width:200px;position:relative}
+  .s3-search input{width:100%;padding:10px 14px 10px 38px;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);color:var(--text);outline:none;transition:all .2s;box-shadow:var(--shadow-sm)}
+  .s3-search input:focus{border-color:var(--violet);box-shadow:var(--shadow-glow)}
+  .s3-search input::placeholder{color:var(--muted)}
+  .s3-search .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
+  .s3-filter{padding:8px 16px;border-radius:var(--r-full);font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--bg2);color:var(--sub);cursor:pointer;transition:all .2s;white-space:nowrap;box-shadow:var(--shadow-sm)}
+  .s3-filter:hover{background:var(--bg3);transform:translateY(-1px)}
+  .s3-filter.active{background:var(--violet);color:#fff;border-color:var(--violet);box-shadow:0 4px 12px rgba(108,92,231,.2)}
+
+  .s3-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--bg2);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-md);border:1px solid var(--line)}
+  .s3-table thead{background:var(--bg3)}
+  .s3-table th{padding:12px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--line)}
+  .s3-table td{padding:14px 14px;font-size:13px;border-bottom:1px solid var(--bg3)}
+  .s3-table tr:last-child td{border-bottom:none}
+  .s3-table tr:hover td{background:var(--violet-l)}
+  .s3-table .asset-name{font-weight:600;color:var(--text)}
+  .s3-table .asset-sub{font-size:11px;color:var(--muted)}
+  .s3-table .asset-cell{display:flex;align-items:center;gap:10px}
+  .s3-table .asset-thumb{width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+
+  @media(max-width:768px){.phones{flex-direction:column;align-items:center}.web-inner{flex-direction:column}.s3-sidebar{width:100%}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hero">
+    <div class="badge"><span class="dot"></span> Aesthetic 3 of 3</div>
+    <h1>Soft Modern</h1>
+    <p>Rounded corners, gentle shadows, violet-coral gradient accents, playful but professional. Approachable and warm. Inspired by Notion, Arc Browser, and Linear.</p>
+  </div>
+
+  <!-- MOBILE -->
+  <div class="label">Mobile Dashboard (375px)</div>
+  <div class="phones">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="status-bar"><span>9:41</span><span style="font-size:11px;color:var(--sub)">&#9679;&#9679;&#9679;&#9679;</span></div>
+
+      <div class="s3-header">
+        <div>
+          <div class="s3-greeting">Good morning, Shivam</div>
+          <h2>Dashboard</h2>
+        </div>
+        <div class="s3-avatar">SV</div>
+      </div>
+
+      <div class="s3-actions">
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--coral-l);color:var(--coral)">&#9881;</div>
+          <div class="s3-action-label">Scan Asset</div>
+        </div>
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--violet-l);color:var(--violet)">&#9881;&#9881;</div>
+          <div class="s3-action-label">Multi Scan</div>
+        </div>
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--bg3);color:var(--sub)">&#128269;</div>
+          <div class="s3-action-label">Search</div>
+        </div>
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--mint-bg);color:var(--mint)">&#128188;</div>
+          <div class="s3-action-label">My Assets</div>
+        </div>
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--sky-bg);color:var(--sky)">&#128200;</div>
+          <div class="s3-action-label">Activity</div>
+        </div>
+        <div class="s3-action">
+          <div class="s3-action-icon" style="background:var(--peach-bg);color:var(--peach)">&#128220;</div>
+          <div class="s3-action-label">Certs</div>
+        </div>
+      </div>
+
+      <div class="s3-shortcuts">
+        <div class="s3-sh-header">
+          <div class="label" style="margin-bottom:0">My Shortcuts</div>
+          <div class="s3-manage">Manage &#8250;</div>
+        </div>
+        <div class="s3-sh-grid">
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--violet-l);color:var(--violet)">&#128065;</div>
+            <div class="s3-sh-name">Quick View</div>
+          </div>
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--mint-bg);color:var(--mint)">&#10003;</div>
+            <div class="s3-sh-name">Check In</div>
+          </div>
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--sky-bg);color:var(--sky)">&#8644;</div>
+            <div class="s3-sh-name">Transfer</div>
+          </div>
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--peach-bg);color:var(--peach)">&#128295;</div>
+            <div class="s3-sh-name">Service</div>
+          </div>
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--rose-bg);color:var(--rose)">&#9888;</div>
+            <div class="s3-sh-name">Report</div>
+          </div>
+          <div class="s3-sh-item">
+            <div class="s3-sh-ico" style="background:var(--coral-l);color:var(--coral)">&#9889;</div>
+            <div class="s3-sh-name">Quick Act</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="s3-activity">
+        <div class="label">Recent Activity</div>
+        <div class="s3-feed">
+          <div class="s3-feed-item">
+            <div class="s3-feed-ico" style="background:var(--sky-bg);color:var(--sky)">&#8594;</div>
+            <div class="s3-feed-body">
+              <div class="s3-feed-title">TS16 transferred to Jake</div>
+              <div class="s3-feed-sub">Melbourne CBD Project</div>
+            </div>
+            <div class="s3-feed-time">2h</div>
+          </div>
+          <div class="s3-feed-item">
+            <div class="s3-feed-ico" style="background:var(--peach-bg);color:var(--peach)">&#128295;</div>
+            <div class="s3-feed-body">
+              <div class="s3-feed-title">M300 sent for repair</div>
+              <div class="s3-feed-sub">Motor 3 replacement</div>
+            </div>
+            <div class="s3-feed-time">5h</div>
+          </div>
+          <div class="s3-feed-item">
+            <div class="s3-feed-ico" style="background:var(--mint-bg);color:var(--mint)">&#10003;</div>
+            <div class="s3-feed-body">
+              <div class="s3-feed-title">R12i checked in</div>
+              <div class="s3-feed-sub">By Sarah Chen</div>
+            </div>
+            <div class="s3-feed-time">1d</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="s3-tabbar">
+        <div class="s3-tab active"><span class="ico">&#9632;</span><span class="lbl">Dashboard</span></div>
+        <div class="s3-tab"><span class="ico">&#9776;</span><span class="lbl">Inventory</span></div>
+        <div class="s3-tab" style="position:relative"><span class="ico">&#10003;</span><span class="lbl">Tasks</span><span class="s3-tab-badge">3</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WEB -->
+  <div class="label">Web Dashboard (Desktop)</div>
+  <div class="web">
+    <div class="web-inner">
+      <div class="s3-sidebar">
+        <div class="s3-logo"><span class="accent">Gear</span>Ops</div>
+        <div class="s3-nav">
+          <div class="s3-nav-item active">&#9632; Dashboard</div>
+          <div class="s3-nav-item">&#9776; Inventory</div>
+          <div class="s3-nav-item">&#10003; Tasks <span class="badge-c">3</span></div>
+          <div class="s3-nav-item">&#128247; Scanner</div>
+          <div class="s3-nav-item">&#128200; Activity</div>
+          <div class="s3-nav-item">&#128220; Certs</div>
+          <div class="s3-nav-divider"></div>
+          <div class="s3-nav-item">&#9881; Admin</div>
+          <div class="s3-nav-item">&#128100; Profile</div>
+        </div>
+        <div class="s3-logout">&#10151; Log Out</div>
+      </div>
+
+      <div class="s3-main">
+        <div class="s3-topbar">
+          <div>
+            <div style="font-size:12px;color:var(--muted)">Good morning, Shivam</div>
+            <h2>Dashboard</h2>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-violet btn-sm">+ New Asset</button>
+            <div class="s3-avatar" style="width:32px;height:32px;font-size:12px">SV</div>
+          </div>
+        </div>
+
+        <div class="s3-filters">
+          <div class="s3-search">
+            <span class="ico">&#128269;</span>
+            <input placeholder="Search by name, serial, type, or assigned to..." />
+          </div>
+          <div class="s3-filter active">All</div>
+          <div class="s3-filter">In Service</div>
+          <div class="s3-filter">Repair</div>
+          <div class="s3-filter">Maintenance</div>
+          <div class="s3-filter">On Hire</div>
+          <div class="s3-filter">EOL</div>
+        </div>
+
+        <table class="s3-table">
+          <thead>
+            <tr><th>Asset</th><th>Type</th><th>Serial</th><th>Assigned To</th><th>Status</th><th>Next Service</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--mint-bg);color:var(--mint)">&#128225;</div><div><div class="asset-name">Leica TS16</div><div class="asset-sub">Added Mar 2024</div></div></div></td>
+              <td>Total Station</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">TS16-0847</td>
+              <td>Jake Morrison</td>
+              <td><span class="chip c-green"><span class="d"></span>In Service</span></td>
+              <td style="color:var(--mint);font-weight:600">45 days</td>
+            </tr>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--violet-l);color:var(--violet)">&#128752;</div><div><div class="asset-name">Trimble R12i</div><div class="asset-sub">Added Jan 2025</div></div></div></td>
+              <td>GNSS Receiver</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">R12-1234</td>
+              <td>CBD Project</td>
+              <td><span class="chip c-purple"><span class="d"></span>On Hire</span></td>
+              <td>Due May 12</td>
+            </tr>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--peach-bg);color:var(--peach)">&#128187;</div><div><div class="asset-name">Getac F110</div><div class="asset-sub">Added Jun 2024</div></div></div></td>
+              <td>Rugged Tablet</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">F110-5521</td>
+              <td>Sarah Chen</td>
+              <td><span class="chip c-amber"><span class="d"></span>Maintenance</span></td>
+              <td style="color:var(--peach);font-weight:600">Overdue</td>
+            </tr>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--rose-bg);color:var(--rose)">&#128247;</div><div><div class="asset-name">DJI Matrice 300</div><div class="asset-sub">Added Feb 2025</div></div></div></td>
+              <td>Survey Drone</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">M300-0092</td>
+              <td>Unassigned</td>
+              <td><span class="chip c-red"><span class="d"></span>Repair</span></td>
+              <td style="color:var(--rose);font-weight:600">Grounded</td>
+            </tr>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--mint-bg);color:var(--mint)">&#127919;</div><div><div class="asset-name">Leica AP20</div><div class="asset-sub">Added Apr 2024</div></div></div></td>
+              <td>AutoPole</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">AP20-3310</td>
+              <td>Sarah Chen</td>
+              <td><span class="chip c-green"><span class="d"></span>In Service</span></td>
+              <td style="color:var(--mint);font-weight:600">90 days</td>
+            </tr>
+            <tr>
+              <td><div class="asset-cell"><div class="asset-thumb" style="background:var(--slate-bg);color:var(--slate)">&#128187;</div><div><div class="asset-name">Panasonic FZ-55</div><div class="asset-sub">Added Sep 2023</div></div></div></td>
+              <td>Toughbook</td>
+              <td style="font-family:monospace;font-size:12px;color:var(--sub)">FZ55-7012</td>
+              <td>Equipment Store</td>
+              <td><span class="chip c-gray"><span class="d"></span>End of Life</span></td>
+              <td style="color:var(--muted)">N/A</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--muted)">
+          <span>Showing 6 of 148 assets</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:11px">&#8249; Prev</button>
+            <button class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:11px">Next &#8250;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

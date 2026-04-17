@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GearOps Design System Proposal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* === LIGHT THEME (Primary) === */
+    --bg-primary: #F8FAFB;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #F1F4F8;
+    --bg-elevated: #FFFFFF;
+    --bg-inverse: #1A1D23;
+
+    --text-primary: #0F1419;
+    --text-secondary: #536471;
+    --text-tertiary: #8B98A5;
+    --text-inverse: #FFFFFF;
+    --text-link: #1D6CE0;
+
+    --border-default: #E7ECF0;
+    --border-subtle: #F0F3F6;
+    --border-strong: #CFD9DE;
+
+    /* Brand */
+    --brand-primary: #1D6CE0;
+    --brand-primary-hover: #1558B8;
+    --brand-primary-light: #E8F1FD;
+    --brand-primary-muted: #F0F6FF;
+
+    /* Accent - Warm Orange for CTAs and highlights */
+    --accent: #E8590C;
+    --accent-hover: #D24A07;
+    --accent-light: #FFF4ED;
+    --accent-muted: #FEF0E6;
+
+    /* Semantic */
+    --success: #12845A;
+    --success-bg: #EDFCF5;
+    --success-border: #B8EBD6;
+    --warning: #C67A0A;
+    --warning-bg: #FFFAED;
+    --warning-border: #FEEAAB;
+    --danger: #D1293D;
+    --danger-bg: #FFF0F1;
+    --danger-border: #FDCED2;
+    --info: #1D6CE0;
+    --info-bg: #E8F1FD;
+    --info-border: #B6D4F8;
+
+    /* Status-specific */
+    --status-in-service: #12845A;
+    --status-in-service-bg: #EDFCF5;
+    --status-repair: #D1293D;
+    --status-repair-bg: #FFF0F1;
+    --status-maintenance: #C67A0A;
+    --status-maintenance-bg: #FFFAED;
+    --status-on-hire: #6941C6;
+    --status-on-hire-bg: #F4F0FF;
+    --status-end-of-life: #536471;
+    --status-end-of-life-bg: #F1F4F8;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(15, 20, 25, 0.04);
+    --shadow-md: 0 2px 8px rgba(15, 20, 25, 0.06), 0 1px 2px rgba(15, 20, 25, 0.04);
+    --shadow-lg: 0 8px 24px rgba(15, 20, 25, 0.08), 0 2px 8px rgba(15, 20, 25, 0.04);
+    --shadow-focus: 0 0 0 3px rgba(29, 108, 224, 0.2);
+
+    /* Radius */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* === LAYOUT === */
+  .container { max-width: 1200px; margin: 0 auto; padding: var(--space-8); }
+  .section { margin-bottom: var(--space-12); }
+  .section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: var(--text-tertiary);
+    margin-bottom: var(--space-6); padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-default);
+  }
+  .grid { display: grid; gap: var(--space-4); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-5 { grid-template-columns: repeat(5, 1fr); }
+  .flex { display: flex; align-items: center; gap: var(--space-3); }
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+  /* === HERO === */
+  .hero {
+    background: linear-gradient(135deg, #0F1419 0%, #1A2332 50%, #1D3A5E 100%);
+    border-radius: var(--radius-xl);
+    padding: var(--space-12) var(--space-8);
+    color: white;
+    margin-bottom: var(--space-10);
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; top: -50%; right: -20%; width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(29,108,224,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: var(--radius-full); padding: 6px 14px;
+    font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.8);
+    margin-bottom: var(--space-5);
+  }
+  .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #4ADE80; }
+  .hero h1 { font-size: 36px; font-weight: 800; margin-bottom: var(--space-3); letter-spacing: -0.5px; }
+  .hero p { font-size: 16px; color: rgba(255,255,255,0.65); max-width: 600px; line-height: 1.6; }
+
+  /* === COLOR SWATCHES === */
+  .color-row { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+  .color-swatch {
+    width: 80px; height: 80px; border-radius: var(--radius-lg);
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 8px; font-size: 10px; font-weight: 600; color: white;
+    box-shadow: var(--shadow-sm); border: 1px solid rgba(0,0,0,0.06);
+    transition: transform 0.15s;
+  }
+  .color-swatch:hover { transform: scale(1.05); }
+  .color-swatch .label { opacity: 0.85; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .color-swatch .hex { font-weight: 700; font-size: 10px; }
+  .color-swatch.light-text { color: var(--text-primary); }
+
+  /* === TYPOGRAPHY === */
+  .type-row { margin-bottom: var(--space-5); padding: var(--space-4); background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
+  .type-label { font-size: 11px; color: var(--text-tertiary); font-weight: 500; margin-bottom: 4px; font-family: monospace; }
+
+  /* === COMPONENT CARDS === */
+  .component-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    transition: box-shadow 0.2s;
+  }
+  .component-card:hover { box-shadow: var(--shadow-md); }
+  .component-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--text-tertiary);
+    margin-bottom: var(--space-4);
+  }
+
+  /* === BUTTONS === */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: inherit; font-weight: 600; font-size: 14px;
+    border: none; border-radius: var(--radius-md); cursor: pointer;
+    padding: 10px 20px; transition: all 0.15s; position: relative;
+  }
+  .btn-primary { background: var(--brand-primary); color: white; }
+  .btn-primary:hover { background: var(--brand-primary-hover); box-shadow: var(--shadow-md); }
+  .btn-accent { background: var(--accent); color: white; }
+  .btn-accent:hover { background: var(--accent-hover); box-shadow: var(--shadow-md); }
+  .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-default); }
+  .btn-secondary:hover { background: var(--border-default); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .btn-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+  .btn-danger:hover { background: var(--danger); color: white; }
+  .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: var(--radius-sm); }
+  .btn-lg { padding: 14px 28px; font-size: 15px; border-radius: var(--radius-lg); }
+  .btn-icon { width: 36px; height: 36px; padding: 0; border-radius: var(--radius-md); }
+
+  /* === STATUS CHIPS === */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: var(--radius-full);
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .chip-in-service { background: var(--status-in-service-bg); color: var(--status-in-service); }
+  .chip-in-service .dot { background: var(--status-in-service); }
+  .chip-repair { background: var(--status-repair-bg); color: var(--status-repair); }
+  .chip-repair .dot { background: var(--status-repair); }
+  .chip-maintenance { background: var(--status-maintenance-bg); color: var(--status-maintenance); }
+  .chip-maintenance .dot { background: var(--status-maintenance); }
+  .chip-on-hire { background: var(--status-on-hire-bg); color: var(--status-on-hire); }
+  .chip-on-hire .dot { background: var(--status-on-hire); }
+  .chip-eol { background: var(--status-end-of-life-bg); color: var(--status-end-of-life); }
+  .chip-eol .dot { background: var(--status-end-of-life); }
+
+  /* === PRIORITY BADGES === */
+  .priority-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: var(--radius-sm);
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .priority-critical { background: var(--danger); color: white; }
+  .priority-high { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+  .priority-normal { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
+  .priority-low { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-default); }
+
+  /* === GEAR CARD === */
+  .gear-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .gear-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); border-color: var(--border-strong); }
+  .gear-card-img {
+    width: 100%; height: 160px; object-fit: cover;
+    background: linear-gradient(135deg, var(--bg-tertiary), var(--border-default));
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary); font-size: 32px; position: relative;
+  }
+  .gear-card-img .status-dot {
+    position: absolute; top: 12px; right: 12px;
+  }
+  .gear-card-body { padding: var(--space-4); }
+  .gear-card-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+  .gear-card-subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: var(--space-3); }
+  .gear-card-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: var(--space-3); border-top: 1px solid var(--border-subtle);
+  }
+  .gear-card-meta span { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
+
+  /* === LIST ROW (Compact gear item) === */
+  .list-row {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .list-row:hover { background: var(--brand-primary-muted); border-color: var(--brand-primary); }
+  .list-row-avatar {
+    width: 44px; height: 44px; border-radius: var(--radius-md);
+    background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .list-row-content { flex: 1; min-width: 0; }
+  .list-row-title { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-row-sub { font-size: 12px; color: var(--text-tertiary); }
+  .list-row-right { text-align: right; flex-shrink: 0; }
+
+  /* === INPUT === */
+  .input-group { margin-bottom: var(--space-4); }
+  .input-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+  .input {
+    width: 100%; padding: 10px 14px; font-family: inherit; font-size: 14px;
+    border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    background: var(--bg-secondary); color: var(--text-primary);
+    transition: all 0.15s; outline: none;
+  }
+  .input:focus { border-color: var(--brand-primary); box-shadow: var(--shadow-focus); }
+  .input::placeholder { color: var(--text-tertiary); }
+  .input-with-icon { position: relative; }
+  .input-with-icon .input { padding-left: 40px; }
+  .input-with-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 16px; }
+
+  /* === TAB BAR === */
+  .tab-bar {
+    display: flex; background: var(--bg-secondary);
+    border-top: 1px solid var(--border-default);
+    padding: 6px 0; justify-content: space-around;
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  }
+  .tab-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 6px 16px; border-radius: var(--radius-md); cursor: pointer;
+    transition: all 0.15s; position: relative;
+  }
+  .tab-item .tab-icon { font-size: 22px; }
+  .tab-item .tab-label { font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }
+  .tab-item.active { color: var(--brand-primary); }
+  .tab-item:not(.active) { color: var(--text-tertiary); }
+  .tab-item:not(.active):hover { color: var(--text-secondary); background: var(--bg-tertiary); }
+  .tab-badge {
+    position: absolute; top: 0; right: 4px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); color: white;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* === STAT CARD === */
+  .stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content: ''; position: absolute; top: 0; left: 0;
+    width: 3px; height: 100%;
+  }
+  .stat-card.blue::after { background: var(--brand-primary); }
+  .stat-card.green::after { background: var(--success); }
+  .stat-card.orange::after { background: var(--accent); }
+  .stat-card.purple::after { background: var(--status-on-hire); }
+  .stat-value { font-size: 28px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; }
+  .stat-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-top: 2px; }
+  .stat-change { font-size: 11px; font-weight: 600; margin-top: 6px; }
+  .stat-change.up { color: var(--success); }
+  .stat-change.down { color: var(--danger); }
+
+  /* === SHORTCUT GRID === */
+  .shortcut-item {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: var(--space-4); border-radius: var(--radius-lg);
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .shortcut-item:hover { transform: scale(1.03); }
+  .shortcut-icon {
+    width: 48px; height: 48px; border-radius: var(--radius-lg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .shortcut-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+  /* === PHONE FRAME === */
+  .phone-frame {
+    width: 375px; min-height: 720px;
+    background: var(--bg-primary);
+    border-radius: 40px;
+    border: 8px solid #1A1D23;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+    overflow: hidden;
+    position: relative;
+  }
+  .phone-notch {
+    width: 150px; height: 30px;
+    background: #1A1D23;
+    border-radius: 0 0 20px 20px;
+    margin: 0 auto;
+  }
+  .phone-content { padding: 0; }
+  .phone-status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 24px 4px;
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+  }
+  .screen-header {
+    padding: 12px 20px 16px;
+  }
+  .screen-header h2 { font-size: 24px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.3px; }
+  .screen-header p { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+  .screen-body { padding: 0 16px 16px; }
+
+  /* === MOCKUP LAYOUT === */
+  .mockups-row { display: flex; gap: var(--space-8); justify-content: center; flex-wrap: wrap; }
+
+  /* === DARK THEME PREVIEW === */
+  .dark-preview {
+    --bg-primary: #0F1115;
+    --bg-secondary: #1A1D23;
+    --bg-tertiary: #23272F;
+    --bg-elevated: #2A2E37;
+    --text-primary: #F0F2F5;
+    --text-secondary: #8B98A5;
+    --text-tertiary: #5B6B7A;
+    --border-default: #2A2E37;
+    --border-subtle: #23272F;
+    --border-strong: #3A3F4A;
+    --brand-primary-muted: #162036;
+    --brand-primary-light: #162036;
+    --status-in-service-bg: #0C2E1F;
+    --status-repair-bg: #2D1215;
+    --status-maintenance-bg: #2C1D06;
+    --status-on-hire-bg: #1D1335;
+    --status-end-of-life-bg: #23272F;
+    --accent-light: #2D1A0B;
+    --success-bg: #0C2E1F;
+    --warning-bg: #2C1D06;
+    --danger-bg: #2D1215;
+    --info-bg: #162036;
+    color: #F0F2F5;
+    background: #0F1115;
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+  }
+
+  /* === COMPARISON TABLE === */
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin-top: var(--space-6); }
+  .comparison-col { border-radius: var(--radius-lg); overflow: hidden; }
+  .comparison-label {
+    text-align: center; padding: 10px;
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .old-label { background: #FEE2E2; color: #D1293D; }
+  .new-label { background: var(--success-bg); color: var(--success); }
+
+  /* === ACTION CARD (Task item) === */
+  .action-card {
+    display: flex; align-items: flex-start; gap: var(--space-3);
+    padding: var(--space-4); background: var(--bg-secondary);
+    border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  }
+  .action-icon {
+    width: 36px; height: 36px; border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .action-content { flex: 1; }
+  .action-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .action-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+  .action-time { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
+
+  /* Animation */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .section { animation: fadeIn 0.4s ease; }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
+    .mockups-row { flex-direction: column; align-items: center; }
+    .comparison { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge"><span class="dot"></span> Design System Proposal v1.0</div>
+    <h1>GearOps Redesign</h1>
+    <p>Modern Utility aesthetic &mdash; clean, functional, and premium. Designed for both field technicians scanning gear on-site and office managers tracking inventory at their desks.</p>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Design Philosophy -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Design Philosophy</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4);">
+      <div class="component-card" style="text-align: center;">
+        <div style="font-size: 28px; margin-bottom: 8px;">&#9889;</div>
+        <div style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">Speed First</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">One-tap actions, large touch targets for gloved hands, minimal navigation depth. Field workers need to check in gear in under 5 seconds.</div>
+      </div>
+      <div class="component-card" style="text-align: center;">
+        <div style="font-size: 28px; margin-bottom: 8px;">&#128736;</div>
+        <div style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">Practical Density</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">Information-rich without clutter. Status at a glance, smart defaults, and progressive disclosure. Show what matters, hide what doesn't.</div>
+      </div>
+      <div class="component-card" style="text-align: center;">
+        <div style="font-size: 28px; margin-bottom: 8px;">&#127912;</div>
+        <div style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">Refined Polish</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">Subtle shadows, precise spacing, cohesive color language. Professional enough for client demos, tough enough for the job site.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Color Palette -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Color Palette &mdash; Light Theme (Primary)</div>
+
+    <div style="margin-bottom: var(--space-6);">
+      <div style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">Brand & Accent</div>
+      <div class="color-row">
+        <div class="color-swatch" style="background: #1D6CE0;"><span class="label">Primary</span><span class="hex">#1D6CE0</span></div>
+        <div class="color-swatch" style="background: #1558B8;"><span class="label">Primary Dark</span><span class="hex">#1558B8</span></div>
+        <div class="color-swatch light-text" style="background: #E8F1FD;"><span class="label">Primary Light</span><span class="hex">#E8F1FD</span></div>
+        <div class="color-swatch" style="background: #E8590C;"><span class="label">Accent</span><span class="hex">#E8590C</span></div>
+        <div class="color-swatch" style="background: #D24A07;"><span class="label">Accent Dark</span><span class="hex">#D24A07</span></div>
+        <div class="color-swatch light-text" style="background: #FFF4ED; border: 1px solid #FEE0CC;"><span class="label">Accent Light</span><span class="hex">#FFF4ED</span></div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: var(--space-6);">
+      <div style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">Neutrals & Surfaces</div>
+      <div class="color-row">
+        <div class="color-swatch" style="background: #0F1419;"><span class="label">Text</span><span class="hex">#0F1419</span></div>
+        <div class="color-swatch" style="background: #536471;"><span class="label">Secondary</span><span class="hex">#536471</span></div>
+        <div class="color-swatch" style="background: #8B98A5;"><span class="label">Tertiary</span><span class="hex">#8B98A5</span></div>
+        <div class="color-swatch light-text" style="background: #E7ECF0;"><span class="label">Border</span><span class="hex">#E7ECF0</span></div>
+        <div class="color-swatch light-text" style="background: #F1F4F8;"><span class="label">Muted BG</span><span class="hex">#F1F4F8</span></div>
+        <div class="color-swatch light-text" style="background: #F8FAFB; border: 1px solid #E7ECF0;"><span class="label">Page BG</span><span class="hex">#F8FAFB</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">Semantic & Status</div>
+      <div class="color-row">
+        <div class="color-swatch" style="background: #12845A;"><span class="label">In Service</span><span class="hex">#12845A</span></div>
+        <div class="color-swatch" style="background: #D1293D;"><span class="label">Repair</span><span class="hex">#D1293D</span></div>
+        <div class="color-swatch" style="background: #C67A0A;"><span class="label">Maintenance</span><span class="hex">#C67A0A</span></div>
+        <div class="color-swatch" style="background: #6941C6;"><span class="label">On Hire</span><span class="hex">#6941C6</span></div>
+        <div class="color-swatch" style="background: #536471;"><span class="label">End of Life</span><span class="hex">#536471</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Dark Theme Preview -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Color Palette &mdash; Dark Theme (Toggle)</div>
+    <div class="dark-preview">
+      <div class="color-row">
+        <div class="color-swatch" style="background: #0F1115;"><span class="label">Page BG</span><span class="hex">#0F1115</span></div>
+        <div class="color-swatch" style="background: #1A1D23;"><span class="label">Card BG</span><span class="hex">#1A1D23</span></div>
+        <div class="color-swatch" style="background: #23272F;"><span class="label">Tertiary</span><span class="hex">#23272F</span></div>
+        <div class="color-swatch" style="background: #2A2E37;"><span class="label">Elevated</span><span class="hex">#2A2E37</span></div>
+        <div class="color-swatch" style="background: #3A3F4A;"><span class="label">Border</span><span class="hex">#3A3F4A</span></div>
+        <div class="color-swatch light-text" style="background: #F0F2F5; color: #0F1115;"><span class="label">Text</span><span class="hex">#F0F2F5</span></div>
+      </div>
+      <div style="margin-top: var(--space-4);">
+        <div class="color-row">
+          <div class="color-swatch" style="background: #4A9EF5;"><span class="label">Primary</span><span class="hex">#4A9EF5</span></div>
+          <div class="color-swatch" style="background: #F07A38;"><span class="label">Accent</span><span class="hex">#F07A38</span></div>
+          <div class="color-swatch" style="background: #162036;"><span class="label">Primary BG</span><span class="hex">#162036</span></div>
+          <div class="color-swatch" style="background: #0C2E1F;"><span class="label">Success BG</span><span class="hex">#0C2E1F</span></div>
+          <div class="color-swatch" style="background: #2D1215;"><span class="label">Danger BG</span><span class="hex">#2D1215</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Typography -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Typography &mdash; Inter Font Family</div>
+    <div class="type-row">
+      <div class="type-label">Display / 28px / Inter ExtraBold 800 / -0.5 tracking</div>
+      <div style="font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Equipment Dashboard</div>
+    </div>
+    <div class="type-row">
+      <div class="type-label">Heading 1 / 22px / Inter Bold 700 / -0.3 tracking</div>
+      <div style="font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">Asset Inventory</div>
+    </div>
+    <div class="type-row">
+      <div class="type-label">Heading 2 / 18px / Inter SemiBold 600</div>
+      <div style="font-size: 18px; font-weight: 600;">Total Station TS16</div>
+    </div>
+    <div class="type-row">
+      <div class="type-label">Body / 14px / Inter Regular 400 / 1.5 line-height</div>
+      <div style="font-size: 14px; font-weight: 400; color: var(--text-secondary); line-height: 1.5;">This Leica Total Station was last serviced on March 15, 2026 and is currently assigned to the Melbourne CBD survey project. Next calibration due in 45 days.</div>
+    </div>
+    <div class="type-row">
+      <div class="type-label">Caption / 12px / Inter Medium 500</div>
+      <div style="font-size: 12px; font-weight: 500; color: var(--text-tertiary);">Last updated 2 hours ago &bull; SN: TS16-2024-0847</div>
+    </div>
+    <div class="type-row">
+      <div class="type-label">Overline / 11px / Inter Bold 700 / Uppercase / 1.2px tracking</div>
+      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-tertiary);">Quick Actions</div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Components -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Core Components</div>
+
+    <!-- Buttons -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Buttons</div>
+      <div style="display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;">
+        <button class="btn btn-primary btn-lg">&#10003; Check In Gear</button>
+        <button class="btn btn-accent">&#9889; Quick Action</button>
+        <button class="btn btn-primary">+ New Asset</button>
+        <button class="btn btn-secondary">&#128269; Search</button>
+        <button class="btn btn-ghost btn-sm">Cancel</button>
+        <button class="btn btn-danger btn-sm">&#128465; Remove</button>
+        <button class="btn btn-primary btn-icon">&#9776;</button>
+      </div>
+    </div>
+
+    <!-- Status Chips -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Status Chips & Priority Badges</div>
+      <div style="display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-bottom: var(--space-4);">
+        <span class="chip chip-in-service"><span class="dot"></span> In Service</span>
+        <span class="chip chip-repair"><span class="dot"></span> Repair</span>
+        <span class="chip chip-maintenance"><span class="dot"></span> Maintenance</span>
+        <span class="chip chip-on-hire"><span class="dot"></span> On Hire</span>
+        <span class="chip chip-eol"><span class="dot"></span> End of Life</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;">
+        <span class="priority-badge priority-critical">Critical</span>
+        <span class="priority-badge priority-high">High</span>
+        <span class="priority-badge priority-normal">Normal</span>
+        <span class="priority-badge priority-low">Low</span>
+      </div>
+    </div>
+
+    <!-- Inputs -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Form Inputs</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+        <div class="input-group">
+          <label class="input-label">Asset Name</label>
+          <input class="input" placeholder="e.g. Leica TS16" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Serial Number</label>
+          <input class="input" placeholder="e.g. TS16-2024-0847" />
+        </div>
+        <div class="input-group" style="grid-column: span 2;">
+          <label class="input-label">Search Assets</label>
+          <div class="input-with-icon">
+            <span class="icon">&#128269;</span>
+            <input class="input" placeholder="Search by name, serial, or scan QR code..." />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gear Cards -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Gear Cards (Grid View)</div>
+      <div class="grid grid-4">
+        <div class="gear-card">
+          <div class="gear-card-img">
+            &#128225;
+            <span class="chip chip-in-service status-dot" style="font-size: 11px;"><span class="dot"></span> In Service</span>
+          </div>
+          <div class="gear-card-body">
+            <div class="gear-card-title">Leica TS16</div>
+            <div class="gear-card-subtitle">Total Station</div>
+            <div class="gear-card-meta">
+              <span>SN: TS16-0847</span>
+              <span style="color: var(--success);">&#8226; 45d to service</span>
+            </div>
+          </div>
+        </div>
+        <div class="gear-card">
+          <div class="gear-card-img">
+            &#128752;
+            <span class="chip chip-on-hire status-dot" style="font-size: 11px;"><span class="dot"></span> On Hire</span>
+          </div>
+          <div class="gear-card-body">
+            <div class="gear-card-title">Trimble R12i</div>
+            <div class="gear-card-subtitle">GNSS Receiver</div>
+            <div class="gear-card-meta">
+              <span>SN: R12-1234</span>
+              <span style="color: var(--status-on-hire);">&#8226; Due May 12</span>
+            </div>
+          </div>
+        </div>
+        <div class="gear-card">
+          <div class="gear-card-img">
+            &#128187;
+            <span class="chip chip-maintenance status-dot" style="font-size: 11px;"><span class="dot"></span> Maintenance</span>
+          </div>
+          <div class="gear-card-body">
+            <div class="gear-card-title">Getac F110</div>
+            <div class="gear-card-subtitle">Rugged Tablet</div>
+            <div class="gear-card-meta">
+              <span>SN: F110-5521</span>
+              <span style="color: var(--warning);">&#8226; Scheduled</span>
+            </div>
+          </div>
+        </div>
+        <div class="gear-card">
+          <div class="gear-card-img">
+            &#128247;
+            <span class="chip chip-repair status-dot" style="font-size: 11px;"><span class="dot"></span> Repair</span>
+          </div>
+          <div class="gear-card-body">
+            <div class="gear-card-title">DJI Matrice 300</div>
+            <div class="gear-card-subtitle">Survey Drone</div>
+            <div class="gear-card-meta">
+              <span>SN: M300-0092</span>
+              <span style="color: var(--danger);">&#9888; Grounded</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- List Rows -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Gear List Rows (Compact View)</div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+        <div class="list-row">
+          <div class="list-row-avatar" style="background: var(--status-in-service-bg); color: var(--status-in-service);">&#128225;</div>
+          <div class="list-row-content">
+            <div class="list-row-title">Leica TS16 Total Station</div>
+            <div class="list-row-sub">SN: TS16-0847 &bull; Assigned to Jake Morrison</div>
+          </div>
+          <div class="list-row-right">
+            <span class="chip chip-in-service" style="font-size: 11px;"><span class="dot"></span> In Service</span>
+          </div>
+        </div>
+        <div class="list-row">
+          <div class="list-row-avatar" style="background: var(--status-on-hire-bg); color: var(--status-on-hire);">&#128752;</div>
+          <div class="list-row-content">
+            <div class="list-row-title">Trimble R12i GNSS Receiver</div>
+            <div class="list-row-sub">SN: R12-1234 &bull; Hired to CBD Project</div>
+          </div>
+          <div class="list-row-right">
+            <span class="chip chip-on-hire" style="font-size: 11px;"><span class="dot"></span> On Hire</span>
+          </div>
+        </div>
+        <div class="list-row">
+          <div class="list-row-avatar" style="background: var(--status-repair-bg); color: var(--status-repair);">&#128247;</div>
+          <div class="list-row-content">
+            <div class="list-row-title">DJI Matrice 300 RTK</div>
+            <div class="list-row-sub">SN: M300-0092 &bull; Motor replacement pending</div>
+          </div>
+          <div class="list-row-right">
+            <span class="chip chip-repair" style="font-size: 11px;"><span class="dot"></span> Repair</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Stat Cards (Dashboard)</div>
+      <div class="grid grid-4">
+        <div class="stat-card blue">
+          <div class="stat-value">148</div>
+          <div class="stat-label">Total Assets</div>
+          <div class="stat-change up">+12 this month</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-value">124</div>
+          <div class="stat-label">In Service</div>
+          <div class="stat-change up">83.7% fleet</div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-value">7</div>
+          <div class="stat-label">Needs Attention</div>
+          <div class="stat-change down">3 overdue service</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-value">17</div>
+          <div class="stat-label">On Hire</div>
+          <div class="stat-change">$12.4k revenue</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action / Activity Items -->
+    <div class="component-card" style="margin-bottom: var(--space-4);">
+      <div class="component-label">Activity Feed Items</div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+        <div class="action-card">
+          <div class="action-icon" style="background: var(--info-bg); color: var(--info);">&#8594;</div>
+          <div class="action-content">
+            <div class="action-title">Leica TS16 transferred to Jake Morrison</div>
+            <div class="action-desc">From: Equipment Store &rarr; To: Melbourne CBD Project</div>
+          </div>
+          <div class="action-time">2h ago</div>
+        </div>
+        <div class="action-card">
+          <div class="action-icon" style="background: var(--warning-bg); color: var(--warning);">&#128295;</div>
+          <div class="action-content">
+            <div class="action-title">DJI Matrice 300 sent for repair</div>
+            <div class="action-desc">Motor 3 replacement &bull; Priority: <span class="priority-badge priority-high" style="font-size: 10px;">High</span></div>
+          </div>
+          <div class="action-time">5h ago</div>
+        </div>
+        <div class="action-card">
+          <div class="action-icon" style="background: var(--success-bg); color: var(--success);">&#10003;</div>
+          <div class="action-content">
+            <div class="action-title">Trimble R12i checked in</div>
+            <div class="action-desc">Returned from Eastern Freeway project by Sarah Chen</div>
+          </div>
+          <div class="action-time">1d ago</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shortcut Grid -->
+    <div class="component-card">
+      <div class="component-label">Quick Action Shortcuts</div>
+      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--space-2);">
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: var(--brand-primary-light); color: var(--brand-primary);">&#128269;</div>
+          <div class="shortcut-label">Quick View</div>
+        </div>
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: var(--accent-light); color: var(--accent);">&#128247;</div>
+          <div class="shortcut-label">Scan QR</div>
+        </div>
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: var(--success-bg); color: var(--success);">&#10003;</div>
+          <div class="shortcut-label">Check In</div>
+        </div>
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: #F4F0FF; color: var(--status-on-hire);">&#8644;</div>
+          <div class="shortcut-label">Transfer</div>
+        </div>
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: var(--warning-bg); color: var(--warning);">&#128295;</div>
+          <div class="shortcut-label">Service</div>
+        </div>
+        <div class="shortcut-item">
+          <div class="shortcut-icon" style="background: var(--danger-bg); color: var(--danger);">&#9888;</div>
+          <div class="shortcut-label">Report Issue</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Mobile Mockups -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Screen Mockups &mdash; Mobile (375px)</div>
+    <div class="mockups-row">
+
+      <!-- Dashboard Screen -->
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-content">
+          <div class="phone-status-bar">
+            <span>9:41</span>
+            <span style="font-size: 11px;">&#128268; &#128246; &#9679;&#9679;&#9679;&#9679;</span>
+          </div>
+          <div class="screen-header">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 13px; color: var(--text-tertiary); font-weight: 500;">Good morning, Shivam</div>
+                <h2 style="font-size: 24px; font-weight: 800; letter-spacing: -0.3px;">Dashboard</h2>
+              </div>
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: var(--brand-primary); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">SV</div>
+            </div>
+          </div>
+          <div class="screen-body">
+            <!-- Search bar -->
+            <div class="input-with-icon" style="margin-bottom: var(--space-4);">
+              <span class="icon" style="font-size: 14px;">&#128269;</span>
+              <input class="input" placeholder="Search assets or scan QR..." style="font-size: 13px; padding: 10px 14px 10px 36px; background: var(--bg-tertiary); border-color: transparent;" />
+            </div>
+            <!-- Mini stats -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: var(--space-5);">
+              <div class="stat-card blue" style="padding: 12px;">
+                <div class="stat-value" style="font-size: 22px;">148</div>
+                <div class="stat-label" style="font-size: 11px;">Total Assets</div>
+              </div>
+              <div class="stat-card green" style="padding: 12px;">
+                <div class="stat-value" style="font-size: 22px;">7</div>
+                <div class="stat-label" style="font-size: 11px;">Needs Attention</div>
+              </div>
+            </div>
+            <!-- Shortcuts -->
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 10px;">Quick Actions</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: var(--space-5);">
+              <div class="shortcut-item" style="padding: 10px 4px;">
+                <div class="shortcut-icon" style="width: 40px; height: 40px; font-size: 18px; background: var(--accent-light); color: var(--accent);">&#128247;</div>
+                <div class="shortcut-label" style="font-size: 10px;">Scan</div>
+              </div>
+              <div class="shortcut-item" style="padding: 10px 4px;">
+                <div class="shortcut-icon" style="width: 40px; height: 40px; font-size: 18px; background: var(--success-bg); color: var(--success);">&#10003;</div>
+                <div class="shortcut-label" style="font-size: 10px;">Check In</div>
+              </div>
+              <div class="shortcut-item" style="padding: 10px 4px;">
+                <div class="shortcut-icon" style="width: 40px; height: 40px; font-size: 18px; background: #F4F0FF; color: var(--status-on-hire);">&#8644;</div>
+                <div class="shortcut-label" style="font-size: 10px;">Transfer</div>
+              </div>
+              <div class="shortcut-item" style="padding: 10px 4px;">
+                <div class="shortcut-icon" style="width: 40px; height: 40px; font-size: 18px; background: var(--brand-primary-light); color: var(--brand-primary);">+</div>
+                <div class="shortcut-label" style="font-size: 10px;">Add New</div>
+              </div>
+            </div>
+            <!-- Recent Activity -->
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 10px;">Recent Activity</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="action-card" style="padding: 10px;">
+                <div class="action-icon" style="width: 32px; height: 32px; font-size: 14px; background: var(--info-bg); color: var(--info);">&#8594;</div>
+                <div class="action-content">
+                  <div class="action-title" style="font-size: 13px;">TS16 transferred</div>
+                  <div class="action-desc" style="font-size: 11px;">To Jake &bull; CBD Project</div>
+                </div>
+                <div class="action-time" style="font-size: 10px;">2h</div>
+              </div>
+              <div class="action-card" style="padding: 10px;">
+                <div class="action-icon" style="width: 32px; height: 32px; font-size: 14px; background: var(--warning-bg); color: var(--warning);">&#128295;</div>
+                <div class="action-content">
+                  <div class="action-title" style="font-size: 13px;">M300 sent for repair</div>
+                  <div class="action-desc" style="font-size: 11px;">Motor 3 replacement</div>
+                </div>
+                <div class="action-time" style="font-size: 10px;">5h</div>
+              </div>
+              <div class="action-card" style="padding: 10px;">
+                <div class="action-icon" style="width: 32px; height: 32px; font-size: 14px; background: var(--success-bg); color: var(--success);">&#10003;</div>
+                <div class="action-content">
+                  <div class="action-title" style="font-size: 13px;">R12i checked in</div>
+                  <div class="action-desc" style="font-size: 11px;">By Sarah Chen</div>
+                </div>
+                <div class="action-time" style="font-size: 10px;">1d</div>
+              </div>
+            </div>
+          </div>
+          <!-- Tab bar -->
+          <div class="tab-bar" style="position: absolute; bottom: 0; left: 0; right: 0;">
+            <div class="tab-item active">
+              <span class="tab-icon">&#9632;</span>
+              <span class="tab-label">Dashboard</span>
+            </div>
+            <div class="tab-item">
+              <span class="tab-icon">&#9776;</span>
+              <span class="tab-label">Inventory</span>
+            </div>
+            <div class="tab-item" style="position: relative;">
+              <span class="tab-icon">&#10003;</span>
+              <span class="tab-label">Tasks</span>
+              <span class="tab-badge">3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inventory Screen -->
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-content">
+          <div class="phone-status-bar">
+            <span>9:41</span>
+            <span style="font-size: 11px;">&#128268; &#128246; &#9679;&#9679;&#9679;&#9679;</span>
+          </div>
+          <div class="screen-header" style="padding-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="font-size: 24px; font-weight: 800; letter-spacing: -0.3px;">Inventory</h2>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary btn-icon" style="width: 34px; height: 34px; font-size: 14px;">&#128269;</button>
+                <button class="btn btn-primary btn-sm" style="font-size: 12px; padding: 6px 12px;">+ Add</button>
+              </div>
+            </div>
+            <!-- Segment control -->
+            <div style="display: flex; gap: 0; margin-top: 12px; background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 3px;">
+              <div style="flex: 1; text-align: center; padding: 8px; border-radius: 6px; background: var(--bg-secondary); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm);">All Assets</div>
+              <div style="flex: 1; text-align: center; padding: 8px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-tertiary);">By Type</div>
+            </div>
+            <!-- Filter chips -->
+            <div style="display: flex; gap: 6px; margin-top: 10px; overflow-x: auto;">
+              <span style="padding: 5px 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600; background: var(--brand-primary); color: white;">All (148)</span>
+              <span style="padding: 5px 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-default);">In Service</span>
+              <span style="padding: 5px 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-default);">Repair</span>
+              <span style="padding: 5px 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-default);">On Hire</span>
+            </div>
+          </div>
+          <div class="screen-body" style="padding-top: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div class="list-row" style="padding: 10px 12px;">
+                <div class="list-row-avatar" style="width: 40px; height: 40px; background: var(--status-in-service-bg); color: var(--status-in-service); font-size: 16px;">&#128225;</div>
+                <div class="list-row-content">
+                  <div class="list-row-title" style="font-size: 13px;">Leica TS16</div>
+                  <div class="list-row-sub" style="font-size: 11px;">Total Station &bull; Jake M.</div>
+                </div>
+                <div><span class="chip chip-in-service" style="font-size: 10px; padding: 2px 8px;"><span class="dot" style="width: 5px; height: 5px;"></span> Active</span></div>
+              </div>
+              <div class="list-row" style="padding: 10px 12px;">
+                <div class="list-row-avatar" style="width: 40px; height: 40px; background: var(--status-on-hire-bg); color: var(--status-on-hire); font-size: 16px;">&#128752;</div>
+                <div class="list-row-content">
+                  <div class="list-row-title" style="font-size: 13px;">Trimble R12i</div>
+                  <div class="list-row-sub" style="font-size: 11px;">GNSS Receiver &bull; CBD Project</div>
+                </div>
+                <div><span class="chip chip-on-hire" style="font-size: 10px; padding: 2px 8px;"><span class="dot" style="width: 5px; height: 5px;"></span> Hired</span></div>
+              </div>
+              <div class="list-row" style="padding: 10px 12px;">
+                <div class="list-row-avatar" style="width: 40px; height: 40px; background: var(--status-repair-bg); color: var(--status-repair); font-size: 16px;">&#128247;</div>
+                <div class="list-row-content">
+                  <div class="list-row-title" style="font-size: 13px;">DJI Matrice 300</div>
+                  <div class="list-row-sub" style="font-size: 11px;">Survey Drone &bull; Motor issue</div>
+                </div>
+                <div><span class="chip chip-repair" style="font-size: 10px; padding: 2px 8px;"><span class="dot" style="width: 5px; height: 5px;"></span> Repair</span></div>
+              </div>
+              <div class="list-row" style="padding: 10px 12px;">
+                <div class="list-row-avatar" style="width: 40px; height: 40px; background: var(--status-maintenance-bg); color: var(--status-maintenance); font-size: 16px;">&#128187;</div>
+                <div class="list-row-content">
+                  <div class="list-row-title" style="font-size: 13px;">Getac F110</div>
+                  <div class="list-row-sub" style="font-size: 11px;">Rugged Tablet &bull; Cal due</div>
+                </div>
+                <div><span class="chip chip-maintenance" style="font-size: 10px; padding: 2px 8px;"><span class="dot" style="width: 5px; height: 5px;"></span> Service</span></div>
+              </div>
+              <div class="list-row" style="padding: 10px 12px;">
+                <div class="list-row-avatar" style="width: 40px; height: 40px; background: var(--status-in-service-bg); color: var(--status-in-service); font-size: 16px;">&#127919;</div>
+                <div class="list-row-content">
+                  <div class="list-row-title" style="font-size: 13px;">Leica AP20 AutoPole</div>
+                  <div class="list-row-sub" style="font-size: 11px;">Survey Pole &bull; Sarah C.</div>
+                </div>
+                <div><span class="chip chip-in-service" style="font-size: 10px; padding: 2px 8px;"><span class="dot" style="width: 5px; height: 5px;"></span> Active</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Tab bar -->
+          <div class="tab-bar" style="position: absolute; bottom: 0; left: 0; right: 0;">
+            <div class="tab-item">
+              <span class="tab-icon">&#9632;</span>
+              <span class="tab-label">Dashboard</span>
+            </div>
+            <div class="tab-item active">
+              <span class="tab-icon">&#9776;</span>
+              <span class="tab-label">Inventory</span>
+            </div>
+            <div class="tab-item" style="position: relative;">
+              <span class="tab-icon">&#10003;</span>
+              <span class="tab-label">Tasks</span>
+              <span class="tab-badge">3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Asset Detail Screen -->
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-content">
+          <div class="phone-status-bar">
+            <span>9:41</span>
+            <span style="font-size: 11px;">&#128268; &#128246; &#9679;&#9679;&#9679;&#9679;</span>
+          </div>
+          <!-- Nav bar -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px;">
+            <span style="font-size: 16px; color: var(--brand-primary); cursor: pointer;">&#8592; Back</span>
+            <span style="font-size: 16px; color: var(--text-tertiary);">&#8942;</span>
+          </div>
+          <!-- Hero image area -->
+          <div style="height: 140px; background: linear-gradient(135deg, var(--bg-tertiary), var(--border-default)); display: flex; align-items: center; justify-content: center; font-size: 48px; position: relative;">
+            &#128225;
+            <div style="position: absolute; bottom: 12px; left: 16px;">
+              <span class="chip chip-in-service" style="font-size: 11px;"><span class="dot"></span> In Service</span>
+            </div>
+          </div>
+          <div class="screen-body" style="padding-top: 16px;">
+            <div style="font-size: 20px; font-weight: 800; margin-bottom: 2px;">Leica TS16</div>
+            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Total Station &bull; SN: TS16-2024-0847</div>
+
+            <!-- Quick action buttons -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+              <button class="btn btn-accent btn-sm" style="flex: 1; font-size: 12px;">&#9889; Quick Action</button>
+              <button class="btn btn-secondary btn-sm" style="flex: 1; font-size: 12px;">&#8644; Transfer</button>
+              <button class="btn btn-secondary btn-icon" style="width: 34px; height: 34px; flex-shrink: 0; font-size: 14px;">&#128441;</button>
+            </div>
+
+            <!-- Info grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+              <div style="padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 2px;">Assigned To</div>
+                <div style="font-size: 13px; font-weight: 600;">Jake Morrison</div>
+              </div>
+              <div style="padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 2px;">Location</div>
+                <div style="font-size: 13px; font-weight: 600;">Melbourne CBD</div>
+              </div>
+              <div style="padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 2px;">Next Service</div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--success);">45 days</div>
+              </div>
+              <div style="padding: 10px; background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 2px;">Purchased</div>
+                <div style="font-size: 13px; font-weight: 600;">Mar 2024</div>
+              </div>
+            </div>
+
+            <!-- Tabs -->
+            <div style="display: flex; gap: 0; border-bottom: 1px solid var(--border-default); margin-bottom: 12px;">
+              <div style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--brand-primary); border-bottom: 2px solid var(--brand-primary);">History</div>
+              <div style="padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--text-tertiary);">Documents</div>
+              <div style="padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--text-tertiary);">Details</div>
+            </div>
+
+            <!-- History items -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; gap: 10px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--info-bg); color: var(--info); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 2px;">&#8594;</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Transferred to Jake Morrison</div>
+                  <div style="font-size: 11px; color: var(--text-tertiary);">Apr 14, 2026 &bull; By Admin</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--success-bg); color: var(--success); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 2px;">&#10003;</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Service completed</div>
+                  <div style="font-size: 11px; color: var(--text-tertiary);">Mar 15, 2026 &bull; Leica Service</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--warning-bg); color: var(--warning); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 2px;">&#128295;</div>
+                <div style="flex: 1;">
+                  <div style="font-size: 13px; font-weight: 600;">Calibration scheduled</div>
+                  <div style="font-size: 11px; color: var(--text-tertiary);">Mar 10, 2026 &bull; By Admin</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Desktop Web Layout -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Desktop Web Layout Concept</div>
+    <div class="component-card" style="padding: 0; overflow: hidden;">
+      <div style="display: flex; min-height: 500px;">
+        <!-- Sidebar -->
+        <div style="width: 240px; background: var(--bg-inverse); color: white; padding: 20px 16px; flex-shrink: 0;">
+          <div style="font-size: 18px; font-weight: 800; margin-bottom: 28px; letter-spacing: -0.3px;">
+            <span style="color: var(--accent);">Gear</span>Ops
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(255,255,255,0.08); font-size: 13px; font-weight: 600; cursor: pointer;">
+              <span>&#9632;</span> Dashboard
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+              <span>&#9776;</span> Inventory
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+              <span>&#10003;</span> Tasks <span style="margin-left: auto; background: var(--accent); font-size: 10px; padding: 2px 7px; border-radius: 50px; font-weight: 700;">3</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+              <span>&#128247;</span> QR Scanner
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+              <span>&#128202;</span> Activity
+            </div>
+            <div style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+                <span>&#9881;</span> Admin
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer;">
+                <span>&#128100;</span> Profile
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Main content -->
+        <div style="flex: 1; padding: 24px 32px; background: var(--bg-primary);">
+          <!-- Top bar -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+              <div style="font-size: 13px; color: var(--text-tertiary);">Good morning, Shivam</div>
+              <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Dashboard</div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div class="input-with-icon" style="width: 280px;">
+                <span class="icon" style="font-size: 14px;">&#128269;</span>
+                <input class="input" placeholder="Search assets..." style="font-size: 13px; padding: 8px 14px 8px 36px;" />
+              </div>
+              <button class="btn btn-primary btn-sm">+ New Asset</button>
+            </div>
+          </div>
+          <!-- Stats row -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+            <div class="stat-card blue" style="padding: 16px;">
+              <div class="stat-value" style="font-size: 24px;">148</div>
+              <div class="stat-label">Total Assets</div>
+            </div>
+            <div class="stat-card green" style="padding: 16px;">
+              <div class="stat-value" style="font-size: 24px;">124</div>
+              <div class="stat-label">In Service</div>
+            </div>
+            <div class="stat-card orange" style="padding: 16px;">
+              <div class="stat-value" style="font-size: 24px;">7</div>
+              <div class="stat-label">Needs Attention</div>
+            </div>
+            <div class="stat-card purple" style="padding: 16px;">
+              <div class="stat-value" style="font-size: 24px;">17</div>
+              <div class="stat-label">On Hire</div>
+            </div>
+          </div>
+          <!-- Two-column layout -->
+          <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px;">
+            <div>
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 10px;">Recent Activity</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div class="action-card" style="padding: 12px;">
+                  <div class="action-icon" style="width: 32px; height: 32px; font-size: 14px; background: var(--info-bg); color: var(--info);">&#8594;</div>
+                  <div class="action-content">
+                    <div class="action-title" style="font-size: 13px;">TS16 transferred to Jake Morrison</div>
+                    <div class="action-desc">Melbourne CBD Project</div>
+                  </div>
+                  <div class="action-time">2h ago</div>
+                </div>
+                <div class="action-card" style="padding: 12px;">
+                  <div class="action-icon" style="width: 32px; height: 32px; font-size: 14px; background: var(--warning-bg); color: var(--warning);">&#128295;</div>
+                  <div class="action-content">
+                    <div class="action-title" style="font-size: 13px;">DJI M300 sent for repair</div>
+                    <div class="action-desc">Motor 3 replacement</div>
+                  </div>
+                  <div class="action-time">5h ago</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 10px;">Quick Actions</div>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                <div class="shortcut-item" style="background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 14px 8px;">
+                  <div class="shortcut-icon" style="width: 36px; height: 36px; font-size: 16px; background: var(--accent-light); color: var(--accent);">&#128247;</div>
+                  <div class="shortcut-label">Scan QR</div>
+                </div>
+                <div class="shortcut-item" style="background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 14px 8px;">
+                  <div class="shortcut-icon" style="width: 36px; height: 36px; font-size: 16px; background: var(--success-bg); color: var(--success);">&#10003;</div>
+                  <div class="shortcut-label">Check In</div>
+                </div>
+                <div class="shortcut-item" style="background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 14px 8px;">
+                  <div class="shortcut-icon" style="width: 36px; height: 36px; font-size: 16px; background: #F4F0FF; color: var(--status-on-hire);">&#8644;</div>
+                  <div class="shortcut-label">Transfer</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Spacing & Radius -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Spacing & Radius Scale</div>
+    <div class="grid grid-2">
+      <div class="component-card">
+        <div class="component-label">Spacing Scale (px)</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-1</code>
+            <div style="width: 4px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">4px &mdash; icon padding</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-2</code>
+            <div style="width: 8px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">8px &mdash; tight gaps</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-3</code>
+            <div style="width: 12px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">12px &mdash; element gaps</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-4</code>
+            <div style="width: 16px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">16px &mdash; card padding</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-6</code>
+            <div style="width: 24px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">24px &mdash; section padding</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <code style="font-size: 12px; color: var(--text-tertiary); width: 60px;">space-8</code>
+            <div style="width: 32px; height: 16px; background: var(--brand-primary); border-radius: 2px;"></div>
+            <span style="font-size: 12px; color: var(--text-secondary);">32px &mdash; page margin</span>
+          </div>
+        </div>
+      </div>
+      <div class="component-card">
+        <div class="component-label">Border Radius Scale</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+          <div style="text-align: center;">
+            <div style="width: 48px; height: 48px; background: var(--brand-primary-light); border: 2px solid var(--brand-primary); border-radius: 6px;"></div>
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">sm / 6</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 48px; height: 48px; background: var(--brand-primary-light); border: 2px solid var(--brand-primary); border-radius: 8px;"></div>
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">md / 8</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 48px; height: 48px; background: var(--brand-primary-light); border: 2px solid var(--brand-primary); border-radius: 12px;"></div>
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">lg / 12</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 48px; height: 48px; background: var(--brand-primary-light); border: 2px solid var(--brand-primary); border-radius: 16px;"></div>
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">xl / 16</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="width: 48px; height: 48px; background: var(--brand-primary-light); border: 2px solid var(--brand-primary); border-radius: 9999px;"></div>
+            <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">full</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- SECTION: Tech Summary -->
+  <!-- ============================== -->
+  <div class="section">
+    <div class="section-title">Technical Implementation Plan</div>
+    <div class="grid grid-3">
+      <div class="component-card">
+        <div class="component-label">Styling</div>
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">NativeWind v4</div>
+        <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">Tailwind CSS utility classes compiled for React Native. CSS variables map to a custom Tailwind config for consistent design tokens across Web, iOS, and Android.</div>
+      </div>
+      <div class="component-card">
+        <div class="component-label">Theme</div>
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Light Primary + Dark Toggle</div>
+        <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">React Context-based theme provider with system preference detection. All colors defined as CSS variables / Tailwind config tokens for instant theme switching.</div>
+      </div>
+      <div class="component-card">
+        <div class="component-label">Components</div>
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Composable Design System</div>
+        <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">Atomic components: Button, Input, Chip, Badge, Card, Avatar. Composed into GearCard, ListRow, StatCard, ActionItem, ShortcutGrid. All with Inter font via expo-font.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

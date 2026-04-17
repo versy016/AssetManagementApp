@@ -769,7 +769,7 @@ export default function EditAssetType() {
         <MaterialIcons name="lock" size={32} color="#64748B" />
         <Text style={{ marginTop: 12, fontSize: 16, color: '#111827' }}>Admin access required.</Text>
         <TouchableOpacity onPress={() => router.replace('/Inventory')} style={[s.btn, { marginTop: 16, backgroundColor: '#2563EB' }]}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+          <Text style={{ color: Colors.card, fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -907,9 +907,9 @@ export default function EditAssetType() {
                             <TouchableOpacity
                               key={`lead-${d}`}
                               onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
-                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? Colors.primaryLight : Colors.chip }]}
                             >
-                              <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                              <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -1004,7 +1004,7 @@ export default function EditAssetType() {
                             onPress={() => updateCustomRow(row.id, { reminderLeadDays: d })}
                             style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(row.reminderLeadDays)||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
                           >
-                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                            <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1113,7 +1113,7 @@ export default function EditAssetType() {
                             onPress={() => setAddModel((m) => ({ ...m, reminderLeadDays: d }))}
                             style={[s.btn, { paddingVertical: 8, backgroundColor: (Number(addModel.reminderLeadDays)||0) === d ? '#DBEAFE' : '#F3F4F6' }]}
                           >
-                            <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                            <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1163,7 +1163,7 @@ export default function EditAssetType() {
                     <Text>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[s.btn, s.submit, { flex: 1 }]} onPress={queueNewCustom}>
-                    <Text style={{ color: '#fff' }}>Add & save</Text>
+                    <Text style={{ color: Colors.card }}>Add & save</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1228,11 +1228,11 @@ export default function EditAssetType() {
             <Text style={s.summaryTitle}>Cannot edit or delete field</Text>
             <Text style={{ fontSize: 15, color: '#374151', marginTop: 8, marginBottom: 20 }}>{conflictModalMessage}</Text>
             <TouchableOpacity
-              style={{ alignSelf: 'flex-end', backgroundColor: '#1E90FF', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
+              style={{ alignSelf: 'flex-end', backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
               onPress={() => setConflictModalMessage(null)}
               activeOpacity={0.8}
             >
-              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>OK</Text>
+              <Text style={{ color: Colors.card, fontWeight: '600', fontSize: 15 }}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1344,7 +1344,7 @@ export default function EditAssetType() {
                 }}
                 disabled={saving}
               >
-                <Text style={{ color: '#fff' }}>Confirm Save</Text>
+                <Text style={{ color: Colors.card }}>Confirm Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1354,62 +1354,87 @@ export default function EditAssetType() {
   );
 }
 
+const Colors = {
+  primary: '#1E293B',
+  primaryDark: '#0F172A',
+  primaryLight: '#E2E8F0',
+  accent: '#EA580C',
+  accentDark: '#C2410C',
+  accentLight: '#FFF7ED',
+  accentMuted: '#FFEDD5',
+  text: '#1C1917',
+  sub: '#57534E',
+  sub2: '#A8A29E',
+  line: '#D6D3D1',
+  bg: '#F5F3F0',
+  card: '#FFFFFF',
+  chip: '#EDEAE6',
+  dangerFg: '#DC2626',
+  dangerBg: '#FEF2F2',
+  successFg: '#0D9488',
+  successBg: '#F0FDFA',
+};
+
+const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
+
 const s = StyleSheet.create({
   // container + basics
-  container: { padding: 20, paddingBottom: 120 },
-  label: { fontWeight: '600', marginTop: 10 },
+  container: { padding: 20, paddingBottom: 120, backgroundColor: Colors.bg },
+  label: { fontWeight: '700', marginTop: 10, color: Colors.text },
   input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     padding: 12,
     marginTop: 6,
-    color: '#000',
-    backgroundColor: '#fff',
+    color: Colors.text,
+    backgroundColor: Colors.card,
   },
-  btn: { backgroundColor: '#eee', padding: 12, alignItems: 'center', borderRadius: 8, marginVertical: 8 },
-  submit: { backgroundColor: '#1E90FF' },
-  previewThumb: { width: 44, height: 44, borderRadius: 6, alignSelf: 'center', borderWidth: 1, borderColor: '#ddd' },
+  btn: { backgroundColor: Colors.chip, padding: 12, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
+  submit: { backgroundColor: Colors.primary },
+  previewThumb: { width: 44, height: 44, borderRadius: Radius.sm, alignSelf: 'center', borderWidth: 2, borderColor: Colors.line },
 
-  sectionTitle: { fontSize: 18, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 6 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', borderBottomWidth: 2, borderBottomColor: Colors.line, paddingBottom: 6, marginBottom: 14, color: Colors.text },
 
   // grid for presets
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   gridItem: {
     width: '100%',
-    borderWidth: 1,
-    borderColor: '#E6E6E6',
-    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#FBFBFB',
+    backgroundColor: Colors.card,
     flexDirection: 'column',
     alignItems: 'stretch',
+    ...CardShadow,
   },
-  gridLabel: { marginLeft: 10, fontSize: 14, color: '#333', flexShrink: 1, flex: 1 },
-  gridBox: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
-  gridBoxChecked: { borderColor: '#1E90FF', backgroundColor: '#1E90FF' },
-  gridBoxUnchecked: { borderColor: '#C5DFFF', backgroundColor: 'transparent' },
-  gridTick: { color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 12 },
+  gridLabel: { marginLeft: 10, fontSize: 14, color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
+  gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
+  gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
+  gridTick: { color: Colors.card, fontSize: 12, fontWeight: '800', lineHeight: 12 },
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: 11, color: '#516B8E', marginBottom: 4 },
+  reqLabel: { fontSize: 11, color: Colors.sub, marginBottom: 4, fontWeight: '700' },
 
   // pills
-  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, alignSelf: 'flex-start' },
-  pillText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  pillNew: { backgroundColor: '#10B981' },
-  pillUpd: { backgroundColor: '#0EA5E9' },
-  pillDel: { backgroundColor: '#EF4444' },
+  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm, alignSelf: 'flex-start' },
+  pillText: { color: Colors.card, fontSize: 11, fontWeight: '800' },
+  pillNew: { backgroundColor: Colors.successFg },
+  pillUpd: { backgroundColor: Colors.accent },
+  pillDel: { backgroundColor: Colors.dangerFg },
 
   // cards
-  card: { borderWidth: 1, borderColor: '#E6E6E6', borderRadius: 12, padding: 12, marginTop: 8, backgroundColor: '#FAFAFA' },
-  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
-  subLabel: { fontSize: 14, fontWeight: '600', marginTop: 8, marginBottom: 4 },
+  card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginTop: 8, backgroundColor: Colors.card, ...CardShadow },
+  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6, color: Colors.text },
+  subLabel: { fontSize: 14, fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
 
   // dropdown
-  dropdown: { borderColor: '#ccc', borderRadius: 8, marginTop: 4 },
-  dropdownContainer: { borderColor: '#ccc' },
+  dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },
+  dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
 
   // bottom bar
   bottomBar: {
@@ -1420,9 +1445,10 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
+    borderTopWidth: 2,
+    borderTopColor: Colors.line,
+    backgroundColor: Colors.card,
+    ...CardShadow,
   },
   actionBtn: {
     flex: 1,
@@ -1430,34 +1456,32 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: Radius.lg,
+    ...CardShadow,
   },
-  saveBtn: { backgroundColor: '#1E90FF' },
-  backBtn: { backgroundColor: '#64748B' },
-  deleteBtn: { backgroundColor: '#b00020' },
-  actionText: { color: '#fff', fontWeight: '700' },
+  saveBtn: { backgroundColor: Colors.primary },
+  backBtn: { backgroundColor: Colors.sub },
+  deleteBtn: { backgroundColor: Colors.dangerFg },
+  actionText: { color: Colors.card, fontWeight: '800' },
 
   // misc
-  center: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   summaryBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   summaryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     padding: 16,
     width: '92%',
     maxWidth: 520,
-    borderWidth: 1,
-    borderColor: '#E6EDF3',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...CardShadow,
   },
-  summaryTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
-  summaryH: { fontWeight: '800', color: '#0F172A', marginTop: 6 },
-  summaryItem: { color: '#334155', marginTop: 4 },
+  summaryTitle: { fontSize: 18, fontWeight: '900', color: Colors.primaryDark },
+  summaryH: { fontWeight: '800', color: Colors.primaryDark, marginTop: 6 },
+  summaryItem: { color: Colors.sub, marginTop: 4, fontWeight: '600' },
 
-  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, zIndex: 9999, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-  toastSuccess: { backgroundColor: '#D1FAE5', borderWidth: 1, borderColor: '#A7F3D0' },
-  toastText: { color: '#047857', fontWeight: '700', flex: 1 },
+  toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
+  toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
+  toastText: { color: Colors.successFg, fontWeight: '800', flex: 1 },
 });

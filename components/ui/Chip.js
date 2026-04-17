@@ -2,12 +2,20 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
 
 export default function Chip({ label, active, onPress, icon, style, textStyle, tone = 'default' }) {
   const palette = makePalette(tone, active);
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.chip, palette.container, style]}>
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.chip,
+        palette.container,
+        style
+      ]}
+      activeOpacity={0.8}
+    >
       {icon ? (
         <Feather
           name={icon}
@@ -16,8 +24,15 @@ export default function Chip({ label, active, onPress, icon, style, textStyle, t
           style={{ marginRight: 6 }}
         />
       ) : null}
-      <Text style={[styles.text, { color: palette.text }, textStyle]} numberOfLines={1}>
-        {label}
+      <Text
+        style={[
+          styles.text,
+          { color: palette.text },
+          textStyle
+        ]}
+        numberOfLines={1}
+      >
+        {label?.toUpperCase?.()}
       </Text>
     </TouchableOpacity>
   );
@@ -25,51 +40,77 @@ export default function Chip({ label, active, onPress, icon, style, textStyle, t
 
 const styles = StyleSheet.create({
   chip: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 999, borderWidth: 1, borderColor: '#D6E8FF',
-    backgroundColor: '#FFFFFF', marginRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    borderWidth: 1.5,
+    marginRight: 6,
   },
-  text: { color: '#374151', fontWeight: '700' },
+  text: {
+    fontWeight: FontWeights.bold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
 });
 
 function makePalette(tone, active) {
   if (!active) {
     // inactive
     return {
-      container: { backgroundColor: '#FFFFFF', borderColor: '#D6E8FF' },
-      text: '#374151',
-      icon: '#374151',
+      container: {
+        backgroundColor: Colors.card,
+        borderColor: Colors.line,
+      },
+      text: Colors.sub,
+      icon: Colors.sub,
     };
   }
+
   switch (tone) {
     case 'warning':
       return {
-        container: { backgroundColor: Colors.warningLight, borderColor: Colors.warningLight },
+        container: {
+          backgroundColor: Colors.warningBg,
+          borderColor: Colors.warningBorder,
+        },
         text: Colors.warningFg,
         icon: Colors.warningFg,
       };
     case 'success':
       return {
-        container: { backgroundColor: Colors.successLight, borderColor: Colors.successLight },
+        container: {
+          backgroundColor: Colors.successBg,
+          borderColor: Colors.successBorder,
+        },
         text: Colors.successFg,
         icon: Colors.successFg,
       };
     case 'danger':
       return {
-        container: { backgroundColor: Colors.dangerLight, borderColor: Colors.dangerLight },
+        container: {
+          backgroundColor: Colors.dangerBg,
+          borderColor: Colors.dangerBorder,
+        },
         text: Colors.dangerFg,
         icon: Colors.dangerFg,
       };
     case 'info':
       return {
-        container: { backgroundColor: Colors.infoLight, borderColor: Colors.infoLight },
+        container: {
+          backgroundColor: Colors.infoBg,
+          borderColor: Colors.infoBorder,
+        },
         text: Colors.infoFg,
         icon: Colors.infoFg,
       };
     default:
       return {
-        container: { backgroundColor: Colors.primaryLight, borderColor: '#D6E8FF' },
+        container: {
+          backgroundColor: Colors.primaryLight,
+          borderColor: Colors.primary,
+        },
         text: Colors.primary,
         icon: Colors.primary,
       };

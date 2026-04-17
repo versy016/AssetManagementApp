@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { auth } from '../../firebaseConfig';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import AppTextInput from '../../components/ui/AppTextInput';
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { captureLastScannedLocation } from '../../utils/location';
 
@@ -147,14 +148,14 @@ export default function TransferAssetScreen() {
   if (loadingAsset) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color="#1D4ED8" />
+        <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={styles.loadingText}>Loading asset…</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }}>
       <ScreenHeader
         title="Transfer Asset"
         backLabel="Back"
@@ -186,7 +187,7 @@ export default function TransferAssetScreen() {
         </View>
         {loadingUsers ? (
           <View style={styles.center}>
-            <ActivityIndicator size="small" color="#2563EB" />
+            <ActivityIndicator size="small" color={Colors.primary} />
             <Text style={styles.loadingText}>Loading users…</Text>
           </View>
         ) : (
@@ -223,35 +224,36 @@ export default function TransferAssetScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { marginTop: 8, color: '#6B7280' },
+  loadingText: { marginTop: 8, color: Colors.sub2 },
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
   assetCard: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.lg,
     padding: 16,
     marginBottom: 16,
-    backgroundColor: '#F8FAFF',
+    backgroundColor: Colors.card,
+    ...Shadows.card,
   },
-  assetTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  assetSubtitle: { fontSize: 14, color: '#475569', marginTop: 4 },
-  assetDetail: { fontSize: 13, color: '#475569', marginTop: 6 },
+  assetTitle: { fontSize: 18, fontWeight: '900', color: Colors.text },
+  assetSubtitle: { fontSize: 14, color: Colors.sub, marginTop: 4 },
+  assetDetail: { fontSize: 13, color: Colors.sub, marginTop: 6 },
   searchBox: { marginBottom: 12 },
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: Colors.line,
     gap: 12,
   },
-  userName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  userEmail: { fontSize: 13, color: '#475569' },
+  userName: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  userEmail: { fontSize: 13, color: Colors.sub },
   transferBtn: {
-    color: '#2563EB',
-    fontWeight: '700',
+    color: Colors.accent,
+    fontWeight: '800',
   },
   emptyState: { alignItems: 'center', paddingVertical: 32 },
-  emptyText: { color: '#94A3B8' },
+  emptyText: { color: Colors.sub2 },
 });
 

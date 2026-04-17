@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius } from '../../constants/uiTheme';
 
 /**
  * Unified form-level button — replaces the scattered `TouchableOpacity + s.btn/s.submit`
@@ -87,18 +87,18 @@ const VARIANT_STYLES = {
     spinnerColor: '#FFFFFF',
   },
   ghost: {
-    btn: { backgroundColor: '#EEEEEE' },
+    btn: { backgroundColor: Colors.chip },
     textColor: Colors.text,
     spinnerColor: Colors.primary,
   },
   danger: {
-    btn: { backgroundColor: '#EF4444' },
+    btn: { backgroundColor: Colors.dangerFg },
     textColor: '#FFFFFF',
     spinnerColor: '#FFFFFF',
   },
   outline: {
     btn: {
-      backgroundColor: '#FFFFFF',
+      backgroundColor: Colors.card,
       borderWidth: 2,
       borderColor: Colors.primary,
     },
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: Radius.md,
     marginVertical: 8,
     minHeight: 50,
   },
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   iconLeft: { marginRight: 8 },
   iconRight: { marginLeft: 8 },

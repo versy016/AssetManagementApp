@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import HireDashboard from './HireDashboard';
 import HireDisclaimerForm from './HireDisclaimerForm';
-import { Colors } from '../constants/uiTheme';
+import ScreenHeader from './ui/ScreenHeader';
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
 
 export default function HireView() {
   const [showForm, setShowForm] = useState(false);
@@ -26,20 +27,24 @@ export default function HireView() {
     if (hireId) setHighlightedHireId(hireId);
   };
 
+  const actionButton = (
+    <TouchableOpacity
+      style={styles.topButton}
+      onPress={() => (showForm ? backToList() : openNewForm())}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.topButtonText}>
+        {showForm ? 'Back to list' : 'New hire'}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Hire</Text>
-        <TouchableOpacity
-          style={styles.topButton}
-          onPress={() => (showForm ? backToList() : openNewForm())}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.topButtonText}>
-            {showForm ? 'Back to list' : 'View hire form'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title={showForm ? (hireFormMode === 'edit' ? 'Edit Hire' : 'New Hire') : 'Hire'}
+        right={actionButton}
+      />
       <View style={styles.content}>
         {showForm ? (
           <HireDisclaimerForm
@@ -71,31 +76,17 @@ export default function HireView() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 0 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
-    backgroundColor: Colors.card,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-  },
   topButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
   },
   topButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#FFF',
+    textTransform: 'uppercase',
   },
   content: { flex: 1, minHeight: 0 },
 });

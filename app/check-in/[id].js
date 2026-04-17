@@ -29,34 +29,20 @@ import * as LinkingExpo from 'expo-linking';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
-// ---------- Helpers (Light Theme) ----------
-const Colors = {
-  bg: '#FFFFFF',
-  card: '#FFFFFF',
-  border: '#E5E7EB',
-  text: '#111827',
-  subtle: '#6B7280',
-  muted: '#9CA3AF',
-  green: '#16A34A',
-  blue: '#2563EB',
-  slate: '#64748B',
-  red: '#DC2626',
-  // Add these two:
-  amber: '#F59E0B',
-  purple: '#7C3AED',
-};
+// ---------- Import Theme Constants ----------
+import { Colors, Radius, Shadows } from '../../constants/uiTheme';
 
 const badgeTone = (status) => {
   const s = String(status || '').toLowerCase();
-  if (s.includes('repair')) return { bg: '#FFF7ED', fg: '#9A3412' };
-  if (s.includes('maintenance')) return { bg: '#F5F3FF', fg: '#6D28D9' };
-  if (s.includes('end of life')) return { bg: '#FEF2F2', fg: '#B91C1C' };
-  if (s.includes('in service')) return { bg: '#ECFDF5', fg: '#065F46' };
-  return { bg: '#F3F4F6', fg: '#374151' };
+  if (s.includes('repair')) return { bg: Colors.warningBg, fg: Colors.warningFg };
+  if (s.includes('maintenance')) return { bg: Colors.infoBg, fg: Colors.infoFg };
+  if (s.includes('end of life')) return { bg: Colors.dangerBg, fg: Colors.dangerFg };
+  if (s.includes('in service')) return { bg: Colors.successBg, fg: Colors.successFg };
+  return { bg: Colors.chip, fg: Colors.sub };
 };
 
 const Chip = ({ label, tone }) => (
-  <View style={[styles.chip, { backgroundColor: tone?.bg, borderColor: Colors.border }]}>
+  <View style={[styles.chip, { backgroundColor: tone?.bg, borderColor: Colors.line }]}>
     <Text style={[styles.chipText, { color: tone?.fg }]}>{label}</Text>
   </View>
 );
@@ -285,11 +271,11 @@ export default function CheckInScreen() {
         {lookupResults.map((it) => (
           <TouchableOpacity
             key={it.id}
-            style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: lookupSelected?.id === it.id ? '#EEF2FF' : 'transparent' }}
+            style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.line, backgroundColor: lookupSelected?.id === it.id ? Colors.accentLight : 'transparent' }}
             onPress={() => setLookupSelected(it)}
           >
-            <Text style={{ fontWeight: '600', color: Colors.text }}>{it.id}</Text>
-            <Text style={{ color: Colors.subtle }}>
+            <Text style={{ fontWeight: '700', color: Colors.text }}>{it.id}</Text>
+            <Text style={{ color: Colors.sub }}>
               {(it.asset_types?.name || 'Type?')} • {(it.model || 'Model?')} • {(it.users?.name || it.users?.useremail || 'Unassigned')}
             </Text>
           </TouchableOpacity>

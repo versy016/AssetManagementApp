@@ -21,19 +21,7 @@ import { getAuth } from 'firebase/auth';
 import { useTasksCount } from '../contexts/TasksCountContext';
 import { fetchTaskCount } from '../utils/fetchTaskCount';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-
-const Colors = {
-  bg: '#FFFFFF',
-  card: '#FFFFFF',
-  border: '#E5E7EB',
-  text: '#111827',
-  subtle: '#6B7280',
-  muted: '#9CA3AF',
-  green: '#16A34A',
-  blue:  '#2563EB',
-  slate: '#64748B',
-  red:   '#DC2626',
-};
+import { Colors, Radius, Shadows } from '../constants/uiTheme';
 
 const ACTIONS = [
   'Repair',
@@ -513,7 +501,7 @@ export default function ActionsForm({
             <View style={styles.header}>
               <Text style={styles.title}>{actionLabel || 'Action'}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <MaterialIcons name="close" size={24} color={Colors.subtle} />
+                <MaterialIcons name="close" size={24} color={Colors.sub} />
               </TouchableOpacity>
             </View>
 
@@ -543,7 +531,7 @@ export default function ActionsForm({
 
                 {action !== 'Repair' && (
                   <View style={{ marginBottom: 8 }}>
-                    <Text style={{ color: Colors.subtle, fontSize: 12, marginBottom: 6 }}>
+                    <Text style={{ color: Colors.sub, fontSize: 12, marginBottom: 6, fontWeight: '700' }}>
                       Quick select
                     </Text>
                     <View style={styles.pillRow}>
@@ -556,12 +544,12 @@ export default function ActionsForm({
                             style={[
                               styles.pill,
                               {
-                                borderColor: active ? Colors.blue : Colors.border,
-                                backgroundColor: active ? '#EFF6FF' : '#FFF',
+                                borderColor: active ? Colors.accent : Colors.line,
+                                backgroundColor: active ? Colors.accentMuted : Colors.card,
                               },
                             ]}
                           >
-                            <Text style={{ color: active ? Colors.blue : Colors.text, fontWeight: '700' }}>
+                            <Text style={{ color: active ? Colors.accentDark : Colors.text, fontWeight: '700', textTransform: 'uppercase' }}>
                               {opt}
                             </Text>
                           </TouchableOpacity>
@@ -1041,44 +1029,44 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: Colors.card,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     maxHeight: '88%',
     ...Platform.select({ android: { elevation: 2 } }),
   },
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
+    borderBottomWidth: 2,
+    borderColor: Colors.line,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { color: Colors.text, fontSize: 18, fontWeight: '800' },
-  label: { color: Colors.subtle, fontSize: 12, marginBottom: 6 },
+  title: { color: Colors.text, fontSize: 18, fontWeight: '800', textTransform: 'uppercase' },
+  label: { color: Colors.sub, fontSize: 12, marginBottom: 6, fontWeight: '700' },
   input: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     color: Colors.text,
-    backgroundColor: '#FFF',
+    backgroundColor: Colors.card,
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: Radius.sm,
+    borderWidth: 2,
   },
   row: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 16 },
   btn: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1086,16 +1074,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   btnPrimary: {
-    backgroundColor: Colors.blue,
+    backgroundColor: Colors.accent,
   },
   btnGhost: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
   },
   // (upload button styles removed)
   btnText: {
     fontWeight: '800',
+    textTransform: 'uppercase',
   },
   inputWrap: {
     position: 'relative',
@@ -1116,13 +1105,13 @@ const styles = StyleSheet.create({
   checkboxBox: {
     width: 20,
     height: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
-    backgroundColor: '#FFF',
+    backgroundColor: Colors.card,
   },
 });
 
