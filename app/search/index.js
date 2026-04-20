@@ -89,14 +89,13 @@ export default function SearchScreen(props = {}) {
   const [metrics, setMetrics] = useState({ total: 0, tookMs: 0 });
   const [hoverRowId, setHoverRowId] = useState(null);
 
-  // View Mode: 'list' (Table) or 'grid' (Cards). Default to list on desktop, grid on mobile.
-  const [viewMode, setViewMode] = useState(isCompact ? 'grid' : 'list');
+  // desktopViewMode: the user's explicit choice when on a wide screen (persists through resize cycles).
+  // viewMode: the active view — forced to 'grid' on compact (mobile), otherwise follows desktopViewMode.
+  const [desktopViewMode, setDesktopViewMode] = useState('list');
+  const viewMode = isCompact ? 'grid' : desktopViewMode;
 
-  useEffect(() => {
-    if (isCompact && viewMode !== 'grid') {
-      setViewMode('grid');
-    }
-  }, [isCompact, viewMode]);
+  // Helper used by the Grid / Table toggle buttons — updates the desktop preference.
+  const setViewMode = (mode) => setDesktopViewMode(mode);
 
   // Pagination State
   const [page, setPage] = useState(1);

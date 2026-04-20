@@ -43,7 +43,10 @@ const Dashboard = ({ isAdmin }) => {
   const [recent, setRecent] = useState({ items: [], loading: true });
   const { width: windowWidth } = useWindowDimensions();
   const SHOW_RECENT = true;
-  const isDesktopWeb = Platform.OS === 'web' && ((windowWidth || Dimensions.get('window')?.width || 0) >= 1024);
+  // On web, always use the web layout regardless of window width.
+  // The WebNavbar handles branding + navigation at all sizes (hamburger on mobile, full bar on desktop).
+  // The mobile hero header should only render on native iOS/Android.
+  const isDesktopWeb = Platform.OS === 'web';
   const isIos = Platform.OS === 'ios';
 
   const { view: viewParam } = useLocalSearchParams();

@@ -3,12 +3,12 @@ import '../global.css';
 import { initSentry } from '../utils/sentry';
 initSentry(); // must run before anything else so Sentry can instrument imports
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Platform, View } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import { usePathname } from 'expo-router';
 import WebNavbar from '../components/WebNavbar';
 
@@ -65,23 +65,29 @@ export default function RootLayout() {
     styleEl.innerHTML = `
       html, body, #root { min-height: 100vh !important; height: auto !important; overflow-y: auto !important; }
       body { overscroll-behavior-y: auto !important; }
-      /* Prevent browser text autoscaling differences between environments */
       html, body {
         -webkit-text-size-adjust: 100% !important;
         text-size-adjust: 100% !important;
         zoom: 1 !important;
       }
+      /* Smooth momentum scrolling on mobile web */
+      * { -webkit-overflow-scrolling: touch; }
+      /* Remove tap highlight flash on mobile web */
+      * { -webkit-tap-highlight-color: transparent; }
     `;
     document.head.appendChild(styleEl);
-    // Also clear any inline overflow locks
     const prevHtml = document.documentElement.style.overflowY;
     const prevBody = document.body.style.overflowY;
     document.documentElement.style.overflowY = 'auto';
     document.body.style.overflowY = 'auto';
+    // Prevent unintentional pinch-zoom on mobile web
+    const preventZoom = (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); };
+    document.addEventListener('touchmove', preventZoom, { passive: false });
     return () => {
-      try { document.head.removeChild(styleEl); } catch { }
+      try { document.head.removeChild(styleEl); } catch { /* ignore */ }
       document.documentElement.style.overflowY = prevHtml;
       document.body.style.overflowY = prevBody;
+      document.removeEventListener('touchmove', preventZoom);
     };
   }, []);
 
@@ -89,6 +95,8 @@ export default function RootLayout() {
   if (user === undefined) {
     return null; // or your splash
   }
+
+  const showNavbar = Platform.OS === 'web' && user && !isAuthPage;
 
   // 5) wrap everything in PaperProvider
   return (
@@ -98,9 +106,11 @@ export default function RootLayout() {
           <TourProvider>
             <TasksCountProvider>
               <TaskCountLoader />
-              <View style={{ flex: 1, backgroundColor: theme.colors.background, flexDirection: 'column' }}>
-                {Platform.OS === 'web' && user && !isAuthPage ? <WebNavbar /> : null}
-                <View style={{ flex: 1 }}>
+              <View style={styles.root}>
+                {/* WebNavbar handles its own responsive behaviour (hamburger on mobile) */}
+                {showNavbar && <WebNavbar />}
+                {/* Content wrapper: centred + max-width on wide desktop screens */}
+                <View style={styles.contentWrapper}>
                   <Slot />
                 </View>
               </View>
@@ -111,3 +121,17 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#F5F3F0',
+    flexDirection: 'column',
+  },
+  contentWrapper: {
+    flex: 1,
+    width: '100%',
+    // No global maxWidth here — the inventory/search table needs full viewport width.
+    // Narrow content pages (forms, detail views) should apply their own maxWidth container.
+  },
+});
