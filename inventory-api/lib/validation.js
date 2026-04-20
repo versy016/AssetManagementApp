@@ -76,7 +76,8 @@ const updateAsset = z.object({
   assigned_to_id:    optionalString,
   assign_to_admin:   z.boolean().optional(),
   action_note:       optionalString,
-  fields:            z.string().optional(),
+  // Accept either a JSON string (multipart) or a plain object (JSON body)
+  fields:            z.union([z.string(), z.record(z.unknown())]).optional(),
 }).passthrough();
 
 // All action types accepted by the route (superset of ACTION_DB_TYPE)

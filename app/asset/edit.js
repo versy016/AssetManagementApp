@@ -86,7 +86,7 @@ export default function EditAsset() {
         setOptions({
           assetTypes: opts.assetTypes || [],
           users: opts.users || [],
-          statuses: opts.statuses || ['Available', 'In Use', 'Rented', 'Maintenance'],
+          statuses: opts.statuses || ['In Service', 'On Hire', 'Maintenance', 'Repair', 'End of Life'],
         });
 
         setTypeId(a.type_id || '');

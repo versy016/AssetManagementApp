@@ -143,7 +143,7 @@ export default function CheckInScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assigned_to_id: selectedUser.id,
-          status: 'In Use'
+          status: 'In Service'
         }),
       });
 
@@ -194,12 +194,12 @@ export default function CheckInScreen() {
           return;
         }
         assignedToId = adminUser.id;
-        status = 'Available';
+        status = 'In Service';
         successMessage = 'Asset checked in successfully';
       } else if (type === 'transfer') {
         // For transfer, assign asset to current user
         assignedToId = user?.uid;
-        status = 'In Use';
+        status = 'In Service';
         successMessage = 'Asset transferred to you successfully';
       }
 

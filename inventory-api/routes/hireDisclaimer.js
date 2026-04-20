@@ -481,7 +481,7 @@ async function resolveStandaloneHireAssetId() {
       documentation_url: null,
       image_url: null,
       field_values: { none: {} },
-      status: { in: ['Available', 'available'] },
+      status: { in: ['In Service', 'in service'] },
     },
     select: { id: true },
   });

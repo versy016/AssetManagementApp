@@ -694,8 +694,8 @@ router.get('/asset-options', async (req, res) => {
         documentation_url: null,
         image_url: null,
         field_values: { none: {} },
-        // Only include placeholders that are explicitly Available (case-insensitive match via IN)
-        status: { in: ['Available', 'available'] },
+        // Only include placeholders that are In Service (unassigned/ready to use)
+        status: { in: ['In Service', 'in service'] },
       },
       select: { id: true },
     });
@@ -911,7 +911,7 @@ router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset),
           documentation_url: null,
           image_url: null,
           field_values: { none: {} },
-          status: { in: ['Available', 'available'] },
+          status: { in: ['In Service', 'in service'] },
         },
       });
       if (!placeholder) return errJson(res, 400, 'No available pre-generated asset IDs. Please generate more QR codes.');

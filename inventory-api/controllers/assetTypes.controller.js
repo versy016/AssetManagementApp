@@ -1,6 +1,6 @@
 // controllers/assetTypes.controller.js
 const prisma = require('../lib/prisma');
-const SERVICE_STATUSES = new Set(['In Service', 'Available', 'available', 'in service']);
+const SERVICE_STATUSES = new Set(['In Service', 'in service']);
 const ON_HIRE_STATUSES = new Set(['On Hire', 'on hire', 'on_hire', 'hire', 'rented']);
 const EOL_STATUSES     = new Set(['End of Life', 'end of life', 'eol', 'retired']);
 
