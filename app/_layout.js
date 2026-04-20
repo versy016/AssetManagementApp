@@ -1,5 +1,8 @@
 // app/_layout.js
 import '../global.css';
+import { initSentry } from '../utils/sentry';
+initSentry(); // must run before anything else so Sentry can instrument imports
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { auth } from '../firebaseConfig';

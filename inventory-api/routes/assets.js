@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { sendExpoPush } = require('../utils/push');
+const { ASSET_STATUS, ACTION_DB_TYPE, ALLOWED_PATCH_STATUSES } = require('../lib/assetStatus');
+const { validate, schemas } = require('../lib/validation');
 
 const AWS = require('aws-sdk');
 const multer = require('multer');
@@ -137,7 +139,7 @@ const slugify = (s) =>
 const isISODate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 const isQRId = (s) => typeof s === 'string' && /^[A-Z0-9]{6,12}$/i.test(s); // your QR short-id style
-const ALLOWED_STATUSES = new Set(['In Service', 'End of Life', 'Repair', 'Maintenance', 'On Hire']);
+const ALLOWED_STATUSES = ALLOWED_PATCH_STATUSES;
 const ACTION_TYPES = new Set([
   'REPAIR', 'MAINTENANCE', 'HIRE', 'END_OF_LIFE', 'LOST', 'STOLEN', 'CHECK_IN', 'CHECK_OUT', 'TRANSFER', 'STATUS_CHANGE'
 ]);
@@ -573,7 +575,7 @@ router.get('/tasks/count', authRequired, async (req, res) => {
         id: true,
         type_id: true,
         description: true,
-        fields: true,
+        field_values: true,
         ...Object.fromEntries(DATE_FIELDS.map((f) => [f, true])),
       },
     });
@@ -633,8 +635,8 @@ router.get('/tasks/count', authRequired, async (req, res) => {
         if (d < today) seen.add(`${a.id}|top|${k}|${+d}`);
       }
 
-      // Custom field values stored in the JSON `fields` column
-      const f = a.fields && typeof a.fields === 'object' ? a.fields : null;
+      // Custom field values stored in the JSON `field_values` column
+      const f = a.field_values && typeof a.field_values === 'object' ? a.field_values : null;
       if (f) {
         for (const [k, val] of Object.entries(f)) {
           if (!DATE_FIELDS.includes(k) && !/date|due|expiry|expires/i.test(k)) continue;
@@ -681,7 +683,7 @@ router.get('/asset-options', async (req, res) => {
   try {
     const assetTypes = await prisma.asset_types.findMany();
     const users = await prisma.users.findMany();
-    const statuses = ['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'];
+    const statuses = [ASSET_STATUS.IN_SERVICE, ASSET_STATUS.ON_HIRE, ASSET_STATUS.REPAIR, ASSET_STATUS.MAINTENANCE, ASSET_STATUS.END_OF_LIFE];
 
     const placeholders = await prisma.assets.findMany({
       where: {
@@ -833,7 +835,7 @@ router.post('/asset-types/:id/fields', authRequired, adminOnly, async (req, res)
 // ---------------------------------------------
 // POST /assets â€" create from placeholder + files
 // ---------------------------------------------
-router.post('/', authRequired, adminOnly, upload, async (req, res) => {
+router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset), async (req, res) => {
   const reqId = rid();
   try {
     // Per-file size limits (multer can't do per-field sizes by default)
@@ -945,7 +947,7 @@ router.post('/', authRequired, adminOnly, upload, async (req, res) => {
         description: data.description || null,
         other_id: data.other_id || null,
         location: data.location || null,
-        status: data.status || 'Available',
+        status: data.status || ASSET_STATUS.AVAILABLE,
         // If the type defines a dynamic next_service_date, do not write the top-level column
         next_service_date: hasCustomNextService ? null : (data.next_service_date ? new Date(data.next_service_date) : null),
         date_purchased: data.date_purchased ? new Date(data.date_purchased) : null,
@@ -1277,7 +1279,7 @@ router.post('/:id/files', multerSingle.single('document'), async (req, res) => {
 // -------------------------------------------------
 // PUT /assets/:id â€" update (incl. dynamic fields)
 // -------------------------------------------------
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(schemas.updateAsset), async (req, res) => {
   const reqId = rid();
   const assetId = req.params.id;
   const { assigned_to_id, assign_to_admin = false, action_note, ...assetData } = req.body;
@@ -1579,7 +1581,7 @@ router.get('/:id/actions', async (req, res) => {
 // ---------------------------------------------
 // POST /assets/:id/actions -- record an action
 // ---------------------------------------------
-router.post('/:id/actions', async (req, res) => {
+router.post('/:id/actions', validate(schemas.createAction), async (req, res) => {
   const reqId = rid();
   const assetId = req.params.id;
   try {
@@ -1907,8 +1909,8 @@ router.post('/:id/actions/:actionId/signoff', async (req, res) => {
 
     // If completed: move asset to In Service
     if (completed === true) {
-      await prisma.assets.update({ where: { id: assetId }, data: { status: 'In Service', last_updated: new Date(), last_changed_by: actorInfo.id || null } });
-      await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: actorInfo.id || null, message: 'Sign-off complete → In Service' } });
+      await prisma.assets.update({ where: { id: assetId }, data: { status: ASSET_STATUS.IN_SERVICE, last_updated: new Date(), last_changed_by: actorInfo.id || null } });
+      await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: actorInfo.id || null, message: `Sign-off complete -> ${ASSET_STATUS.IN_SERVICE}` } });
     }
 
     log(reqId, 'INFO', 'signoff-ok', { assetId, actionId, completed: !!completed });
@@ -2047,7 +2049,7 @@ router.post('/swap-qr', authRequired, async (req, res) => {
           model: null,
               description: 'QR decommissioned',
           location: null,
-          status: 'End of Life',
+          status: ASSET_STATUS.END_OF_LIFE,
           next_service_date: null,
           date_purchased: null,
           notes: null,

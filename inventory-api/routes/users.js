@@ -8,6 +8,7 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const prisma = require('../lib/prisma');
 const logger = require('../lib/logger');
+const { validate, schemas } = require('../lib/validation');
 const apiConfig = require('../config');
 const { authRequired, adminOnly, ensureAdminInit } = require('../middleware/auth');
 
@@ -21,7 +22,7 @@ const { authRequired, adminOnly, ensureAdminInit } = require('../middleware/auth
  * Create a user
  * POST /users
  */
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createUser), async (req, res) => {
   const { id, name, useremail } = req.body;
 
   if (!id || !name) {
@@ -953,7 +954,7 @@ router.post('/:id/demote', authRequired, adminOnly, async (req, res) => {
  * Update a user (generic)
  * PUT /users/:id
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(schemas.updateUser), async (req, res) => {
   try {
     const updatedUser = await prisma.users.update({
       where: { id: req.params.id },

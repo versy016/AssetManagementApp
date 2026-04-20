@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const router = express.Router();
 const prisma = require('../lib/prisma');
+const { ASSET_STATUS } = require('../lib/assetStatus');
 const logger = require('../lib/logger');
 const { Document, Packer, Paragraph, AlignmentType, HeadingLevel, TextRun } = require('docx');
 const docusignService = require('../services/docusignService');
@@ -625,7 +626,7 @@ async function persistHireRecord(p, existingActionId, opts) {
   try {
     await prisma.assets.update({
       where: { id: resolvedAssetId },
-      data: { status: 'On Hire' },
+      data: { status: ASSET_STATUS.ON_HIRE },
     });
   } catch (e) {
     console.warn('[hireDisclaimer] could not set asset On Hire status:', e?.message || e);
@@ -920,7 +921,7 @@ router.delete('/hires/:actionId', async (req, res) => {
         if (remainingHires === 0) {
           await prisma.assets.update({
             where: { id: existingHire.asset_id },
-            data: { status: 'In Service' },
+            data: { status: ASSET_STATUS.IN_SERVICE },
           });
         }
       } catch (e) {

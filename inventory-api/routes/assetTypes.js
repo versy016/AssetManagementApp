@@ -7,6 +7,7 @@ const multer = require('multer');
 const prisma = require('../lib/prisma');
 
 const ctrl = require('../controllers/assetTypes.controller');
+const { validate, schemas } = require('../lib/validation');
 
 // ---------- S3 + Multer ----------
 const s3 = new AWS.S3({
@@ -40,7 +41,7 @@ router.get('/', ctrl.list);
 router.get('/:id', ctrl.get);
 const { authRequired, adminOnly } = require('../middleware/auth');
 // Update (supports JSON or multipart with `image`)
-router.put('/:id', authRequired, adminOnly, (req, res, next) => {
+router.put('/:id', authRequired, adminOnly, validate(schemas.updateAssetType), (req, res, next) => {
   const ct = String(req.headers['content-type'] || '');
   if (ct.includes('multipart/form-data')) {
     upload.single('image')(req, res, async (err) => {
@@ -79,7 +80,7 @@ router.delete('/:id', authRequired, adminOnly, ctrl.remove);
 // Create (supports BOTH JSON and multipart)
 // - JSON: {name, image_url?} handled by ctrl.create
 // - multipart/form-data with `image` handled by ctrl.createWithImage
-router.post('/', authRequired, adminOnly, (req, res, next) => {
+router.post('/', authRequired, adminOnly, validate(schemas.createAssetType), (req, res, next) => {
   const ct = req.headers['content-type'] || '';
   if (ct.includes('multipart/form-data')) {
     // Run multer, then upload to S3, then hand off to controller

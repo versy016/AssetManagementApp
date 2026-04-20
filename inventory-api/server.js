@@ -9,6 +9,10 @@ require('dotenv').config({
   ),
 });
 
+// Sentry must be initialised before any other requires so it can instrument them
+const sentry = require('./lib/sentry');
+sentry.init();
+
 // NOTE: config should export STATIC_MOUNT; if not, we fall back.
 const config = require('./config');
 
@@ -45,6 +49,7 @@ if (NODE_ENV === 'production') {
 }
 
 app.use(cors());
+app.use(sentry.requestHandler()); // must be first middleware
 
 // ---- Rate limiting --------------------------------------------------------
 // Only enforce rate limits in production — dev/test traffic is trusted localhost.
@@ -215,6 +220,8 @@ app.get('/check-in/:id', (req, res) => {
 });
 
 // ---- Error handler (last) -------------------------------------------------
+// Sentry must come before the custom handler so it captures the error first
+app.use(sentry.errorHandler());
 app.use((err, _req, res, _next) => {
   console.error(err.stack);
   res.status(500).json({
