@@ -6,7 +6,8 @@ import { auth } from '../firebaseConfig';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { TourTarget } from './TourGuide';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
+import { useTasksCount } from '../contexts/TasksCountContext';
 
 const C = Colors;
 
@@ -27,6 +28,7 @@ const NavItem = ({ href, label, icon, isActive, badge }) => (
 export default function WebNavbar() {
   const pathname = usePathname();
   const { view: viewParam } = useLocalSearchParams();
+  const { taskCount } = useTasksCount();
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState(null);
   const [searchVersion, setSearchVersion] = useState(0);
@@ -132,7 +134,13 @@ export default function WebNavbar() {
             <NavItem href="/(tabs)/Inventory" label="Inventory" icon="inventory-2" isActive={active.inventory} />
           </TourTarget>
           <TourTarget id="web-nav-tasks">
-            <NavItem href="/(tabs)/dashboard?view=tasks" label="Tasks" icon="assignment" isActive={active.tasks} badge="3" />
+            <NavItem
+              href="/(tabs)/dashboard?view=tasks"
+              label="Tasks"
+              icon="assignment"
+              isActive={active.tasks}
+              badge={taskCount > 0 ? (taskCount > 99 ? '99+' : String(taskCount)) : undefined}
+            />
           </TourTarget>
           <NavItem href="/search?preset=mine" label="My Assets" icon="inventory" isActive={active.myAssets} />
           <TourTarget id="web-nav-activity">
@@ -184,7 +192,7 @@ const s = StyleSheet.create({
     marginRight: 24,
   },
   brand: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.3,
@@ -210,7 +218,7 @@ const s = StyleSheet.create({
     backgroundColor: C.accent,
   },
   navText: {
-    fontSize: 12,
+    fontSize: sf(12),
     fontWeight: '700',
     color: 'rgba(255,255,255,0.85)',
     textTransform: 'uppercase',
@@ -227,7 +235,7 @@ const s = StyleSheet.create({
     borderRadius: Radius.sm,
     marginLeft: 2,
   },
-  badgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  badgeText: { fontSize: sf(9), fontWeight: '800', color: '#FFFFFF' },
 
   rightSection: {
     flexDirection: 'row',
@@ -252,7 +260,7 @@ const s = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   logoutText: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '800',
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: 0.5,

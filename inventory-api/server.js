@@ -14,17 +14,14 @@ const config = require('./config');
 
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const { handleDocusignConnectWebhook } = require('./services/docusignConnectWebhook');
 
-// ---- Prisma ---------------------------------------------------------------
-const { PrismaClient } = require('./generated/prisma');
+// ---- Prisma (singleton) ---------------------------------------------------
+const prisma = require('./lib/prisma');
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-const prisma = new PrismaClient({
-  log: NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-});
-
-// Try DB connection early so we fail fast in dev; don’t hard-exit during tests
+// Try DB connection early so we fail fast in dev; don't hard-exit during tests
 (async () => {
   try {
     await prisma.$connect();
@@ -39,9 +36,57 @@ const prisma = new PrismaClient({
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
+// IMPORTANT: API runs behind Nginx on EC2.
+// '1' tells express-rate-limit to read the real client IP from the
+// X-Forwarded-For header that Nginx sets, instead of seeing 127.0.0.1
+// for every request (which would make ALL users share one rate-limit bucket).
+if (NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 app.use(cors());
 
-// DocuSign Connect — must use raw body for HMAC verification (before JSON parser)
+// ---- Rate limiting --------------------------------------------------------
+// Only enforce rate limits in production — dev/test traffic is trusted localhost.
+const isNonProd = () => NODE_ENV !== 'production';
+
+// Standard limit: 500 requests per minute per real client IP.
+// Generous enough for normal app usage (dashboard load ~8 requests,
+// so a user would need to navigate 60+ screens/min to hit this),
+// but still blocks runaway scripts or credential-stuffing attempts.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: isNonProd,
+});
+
+// Upload limit: 60 requests per 15 minutes per IP.
+// Allows a user to upload ~60 documents in a session without being blocked,
+// while still preventing automated bulk-upload abuse.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many upload requests, please try again later.' },
+  skip: isNonProd,
+});
+
+app.use('/api', apiLimiter);
+app.use('/assets', apiLimiter);
+app.use('/users', apiLimiter);
+app.use('/asset-types', apiLimiter);
+app.use('/field-types', apiLimiter);
+app.use('/places', apiLimiter);
+app.use('/activity', apiLimiter);
+app.use('/labels', apiLimiter);
+app.use('/hire-disclaimer', apiLimiter);
+app.use('/asset-documents', uploadLimiter);
+
+// DocuSign Connect -- must use raw body for HMAC verification (before JSON parser)
 app.post(
   '/hire-disclaimer/docusign/webhook',
   express.raw({ type: () => true, limit: '5mb' }),
@@ -88,7 +133,7 @@ const STATIC_MOUNT = (config && config.STATIC_MOUNT) || '/qrcodes';
 const qrRoot = path.join(__dirname, '..', 'utils', 'qrcodes');
 const sheetsDir = path.join(qrRoot, 'sheets');
 
-// ensure dirs exist so static mount won’t 404 due to missing folder
+// ensure dirs exist so static mount won't 404 due to missing folder
 try {
   if (!fs.existsSync(qrRoot)) fs.mkdirSync(qrRoot, { recursive: true });
   if (!fs.existsSync(sheetsDir)) fs.mkdirSync(sheetsDir, { recursive: true });
@@ -189,7 +234,7 @@ function start() {
   });
 
   const shutdown = async (signal) => {
-    console.log(`[server] ${signal} received. Shutting down…`);
+    console.log(`[server] ${signal} received. Shutting down...`);
     server?.close(async () => {
       console.log('[server] HTTP server closed');
       try {
@@ -212,8 +257,3 @@ if (require.main === module && NODE_ENV !== 'test') {
 
 // Export app for Supertest; optionally export prisma for tooling
 module.exports = { app, prisma };
-
-
-
-
-

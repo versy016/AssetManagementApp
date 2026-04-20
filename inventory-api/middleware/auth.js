@@ -1,8 +1,7 @@
 // inventory-api/middleware/auth.js
 // Shared auth + admin-only middleware using DB users.role
 
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 let admin = null;
 try {
@@ -49,7 +48,7 @@ async function authRequired(req, res, next) {
   // Public exceptions can be handled in routers before using this middleware
   ensureAdminInit();
 
-  if ((process.env.NODE_ENV || 'development') !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     const uidFromQuery = req.query?.uid;
     if (uidFromQuery) {
       req.user = { uid: String(uidFromQuery) };

@@ -5,8 +5,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
+const logger = require('../lib/logger');
 const { Document, Packer, Paragraph, AlignmentType, HeadingLevel, TextRun } = require('docx');
 const docusignService = require('../services/docusignService');
 const { convertDocxBufferToPdf } = require('../services/hireDocxToPdf');
@@ -21,7 +21,7 @@ function signedDocFilePath(actionId) {
 }
 /**
  * Download completed envelope PDF from DocuSign, write to disk, and store path in action data.
- * Safe to call multiple times (idempotent — overwrites if exists).
+ * Safe to call multiple times (idempotent -- overwrites if exists).
  */
 async function fetchAndStoreSignedPdf(actionId, envelopeId) {
   const pdfBuf = await docusignService.downloadSignedDocument(envelopeId);
@@ -51,7 +51,7 @@ const TEMPLATE_NAMES = [
   'Equipment_hire_lease_disclaimer.docx',
 ];
 
-/** Stored in asset_actions.data — dashboard + DocuSign/Adobe webhooks */
+/** Stored in asset_actions.data -- dashboard + DocuSign/Adobe webhooks */
 const SIGNATURE_PENDING = 'pending_signature';
 const SIGNATURE_SIGNED = 'signed';
 
@@ -205,11 +205,11 @@ function parseHireDisclaimerBody(body = {}) {
   const todaysdate = signatureDate ? formatDateLong(signatureDate.replace(/T.*/, '').trim()) : formatDateLong(new Date().toISOString().slice(0, 10));
   const assetType =
     normalizedItems.length > 0
-      ? normalizedItems.map((it) => it.description || it.assetId || '—').join(', ')
+      ? normalizedItems.map((it) => it.description || it.assetId || '--').join(', ')
       : equipmentDescription || (assetId ? `Asset/Serial: ${assetId}` : '');
   const serial =
     normalizedItems.length > 0
-      ? normalizedItems.map((it) => it.assetId || '—').join(', ')
+      ? normalizedItems.map((it) => it.assetId || '--').join(', ')
       : assetId || '';
   const descriptionText = assetType;
   const primaryAssetKey =
@@ -389,8 +389,8 @@ async function buildHireDisclaimerDocxFromParsed(p) {
           }),
           heading('Hirer details'),
           line(`Name: ${hirerName}`),
-          line(`Company / Entity: ${companyEntity || '—'}`),
-          line(`Project: ${project || '—'}`),
+          line(`Company / Entity: ${companyEntity || '--'}`),
+          line(`Project: ${project || '--'}`),
           line(`Address: ${address}`),
           line(`Phone: ${phone}`),
           line(`Email: ${email}`),
@@ -403,10 +403,10 @@ async function buildHireDisclaimerDocxFromParsed(p) {
               ])
             : [line(`Description: ${equipmentDescription}`), ...(assetId ? [line(`Asset / Serial ID: ${assetId}`)] : [])]),
           heading('Hire period'),
-          line(`Pickup: ${startDateTime}`.trim() || '—'),
-          line(`Return date: ${enddateFormatted || '—'}`),
-          line(`Hire duration (days): ${days || '—'}`),
-          line(`Rate: ${rateLine || '—'}`),
+          line(`Pickup: ${startDateTime}`.trim() || '--'),
+          line(`Return date: ${enddateFormatted || '--'}`),
+          line(`Hire duration (days): ${days || '--'}`),
+          line(`Rate: ${rateLine || '--'}`),
           new Paragraph({
             children: [new TextRun({ text: `Terms agreed: ${termsAgreed ? 'Yes' : 'No'}`, bold: true })],
             spacing: { after: 120 },
@@ -661,8 +661,8 @@ async function buildHirePreviewPdfFromParsed(p) {
  *   companyEntity, project (at least one recommended),
  *   equipmentDescription, assetId, equipmentItems[], hireStartDate, hireStartTime (pickup, optional), hireEndDate, hireEndTime (optional), rate, ratePeriod (day|week|month),
  *   termsAgreed, signatureName, signatureDate,
- *   existingActionId (optional) — update this HIRE row instead of creating a new one
- *   respondWith (optional): 'json' — save hire, return { hireId, previewPdfUrl, documentUrl } (no .docx body). Uses placeholder asset if no equipment id resolves.
+ *   existingActionId (optional) -- update this HIRE row instead of creating a new one
+ *   respondWith (optional): 'json' -- save hire, return { hireId, previewPdfUrl, documentUrl } (no .docx body). Uses placeholder asset if no equipment id resolves.
  * }
  * Returns: .docx file download by default (template filled, or generated from scratch)
  */
@@ -702,7 +702,7 @@ router.post('/generate', async (req, res) => {
       });
     }
 
-    // File response: persist when possible (no placeholder fallback — matches previous behaviour)
+    // File response: persist when possible (no placeholder fallback -- matches previous behaviour)
     try {
       const persistResult = await persistHireRecord(p, existingActionId, { allowPlaceholderForNew: false });
       if (persistResult.error === 'not_found') {
@@ -736,7 +736,7 @@ router.post('/generate', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/hires/:actionId/preview.pdf — short PDF summary (open in new tab)
+// GET /hire-disclaimer/hires/:actionId/preview.pdf -- short PDF summary (open in new tab)
 router.get('/hires/:actionId/preview.pdf', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -774,7 +774,7 @@ router.get('/hires/:actionId/preview.pdf', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/hires/:actionId/document — regenerate .docx from stored HIRE (attachment or inline for viewing)
+// GET /hire-disclaimer/hires/:actionId/document -- regenerate .docx from stored HIRE (attachment or inline for viewing)
 router.get('/hires/:actionId/document', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -804,7 +804,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return res.status(404).json({ error: 'Hire not found' });
     }
 
-    // Always prefer the signed PDF when it exists — serve inline or as attachment depending on the request.
+    // Always prefer the signed PDF when it exists -- serve inline or as attachment depending on the request.
     const data = action.data && typeof action.data === 'object' ? action.data : {};
     const storedPath = data.signedDocPath && String(data.signedDocPath).trim();
     if (storedPath && fs.existsSync(storedPath)) {
@@ -818,7 +818,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return res.send(pdfBuf);
     }
 
-    // No signed PDF yet — for view requests try a LibreOffice PDF preview
+    // No signed PDF yet -- for view requests try a LibreOffice PDF preview
     if (inline) {
       try {
         const body = hireActionToGenerateBody(action);
@@ -829,7 +829,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
         res.setHeader('Content-Disposition', `inline; filename="hire_preview_${safeName}.pdf"`);
         return res.send(pdfBuf);
       } catch {
-        // LibreOffice not available — fall through to DOCX
+        // LibreOffice not available -- fall through to DOCX
       }
     }
 
@@ -852,7 +852,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
 });
 
 // PATCH /hire-disclaimer/hires/:actionId/signature-status
-// Body: { status: 'pending_signature' | 'signed', signedAt?: ISO string } — for DocuSign/Adobe webhooks or admin tools
+// Body: { status: 'pending_signature' | 'signed', signedAt?: ISO string } -- for DocuSign/Adobe webhooks or admin tools
 router.patch('/hires/:actionId/signature-status', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -890,7 +890,7 @@ router.patch('/hires/:actionId/signature-status', async (req, res) => {
   }
 });
 
-// DELETE /hire-disclaimer/hires/:actionId — remove HIRE action (details cascade)
+// DELETE /hire-disclaimer/hires/:actionId -- remove HIRE action (details cascade)
 router.delete('/hires/:actionId', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -935,7 +935,7 @@ router.delete('/hires/:actionId', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/hires — list all HIRE actions with asset and details (for Hire dashboard)
+// GET /hire-disclaimer/hires -- list all HIRE actions with asset and details (for Hire dashboard)
 router.get('/hires', async (req, res) => {
   try {
     const actions = await prisma.asset_actions.findMany({
@@ -967,7 +967,7 @@ router.get('/hires', async (req, res) => {
         data.contactName ||
         data.name ||
         (assignedUser.name && String(assignedUser.name).trim()) ||
-        '—';
+        '--';
       const email =
         (data.email && String(data.email).trim()) ||
         (assignedUser.useremail && String(assignedUser.useremail).trim()) ||
@@ -976,7 +976,7 @@ router.get('/hires', async (req, res) => {
         data.phone ||
         data.contactNumber ||
         data.number ||
-        '—';
+        '--';
       const fromDate = details.hire_start
         ? details.hire_start.toISOString().slice(0, 10)
         : (data.hireStartDate || data.hire_start || '').toString().slice(0, 10) || '';
@@ -990,10 +990,10 @@ router.get('/hires', async (req, res) => {
         id: a.id,
         assetId: asset.id,
         serial: asset.serial_number || asset.id || '',
-        assetType: asset.asset_types?.name || asset.model || asset.description || '—',
-        contactName: contactName || '—',
-        phone: phone || '—',
-        email: email || '—',
+        assetType: asset.asset_types?.name || asset.model || asset.description || '--',
+        contactName: contactName || '--',
+        phone: phone || '--',
+        email: email || '--',
         fromDate: fromDate || '',
         toDate: toDate || '',
         occurredAt: (a.occurred_at && a.occurred_at.toISOString && a.occurred_at.toISOString()) || '',
@@ -1015,7 +1015,7 @@ router.get('/hires', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/docusign/status — frontend feature flags
+// GET /hire-disclaimer/docusign/status -- frontend feature flags
 router.get('/docusign/status', (_req, res) => {
   res.json({
     enabled: docusignService.isConfigured(),
@@ -1152,7 +1152,7 @@ router.get('/hires/:actionId/docusign/return', async (req, res) => {
       const envelopeId = action?.data?.docusignEnvelopeId;
       if (envelopeId) {
         await fetchAndStoreSignedPdf(actionId, envelopeId);
-        console.log('[hireDisclaimer] embedded signing complete, signed PDF stored for', actionId);
+        logger.log('[hireDisclaimer] embedded signing complete, signed PDF stored for', actionId);
       }
     } catch (e) {
       console.warn('[hireDisclaimer] docusign/return sync error:', e?.message || e);
@@ -1223,7 +1223,7 @@ router.post('/hires/:actionId/docusign/sync', async (req, res) => {
       return res.json({ ok: true, status, signed: false });
     }
 
-    // Envelope is complete — download and store
+    // Envelope is complete -- download and store
     const filePath = await fetchAndStoreSignedPdf(actionId, envelopeId);
     res.json({ ok: true, status: 'completed', signed: true, signedDocPath: filePath });
   } catch (e) {

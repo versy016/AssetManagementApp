@@ -12,7 +12,7 @@ import {
     Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { getAvailableShortcutTypes, getShortcutType } from '../constants/ShortcutTypes';
 
 const AddShortcutModal = ({
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
         borderBottomColor: Colors.line,
     },
     title: {
-        fontSize: 20,
+        fontSize: sf(20),
         fontWeight: '800',
         color: Colors.text,
     },
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     subtitle: {
-        fontSize: 14,
+        fontSize: sf(14),
         color: Colors.sub,
         paddingHorizontal: 20,
         paddingTop: 12,
@@ -341,12 +341,12 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.accentMuted,
     },
     addedRowLabel: {
-        fontSize: 14,
+        fontSize: sf(14),
         fontWeight: '700',
         color: Colors.text,
     },
     addedRowSub: {
-        fontSize: 12,
+        fontSize: sf(12),
         color: Colors.sub,
     },
     removeBtn: {
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.dangerBg,
     },
     removeBtnText: {
-        fontSize: 12,
+        fontSize: sf(12),
         fontWeight: '700',
         color: Colors.dangerFg,
     },
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
         gap: 2,
     },
     adminBadgeText: {
-        fontSize: 10,
+        fontSize: sf(10),
         fontWeight: '700',
         color: Colors.dangerFg,
     },
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
         paddingTop: 8,
     },
     sectionLabel: {
-        fontSize: 13,
+        fontSize: sf(13),
         fontWeight: '700',
         color: Colors.text,
         marginBottom: 8,
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.dangerBg,
     },
     adminPillText: {
-        fontSize: 10,
+        fontSize: sf(10),
         fontWeight: '700',
         color: Colors.dangerFg,
     },
@@ -452,19 +452,19 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.accentMuted,
     },
     shortcutLabel: {
-        fontSize: 15,
+        fontSize: sf(15),
         fontWeight: '700',
         color: Colors.text,
         marginBottom: 4,
     },
     shortcutLabelScan: {
-        fontSize: 15,
+        fontSize: sf(15),
         fontWeight: '700',
         color: Colors.accent,
         marginBottom: 4,
     },
     shortcutDescription: {
-        fontSize: 12,
+        fontSize: sf(12),
         color: Colors.sub,
         lineHeight: 16,
     },
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     addedText: {
-        fontSize: 12,
+        fontSize: sf(12),
         fontWeight: '700',
         color: Colors.successFg,
     },
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     footerText: {
-        fontSize: 13,
+        fontSize: sf(13),
         color: Colors.sub,
         fontWeight: '700',
     },
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
         borderColor: Colors.accent,
     },
     manageListBtnText: {
-        fontSize: 13,
+        fontSize: sf(13),
         fontWeight: '700',
         color: Colors.accent,
     },

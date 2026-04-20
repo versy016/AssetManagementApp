@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // [type_id].js - Lists all assets of a specific asset type (enhanced)
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -309,14 +310,14 @@ export default function AssetsType() {
       <Modal transparent animationType="fade" visible={!!deleteBlockedMessage} onRequestClose={() => setDeleteBlockedMessage(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.15)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '92%', maxWidth: 400, borderWidth: 1, borderColor: '#E6EDF3' }}>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A', marginBottom: 8 }}>Cannot delete asset type</Text>
-            <Text style={{ fontSize: 15, color: '#374151', marginBottom: 20 }}>{deleteBlockedMessage}</Text>
+            <Text style={{ fontSize: sf(18), fontWeight: '900', color: '#0F172A', marginBottom: 8 }}>Cannot delete asset type</Text>
+            <Text style={{ fontSize: sf(15), color: '#374151', marginBottom: 20 }}>{deleteBlockedMessage}</Text>
             <TouchableOpacity
               style={{ alignSelf: 'flex-end', backgroundColor: '#1E90FF', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
               onPress={() => setDeleteBlockedMessage(null)}
               activeOpacity={0.8}
             >
-              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>OK</Text>
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: sf(15) }}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -363,7 +364,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingVertical: 6, paddingHorizontal: 10, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line,
   },
-  metaChipText: { color: Colors.accent, fontWeight: '700', fontSize: 12 },
+  metaChipText: { color: Colors.accent, fontWeight: '700', fontSize: sf(12) },
 
   /* list cards */
   card: {
@@ -374,16 +375,16 @@ const styles = StyleSheet.create({
     width: 60, height: 60, borderRadius: Radius.md, marginRight: 12, backgroundColor: Colors.chip,
   },
   details: { flex: 1 },
-  name: { fontWeight: '900', fontSize: 16, marginBottom: 4, color: Colors.text, flex: 1, flexShrink: 1, minWidth: 0, marginRight: 8 },
-  subtext: { fontSize: 13, color: Colors.sub, fontWeight: '600' },
+  name: { fontWeight: '900', fontSize: sf(16), marginBottom: 4, color: Colors.text, flex: 1, flexShrink: 1, minWidth: 0, marginRight: 8 },
+  subtext: { fontSize: sf(13), color: Colors.sub, fontWeight: '600' },
 
   /* status badge */
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: Radius.lg, flexShrink: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center' },
-  statusText: { fontWeight: '800', fontSize: 12 },
+  statusText: { fontWeight: '800', fontSize: sf(12) },
 
   /* empty state */
-  noData: { textAlign: 'center', marginTop: 50, fontSize: 16, color: Colors.sub2, fontWeight: '600' },
+  noData: { textAlign: 'center', marginTop: 50, fontSize: sf(16), color: Colors.sub2, fontWeight: '600' },
 
   /* footer actions styled like asset page; sticky on web */
   actionsRow: {
@@ -400,9 +401,9 @@ const styles = StyleSheet.create({
   actionBtn: {
     flex: 1, paddingVertical: 14, borderRadius: Radius.lg, alignItems: 'center', elevation: 2, ...CardShadow,
   },
-  actionText: { color: Colors.card, fontWeight: '800', fontSize: 15 },
+  actionText: { color: Colors.card, fontWeight: '800', fontSize: sf(15) },
 
   /* section headers */
   sectionHeader: { paddingVertical: 6, paddingHorizontal: 6 },
-  sectionHeaderText: { fontSize: 13, fontWeight: '900', color: Colors.accent },
+  sectionHeaderText: { fontSize: sf(13), fontWeight: '900', color: Colors.accent },
 });

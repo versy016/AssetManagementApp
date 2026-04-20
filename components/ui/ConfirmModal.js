@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 /**
  * Three-phase confirm/loading/result modal.
@@ -155,14 +155,14 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   title: {
-    fontSize: 20,
+    fontSize: sf(20),
     fontWeight: '900',
     color: Colors.primary,
     marginBottom: 12,
   },
   titleError: { color: Colors.dangerFg },
   body: {
-    fontSize: 15,
+    fontSize: sf(15),
     color: Colors.sub,
     lineHeight: 22,
     marginBottom: 20,
@@ -185,11 +185,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.line,
   },
-  btnGhostText: { fontSize: 15, fontWeight: '800', color: Colors.sub },
+  btnGhostText: { fontSize: sf(15), fontWeight: '800', color: Colors.sub },
   btnPrimary: { backgroundColor: Colors.primary },
-  btnPrimaryText: { fontSize: 15, fontWeight: '800', color: '#FFF' },
+  btnPrimaryText: { fontSize: sf(15), fontWeight: '800', color: '#FFF' },
   btnDanger: { backgroundColor: Colors.dangerFg },
-  btnDangerText: { fontSize: 15, fontWeight: '800', color: '#FFF' },
+  btnDangerText: { fontSize: sf(15), fontWeight: '800', color: '#FFF' },
   loadingWrap: {
     alignItems: 'center',
     paddingVertical: 16,

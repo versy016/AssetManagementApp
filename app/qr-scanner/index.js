@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { getAuth } from 'firebase/auth';
 import { getShortcutType, SHORTCUT_TYPES } from '../../constants/ShortcutTypes';
@@ -627,12 +627,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
   },
   shortcutBannerText: {
-    fontSize: 15,
+    fontSize: sf(15),
     fontWeight: '800',
     color: Colors.text,
   },
   shortcutBannerSubtext: {
-    fontSize: 12,
+    fontSize: sf(12),
     color: Colors.sub,
     marginLeft: 'auto',
   },
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
   toastText: { fontWeight: '800', color: Colors.text },
   overlayText: {
     color: 'white',
-    fontSize: 20,
+    fontSize: sf(20),
     fontWeight: '900',
   },
   center: {
@@ -712,7 +712,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '900',
     marginBottom: 10,
     color: Colors.text,
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
   },
   itemText: {
-    fontSize: 16,
+    fontSize: sf(16),
     color: Colors.text,
   },
   emptyText: {
@@ -741,6 +741,6 @@ const styles = StyleSheet.create({
   processingText: {
     color: Colors.accent,
     fontWeight: 'normal',
-    fontSize: 14,
+    fontSize: sf(14),
   },
 });

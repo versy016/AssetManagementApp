@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import HireDisclaimerForm from '../../components/HireDisclaimerForm';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 export default function HireRoute() {
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
   },
   assetBanner: {
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   bannerLabel: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '800',
     color: Colors.accent,
     textTransform: 'uppercase',
@@ -172,12 +172,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bannerTitle: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '900',
     color: Colors.text,
   },
   bannerSub: {
-    fontSize: 12,
+    fontSize: sf(12),
     color: Colors.sub2,
     marginTop: 2,
   },

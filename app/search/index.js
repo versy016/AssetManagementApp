@@ -29,7 +29,7 @@ import Chip from '../../components/ui/Chip';
 import InlineButton from '../../components/ui/InlineButton';
 import EmptyState from '../../components/ui/EmptyState';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
 import { statusToColor as _statusToColor, prettyStatus } from '../../components/ui/StatusBadge';
@@ -153,9 +153,9 @@ export default function SearchScreen(props = {}) {
           setFilterUsers(mapped);
 
           // If launched with preset=office, find and pre-apply the office/admin user filter
+          // Use DB role only -- never rely on email heuristics for permission/identity checks
           if (params?.preset === 'office') {
             const officeUser =
-              data.find((u) => String(u?.useremail || u?.email || '').toLowerCase().startsWith('admin@')) ||
               data.find((u) => String(u?.role || '').toUpperCase() === 'ADMIN') ||
               data.find((u) => String(u?.name || '').toLowerCase().includes('office'));
             if (officeUser) {
@@ -163,7 +163,7 @@ export default function SearchScreen(props = {}) {
             }
           }
 
-          // preset=mine — show only the current user's assets
+          // preset=mine -- show only the current user's assets
           if (params?.preset === 'mine') {
             setFilters((f) => ({ ...f, onlyMine: true }));
           }
@@ -455,7 +455,7 @@ export default function SearchScreen(props = {}) {
 
   const saveRecent = useCallback(async () => {
     const labelParts = [];
-    if (debouncedQuery) labelParts.push(`“${debouncedQuery}”`);
+    if (debouncedQuery) labelParts.push(`"${debouncedQuery}"`);
     if (filters.onlyMine) labelParts.push('My assets');
     if (filters.status) labelParts.push(`Status:${filters.status}`);
     if (filters.types && filters.types.length > 0) labelParts.push(`Type:${filters.types.join(', ')}`);
@@ -733,10 +733,10 @@ export default function SearchScreen(props = {}) {
   };
 
   const formatDynamicValue = (def, value) => {
-    if (value === null || value === undefined || value === '') return '—';
+    if (value === null || value === undefined || value === '') return '--';
     const fieldType = String(def?.field_type?.slug || def?.field_type?.name || '').toLowerCase();
     if (Array.isArray(value)) {
-      return value.length ? value.map((v) => String(v)).join(', ') : '—';
+      return value.length ? value.map((v) => String(v)).join(', ') : '--';
     }
     if (fieldType === 'boolean') {
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -767,16 +767,16 @@ export default function SearchScreen(props = {}) {
 
   const formatDaysUntil = (iso) => {
     try {
-      if (!iso) return '—';
+      if (!iso) return '--';
       const d = new Date(iso);
-      if (Number.isNaN(+d)) return '—';
+      if (Number.isNaN(+d)) return '--';
       const today = new Date();
       const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
       if (diff === 0) return 'due today';
       if (diff < 0) return `${Math.abs(diff)}d overdue`;
       return `${diff}d`;
     } catch {
-      return '—';
+      return '--';
     }
   };
 
@@ -813,7 +813,7 @@ export default function SearchScreen(props = {}) {
             onChangeText={setQuery}
             placeholder="Search by name, ID, serial, model, notes…"
             style={[hideHeader && styles.searchRowCompact]}
-            inputStyle={{ fontSize: 16 }}
+            inputStyle={{ fontSize: sf(16) }}
             autoCapitalize="none"
             autoCorrect={false}
             right={
@@ -823,7 +823,7 @@ export default function SearchScreen(props = {}) {
             }
           />
         </TourTarget>
-        {/* Quick filters — hidden in office/mine preset mode */}
+        {/* Quick filters -- hidden in office/mine preset mode */}
         <View style={styles.quickRow}>
           {params?.preset !== 'office' && params?.preset !== 'mine' && (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -1111,13 +1111,13 @@ export default function SearchScreen(props = {}) {
                     const description = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
                     const purchased = item?.date_purchased ?? item?.purchase_date ?? item?.fields?.date_purchased ?? item?.fields?.purchase_date;
                     const updated = item?.last_updated ?? item?.updated_at;
-                    const updatedBy = item?.last_changed_by_name ?? item?.last_changed_by_email ?? '—';
-                    const otherId = item?.other_id ?? item?.asset_tag ?? item?.asset_name ?? item?.name ?? '—';
+                    const updatedBy = item?.last_changed_by_name ?? item?.last_changed_by_email ?? '--';
+                    const otherId = item?.other_id ?? item?.asset_tag ?? item?.asset_name ?? item?.name ?? '--';
                     const imageUrl = item?.image_url ?? item?.image ?? item?.fields?.image_url ?? item?.fields?.image ?? null;
 
                     // Date formatters
-                    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-                    const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short' }) : '—';
+                    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '--';
+                    const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short' }) : '--';
 
                     return (
                       <View
@@ -1147,7 +1147,7 @@ export default function SearchScreen(props = {}) {
                       {isUUID(String(item.id || '')) ? (
                         <View style={styles.awaitingIdWrap}>
                           <Text style={[styles.tdText, styles.awaitingIdLabel]} numberOfLines={1}>
-                            {(otherId && otherId !== '—') ? otherId : 'QR awaiting'}
+                            {(otherId && otherId !== '--') ? otherId : 'QR awaiting'}
                           </Text>
                           <Text style={styles.awaitingIdSub}>Awaiting QR</Text>
                         </View>
@@ -1163,25 +1163,25 @@ export default function SearchScreen(props = {}) {
                         </View>
                         {/* Type */}
                     <View style={[styles.td, columnStyle('type')]}>
-                          <Text style={styles.tdText} numberOfLines={1}>{item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? '—'}</Text>
+                          <Text style={styles.tdText} numberOfLines={1}>{item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? '--'}</Text>
                         </View>
                         {/* Serial */}
                     <View style={[styles.td, columnStyle('serial')]}>
-                          <Text style={[styles.tdText, serial && styles.serialText]} numberOfLines={1}>{serial || '—'}</Text>
+                          <Text style={[styles.tdText, serial && styles.serialText]} numberOfLines={1}>{serial || '--'}</Text>
                         </View>
                         {/* Description */}
                     <View style={[styles.td, styles.tdTall, columnStyle('description')]}>
                       <Text style={[styles.tdText, styles.tdTextSmall]} numberOfLines={3}>
-                        {description || '—'}
+                        {description || '--'}
                       </Text>
                         </View>
                         {/* Model */}
                     <View style={[styles.td, styles.tdTall, columnStyle('model')]}>
-                      <Text style={styles.tdText} numberOfLines={2}>{model || '—'}</Text>
+                      <Text style={styles.tdText} numberOfLines={2}>{model || '--'}</Text>
                         </View>
                         {/* Assigned To */}
                     <View style={[styles.td, columnStyle('assigned')]}>
-                          <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '—'}</Text>
+                          <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '--'}</Text>
                         </View>
                         {/* Status */}
                     <View style={[styles.td, columnStyle('status')]}>
@@ -1387,7 +1387,7 @@ export default function SearchScreen(props = {}) {
                     const term = userSearch.trim().toLowerCase();
                     return String(u.name || '').toLowerCase().includes(term) || String(u.useremail || '').toLowerCase().includes(term);
                   }).length === 0 && (
-                    <Text style={{ fontSize: 13, color: Colors.sub2, fontStyle: 'italic', marginTop: 6 }}>No users match "{userSearch}"</Text>
+                    <Text style={{ fontSize: sf(13), color: Colors.sub2, fontStyle: 'italic', marginTop: 6 }}>No users match "{userSearch}"</Text>
                   )}
                 </View>
 
@@ -1480,7 +1480,7 @@ export default function SearchScreen(props = {}) {
         <View style={[styles.modalBackdrop, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
           <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={() => setQrModalItem(null)} />
           <View style={[styles.filterSheet, { width: 'auto', maxWidth: 400, borderRadius: Radius.xl, padding: 32, alignItems: 'center' }]}>
-            <Text style={[styles.modalTitle, { marginBottom: 24, fontSize: 22 }]}>{qrModalItem?.id}</Text>
+            <Text style={[styles.modalTitle, { marginBottom: 24, fontSize: sf(22) }]}>{qrModalItem?.id}</Text>
             <View style={{ padding: 16, backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line }}>
               {qrModalItem && (
                 <QRCode
@@ -1489,11 +1489,11 @@ export default function SearchScreen(props = {}) {
                 />
               )}
             </View>
-            <Text style={{ marginTop: 24, textAlign: 'center', color: Colors.sub, fontSize: 15, lineHeight: 22 }}>
+            <Text style={{ marginTop: 24, textAlign: 'center', color: Colors.sub, fontSize: sf(15), lineHeight: 22 }}>
               Scan this QR code to instantly open the asset details and perform actions.
             </Text>
             <TouchableOpacity style={[styles.btn, { marginTop: 32, width: '100%', height: 48 }]} onPress={() => setQrModalItem(null)}>
-              <Text style={[styles.btnText, { fontSize: 16 }]}>Close</Text>
+              <Text style={[styles.btnText, { fontSize: sf(16) }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1511,13 +1511,13 @@ const styles = StyleSheet.create({
   // Toolbar
   iconBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   actionBtn: { width: 'auto', paddingHorizontal: 12 },
-  actionBtnText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
+  actionBtnText: { color: Colors.primary, fontWeight: '700', fontSize: sf(13) },
   countDot: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.accent, borderRadius: 6, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  countDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  countDotText: { color: '#fff', fontSize: sf(10), fontWeight: '800' },
   toolbarSurface: { backgroundColor: Colors.card, borderBottomWidth: 2, borderBottomColor: Colors.line, marginBottom: 8, paddingTop: 10 },
   searchRowCompact: { marginBottom: 8, marginHorizontal: 12, marginTop: 8 },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', paddingHorizontal: 12, paddingBottom: 12, marginTop: 4, justifyContent: 'space-between', alignItems: 'center' },
-  metaText: { fontSize: 12, color: Colors.sub, fontWeight: '700', marginHorizontal: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.3 },
+  metaText: { fontSize: sf(12), color: Colors.sub, fontWeight: '700', marginHorizontal: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.3 },
 
   // Table Styles (Desktop)
   tableContainer: { flex: 1, position: 'relative', marginHorizontal: 12 },
@@ -1534,24 +1534,24 @@ const styles = StyleSheet.create({
   tableContent: { flex: 1 },
   th: { paddingVertical: 13, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
   thSortTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
-  thText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, textAlign: 'center' },
+  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, textAlign: 'center' },
   tableBodyScroll: { flex: 1 },
   tableBodyContent: { paddingRight: 0 },
   tr: { flexDirection: 'row', backgroundColor: '#FFFFFF', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.line },
   rowAlt: { backgroundColor: '#F8F7F5' },
   rowHover: { backgroundColor: Colors.accentLight },
   td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
-  tdText: { fontSize: 14, color: Colors.text, fontWeight: '500', textAlign: 'center' },
-  tdTextSmall: { fontSize: 12, lineHeight: 17 },
+  tdText: { fontSize: sf(14), color: Colors.text, fontWeight: '500', textAlign: 'center' },
+  tdTextSmall: { fontSize: sf(12), lineHeight: 17 },
   tdTall: { minHeight: 72, justifyContent: 'center' },
   assetLink: { paddingVertical: 4, paddingHorizontal: 4 },
-  linkText: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
-  serialText: { fontSize: 13, color: Colors.warningFg, fontWeight: '700', letterSpacing: 0.5 },
+  linkText: { fontSize: sf(15), color: Colors.primary, fontWeight: '700' },
+  serialText: { fontSize: sf(13), color: Colors.warningFg, fontWeight: '700', letterSpacing: 0.5 },
   tableThumb: { width: 48, height: 48, borderRadius: Radius.md, backgroundColor: Colors.chip, overflow: 'hidden', borderWidth: 1.5, borderColor: Colors.line },
   tableThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   awaitingIdWrap: { alignItems: 'center', justifyContent: 'center' },
   awaitingIdLabel: { color: Colors.text, fontWeight: '700' },
-  awaitingIdSub: { fontSize: 11, color: Colors.sub2, fontWeight: '600', marginTop: 2 },
+  awaitingIdSub: { fontSize: sf(11), color: Colors.sub2, fontWeight: '600', marginTop: 2 },
 
   // Mobile Card Styles
   mobileScroll: { flex: 1 },
@@ -1576,22 +1576,22 @@ const styles = StyleSheet.create({
   mobileCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, gap: 8 },
   mobileThumb: { width: 48, height: 48, borderRadius: Radius.md, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   mobileThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  mobileCardTitle: { fontSize: 15, fontWeight: '800', color: Colors.text, marginBottom: 2 },
-  mobileCardSubtitle: { fontSize: 12, color: Colors.sub, fontWeight: '700' },
+  mobileCardTitle: { fontSize: sf(15), fontWeight: '800', color: Colors.text, marginBottom: 2 },
+  mobileCardSubtitle: { fontSize: sf(12), color: Colors.sub, fontWeight: '700' },
   mobileStatusBadge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5, alignSelf: 'flex-start' },
-  mobileStatusText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  mobileStatusText: { fontSize: sf(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   mobileCardDetails: { gap: 7, marginBottom: 12, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line },
   mobileDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  mobileDetailLabel: { fontSize: 12, color: Colors.sub, fontWeight: '700', minWidth: 68 },
-  mobileDetailValue: { fontSize: 13, color: Colors.text, fontWeight: '600', flex: 1 },
+  mobileDetailLabel: { fontSize: sf(12), color: Colors.sub, fontWeight: '700', minWidth: 68 },
+  mobileDetailValue: { fontSize: sf(13), color: Colors.text, fontWeight: '600', flex: 1 },
   mobileCardActions: { flexDirection: 'row', gap: 8, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line },
   mobileActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: Radius.md },
   mobileActionBtnPrimary: { backgroundColor: Colors.primary },
-  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  mobileActionBtnText: { color: '#FFFFFF', fontSize: sf(14), fontWeight: '800' },
 
   // Shared / Utils
   badge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5, alignSelf: 'center' },
-  badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  badgeText: { fontSize: sf(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   btn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.md, backgroundColor: Colors.accent, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '800' },
   btnGhost: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, alignItems: 'center' },
@@ -1602,37 +1602,37 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   filterSheet: { backgroundColor: Colors.card, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, padding: 20, maxHeight: '90%', width: '100%', borderTopWidth: 2, borderColor: Colors.line },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase', letterSpacing: 0.4 },
+  modalTitle: { fontSize: sf(20), fontWeight: '900', color: Colors.primary, textTransform: 'uppercase', letterSpacing: 0.4 },
   inlineIconBtn: { width: 36, height: 36, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
-  groupTitle: { fontSize: 12, fontWeight: '800', color: Colors.sub, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
+  groupTitle: { fontSize: sf(12), fontWeight: '800', color: Colors.sub, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
   filterMenuRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   chipsRow: { flexWrap: 'wrap' },
   typeChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.line },
-  switchLabel: { fontSize: 14, color: Colors.text, fontWeight: '600' },
+  switchLabel: { fontSize: sf(14), color: Colors.text, fontWeight: '600' },
   clearAllBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: Colors.accentLight, borderWidth: 1.5, borderColor: Colors.accentMuted },
-  clearAllText: { color: Colors.accentDark, fontWeight: '800', fontSize: 12 },
+  clearAllText: { color: Colors.accentDark, fontWeight: '800', fontSize: sf(12) },
   showMoreBtn: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, backgroundColor: Colors.chip },
-  showMoreText: { color: Colors.accent, fontWeight: '700', fontSize: 12 },
+  showMoreText: { color: Colors.accent, fontWeight: '700', fontSize: sf(12) },
   inlineAlert: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.chip },
-  inlineAlertText: { fontSize: 12, color: Colors.text, fontWeight: '600' },
+  inlineAlertText: { fontSize: sf(12), color: Colors.text, fontWeight: '600' },
 
   // Pagination
   // Mobile-only simple pagination (prev/next + page number)
   paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 2, borderTopColor: Colors.line, backgroundColor: Colors.bg },
-  pageText: { fontSize: 13, color: Colors.text, fontWeight: '900' },
+  pageText: { fontSize: sf(13), color: Colors.text, fontWeight: '900' },
   pageBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.sm, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card },
   pageBtnDisabled: { opacity: 0.4, backgroundColor: Colors.bg },
 
   // Filter inputs / type list
   inlineFilterBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, paddingHorizontal: 16, paddingBottom: 16, flexWrap: 'wrap', backgroundColor: Colors.bg },
   filterInputGroup: { width: 140 },
-  filterLabel: { fontSize: 12, fontWeight: '700', color: Colors.sub, marginBottom: 4 },
-  filterInput: { backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: Colors.text },
+  filterLabel: { fontSize: sf(12), fontWeight: '700', color: Colors.sub, marginBottom: 4 },
+  filterInput: { backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 8, fontSize: sf(13), color: Colors.text },
   filterTypeList: { maxHeight: 180, marginBottom: 8, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, overflow: 'hidden' },
   filterTypeItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: Colors.line },
   filterTypeItemActive: { backgroundColor: Colors.accentLight },
-  filterTypeItemText: { fontSize: 14, color: Colors.text, fontWeight: '500' },
+  filterTypeItemText: { fontSize: sf(14), color: Colors.text, fontWeight: '500' },
   filterTypeItemTextActive: { color: Colors.accentDark, fontWeight: '800' },
   selectedTypesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   selectedTypeChip: {
@@ -1646,13 +1646,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.accent,
   },
-  selectedTypeChipText: { fontSize: 13, fontWeight: '700', color: Colors.accentDark, flexShrink: 1 },
+  selectedTypeChipText: { fontSize: sf(13), fontWeight: '700', color: Colors.accentDark, flexShrink: 1 },
 
   // View Toggle
   viewToggleGroup: { flexDirection: 'row', backgroundColor: Colors.chip, borderRadius: Radius.sm, padding: 2, borderWidth: 2, borderColor: Colors.line },
   viewToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.sm - 2 },
   viewToggleBtnActive: { backgroundColor: Colors.card, ...Shadows.card },
-  viewToggleText: { fontSize: 12, fontWeight: '700', color: Colors.sub2 },
+  viewToggleText: { fontSize: sf(12), fontWeight: '700', color: Colors.sub2 },
   viewToggleTextActive: { color: Colors.primary },
 
   // Office preset banner
@@ -1662,6 +1662,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8,
     backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: '#BFDBFE', borderRadius: Radius.md,
   },
-  presetBannerText: { flex: 1, fontSize: 13, color: '#1D4ED8', fontWeight: '700' },
+  presetBannerText: { flex: 1, fontSize: sf(13), color: '#1D4ED8', fontWeight: '700' },
   presetBannerClear: { padding: 2 },
 });

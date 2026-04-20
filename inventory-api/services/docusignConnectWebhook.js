@@ -1,11 +1,11 @@
 /**
- * DocuSign Connect webhook — marks hire as signed and downloads the signed PDF.
+ * DocuSign Connect webhook -- marks hire as signed and downloads the signed PDF.
  * Mount with express.raw({ type: 'application/json' }) so HMAC verification works.
  */
 const path = require('path');
 const fs = require('fs');
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
+const logger = require('../lib/logger');
 const { verifyConnectHmac, downloadSignedDocument } = require('./docusignService');
 
 const SIGNATURE_SIGNED = 'signed';
@@ -107,7 +107,7 @@ async function handleDocusignConnectWebhook(req, res) {
         const filePath = signedDocFilePath(hireActionId);
         fs.writeFileSync(filePath, pdfBuf);
         merged.signedDocPath = filePath;
-        console.log('[docusign webhook] signed PDF saved', filePath);
+        logger.log('[docusign webhook] signed PDF saved', filePath);
       } catch (dlErr) {
         console.warn('[docusign webhook] could not download signed PDF:', dlErr?.message || dlErr);
       }
@@ -117,7 +117,7 @@ async function handleDocusignConnectWebhook(req, res) {
       where: { id: hireActionId },
       data: { data: merged },
     });
-    console.log('[docusign webhook] hire marked signed', hireActionId);
+    logger.log('[docusign webhook] hire marked signed', hireActionId);
   } catch (e) {
     console.error('[docusign webhook] db error:', e?.message || e);
     return res.status(500).send('error');

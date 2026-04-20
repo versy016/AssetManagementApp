@@ -1,8 +1,7 @@
 // routes/assets.js
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const { sendExpoPush } = require('../utils/push');
 
 const AWS = require('aws-sdk');
@@ -58,7 +57,7 @@ const uploadToS3 = (file, folder) => {
     ContentType: file.mimetype || 'application/octet-stream',
   };
   // Some buckets have Object Ownership = Bucket owner enforced and disallow ACLs.
-  // Make ACL usage optâ€‘in via env to avoid AccessControlListNotSupported.
+  // Make ACL usage optâ€'in via env to avoid AccessControlListNotSupported.
   if (String(process.env.S3_USE_ACL || '').toLowerCase() === 'true') {
     params.ACL = process.env.S3_ACL || 'public-read';
   }
@@ -524,8 +523,158 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// GET /assets/tasks/count
+// Returns the number of overdue/due-soon tasks for the requesting
+// user (or all assets if the user is ADMIN). Replaces the 132-line
+// N+1 fetchTaskCount.js logic that ran entirely on the client.
+// ---------------------------------------------------------------
+router.get('/tasks/count', authRequired, async (req, res) => {
+  const reqId = rid();
+  try {
+    const uid = req.user?.uid;
+    if (!uid) return errJson(res, 401, 'Unauthorised');
+
+    // Determine role from DB
+    const dbUser = await prisma.users.findUnique({
+      where: { id: uid },
+      select: { role: true },
+    });
+    const isAdmin = dbUser?.role === 'ADMIN';
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Date fields we treat as task triggers (mirrors TOP_DATE_LABELS in fetchTaskCount.js)
+    const DATE_FIELDS = [
+      'next_service_date', 'service_due', 'service_date',
+      'maintenance_due', 'maintenance_date',
+      'repair_due', 'repair_date',
+      'certificate_expiry', 'cert_expiry',
+      'calibration_due', 'calibration_date',
+      'inspection_due', 'inspection_date',
+      'expiry', 'expires_at',
+    ];
+
+    // Build asset filter -- admins see all, normal users see their assigned assets
+    const assetWhere = isAdmin
+      ? {}
+      : {
+          OR: [
+            { assigned_to_id: uid },
+            { assigned_to_id: null },
+          ],
+        };
+
+    // Fetch all relevant assets in ONE query (no N+1)
+    const assets = await prisma.assets.findMany({
+      where: assetWhere,
+      select: {
+        id: true,
+        type_id: true,
+        description: true,
+        fields: true,
+        ...Object.fromEntries(DATE_FIELDS.map((f) => [f, true])),
+      },
+    });
+
+    // Fetch asset-type field definitions for reminder_lead_days in ONE query
+    const typeIds = [...new Set(assets.map((a) => a.type_id).filter(Boolean))];
+    const typeDefs = typeIds.length
+      ? await prisma.asset_type_fields.findMany({
+          where: { asset_type_id: { in: typeIds } },
+          select: { asset_type_id: true, slug: true, validation_rules: true },
+        })
+      : [];
+
+    // Build lead-days map: { typeId: { slug: leadDays } }
+    const leadDaysMap = {};
+    for (const def of typeDefs) {
+      if (!leadDaysMap[def.asset_type_id]) leadDaysMap[def.asset_type_id] = {};
+      try {
+        const vr =
+          def.validation_rules && typeof def.validation_rules === 'object'
+            ? def.validation_rules
+            : def.validation_rules
+              ? JSON.parse(def.validation_rules)
+              : null;
+        const n = vr && (vr.reminder_lead_days || vr.reminderDays || vr.reminder_days);
+        const v = Number(n);
+        if (Number.isFinite(v) && v > 0) {
+          leadDaysMap[def.asset_type_id][String(def.slug || '').toLowerCase()] = Math.floor(v);
+        }
+      } catch { /* ignore malformed */ }
+    }
+
+    // Count overdue / due-soon tasks across assets
+    const seen = new Set();
+    const isDateLike = (v) => {
+      if (!v) return null;
+      if (v instanceof Date) return v;
+      const s = String(v).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + 'T00:00:00');
+      const d = new Date(s);
+      return Number.isNaN(+d) ? null : d;
+    };
+    const looksShortId = (id) => /^[A-Z0-9]{6,12}$/i.test(String(id || ''));
+
+    for (const a of assets) {
+      // Skip QR-reserved placeholder assets (same heuristic as frontend)
+      if (!looksShortId(a.id)) continue;
+      if (String(a.description || '').toLowerCase() === 'qr reserved asset') continue;
+
+      const tId = a.type_id || null;
+      const leadDays = leadDaysMap[tId] || {};
+
+      // Top-level date columns
+      for (const k of DATE_FIELDS) {
+        const d = isDateLike(a[k]);
+        if (!d) continue;
+        if (d < today) seen.add(`${a.id}|top|${k}|${+d}`);
+      }
+
+      // Custom field values stored in the JSON `fields` column
+      const f = a.fields && typeof a.fields === 'object' ? a.fields : null;
+      if (f) {
+        for (const [k, val] of Object.entries(f)) {
+          if (!DATE_FIELDS.includes(k) && !/date|due|expiry|expires/i.test(k)) continue;
+          const d = isDateLike(val);
+          if (!d) continue;
+          const daysLead = leadDays[String(k).toLowerCase()] || 0;
+          if (d < today) {
+            seen.add(`${a.id}|field|${k}|${+d}`);
+          } else if (daysLead > 0) {
+            const windowEnd = new Date(today.getTime() + daysLead * 24 * 60 * 60 * 1000);
+            if (d <= windowEnd) seen.add(`${a.id}|field|${k}|soon|${+d}`);
+          }
+        }
+      }
+    }
+
+    // Pending sign-off items
+    const signoffWhere = isAdmin
+      ? { status: 'pending' }
+      : {
+          status: 'pending',
+          OR: [{ assigned_to_id: uid }, { assigned_to_id: null }],
+        };
+
+    let signoffCount = 0;
+    try {
+      signoffCount = await prisma.asset_actions.count({ where: signoffWhere });
+    } catch { /* table may not exist in all envs */ }
+
+    const total = seen.size + signoffCount;
+    log(reqId, 'INFO', 'tasks-count', { uid, isAdmin, taskItems: seen.size, signoff: signoffCount, total });
+    return res.json({ count: total });
+  } catch (e) {
+    log(reqId, 'ERROR', 'tasks-count-failed', { message: e?.message || String(e) });
+    return errJson(res, 500, 'Failed to compute task count');
+  }
+});
+
 // -------------------------------------------------
-// GET /assets/asset-options â€” dropdown + placeholders
+// GET /assets/asset-options â€" dropdown + placeholders
 // -------------------------------------------------
 router.get('/asset-options', async (req, res) => {
   const reqId = rid();
@@ -572,7 +721,7 @@ router.get('/asset_types', async (_req, res) => {
 });
 
 // --------------------------------------------------------
-// GET /assets/asset-types-summary â€” counts by status/type
+// GET /assets/asset-types-summary â€" counts by status/type
 // --------------------------------------------------------
 router.get('/asset-types-summary', async (_req, res) => {
   try {
@@ -601,7 +750,7 @@ router.get('/asset-types-summary', async (_req, res) => {
 });
 
 // -------------------------------------------------------
-// GET /assets/asset-types/:id/fields â€” fields for a type
+// GET /assets/asset-types/:id/fields â€" fields for a type
 // -------------------------------------------------------
 router.get('/asset-types/:id/fields', async (req, res) => {
   try {
@@ -618,7 +767,7 @@ router.get('/asset-types/:id/fields', async (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// POST /assets/asset-types/:id/fields â€” create field for a type
+// POST /assets/asset-types/:id/fields â€" create field for a type
 // Guardrails: slug uniqueness, cap fields per type, 409 on conflict
 // -------------------------------------------------------------------
 router.post('/asset-types/:id/fields', authRequired, adminOnly, async (req, res) => {
@@ -682,7 +831,7 @@ router.post('/asset-types/:id/fields', authRequired, adminOnly, async (req, res)
 });
 
 // ---------------------------------------------
-// POST /assets â€” create from placeholder + files
+// POST /assets â€" create from placeholder + files
 // ---------------------------------------------
 router.post('/', authRequired, adminOnly, upload, async (req, res) => {
   const reqId = rid();
@@ -932,7 +1081,7 @@ router.post('/', authRequired, adminOnly, upload, async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// PUT /assets/asset-types/:id/fields/:fieldId — update a type field
+// PUT /assets/asset-types/:id/fields/:fieldId -- update a type field
 // Accepts: { name?, field_type_id?, is_required?, options?, display_order?, description?, default_value?, validation_rules? }
 // ---------------------------------------------------------------
 router.put('/asset-types/:id/fields/:fieldId', authRequired, adminOnly, async (req, res) => {
@@ -990,7 +1139,7 @@ router.put('/asset-types/:id/fields/:fieldId', authRequired, adminOnly, async (r
 });
 
 // ---------------------------------------------------------------
-// DELETE /assets/asset-types/:id/fields/:fieldId — delete field when safe
+// DELETE /assets/asset-types/:id/fields/:fieldId -- delete field when safe
 // Refuse delete when any values exist to prevent orphaning
 // ---------------------------------------------------------------
 router.delete('/asset-types/:id/fields/:fieldId', authRequired, adminOnly, async (req, res) => {
@@ -1013,7 +1162,7 @@ router.delete('/asset-types/:id/fields/:fieldId', authRequired, adminOnly, async
   }
 });
 // -------------------------------------------------------------
-// POST /assets/asset-types/:id/sync — sync existing assets to latest type schema
+// POST /assets/asset-types/:id/sync -- sync existing assets to latest type schema
 // Body (optional): {
 //   cleanup: boolean            // remove values for deleted fields
 //   fillDefaults: boolean       // create missing values from field.default_value
@@ -1105,7 +1254,7 @@ router.post('/asset-types/:id/sync', adminOnly, async (req, res) => {
 });
 
 // -------------------------------------------------
-// POST /assets/:id/files — upload document only
+// POST /assets/:id/files -- upload document only
 // Returns { url }
 // -------------------------------------------------
 router.post('/:id/files', multerSingle.single('document'), async (req, res) => {
@@ -1126,7 +1275,7 @@ router.post('/:id/files', multerSingle.single('document'), async (req, res) => {
 });
 
 // -------------------------------------------------
-// PUT /assets/:id â€” update (incl. dynamic fields)
+// PUT /assets/:id â€" update (incl. dynamic fields)
 // -------------------------------------------------
 router.put('/:id', async (req, res) => {
   const reqId = rid();
@@ -1138,7 +1287,7 @@ router.put('/:id', async (req, res) => {
       return errJson(res, 400, 'Invalid asset id');
     }
 
-    // Resolve target assignee â€” change only when explicitly requested
+    // Resolve target assignee â€" change only when explicitly requested
     const hasAssignedProp = Object.prototype.hasOwnProperty.call(req.body, 'assigned_to_id');
     const unassignRequested = hasAssignedProp && req.body.assigned_to_id === null && (req.body.allow_unassign === true || req.body.allow_unassign === '1');
     const hasAssignedField = (hasAssignedProp && req.body.assigned_to_id !== null) || !!assign_to_admin || unassignRequested;
@@ -1405,7 +1554,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ---------------------------------------------
-// GET /assets/:id/actions — list structured actions
+// GET /assets/:id/actions -- list structured actions
 // ---------------------------------------------
 router.get('/:id/actions', async (req, res) => {
   const assetId = req.params.id;
@@ -1428,7 +1577,7 @@ router.get('/:id/actions', async (req, res) => {
 });
 
 // ---------------------------------------------
-// POST /assets/:id/actions — record an action
+// POST /assets/:id/actions -- record an action
 // ---------------------------------------------
 router.post('/:id/actions', async (req, res) => {
   const reqId = rid();
@@ -1548,7 +1697,7 @@ router.post('/:id/actions', async (req, res) => {
 });
 
 // -------------------------------------------------------
-// POST /assets/:id/actions/upload — with images (S3)
+// POST /assets/:id/actions/upload -- with images (S3)
 // Only for REPAIR / MAINTENANCE; saves image URLs in action.data.images
 // -------------------------------------------------------
 router.post('/:id/actions/upload', (req, res) => {
@@ -1682,7 +1831,7 @@ router.delete('/:id', authRequired, adminOnly, async (req, res) => {
 });
 
 // ---------------------------------------------
-// GET /assets/actions/pending-signoff — open service/repair/hire needing sign-off
+// GET /assets/actions/pending-signoff -- open service/repair/hire needing sign-off
 // ---------------------------------------------
 router.get('/actions/pending-signoff', async (req, res) => {
   try {
@@ -1730,7 +1879,7 @@ router.get('/actions/pending-signoff', async (req, res) => {
 });
 
 // ---------------------------------------------
-// POST /assets/:id/actions/:actionId/signoff — mark complete and set status
+// POST /assets/:id/actions/:actionId/signoff -- mark complete and set status
 // ---------------------------------------------
 router.post('/:id/actions/:actionId/signoff', async (req, res) => {
   const reqId = rid();
@@ -1771,7 +1920,7 @@ router.post('/:id/actions/:actionId/signoff', async (req, res) => {
 });
 
 // ---------------------------------------------
-// PUT /assets/:id/files â€” update image/document
+// PUT /assets/:id/files â€" update image/document
 // ---------------------------------------------
 router.put('/:id/files', (req, res) => {
   upload(req, res, async (err) => {
@@ -1807,7 +1956,7 @@ router.put('/:id/files', (req, res) => {
 });
 
 // ------------------------------------------------------
-// POST /assets/asset-types â€” create asset type (image)
+// POST /assets/asset-types â€" create asset type (image)
 // ------------------------------------------------------
 router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'), async (req, res) => {
   try {
@@ -1830,7 +1979,7 @@ router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'
 });
 
 // ------------------------------------------------------
-// POST /assets/swap-qr â€” move an asset onto a new QR id (placeholder)
+// POST /assets/swap-qr â€" move an asset onto a new QR id (placeholder)
 // Body: { from_id: existingAssetId, to_id: placeholderQrId }
 // Moves core fields, field_values, actions, logs. Resets old record to placeholder.
 // ------------------------------------------------------
@@ -1896,7 +2045,7 @@ router.post('/swap-qr', authRequired, async (req, res) => {
           type_id: null,
           serial_number: null,
           model: null,
-          description: 'QR decommissioned',
+              description: 'QR decommissioned',
           location: null,
           status: 'End of Life',
           next_service_date: null,
@@ -1944,7 +2093,7 @@ router.post('/swap-qr', authRequired, async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// GET /assets/:id â€” single asset (decoded fields, debug toggle)
+// GET /assets/:id -- single asset (decoded fields, debug toggle)
 // -------------------------------------------------------------
 router.get('/:id', async (req, res) => {
   const debug = String(req.query.debug || '').toLowerCase() === '1';
@@ -1986,7 +2135,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// GET /assets/assigned/:userId â€” assets for a user (decoded fields)
+// GET /assets/assigned/:userId -- assets for a user (decoded fields)
 // -------------------------------------------------------------------
 router.get('/assigned/:userId', async (req, res) => {
   try {
@@ -2033,5 +2182,3 @@ router.get('/assigned/:userId', async (req, res) => {
 });
 
 module.exports = router;
-
-

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, Text, View, ActivityIndicator } from 'react-native';
-import { Colors, Radius, FontWeights, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights, Shadows, sf } from '../../constants/uiTheme';
 
 export default function AppButton({
     variant = 'primary',
@@ -109,7 +109,7 @@ function getSizeStyles(size) {
                     minHeight: 32,
                 },
                 label: {
-                    fontSize: 12,
+                    fontSize: sf(12),
                     fontWeight: FontWeights.bold,
                     lineHeight: 14,
                 },
@@ -123,7 +123,7 @@ function getSizeStyles(size) {
                     minHeight: 52,
                 },
                 label: {
-                    fontSize: 18,
+                    fontSize: sf(18),
                     fontWeight: FontWeights.extrabold,
                     lineHeight: 20,
                 },
@@ -138,7 +138,7 @@ function getSizeStyles(size) {
                     minHeight: 44,
                 },
                 label: {
-                    fontSize: 14,
+                    fontSize: sf(14),
                     fontWeight: FontWeights.bold,
                     lineHeight: 16,
                 },

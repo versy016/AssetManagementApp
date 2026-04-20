@@ -25,7 +25,7 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
@@ -1322,7 +1322,7 @@ export default function AssetDetailPage() {
                               {activityDescription}
                             </Text>
                             <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                            <Text style={[styles.noteWhen, { fontSize: 12, color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
+                            <Text style={[styles.noteWhen, { fontSize: sf(12), color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
                               {n.who || 'System'}
                             </Text>
                           </View>
@@ -1761,7 +1761,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: {
-    fontSize: 20,
+    fontSize: sf(20),
     fontWeight: 'bold',
     marginLeft: 12,
     color: Colors.accent,
@@ -1810,7 +1810,7 @@ const styles = StyleSheet.create({
   },
   assetName: {
     flex: 1,
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: 'bold',
     color: Colors.text,
     marginRight: 8,
@@ -1830,7 +1830,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chip,
     borderRadius: Radius.lg,
   },
-  metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
+  metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1851,7 +1851,7 @@ const styles = StyleSheet.create({
   label: {
     fontWeight: '700',
     color: Colors.sub2,
-    fontSize: 12,
+    fontSize: sf(12),
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -1866,12 +1866,12 @@ const styles = StyleSheet.create({
   },
   value: {
     color: Colors.text,
-    fontSize: 15,
+    fontSize: sf(15),
     fontWeight: '500',
     textAlign: 'right',
   },
   sectionH: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '800',
     color: Colors.primary,
     textTransform: 'uppercase',
@@ -1895,7 +1895,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chip,
     borderRadius: Radius.lg,
   },
-  linkedChipText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
+  linkedChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
 
   documentButton: {
     marginTop: 16,
@@ -1946,7 +1946,7 @@ const styles = StyleSheet.create({
   actionText: {
     color: '#fff',
     fontWeight: '800',
-    fontSize: 15,
+    fontSize: sf(15),
   },
   shortcut: {
     flexDirection: 'row',
@@ -1959,7 +1959,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 8,
   },
-  shortcutText: { color: Colors.accent, fontWeight: '600', fontSize: 12 },
+  shortcutText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
 
   // Web grid (wider layout)
   webGrid: {
@@ -2017,16 +2017,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     marginRight: 10,
   },
-  noteAvatarText: { fontWeight: '800', color: Colors.accent, fontSize: 12 },
+  noteAvatarText: { fontWeight: '800', color: Colors.accent, fontSize: sf(12) },
   noteWho: { color: Colors.text, fontWeight: '700' },
-  noteWhen: { color: Colors.sub2, fontSize: 12, marginTop: 2 },
+  noteWhen: { color: Colors.sub2, fontSize: sf(12), marginTop: 2 },
   noteBadge: {
     borderWidth: 2,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  noteBadgeText: { fontWeight: '800', fontSize: 10 },
+  noteBadgeText: { fontWeight: '800', fontSize: sf(10) },
   noteText: { color: Colors.text },
   noteToggle: {
     alignSelf: 'flex-start',
@@ -2070,7 +2070,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.accent,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     color: Colors.sub2,
     textAlign: 'center',
@@ -2092,7 +2092,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentLight,
   },
   tabBadgeText: {
-    fontSize: 10,
+    fontSize: sf(10),
     fontWeight: '800',
     color: Colors.sub2,
   },
@@ -2110,7 +2110,7 @@ const styles = StyleSheet.create({
   },
   tabEmptyText: {
     color: Colors.sub2,
-    fontSize: 14,
+    fontSize: sf(14),
     fontWeight: '600',
   },
   collapsibleHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -2126,7 +2126,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   currentWorkSummary: {
-    fontSize: 14,
+    fontSize: sf(14),
     fontWeight: '600',
     color: Colors.text,
     marginBottom: 6,
@@ -2149,20 +2149,20 @@ const styles = StyleSheet.create({
   },
   currentWorkMetaLabel: {
     marginLeft: 4,
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',
   },
   currentWorkMetaValue: {
     marginLeft: 4,
-    fontSize: 12,
+    fontSize: sf(12),
     fontWeight: '600',
     color: Colors.text,
   },
   currentWorkNote: {
     marginTop: 4,
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
   },
 });

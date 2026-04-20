@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/types/new.js
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import {
@@ -16,6 +17,7 @@ import FormButton from '../../components/ui/FormButton';
 import FormActions from '../../components/ui/FormActions';
 import { TourTarget, TourContext } from '../../components/TourGuide';
 import { MaterialIcons } from '@expo/vector-icons';
+import logger from '../../utils/logger';
 
 // ---- Default fields (always present on assets) -----------------------------
 const DEFAULT_FIELDS = [
@@ -172,7 +174,7 @@ export default function NewAssetType() {
           scrollViewRef.current.measure((sx, sy, sw, sh, spx, spy) => {
             // Calculate relative Y position within the ScrollView
             const relativeY = pageY - spy;
-            console.log(`Measured ${key}: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
+            logger.log(`Measured ${key}: pageY=${pageY}, scrollViewPageY=${spy}, relativeY=${relativeY}`);
 
             if (relativeY >= 0) {
               const scrollY = Math.max(0, relativeY - 100);
@@ -488,7 +490,7 @@ export default function NewAssetType() {
   if (!isAdmin) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
+        <Text style={{ fontSize: sf(16), marginBottom: 12 }}>Admin access required.</Text>
         <TouchableOpacity
           onPress={() => {
             if (normalizedReturnTo) {
@@ -563,7 +565,7 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current.defaults = r; }}
               style={{ marginTop: 24 }}
             >
-            <Text style={[s.label, { fontSize: 18 }]}>Default fields (always included)</Text>
+            <Text style={[s.label, { fontSize: sf(18) }]}>Default fields (always included)</Text>
             <View style={s.defaultList}>
               {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
             </View>
@@ -576,7 +578,7 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current.library = r; }}
               style={{ marginTop: 24 }}
             >
-            <Text style={[s.label, { fontSize: 18 }]}>Pick from library</Text>
+            <Text style={[s.label, { fontSize: sf(18) }]}>Pick from library</Text>
             <View style={s.grid}>
               {PRESET_LIBRARY.map((p) => {
                 const state = presetState[p.key];
@@ -647,7 +649,7 @@ export default function NewAssetType() {
                           placeholder="No Reminder"
                           keyboardType="numeric"
                         />
-                        <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                        <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 10, marginBottom: 4 }}>
                           {(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0
                             ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
                             : 'No Reminder'}
@@ -667,7 +669,7 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current['custom-fields'] = r; }}
               style={{ marginTop: 24 }}
             >
-            <Text style={[s.label, { fontSize: 18 }]}>Custom fields</Text>
+            <Text style={[s.label, { fontSize: sf(18) }]}>Custom fields</Text>
 
             {loadingFieldTypes && (
               <View style={{ paddingVertical: 12 }}>
@@ -789,12 +791,12 @@ export default function NewAssetType() {
                         placeholder="No Reminder"
                         keyboardType="numeric"
                       />
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 10, marginBottom: 4 }}>
                         {(Number(editing.reminderLeadDays) || 0) > 0
                           ? `Reminder to be sent ${Number(editing.reminderLeadDays)} days before expiry date`
                           : 'No Reminder'}
                       </Text>
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 10 }}>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 10 }}>
                         When set, saving this date will require the linked document field.
                       </Text>
                     </>
@@ -869,11 +871,11 @@ const s = StyleSheet.create({
   btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
   submit: { backgroundColor: Colors.primary },
   preview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: 10, ...CardShadow },
-  label: { fontSize: 16, fontWeight: '900', marginBottom: 5, color: Colors.text },
+  label: { fontSize: sf(16), fontWeight: '900', marginBottom: 5, color: Colors.text },
   errorBelow: { color: Colors.dangerFg, marginTop: -4, marginBottom: 6, fontWeight: '700' },
-  subLabel: { fontSize: 14, fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
+  subLabel: { fontSize: sf(14), fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
   card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginBottom: 12, backgroundColor: Colors.card, ...CardShadow },
-  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6, color: Colors.text },
+  cardTitle: { fontSize: sf(16), fontWeight: '800', marginBottom: 6, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },
   dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
@@ -881,9 +883,9 @@ const s = StyleSheet.create({
   // Default-fields UI
   defaultList: { marginTop: 8, borderRadius: Radius.lg, backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.line, ...CardShadow },
   defaultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: Colors.line },
-  defaultRowLabel: { marginLeft: 10, color: Colors.sub, fontSize: 15, fontWeight: '600' },
+  defaultRowLabel: { marginLeft: 10, color: Colors.sub, fontSize: sf(15), fontWeight: '600' },
   checkboxDisabled: { width: 20, height: 20, borderRadius: Radius.sm, backgroundColor: Colors.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: Colors.line },
-  checkboxTick: { color: Colors.sub, fontSize: 14, lineHeight: 16, fontWeight: '700' },
+  checkboxTick: { color: Colors.sub, fontSize: sf(14), lineHeight: 16, fontWeight: '700' },
 
   // Accent checkbox rows (saved custom list)
   checkboxRow: {
@@ -892,11 +894,11 @@ const s = StyleSheet.create({
     borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md,
     backgroundColor: Colors.accentMuted, marginTop: 8,
   },
-  checkboxRowLabel: { marginLeft: 10, fontSize: 14, fontWeight: '700', color: Colors.accent },
+  checkboxRowLabel: { marginLeft: 10, fontSize: sf(14), fontWeight: '700', color: Colors.accent },
   checkboxBox: { width: 20, height: 20, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   checkboxBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   checkboxBoxUnchecked: { borderColor: Colors.accent, backgroundColor: 'transparent' },
-  checkboxBoxTick: { color: Colors.card, fontWeight: '800', fontSize: 14, lineHeight: 16 },
+  checkboxBoxTick: { color: Colors.card, fontWeight: '800', fontSize: sf(14), lineHeight: 16 },
 
   // Grid (preset library)
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
@@ -906,15 +908,15 @@ const s = StyleSheet.create({
     // Stack content vertically when a preset reveals inline config
     flexDirection: 'column', alignItems: 'stretch', ...CardShadow,
   },
-  gridLabel: { marginLeft: 10, fontSize: 14, color: Colors.text, flexShrink: 1, fontWeight: '700' },
+  gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, fontWeight: '700' },
   gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
-  gridTick: { color: Colors.card, fontSize: 12, fontWeight: '800', lineHeight: 12 },
+  gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
 
   // Required toggle on grid item
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: 11, color: Colors.sub, marginBottom: 4, fontWeight: '700' },
+  reqLabel: { fontSize: sf(11), color: Colors.sub, marginBottom: 4, fontWeight: '700' },
 
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },

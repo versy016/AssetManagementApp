@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import ConfirmModal from './ui/ConfirmModal';
 import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
@@ -490,16 +490,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.sub },
+  loadingText: { marginTop: 12, fontSize: sf(14), color: Colors.sub },
   emptyScroll: { flexGrow: 1 },
   empty: {
     padding: 32,
     alignItems: 'center',
   },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 8 },
-  emptySub: { fontSize: 14, color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
+  emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8 },
+  emptySub: { fontSize: sf(14), color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
   emptyCta: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.md, backgroundColor: Colors.accent },
-  emptyCtaText: { fontSize: 14, fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
+  emptyCtaText: { fontSize: sf(14), fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
   tableOuter: {
     flex: 1,
     width: '100%',
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   thText: {
-    fontSize: 12,
+    fontSize: sf(12),
     fontWeight: '800',
     color: '#FFFFFF',
     textTransform: 'uppercase',
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
   },
   tdActions: { alignItems: 'flex-start' },
   tdText: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.text,
     fontWeight: '500',
   },
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.warningBg,
   },
   statusPillText: {
-    fontSize: 12,
+    fontSize: sf(12),
     fontWeight: '700',
     letterSpacing: 0.2,
   },
@@ -589,12 +589,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
   },
-  detailsTitle: { fontSize: 13, fontWeight: '700', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailsTitle: { fontSize: sf(13), fontWeight: '700', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   detailsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 4,
   },
-  detailsLabel: { fontSize: 13, color: Colors.sub, width: '30%', minWidth: 100 },
-  detailsValue: { fontSize: 13, color: Colors.text, width: '65%', flex: 1 },
+  detailsLabel: { fontSize: sf(13), color: Colors.sub, width: '30%', minWidth: 100 },
+  detailsValue: { fontSize: sf(13), color: Colors.text, width: '65%', flex: 1 },
 });

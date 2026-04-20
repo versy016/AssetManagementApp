@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 /**
  * Unified form-level button — replaces the scattered `TouchableOpacity + s.btn/s.submit`
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
-    fontSize: 15,
+    fontSize: sf(15),
     fontWeight: '800',
   },
   iconLeft: { marginRight: 8 },

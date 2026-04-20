@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GearOps — Code Audit Report</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --navy:#1E293B; --navy-d:#0F172A; --orange:#EA580C;
+      --red:#DC2626; --red-l:#FEF2F2; --red-b:#FECACA;
+      --amber:#D97706; --amber-l:#FFFBEB; --amber-b:#FDE68A;
+      --green:#16A34A; --green-l:#F0FDF4; --green-b:#BBF7D0;
+      --blue:#1D4ED8; --blue-l:#EFF6FF; --blue-b:#BFDBFE;
+      --purple:#7C3AED; --purple-l:#FAF5FF; --purple-b:#DDD6FE;
+      --stone:#F5F3F0; --border:#E2E8F0; --text:#1C1917; --muted:#64748B;
+      --white:#FFFFFF; --code:#1E1E1E;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:'Inter',sans-serif;background:var(--stone);color:var(--text);line-height:1.6}
+
+    /* Nav */
+    nav{position:sticky;top:0;z-index:100;background:rgba(15,23,42,0.97);backdrop-filter:blur(12px);
+      border-bottom:2px solid var(--orange);padding:0 2rem;height:58px;
+      display:flex;align-items:center;justify-content:space-between}
+    .nav-brand{font-size:1rem;font-weight:800;color:#fff;letter-spacing:0.06em}
+    .nav-brand span{color:var(--orange)}
+    .nav-meta{font-size:0.75rem;color:#64748B}
+    .nav-links{display:flex;gap:0.25rem}
+    .nav-links a{color:#94A3B8;text-decoration:none;font-size:0.75rem;font-weight:600;
+      letter-spacing:0.06em;text-transform:uppercase;padding:0.35rem 0.7rem;border-radius:4px;transition:all 0.2s}
+    .nav-links a:hover{color:#fff;background:rgba(255,255,255,0.08)}
+
+    /* Layout */
+    .container{max-width:1100px;margin:0 auto;padding:2rem}
+    .two-col{display:grid;grid-template-columns:280px 1fr;gap:2rem;align-items:start;margin-top:2rem}
+    @media(max-width:900px){.two-col{grid-template-columns:1fr}}
+
+    /* Sidebar */
+    .sidebar{position:sticky;top:70px}
+    .sidebar-card{background:#fff;border-radius:12px;border:1px solid var(--border);overflow:hidden}
+    .sidebar-title{font-size:0.7rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
+      color:#64748B;padding:1rem 1.25rem 0.5rem;border-bottom:1px solid var(--border)}
+    .sidebar-nav a{display:flex;align-items:center;gap:0.6rem;padding:0.6rem 1.25rem;
+      text-decoration:none;font-size:0.82rem;font-weight:500;color:#475569;
+      border-bottom:1px solid var(--border);transition:all 0.15s}
+    .sidebar-nav a:last-child{border:none}
+    .sidebar-nav a:hover{color:var(--navy);background:#F8FAFC}
+    .sidebar-nav a .sev{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+    /* Summary cards */
+    .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:2rem}
+    .summary-card{background:#fff;border-radius:12px;border:1px solid var(--border);padding:1.25rem;text-align:center}
+    .summary-card .sc-num{font-size:2.2rem;font-weight:900;display:block;line-height:1}
+    .summary-card .sc-lbl{font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748B;display:block;margin-top:0.3rem}
+    .sc-red .sc-num{color:var(--red)} .sc-amber .sc-num{color:var(--amber)} .sc-blue .sc-num{color:var(--blue)} .sc-green .sc-num{color:var(--green)} .sc-purple .sc-num{color:var(--purple)}
+
+    /* Section */
+    .audit-section{background:#fff;border-radius:16px;border:1px solid var(--border);margin-bottom:1.5rem;overflow:hidden}
+    .section-head{padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;cursor:pointer;user-select:none}
+    .section-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
+    .section-head h2{font-size:1.05rem;font-weight:800;color:var(--navy)}
+    .section-head p{font-size:0.82rem;color:var(--muted);margin-top:0.15rem}
+    .section-toggle{margin-left:auto;width:28px;height:28px;border-radius:50%;border:2px solid var(--border);
+      background:var(--stone);display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:var(--muted);transition:all 0.3s;flex-shrink:0}
+    .audit-section.open .section-toggle{transform:rotate(180deg);background:var(--navy);color:#fff;border-color:var(--navy)}
+    .section-body{max-height:0;overflow:hidden;transition:max-height 0.5s cubic-bezier(0.4,0,0.2,1)}
+    .audit-section.open .section-body{max-height:9999px}
+    .section-body-inner{padding:0 1.5rem 1.5rem;border-top:1px solid var(--border)}
+
+    /* Severity headers */
+    .sev-critical{border-left:4px solid var(--red)}
+    .sev-high    {border-left:4px solid var(--amber)}
+    .sev-medium  {border-left:4px solid var(--blue)}
+    .sev-low     {border-left:4px solid var(--green)}
+
+    /* Issue cards */
+    .issue{border-radius:10px;border:1px solid;padding:1.25rem;margin-top:1rem}
+    .issue-critical{border-color:var(--red-b);background:var(--red-l)}
+    .issue-high    {border-color:var(--amber-b);background:var(--amber-l)}
+    .issue-medium  {border-color:var(--blue-b);background:var(--blue-l)}
+    .issue-low     {border-color:var(--green-b);background:var(--green-l)}
+    .issue-info    {border-color:var(--purple-b);background:var(--purple-l)}
+    .issue-head{display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.75rem}
+    .sev-badge{font-size:0.62rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
+      padding:0.22rem 0.65rem;border-radius:999px;white-space:nowrap;flex-shrink:0;margin-top:2px}
+    .badge-critical{background:#FEE2E2;color:var(--red)}
+    .badge-high    {background:#FEF3C7;color:var(--amber)}
+    .badge-medium  {background:#DBEAFE;color:var(--blue)}
+    .badge-low     {background:#DCFCE7;color:var(--green)}
+    .badge-info    {background:var(--purple-b);color:var(--purple)}
+    .issue-title{font-size:0.95rem;font-weight:800;color:var(--navy)}
+    .issue-file{font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#64748B;margin-top:0.15rem}
+    .issue p{font-size:0.88rem;color:#374151;line-height:1.6;margin-top:0.25rem}
+    .issue-fix{margin-top:0.75rem;padding:0.75rem;background:rgba(0,0,0,0.04);border-radius:6px;font-size:0.83rem;color:var(--navy);line-height:1.6}
+    .issue-fix strong{font-weight:700}
+
+    /* Code blocks */
+    pre{background:var(--code);border-radius:8px;padding:1rem;overflow-x:auto;margin-top:0.75rem;font-size:0.78rem;line-height:1.6}
+    code{font-family:'JetBrains Mono',monospace;font-size:0.8rem}
+    pre code{color:#D4D4D4}
+    .c-comment{color:#6A9955;font-style:italic}
+    .c-key{color:#569CD6}
+    .c-str{color:#CE9178}
+    .c-orange{color:#DCDCAA}
+    .c-green{color:#4EC9B0}
+
+    /* Inline code */
+    .ic{background:#F1F5F9;border:1px solid var(--border);border-radius:4px;
+      padding:0.1rem 0.4rem;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:#0F172A}
+
+    /* Checklist */
+    .fix-list{list-style:none;margin-top:0.75rem}
+    .fix-list li{font-size:0.85rem;padding:0.4rem 0;border-bottom:1px solid rgba(0,0,0,0.06);
+      display:flex;align-items:flex-start;gap:0.6rem;color:#1E293B}
+    .fix-list li:last-child{border:none}
+    .fix-arrow{color:var(--orange);font-weight:700;flex-shrink:0}
+
+    /* Table */
+    .audit-table{width:100%;border-collapse:collapse;margin-top:1rem;font-size:0.83rem}
+    .audit-table th{background:var(--navy);color:#fff;padding:0.65rem 0.9rem;text-align:left;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase}
+    .audit-table td{padding:0.65rem 0.9rem;border-bottom:1px solid var(--border);color:var(--text)}
+    .audit-table tr:nth-child(even) td{background:#F8FAFC}
+    .audit-table tr:last-child td{border:none}
+
+    /* Stats row */
+    .stat-row{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}
+    .stat-chip{background:#F1F5F9;border:1px solid var(--border);border-radius:8px;
+      padding:0.5rem 0.85rem;font-size:0.82rem;font-weight:600;color:var(--navy);
+      display:flex;align-items:center;gap:0.4rem}
+    .stat-chip .dot{width:8px;height:8px;border-radius:50%}
+
+    /* Divider */
+    .divider{height:1px;background:var(--border);margin:1.25rem 0}
+
+    /* Subheading */
+    h3.sub{font-size:0.88rem;font-weight:800;color:var(--navy);margin-top:1.25rem;margin-bottom:0.5rem;
+      letter-spacing:0.04em;text-transform:uppercase;font-size:0.72rem;color:#64748B}
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">Gear<span>Ops</span> — Code Audit</div>
+  <div class="nav-links">
+    <a href="#security">Security</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#performance">Performance</a>
+    <a href="#quality">Quality</a>
+    <a href="#validation">Validation</a>
+    <a href="#refactor">Refactor</a>
+  </div>
+  <div class="nav-meta">April 2026 · v1.0</div>
+</nav>
+
+<div class="container">
+
+  <!-- Header -->
+  <div style="margin-bottom:2rem;padding-top:1rem">
+    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:var(--orange);margin-bottom:0.5rem">Solution Architect + Software Engineer Review</div>
+    <h1 style="font-size:2.2rem;font-weight:900;color:var(--navy);line-height:1.1;letter-spacing:-0.02em">GearOps Codebase Audit</h1>
+    <p style="color:var(--muted);margin-top:0.5rem;font-size:0.95rem">React Native / Expo frontend · Node.js/Express backend · Firebase Auth · AWS RDS + S3</p>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-grid">
+    <div class="summary-card sc-red"><span class="sc-num">3</span><span class="sc-lbl">Critical</span></div>
+    <div class="summary-card sc-amber"><span class="sc-num">7</span><span class="sc-lbl">High</span></div>
+    <div class="summary-card sc-blue"><span class="sc-num">11</span><span class="sc-lbl">Medium</span></div>
+    <div class="summary-card sc-green"><span class="sc-num">6</span><span class="sc-lbl">Low</span></div>
+    <div class="summary-card sc-purple"><span class="sc-num">~22k</span><span class="sc-lbl">Frontend Lines</span></div>
+    <div class="summary-card" style="border-color:var(--border)"><span class="sc-num" style="color:var(--navy)">15×</span><span class="sc-lbl">PrismaClient instances</span></div>
+    <div class="summary-card" style="border-color:var(--border)"><span class="sc-num" style="color:#D97706">83</span><span class="sc-lbl">console.log calls</span></div>
+    <div class="summary-card" style="border-color:var(--border)"><span class="sc-num" style="color:var(--red)">86</span><span class="sc-lbl">Unchecked .json()</span></div>
+  </div>
+
+  <div class="two-col">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <div class="sidebar-title">Jump to section</div>
+        <div class="sidebar-nav">
+          <a href="#security"><span class="sev" style="background:var(--red)"></span> 🔒 Security</a>
+          <a href="#architecture"><span class="sev" style="background:var(--amber)"></span> 🏗 Architecture</a>
+          <a href="#performance"><span class="sev" style="background:var(--blue)"></span> ⚡ Performance</a>
+          <a href="#quality"><span class="sev" style="background:var(--blue)"></span> 🧹 Code Quality</a>
+          <a href="#validation"><span class="sev" style="background:var(--green)"></span> ✅ Input Validation</a>
+          <a href="#refactor"><span class="sev" style="background:var(--purple)"></span> ♻️ Repetitive Code</a>
+          <a href="#backend-frontend"><span class="sev" style="background:var(--amber)"></span> 🔄 FE→BE Moves</a>
+          <a href="#quickwins"><span class="sev" style="background:var(--green)"></span> 🎯 Quick Wins</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main>
+
+      <!-- ── SECURITY ───────────────────────────────────────────────── -->
+      <div class="audit-section sev-critical open" id="security">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#FEE2E2">🔒</div>
+          <div><h2>Security</h2><p>3 critical · 2 high · includes secrets committed to Git</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <div class="issue issue-critical">
+              <div class="issue-head">
+                <span class="sev-badge badge-critical">Critical</span>
+                <div>
+                  <div class="issue-title">Firebase service account private key committed to Git — in two places</div>
+                  <div class="issue-file">assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json (root) · config/assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json</div>
+                </div>
+              </div>
+              <p>Your Firebase Admin SDK service account JSON — which contains a private RSA key — is committed to source control in two separate locations. Anyone with repo access can impersonate any Firebase user, create custom tokens, read/write your entire database, bypass all auth, and delete accounts. This is the highest-severity secret exposure possible in a Firebase project.</p>
+              <div class="issue-fix">
+                <strong>Fix immediately:</strong>
+                <ul class="fix-list">
+                  <li><span class="fix-arrow">→</span> Go to Firebase Console → Project Settings → Service Accounts → Revoke current key NOW</li>
+                  <li><span class="fix-arrow">→</span> Generate a new service account key, store it ONLY as an environment variable or AWS Secrets Manager</li>
+                  <li><span class="fix-arrow">→</span> Add both file paths to <code class="ic">.gitignore</code> immediately</li>
+                  <li><span class="fix-arrow">→</span> If repo is or was ever public, rotate the key even if you never pushed it publicly — Git history is permanent</li>
+                  <li><span class="fix-arrow">→</span> In production: use <code class="ic">GOOGLE_APPLICATION_CREDENTIALS</code> env var pointing to the file path on EC2, not a committed JSON</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="issue issue-critical">
+              <div class="issue-head">
+                <span class="sev-badge badge-critical">Critical</span>
+                <div>
+                  <div class="issue-title">Auth middleware bypass: any request can skip Firebase token verification</div>
+                  <div class="issue-file">inventory-api/middleware/auth.js · lines 52–63</div>
+                </div>
+              </div>
+              <p>The dev bypass uses <code class="ic">process.env.NODE_ENV || 'development'</code>. If <code class="ic">NODE_ENV</code> is ever unset on EC2 (missing in PM2 config, a reboot, a bad deploy), the entire auth layer silently disables itself. Any HTTP request with an <code class="ic">X-User-Id</code> header becomes authenticated as any user ID.</p>
+              <pre><code><span class="c-comment">// auth.js line 52 — THE BUG</span>
+<span class="c-key">if</span> ((process.env.NODE_ENV || <span class="c-str">'development'</span>) !== <span class="c-str">'production'</span>) {
+  <span class="c-comment">// This runs when NODE_ENV is undefined — i.e. on a misconfigured production server</span>
+  <span class="c-key">const</span> uidFromHeader = req.header(<span class="c-str">'X-User-Id'</span>);
+  <span class="c-key">if</span> (uidFromHeader) {
+    req.user = { uid: String(uidFromHeader) }; <span class="c-comment">// bypasses Firebase entirely</span>
+    <span class="c-key">return</span> next();
+  }
+}</code></pre>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Remove the <code class="ic">|| 'development'</code> fallback. Explicitly check <code class="ic">process.env.NODE_ENV === 'development'</code>. Add a startup assertion that crashes the server if NODE_ENV is missing in production. Add <code class="ic">NODE_ENV=production</code> to your PM2 ecosystem config.
+              </div>
+            </div>
+
+            <div class="issue issue-critical">
+              <div class="issue-head">
+                <span class="sev-badge badge-critical">Critical</span>
+                <div>
+                  <div class="issue-title">All assets fetched without authentication</div>
+                  <div class="issue-file">utils/fetchTaskCount.js · line 45 · inventory-api/routes/assets.js</div>
+                </div>
+              </div>
+              <p>The <code class="ic">GET /assets</code> endpoint is called without any Bearer token in <code class="ic">fetchTaskCount.js</code>, and also in the same utility used for the tab badge count. If this route is publicly accessible (no auth middleware), every asset in your entire database is readable without logging in. Verify that the assets route has <code class="ic">authRequired</code> middleware applied.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Confirm <code class="ic">GET /assets</code> in <code class="ic">inventory-api/routes/assets.js</code> uses <code class="ic">authRequired</code> middleware. Pass the Firebase ID token in <code class="ic">fetchTaskCount.js</code> using <code class="ic">getAuth().currentUser.getIdToken()</code> before making the call.
+              </div>
+            </div>
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">AWS credentials as environment variables instead of IAM role</div>
+                  <div class="issue-file">inventory-api/routes/assets.js · lines 40–44</div>
+                </div>
+              </div>
+              <p>Using explicit <code class="ic">AWS_ACCESS_KEY_ID</code> and <code class="ic">AWS_SECRET_ACCESS_KEY</code> means those long-lived credentials can leak through logs, error dumps, or a compromised .env file. EC2 should use an IAM instance role — credentials are then temporary, auto-rotated, and never stored anywhere.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> In AWS Console → IAM → Create role for EC2 → attach an S3 policy scoped to your bucket → Attach the role to your EC2 instance. Remove the explicit keys from your S3 constructor — the SDK automatically picks up instance role credentials. Delete the env vars from your .env file.
+              </div>
+            </div>
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">No rate limiting on any endpoint</div>
+                  <div class="issue-file">inventory-api/ — no rate limiting middleware found</div>
+                </div>
+              </div>
+              <p>Your API has no rate limiting. Auth endpoints are fully open to brute-force attacks. File upload endpoints (<code class="ic">POST /assets</code>) can be hammered to exhaust S3 storage and EC2 CPU. QR generation endpoints can be abused to create thousands of documents.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Add <code class="ic">express-rate-limit</code>. Apply a strict limit (5 req/15min) on auth-adjacent routes, a moderate limit (100 req/min) on data routes, and a very strict limit (3 req/min) on file upload routes.
+<pre style="margin-top:0.5rem"><code><span class="c-key">const</span> rateLimit = <span class="c-orange">require</span>(<span class="c-str">'express-rate-limit'</span>);
+app.use(<span class="c-str">'/api/'</span>, rateLimit({ windowMs: 60_000, max: 100 }));
+app.use(<span class="c-str">'/api/assets'</span>, rateLimit({ windowMs: 60_000, max: 30 })); <span class="c-comment">// uploads</span></code></pre>
+              </div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">No input sanitisation on custom asset fields stored as JSON</div>
+                  <div class="issue-file">inventory-api/routes/assets.js · custom field storage</div>
+                </div>
+              </div>
+              <p>Custom field values arrive from the client and are stored in the database as JSON without sanitisation. If any field value is rendered as HTML in the web dashboard (directly set as <code class="ic">innerHTML</code> or passed unsafely to a component), this is a stored XSS vector. Even without XSS today, validating field shapes prevents data corruption.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Sanitise string values with a library like <code class="ic">DOMPurify</code> (frontend) or <code class="ic">xss</code> (backend) before storage. Enforce field type validation against the asset type's field schema before inserting.</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ARCHITECTURE ───────────────────────────────────────────── -->
+      <div class="audit-section sev-high" id="architecture">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#FEF3C7">🏗</div>
+          <div><h2>Architecture — Frontend Doing Backend Work</h2><p>Business logic that must move to the API</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">Entire task-count algorithm runs on every client device</div>
+                  <div class="issue-file">utils/fetchTaskCount.js · 132 lines of business logic on the frontend</div>
+                </div>
+              </div>
+              <p>This file downloads <strong>all assets</strong>, then for each unique asset type makes a separate API call to get field definitions, then loops through every asset and field to calculate due dates and lead days. This is O(assets × types) in network requests, all running on the user's phone. With 500 assets it means ~50 API calls just to show a badge number. This logic belongs 100% on the server.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Create <code class="ic">GET /assets/tasks/count?userId=X</code> endpoint on the backend. The server has direct DB access — it can compute this in a single SQL query with JOINs. The frontend just fetches one number. Delete <code class="ic">fetchTaskCount.js</code> entirely.
+<pre style="margin-top:0.5rem"><code><span class="c-comment">-- Single RDS query replaces 132 lines of frontend JS + N API calls</span>
+<span class="c-key">SELECT</span> COUNT(*) <span class="c-key">FROM</span> asset_field_values afv
+<span class="c-key">JOIN</span> assets a <span class="c-key">ON</span> a.id = afv.asset_id
+<span class="c-key">WHERE</span> afv.value_type = <span class="c-str">'date'</span>
+  <span class="c-key">AND</span> CAST(afv.value <span class="c-key">AS</span> DATE) &lt; CURRENT_DATE
+  <span class="c-key">AND</span> (a.assigned_to_id = $1 OR $2 = true);</code></pre>
+              </div>
+            </div>
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">Permission / role checks scattered across 8+ frontend files</div>
+                  <div class="issue-file">dashboard.js, check-in/[id].js, admin/index.js, index.js, tasks.js…</div>
+                </div>
+              </div>
+              <p>Admin checks use three different approaches: Firebase custom claim (<code class="ic">tokenResult.claims.admin</code>), database role lookup (<code class="ic">GET /users/:id</code> → check <code class="ic">role === 'ADMIN'</code>), and email heuristic (<code class="ic">email.includes('admin@')</code>) in check-in. These get out of sync. The email heuristic in particular is a security bug — anyone with "admin" in their email gets elevated UI access.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Create a single <code class="ic">useUserRole()</code> hook that returns <code class="ic">{ isAdmin, role, canX }</code>. The hook fetches once on mount and stores in context. Remove all inline permission checks from components. Delete the email-pattern check entirely — it should never exist.
+              </div>
+            </div>
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">15 separate PrismaClient instances — database connection pool exhaustion</div>
+                  <div class="issue-file">assets.js, users.js, auth.js, assetTypes.js, hireDisclaimer.js, assetDocuments.js, activity.js, controllers/*, services/*…</div>
+                </div>
+              </div>
+              <p>Every file that needs the database instantiates its own <code class="ic">new PrismaClient()</code>. Each Prisma client opens its own connection pool to RDS. With 15 instances and a default pool size of 10, you're potentially opening 150 database connections under load. RDS connection limits are finite. This will cause connection exhaustion and crashes under real traffic.</p>
+              <pre><code><span class="c-comment">// Found in 15 separate files:</span>
+<span class="c-key">const</span> prisma = <span class="c-key">new</span> PrismaClient(); <span class="c-comment">// ← each one opens its own pool</span></code></pre>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Create <code class="ic">inventory-api/lib/prisma.js</code> with a singleton pattern. Every file imports from this one module.
+<pre style="margin-top:0.5rem"><code><span class="c-comment">// inventory-api/lib/prisma.js</span>
+<span class="c-key">const</span> { PrismaClient } = <span class="c-orange">require</span>(<span class="c-str">'../generated/prisma'</span>);
+<span class="c-key">const</span> globalForPrisma = global;
+<span class="c-key">const</span> prisma = globalForPrisma.prisma ?? <span class="c-key">new</span> PrismaClient();
+<span class="c-key">if</span> (process.env.NODE_ENV !== <span class="c-str">'production'</span>) globalForPrisma.prisma = prisma;
+module.exports = prisma;
+
+<span class="c-comment">// Every other file becomes:</span>
+<span class="c-key">const</span> prisma = <span class="c-orange">require</span>(<span class="c-str">'../lib/prisma'</span>); <span class="c-comment">// shared singleton</span></code></pre>
+              </div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">No API client layer — raw fetch() calls scattered across 22 frontend files</div>
+                  <div class="issue-file">86 await .json() calls across the app with no centralised error handling</div>
+                </div>
+              </div>
+              <p>There is no API client abstraction. Every screen constructs its own fetch URL, adds its own headers, and handles (or ignores) its own errors. If the base URL changes, the auth header changes, or you want to add logging, you need to update 22 files. Additionally, 86 <code class="ic">.json()</code> calls were found but only ~108 response.ok checks across 22 files — meaning many failed API calls (500, 404, 403) are silently parsed as if they succeeded.</p>
+              <div class="issue-fix">
+                <strong>Fix:</strong> Create <code class="ic">utils/apiClient.js</code> — a thin wrapper around fetch that handles auth headers, checks <code class="ic">response.ok</code>, throws on errors, and adds a request ID for tracing.
+<pre style="margin-top:0.5rem"><code><span class="c-comment">// utils/apiClient.js</span>
+<span class="c-key">import</span> { getAuth } from <span class="c-str">'firebase/auth'</span>;
+<span class="c-key">import</span> { API_BASE_URL } from <span class="c-str">'../inventory-api/apiBase'</span>;
+
+<span class="c-key">async function</span> <span class="c-orange">apiFetch</span>(path, options = {}) {
+  <span class="c-key">const</span> token = <span class="c-key">await</span> getAuth().currentUser?.getIdToken();
+  <span class="c-key">const</span> res = <span class="c-key">await</span> fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      <span class="c-str">'Content-Type'</span>: <span class="c-str">'application/json'</span>,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+  <span class="c-key">if</span> (!res.ok) {
+    <span class="c-key">const</span> err = <span class="c-key">await</span> res.json().catch(() => ({}));
+    <span class="c-key">throw new</span> Error(err.error || `API ${res.status}: ${path}`);
+  }
+  <span class="c-key">return</span> res.json();
+}
+<span class="c-key">export const</span> api = {
+  get: (path) => <span class="c-orange">apiFetch</span>(path),
+  post: (path, body) => <span class="c-orange">apiFetch</span>(path, { method: <span class="c-str">'POST'</span>, body: JSON.stringify(body) }),
+  patch: (path, body) => <span class="c-orange">apiFetch</span>(path, { method: <span class="c-str">'PATCH'</span>, body: JSON.stringify(body) }),
+  del: (path) => <span class="c-orange">apiFetch</span>(path, { method: <span class="c-str">'DELETE'</span> }),
+};</code></pre>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PERFORMANCE ────────────────────────────────────────────── -->
+      <div class="audit-section sev-medium" id="performance">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#DBEAFE">⚡</div>
+          <div><h2>Performance</h2><p>N+1 queries, no pagination, connection pool exhaustion</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <div class="issue issue-high">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">N+1 query pattern — one API call per asset type on every tab badge refresh</div>
+                  <div class="issue-file">utils/fetchTaskCount.js · lines 65–73</div>
+                </div>
+              </div>
+              <p>After fetching all assets, the code extracts unique type IDs then loops over them, making an individual fetch per type to get field definitions. With 10 unique asset types this is 11 network requests (1 for all assets + 10 for types). This runs every time the tab bar badge needs to update.</p>
+              <pre><code><span class="c-comment">// N+1 pattern — one fetch per unique type ID</span>
+<span class="c-key">for</span> (<span class="c-key">const</span> tId <span class="c-key">of</span> typeIds) {
+  <span class="c-key">const</span> r = <span class="c-key">await</span> fetch(`${API_BASE_URL}/assets/asset-types/${tId}/fields`);
+  <span class="c-comment">// runs sequentially, blocks UI thread</span>
+}</code></pre>
+              <div class="issue-fix"><strong>Fix:</strong> Move to a single backend endpoint as described in the Architecture section. If you keep the frontend approach temporarily, at least batch: <code class="ic">GET /asset-types/fields/batch?ids=1,2,3</code> or use <code class="ic">Promise.all()</code> to run in parallel instead of sequentially.</div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">No pagination — full asset list loaded for every task count refresh</div>
+                  <div class="issue-file">utils/fetchTaskCount.js · line 45 · inventory-api/routes/assets.js</div>
+                </div>
+              </div>
+              <p>The task count utility fetches <code class="ic">GET /assets</code> with no limit or offset. As the fleet grows to 500+ assets, this returns the full dataset on every badge refresh, on every device, every time the app is foregrounded. The backend route should support <code class="ic">?limit=&offset=</code> parameters, and the task count logic should move server-side entirely.</p>
+              <div class="issue-fix"><strong>Fix (short-term):</strong> Add <code class="ic">?limit=500&fields=id,type_id,assigned_to_id,fields</code> to reduce payload size. <strong>Fix (proper):</strong> Create the server-side task count endpoint.</div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">Response body consumed twice — double .json() parse</div>
+                  <div class="issue-file">utils/fetchTaskCount.js · line 48</div>
+                </div>
+              </div>
+              <p>The response body stream is read twice on the same response object. The first <code class="ic">await assetsRes.json()</code> consumes the stream; the second call will always return an empty result or throw.</p>
+              <pre><code><span class="c-comment">// BUG: consumes body stream twice</span>
+<span class="c-key">const</span> list = Array.isArray(<span class="c-key">await</span> assetsRes.json())
+  ? <span class="c-key">await</span> assetsRes.json() <span class="c-comment">// ← stream already consumed, returns nothing</span>
+  : [];</code></pre>
+              <div class="issue-fix"><strong>Fix:</strong> <code class="ic">const raw = await assetsRes.json(); const list = Array.isArray(raw) ? raw : [];</code></div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">Massive single-file components causing unnecessary full re-renders</div>
+                  <div class="issue-file">tasks.js (2,334 lines) · check-in/[id].js (2,240 lines) · asset/[assetId].js (2,168 lines)</div>
+                </div>
+              </div>
+              <p>These files are monolithic components with 30+ state variables each. Any state change triggers a re-render of the entire component tree. Modals, lists, forms and data all live in one component, so showing a loading spinner causes the whole 2,000-line component to re-evaluate.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Split into sub-components. For example, <code class="ic">check-in/[id].js</code> should be broken into <code class="ic">AssetHeader</code>, <code class="ic">UserSelectModal</code>, <code class="ic">SwapModal</code>, <code class="ic">ActionsPanel</code>. Use <code class="ic">React.memo</code> on list items and modals that don't need to re-render with parent state changes.</div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">No image caching strategy for S3 asset photos</div>
+                  <div class="issue-file">app/asset/[assetId].js · all screens rendering asset images</div>
+                </div>
+              </div>
+              <p>Asset images are loaded directly from S3 URLs on every render with no local cache. On a slow connection, scrolling a list of assets causes network requests for every visible image on every scroll. React Native's default Image component does minimal caching.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Install <code class="ic">expo-image</code> (replaces the built-in Image) which has aggressive disk + memory caching. For lists, use <code class="ic">FlashList</code> from Shopify instead of <code class="ic">FlatList</code> for better recycling performance.</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── CODE QUALITY ───────────────────────────────────────────── -->
+      <div class="audit-section sev-medium" id="quality">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#EDE9FE">🧹</div>
+          <div><h2>Code Quality</h2><p>83 console.log calls · dead code · inconsistent patterns</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">83 console.log/warn/error calls across 18 files — all leak to production</div>
+                  <div class="issue-file">check-in/[id].js (27 occurrences) · admin/index.js (17) · tasks.js (7)…</div>
+                </div>
+              </div>
+              <p>Every debug log you wrote during development ships to every user's device in production. These logs can expose user IDs, token lengths, API responses, and internal state. They also clutter the console for legitimate error monitoring.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Create a <code class="ic">utils/logger.js</code> that wraps console and no-ops in production. Replace all direct console calls.
+<pre style="margin-top:0.5rem"><code><span class="c-comment">// utils/logger.js</span>
+<span class="c-key">const</span> isDev = process.env.NODE_ENV !== <span class="c-str">'production'</span>;
+<span class="c-key">export const</span> logger = {
+  log:   (...a) => isDev && console.log(...a),
+  warn:  (...a) => isDev && console.warn(...a),
+  error: (...a) => console.error(...a), <span class="c-comment">// errors always log</span>
+};</code></pre>
+              </div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">Status values hardcoded as magic strings in multiple files</div>
+                  <div class="issue-file">asset/edit.js, Inventory.js, check-in/[id].js, tasks.js…</div>
+                </div>
+              </div>
+              <p>Asset status strings like <code class="ic">'In Service'</code>, <code class="ic">'On Hire'</code>, <code class="ic">'Maintenance'</code> appear as raw string literals in multiple files. If you rename a status value, you have to find and replace it everywhere — and you will miss one.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Add to <code class="ic">constants/index.js</code>:
+<pre style="margin-top:0.5rem"><code><span class="c-key">export const</span> ASSET_STATUS = {
+  IN_SERVICE:  <span class="c-str">'In Service'</span>,
+  ON_HIRE:     <span class="c-str">'On Hire'</span>,
+  MAINTENANCE: <span class="c-str">'Maintenance'</span>,
+  REPAIR:      <span class="c-str">'Repair'</span>,
+  EOL:         <span class="c-str">'End of Life'</span>,
+};</code></pre>
+              </div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">TypeScript config exists but the entire codebase is plain JavaScript</div>
+                  <div class="issue-file">tsconfig.json present · all app files are .js</div>
+                </div>
+              </div>
+              <p>You've got a <code class="ic">tsconfig.json</code> but haven't migrated to TypeScript. This means API response shapes are untyped — any field can be accessed without IDE error, typos in field names are invisible, and refactoring is risky. Given that your API is now well-defined with Prisma (which generates types), this is low-hanging fruit.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Start incrementally. Rename new files to <code class="ic">.ts/.tsx</code>. Use Prisma's generated types for all API responses. Start with the API client layer and hooks — they provide the most leverage.</div>
+            </div>
+
+            <div class="issue issue-low">
+              <div class="issue-head">
+                <span class="sev-badge badge-low">Low</span>
+                <div>
+                  <div class="issue-title">Empty catch blocks silently swallow errors</div>
+                  <div class="issue-file">tasks.js, fetchTaskCount.js, various async functions</div>
+                </div>
+              </div>
+              <p>Several <code class="ic">catch</code> blocks contain only a comment or are completely empty. When these fail in production, there is no trace of what went wrong, no user feedback, and no way to debug it.</p>
+              <div class="issue-fix"><strong>Fix:</strong> At minimum, every catch block should call <code class="ic">logger.error()</code>. Better: integrate Sentry (<code class="ic">@sentry/react-native</code>) for automatic error capture with stack traces.</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── INPUT VALIDATION ───────────────────────────────────────── -->
+      <div class="audit-section sev-medium" id="validation">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#DCFCE7">✅</div>
+          <div><h2>Input Validation</h2><p>Good foundations — specific gaps to close</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <h3 class="sub">What's already good</h3>
+            <div class="stat-row">
+              <div class="stat-chip"><span class="dot" style="background:var(--green)"></span> Email domain allowlist on registration</div>
+              <div class="stat-chip"><span class="dot" style="background:var(--green)"></span> Required field validation on asset create</div>
+              <div class="stat-chip"><span class="dot" style="background:var(--green)"></span> Document requirement enforcement</div>
+              <div class="stat-chip"><span class="dot" style="background:var(--green)"></span> File type/size limits on upload middleware</div>
+            </div>
+
+            <div class="issue issue-high" style="margin-top:1.25rem">
+              <div class="issue-head">
+                <span class="sev-badge badge-high">High</span>
+                <div>
+                  <div class="issue-title">API endpoints do not re-validate inputs server-side</div>
+                  <div class="issue-file">inventory-api/routes/assets.js · users.js · all POST/PATCH routes</div>
+                </div>
+              </div>
+              <p>Frontend validation is good — but it only runs when the user submits the UI. Anyone using curl, Postman, or a script can send any payload directly to your API, bypassing all client-side checks. Fields like <code class="ic">assigned_to_id</code>, <code class="ic">status</code>, custom field values, and user roles are never validated on the server before hitting the database.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Add <code class="ic">zod</code> or <code class="ic">joi</code> schema validation middleware to all POST/PATCH routes. Validate shape, types, enum values, and string lengths before the controller runs. Return <code class="ic">400</code> with a descriptive error if validation fails.</div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">Numeric fields (cost, rates) handled as strings — no type coercion or range validation</div>
+                  <div class="issue-file">components/ActionsForm.js · asset/new.js</div>
+                </div>
+              </div>
+              <p>Cost and rate fields are read from <code class="ic">TextInput</code> as strings and sent directly to the API. A user typing "abc" or "-9999" will store invalid data. The database will accept whatever string you send.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Use <code class="ic">keyboardType="numeric"</code> on currency inputs. Validate with <code class="ic">!isNaN(parseFloat(value)) && parseFloat(value) >= 0</code> before submission. Coerce to float on the server before inserting.</div>
+            </div>
+
+            <div class="issue issue-medium">
+              <div class="issue-head">
+                <span class="sev-badge badge-medium">Medium</span>
+                <div>
+                  <div class="issue-title">No maximum length validation on text fields</div>
+                  <div class="issue-file">app/asset/new.js · app/type/new.js · all TextInput fields</div>
+                </div>
+              </div>
+              <p>Free-text fields like asset name, description, and notes have no <code class="ic">maxLength</code> prop and no server-side length check. A user could submit a 100,000-character string which will be stored in your RDS database and returned in every API response that includes that asset.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Add <code class="ic">maxLength</code> props to all <code class="ic">TextInput</code> components. Add corresponding <code class="ic">max: N</code> constraints to your Zod/Joi schemas. Add <code class="ic">@db.VarChar(255)</code> or similar constraints to your Prisma schema.</div>
+            </div>
+
+            <div class="issue issue-low">
+              <div class="issue-head">
+                <span class="sev-badge badge-low">Low</span>
+                <div>
+                  <div class="issue-title">Date fields accept free text — no format validation before API submission</div>
+                  <div class="issue-file">Dynamic custom fields in asset/new.js and type/edit.js</div>
+                </div>
+              </div>
+              <p>Date-type custom fields are entered as text strings. If a user types "tomorrow" or "01/04/26" instead of "2026-04-01", the value is stored as-is. The <code class="ic">isDateLike()</code> function in fetchTaskCount.js then tries to parse arbitrary strings, which works sometimes but silently fails others.</p>
+              <div class="issue-fix"><strong>Fix:</strong> Use a date picker component (<code class="ic">@react-native-community/datetimepicker</code>) for all date fields. Store ISO 8601 format <code class="ic">YYYY-MM-DD</code> only. Reject non-ISO strings at the API level.</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── REPETITIVE CODE ────────────────────────────────────────── -->
+      <div class="audit-section" id="refactor" style="border-left:4px solid var(--purple)">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:var(--purple-l)">♻️</div>
+          <div><h2>Repetitive Code — Extract & Centralise</h2><p>Patterns duplicated across 10+ files</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+
+            <table class="audit-table">
+              <thead><tr><th>Pattern</th><th>Found In (files)</th><th>Extract To</th></tr></thead>
+              <tbody>
+                <tr><td><code class="ic">getAuth().currentUser.getIdToken()</code> + Bearer header construction</td><td>admin/index.js, check-in/[id].js, assets.js, qr-scanner, …</td><td><code class="ic">utils/apiClient.js</code> (handles auth automatically)</td></tr>
+                <tr><td><code class="ic">fetch(`${API_BASE_URL}/users/${id}`)</code> → parse user</td><td>index.js, dashboard.js, admin/index.js, check-in/[id].js</td><td><code class="ic">utils/apiClient.js → api.get('/users/me')</code></td></tr>
+                <tr><td>Date display formatting (multiple implementations)</td><td>Inventory.js, tasks.js, [assetId].js, activity/index.js</td><td><code class="ic">utils/date.js</code> — already exists, enforce use everywhere</td></tr>
+                <tr><td>Loading spinner + empty state UI pattern</td><td>Nearly every screen has its own loading/empty implementation</td><td><code class="ic">components/ui/ScreenState.jsx</code> — <code class="ic">&lt;Loading/&gt;</code>, <code class="ic">&lt;Empty/&gt;</code></td></tr>
+                <tr><td>Alert.alert() for API errors with same message structure</td><td>14+ files use Alert with different wording for the same errors</td><td><code class="ic">utils/showError.js</code> — centralised error toasts</td></tr>
+                <tr><td>Status badge rendering (color + label + icon per status)</td><td>Inventory.js, tasks.js, [assetId].js, search/index.js</td><td>Already exists as <code class="ic">components/ui/StatusBadge.js</code> — use it everywhere</td></tr>
+                <tr><td>QR code PDF generation vs Excel generation (600+ lines duplicated)</td><td>inventory-api/routes/users.js (lines 145–733)</td><td><code class="ic">inventory-api/services/qrGenerator.js</code> — shared QR rendering service</td></tr>
+                <tr><td>Asset type field definitions fetched independently on each screen</td><td>new.js, edit.js, [assetId].js, tasks.js, type/edit.js</td><td><code class="ic">hooks/useAssetTypeFields(typeId)</code> with caching</td></tr>
+              </tbody>
+            </table>
+
+            <div class="divider"></div>
+
+            <div class="issue issue-info">
+              <div class="issue-head">
+                <span class="sev-badge badge-info">Refactor</span>
+                <div>
+                  <div class="issue-title">Shared hook pattern — useAssetTypeFields(typeId)</div>
+                </div>
+              </div>
+              <p>Asset type field definitions are fetched individually by at least 5 screens. A cached hook would eliminate the duplicate network calls and ensure all screens see the same field definitions without out-of-sync state.</p>
+              <pre><code><span class="c-comment">// hooks/useAssetTypeFields.js</span>
+<span class="c-key">const</span> cache = <span class="c-key">new</span> Map();
+
+<span class="c-key">export function</span> <span class="c-orange">useAssetTypeFields</span>(typeId) {
+  <span class="c-key">const</span> [fields, setFields] = useState(cache.get(typeId) || []);
+  <span class="c-key">const</span> [loading, setLoading] = useState(!cache.has(typeId));
+
+  useEffect(() => {
+    <span class="c-key">if</span> (!typeId || cache.has(typeId)) <span class="c-key">return</span>;
+    api.get(`/assets/asset-types/${typeId}/fields`)
+      .then(data => { cache.set(typeId, data); setFields(data); })
+      .finally(() => setLoading(<span class="c-key">false</span>));
+  }, [typeId]);
+
+  <span class="c-key">return</span> { fields, loading };
+}</code></pre>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FRONTEND → BACKEND ─────────────────────────────────────── -->
+      <div class="audit-section sev-high" id="backend-frontend">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:#FEF3C7">🔄</div>
+          <div><h2>Move From Frontend → Backend</h2><p>Logic that belongs on the server</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+            <table class="audit-table">
+              <thead><tr><th>What</th><th>Currently in</th><th>Should be</th><th>Why</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>Task count calculation</strong></td>
+                  <td><code class="ic">utils/fetchTaskCount.js</code> (132 lines)</td>
+                  <td><code class="ic">GET /assets/tasks/count</code></td>
+                  <td>N+1 queries on client, runs on every device, no pagination</td>
+                </tr>
+                <tr>
+                  <td><strong>Pending sign-off filtering</strong></td>
+                  <td><code class="ic">fetchTaskCount.js</code> lines 53–58</td>
+                  <td><code class="ic">GET /assets/actions/pending-signoff?userId=X</code></td>
+                  <td>Filtering by user should be a SQL WHERE clause, not client array.filter()</td>
+                </tr>
+                <tr>
+                  <td><strong>User role / permission resolution</strong></td>
+                  <td>8+ components with inline role checks</td>
+                  <td><code class="ic">GET /users/me</code> returns <code class="ic">{ role, isAdmin, permissions }</code></td>
+                  <td>Single source of truth, no sync issues, no email heuristics</td>
+                </tr>
+                <tr>
+                  <td><strong>Asset field lead-day reminder logic</strong></td>
+                  <td><code class="ic">fetchTaskCount.js</code> lines 74–91</td>
+                  <td>Computed column or view in RDS</td>
+                  <td>Date arithmetic in SQL is faster, correct, and runs once</td>
+                </tr>
+                <tr>
+                  <td><strong>QR code format validation</strong></td>
+                  <td><code class="ic">check-in/[id].js</code> — regex check on scanned value</td>
+                  <td>Backend validates asset ID format in <code class="ic">GET /assets/:id</code></td>
+                  <td>Client regex can be bypassed; server should reject invalid IDs with 404</td>
+                </tr>
+                <tr>
+                  <td><strong>Algolia search indexing</strong></td>
+                  <td>Called directly from frontend config</td>
+                  <td>Write ops go through <code class="ic">POST /assets</code> → backend triggers Algolia index update</td>
+                  <td>Algolia write key must never be in the client. Read (search) key is fine on client.</td>
+                </tr>
+                <tr>
+                  <td><strong>Asset summary statistics</strong></td>
+                  <td>Dashboard aggregates locally from fetched list</td>
+                  <td><code class="ic">GET /assets/stats</code> returning counts by status</td>
+                  <td>Single SQL GROUP BY instead of JS .filter().length on every dashboard load</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── QUICK WINS ─────────────────────────────────────────────── -->
+      <div class="audit-section" id="quickwins" style="border-left:4px solid var(--green)">
+        <div class="section-head" onclick="toggle(this)">
+          <div class="section-icon" style="background:var(--green-l)">🎯</div>
+          <div><h2>Quick Wins — Fix This Week</h2><p>High impact, low effort</p></div>
+          <div class="section-toggle">▾</div>
+        </div>
+        <div class="section-body">
+          <div class="section-body-inner">
+            <ul class="fix-list" style="margin-top:0.5rem">
+              <li><span class="fix-arrow">🔴</span> <strong>Revoke Firebase service account key</strong> — takes 2 minutes in Firebase Console. Do this before anything else.</li>
+              <li><span class="fix-arrow">🔴</span> <strong>Add both JSON files to .gitignore</strong> — <code class="ic">assetmanager-dev-3a7cf-firebase-adminsdk-fbsvc-221bff9e42.json</code></li>
+              <li><span class="fix-arrow">🔴</span> <strong>Fix the double .json() bug in fetchTaskCount.js line 48</strong> — save to a variable first</li>
+              <li><span class="fix-arrow">🔴</span> <strong>Remove <code class="ic">|| 'development'</code> from the NODE_ENV check in auth.js</strong> — 5-character fix that removes the auth bypass risk</li>
+              <li><span class="fix-arrow">🟠</span> <strong>Create <code class="ic">inventory-api/lib/prisma.js</code> singleton</strong> — replace 15 <code class="ic">new PrismaClient()</code> calls — protects RDS connection pool</li>
+              <li><span class="fix-arrow">🟠</span> <strong>Add <code class="ic">NODE_ENV=production</code> to PM2 ecosystem.config.js</strong> — ensures production behaviour is explicit</li>
+              <li><span class="fix-arrow">🟠</span> <strong>Create <code class="ic">utils/apiClient.js</code></strong> — wrap fetch, add auth header + response.ok check in one place</li>
+              <li><span class="fix-arrow">🟡</span> <strong>Add <code class="ic">express-rate-limit</code></strong> to the API — 30-minute task, protects all endpoints</li>
+              <li><span class="fix-arrow">🟡</span> <strong>Replace all <code class="ic">console.log</code> with the logger utility</strong> — stops data leaking to production consoles</li>
+              <li><span class="fix-arrow">🟡</span> <strong>Add <code class="ic">ASSET_STATUS</code> constants</strong> — replace all magic strings in one pass</li>
+              <li><span class="fix-arrow">🟢</span> <strong>Create <code class="ic">GET /assets/tasks/count</code> backend endpoint</strong> — eliminates fetchTaskCount.js entirely</li>
+              <li><span class="fix-arrow">🟢</span> <strong>Add Zod validation to top 5 POST/PATCH endpoints</strong> — assets, users, assetTypes, check-in, transfer</li>
+              <li><span class="fix-arrow">🟢</span> <strong>Attach IAM role to EC2 instance</strong> — eliminate static AWS credentials from .env</li>
+              <li><span class="fix-arrow">🔵</span> <strong>Install Sentry (<code class="ic">@sentry/react-native</code>)</strong> — replace all empty catch blocks with real error reporting</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div style="background:var(--navy-d);padding:1.5rem 2rem;text-align:center;font-size:0.8rem;color:#374151;border-top:1px solid rgba(255,255,255,0.06);margin-top:2rem">
+  GearOps Code Audit — April 2026 · Reviewed by Solution Architect + Software Engineer pass across ~22,000 lines of frontend code and 5,000+ lines of backend code
+</div>
+
+<script>
+  function toggle(header) {
+    header.closest('.audit-section').classList.toggle('open');
+  }
+  // Open all by default
+  document.querySelectorAll('.audit-section').forEach(s => s.classList.add('open'));
+</script>
+</body>
+</html>

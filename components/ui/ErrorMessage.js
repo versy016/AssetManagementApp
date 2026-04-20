@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 export default function ErrorMessage({ error, visible }) {
     const theme = useTheme();
@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     text: {
         marginLeft: 8,
         flex: 1,
-        fontSize: 14,
+        fontSize: sf(14),
         fontWeight: '700',
     },
 });

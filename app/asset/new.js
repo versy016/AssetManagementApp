@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/assets/new.js
 import React, { useEffect, useState, useCallback, useRef, useContext } from 'react';
 import {
@@ -1165,7 +1166,7 @@ export default function NewAsset() {
   if (!isAdmin) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <Text style={{ fontSize: 16, marginBottom: 12 }}>Admin access required.</Text>
+        <Text style={{ fontSize: sf(16), marginBottom: 12 }}>Admin access required.</Text>
         <TouchableOpacity onPress={() => {
           if (normalizedReturnTo) { try { router.replace(String(normalizedReturnTo)); } catch { router.back(); } }
           else { router.replace('/Inventory'); }
@@ -1243,8 +1244,8 @@ export default function NewAsset() {
                       width: '100%',
                       alignItems: 'center',
                     }}>
-                      <Text style={{ fontSize: 12, color: Colors.sub, marginBottom: 6 }}>Selected Asset ID</Text>
-                      <Text style={{ fontSize: 24, fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
+                      <Text style={{ fontSize: sf(12), color: Colors.sub, marginBottom: 6 }}>Selected Asset ID</Text>
+                      <Text style={{ fontSize: sf(24), fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
                     </View>
                     <TouchableOpacity
                       style={[styles.btn, { backgroundColor: Colors.dangerBg, minWidth: 180 }]}
@@ -1271,13 +1272,13 @@ export default function NewAsset() {
                     paddingHorizontal: 16,
                     marginBottom: 10,
                   }}>
-                    <Text style={{ fontSize: 12, color: Colors.sub, marginBottom: 4 }}>Selected Asset ID</Text>
-                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
+                    <Text style={{ fontSize: sf(12), color: Colors.sub, marginBottom: 4 }}>Selected Asset ID</Text>
+                    <Text style={{ fontSize: sf(20), fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
                     <TouchableOpacity
                       onPress={() => { setId(''); setSearchTerm(''); setErrors(prev => ({ ...prev, id: undefined })); }}
                       style={{ marginTop: 8, alignSelf: 'flex-start' }}
                     >
-                      <Text style={{ color: Colors.dangerFg, fontWeight: '600', fontSize: 14 }}>Clear selection</Text>
+                      <Text style={{ color: Colors.dangerFg, fontWeight: '600', fontSize: sf(14) }}>Clear selection</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -1668,7 +1669,7 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
-  subtleLabel: { color: Colors.sub, fontSize: 12, marginTop: 6, fontWeight: '600' },
+  subtleLabel: { color: Colors.sub, fontSize: sf(12), marginTop: 6, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
   // Consistent width for media pickers (image/doc) so buttons look same size
@@ -1681,7 +1682,7 @@ const styles = StyleSheet.create({
   qrGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginVertical: 10 },
   qrCard: { width: '30%', backgroundColor: Colors.card, padding: 6, marginBottom: 10, alignItems: 'center', borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, ...CardShadow },
   qrCardSelected: { borderColor: Colors.successFg, borderWidth: 3, backgroundColor: Colors.successBg },
-  qrLabel: { marginTop: 4, fontSize: 10, fontWeight: '700', color: Colors.text },
+  qrLabel: { marginTop: 4, fontSize: sf(10), fontWeight: '700', color: Colors.text },
   qrToggle: { alignSelf: 'flex-end', marginBottom: 4 },
 
   // error styles
@@ -1719,7 +1720,7 @@ const styles = StyleSheet.create({
   },
   locSuggestItem: { paddingHorizontal: 12, paddingVertical: 8 },
   locSuggestMain: { color: Colors.text, fontWeight: '700' },
-  locSuggestSecondary: { color: Colors.sub, fontSize: 12 },
+  locSuggestSecondary: { color: Colors.sub, fontSize: sf(12) },
   locSuggestHint: { paddingHorizontal: 12, paddingVertical: 8, color: Colors.sub, fontStyle: 'italic' },
 
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },

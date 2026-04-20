@@ -26,7 +26,7 @@ import ShortcutManager from '../../utils/ShortcutManager';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
 import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Radius, Spacing, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
 
 const C = Colors; // shorthand
 
@@ -593,7 +593,7 @@ const s = StyleSheet.create({
     gap: 8,
   },
   heroGreeting: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     color: 'rgba(255,255,255,0.5)',
     letterSpacing: 1,
@@ -602,7 +602,7 @@ const s = StyleSheet.create({
   },
   heroTitle: {
     flex: 1,
-    fontSize: 22,
+    fontSize: sf(22),
     fontWeight: '900',
     textAlign: 'center',
     letterSpacing: 1,
@@ -621,7 +621,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  avatarText: { color: '#fff', fontSize: sf(13), fontWeight: '900' },
   heroStub: { width: 36, height: 36 },
 
   // Quick Actions
@@ -650,7 +650,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   actionLabel: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     color: C.text,
     textTransform: 'uppercase',
@@ -666,7 +666,7 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
   sectionLabel: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '800',
     color: C.sub2,
     letterSpacing: 1.4,
@@ -677,7 +677,7 @@ const s = StyleSheet.create({
   // Shortcuts
   shortcutsSection: { marginBottom: 24 },
   shortcutsHeading: {
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: '800',
     color: C.text,
     letterSpacing: -0.3,
@@ -694,7 +694,7 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
   },
   managePillText: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     color: C.accent,
     textTransform: 'uppercase',
@@ -710,8 +710,8 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
     gap: 6,
   },
-  shortcutsEmptyTitle: { fontSize: 16, fontWeight: '800', color: C.text },
-  shortcutsEmptySubtitle: { fontSize: 13, color: C.sub, textAlign: 'center' },
+  shortcutsEmptyTitle: { fontSize: sf(16), fontWeight: '800', color: C.text },
+  shortcutsEmptySubtitle: { fontSize: sf(13), color: C.sub, textAlign: 'center' },
   // Web horizontal pill cards (unchanged)
   shortcutCard: {
     paddingHorizontal: 16,
@@ -724,7 +724,7 @@ const s = StyleSheet.create({
     gap: 8,
     minWidth: 110,
   },
-  shortcutText: { fontSize: 13, fontWeight: '700' },
+  shortcutText: { fontSize: sf(13), fontWeight: '700' },
   shortcutAddCard: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -739,7 +739,7 @@ const s = StyleSheet.create({
     gap: 6,
     minWidth: 90,
   },
-  shortcutAddText: { fontSize: 11, color: C.accent, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  shortcutAddText: { fontSize: sf(11), color: C.accent, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
 
   // Mobile 3-column Bold Industrial grid
   shortcutGrid: {
@@ -769,7 +769,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   shortcutGridLabel: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
@@ -795,7 +795,7 @@ const s = StyleSheet.create({
   // Recent Activity
   activitySection: { marginTop: 4, marginBottom: 16 },
   activityEmpty: { alignItems: 'center', paddingVertical: 24, gap: 8 },
-  activityEmptyText: { fontSize: 13, color: C.sub2, fontWeight: '500' },
+  activityEmptyText: { fontSize: sf(13), color: C.sub2, fontWeight: '500' },
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -815,10 +815,10 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  activityTitle: { fontSize: 13, fontWeight: '700', color: C.text },
-  activitySub: { fontSize: 11, color: C.sub2, marginTop: 1 },
+  activityTitle: { fontSize: sf(13), fontWeight: '700', color: C.text },
+  activitySub: { fontSize: sf(11), color: C.sub2, marginTop: 1 },
   activityTime: {
-    fontSize: 10,
+    fontSize: sf(10),
     fontWeight: '700',
     color: C.sub2,
     textTransform: 'uppercase',
@@ -856,7 +856,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: Radius.sm,
   },
-  menuText: { fontSize: 14, fontWeight: '600', color: C.text },
+  menuText: { fontSize: sf(14), fontWeight: '600', color: C.text },
   menuDivider: { height: 1, backgroundColor: C.line, marginVertical: 4, marginHorizontal: 8 },
 
   // Colour Picker
@@ -877,8 +877,8 @@ const s = StyleSheet.create({
     backgroundColor: C.line,
     marginBottom: 16,
   },
-  cpTitle: { fontSize: 18, fontWeight: '900', color: C.text, textAlign: 'center', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-  cpSub: { fontSize: 13, color: C.sub, textAlign: 'center', marginBottom: 20 },
+  cpTitle: { fontSize: sf(18), fontWeight: '900', color: C.text, textAlign: 'center', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cpSub: { fontSize: sf(13), color: C.sub, textAlign: 'center', marginBottom: 20 },
   cpChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -888,7 +888,7 @@ const s = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1.5,
   },
-  cpChipLabel: { fontSize: 13, fontWeight: '700' },
+  cpChipLabel: { fontSize: sf(13), fontWeight: '700' },
   cpToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -903,7 +903,7 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
   cpToggleActive: { backgroundColor: C.accent, borderColor: C.accent },
-  cpToggleText: { fontSize: 13, fontWeight: '700', color: C.accent },
+  cpToggleText: { fontSize: sf(13), fontWeight: '700', color: C.accent },
   cpSwatchGrid: { flexDirection: 'row', justifyContent: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 28 },
   cpSwatch: {
     width: 60,
@@ -917,14 +917,14 @@ const s = StyleSheet.create({
   },
   cpSwatchDot: { width: 24, height: 24, borderRadius: 12 },
   cpSwatchCheck: { position: 'absolute', top: 4, right: 4 },
-  cpSwatchName: { fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  cpSwatchName: { fontSize: sf(9), fontWeight: '700', textAlign: 'center' },
   cpDoneBtn: {
     backgroundColor: C.primary,
     borderRadius: Radius.md,
     paddingVertical: 15,
     alignItems: 'center',
   },
-  cpDoneBtnText: { color: '#fff', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  cpDoneBtnText: { color: '#fff', fontSize: sf(14), fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
 
 export default Dashboard;

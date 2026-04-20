@@ -1,3 +1,4 @@
+import { sf } from '../constants/uiTheme.js';
 // app/theme-preview.js - Theme Preview and Switcher
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
@@ -232,13 +233,13 @@ const styles = StyleSheet.create({
         borderColor: '#E5E7EB',
     },
     title: {
-        fontSize: 32,
+        fontSize: sf(32),
         fontWeight: '800',
         color: '#111827',
         marginBottom: 4,
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: sf(16),
         color: '#6B7280',
     },
     themesContainer: {
@@ -263,13 +264,13 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     themeName: {
-        fontSize: 20,
+        fontSize: sf(20),
         fontWeight: '700',
         color: '#111827',
         marginBottom: 4,
     },
     themeDescription: {
-        fontSize: 14,
+        fontSize: sf(14),
         color: '#6B7280',
     },
     selectButton: {
@@ -281,7 +282,7 @@ const styles = StyleSheet.create({
         borderColor: '#E5E7EB',
     },
     selectButtonText: {
-        fontSize: 14,
+        fontSize: sf(14),
         fontWeight: '700',
         color: '#374151',
     },
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
         paddingRight: 8,
     },
     brand: {
-        fontSize: 18,
+        fontSize: sf(18),
         fontWeight: '800',
     },
     navCenter: {
@@ -330,12 +331,12 @@ const styles = StyleSheet.create({
     },
     navText: {
         fontWeight: '700',
-        fontSize: 14,
+        fontSize: sf(14),
         color: '#64748B',
     },
     navTextActive: {
         fontWeight: '700',
-        fontSize: 14,
+        fontSize: sf(14),
     },
     logoutButton: {
         paddingVertical: 8,
@@ -345,7 +346,7 @@ const styles = StyleSheet.create({
     },
     logoutText: {
         fontWeight: '700',
-        fontSize: 14,
+        fontSize: sf(14),
     },
     colorPalette: {
         flexDirection: 'row',
@@ -364,7 +365,7 @@ const styles = StyleSheet.create({
         borderColor: '#E5E7EB',
     },
     colorLabel: {
-        fontSize: 12,
+        fontSize: sf(12),
         color: '#6B7280',
         fontWeight: '600',
     },
@@ -377,7 +378,7 @@ const styles = StyleSheet.create({
         borderColor: '#E5E7EB',
     },
     footerText: {
-        fontSize: 16,
+        fontSize: sf(16),
         color: '#374151',
         marginBottom: 8,
     },
@@ -386,11 +387,11 @@ const styles = StyleSheet.create({
         color: '#111827',
     },
     footerHint: {
-        fontSize: 14,
+        fontSize: sf(14),
         color: '#6B7280',
     },
     mobileMessage: {
-        fontSize: 16,
+        fontSize: sf(16),
         color: '#6B7280',
         textAlign: 'center',
         marginTop: 40,

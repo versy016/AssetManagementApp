@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Alert, Dimensions, Platform } from 'react-native';
 import { Camera, CameraType } from 'expo-camera';
-import { Colors, Radius } from '../constants/uiTheme';
+import { Colors, Radius, sf } from '../constants/uiTheme';
 
 // A pure QRScanner component that accepts a callback
 export default function QRScanner({ onScanned }) {
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   },
   message: {
     color: Colors.primaryLight,
-    fontSize: 16,
+    fontSize: sf(16),
   },
   container: {
     flex: 1,
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '700',
     textTransform: 'uppercase',
   },

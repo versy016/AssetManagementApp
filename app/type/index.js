@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // app/type/index.js - Simple placeholder to satisfy Expo Router
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -66,13 +67,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: sf(24),
     fontWeight: '900',
     color: Colors.primaryDark,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
     textAlign: 'center',
     marginBottom: 24,
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: Colors.card,
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '800',
   },
   secondaryButton: {

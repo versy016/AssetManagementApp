@@ -16,7 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 export default function QuickNoteScreen() {
@@ -221,16 +221,16 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   assetTitle: {
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: '900',
     color: Colors.text,
   },
   assetMeta: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
   },
   label: {
-    fontSize: 14,
+    fontSize: sf(14),
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 8,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     borderRadius: Radius.md,
     padding: 14,
-    fontSize: 16,
+    fontSize: sf(16),
     color: Colors.text,
     minHeight: 120,
     textAlignVertical: 'top',
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     color: Colors.card,
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '900',
   },
 });

@@ -17,7 +17,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { BlurView } from 'expo-blur';
@@ -1425,7 +1425,7 @@ export default function TasksScreen() {
             >
             <Text
               style={{
-                fontSize: 18,
+                fontSize: sf(18),
                 fontWeight: '900',
                 marginBottom: 8,
               }}
@@ -1440,7 +1440,7 @@ export default function TasksScreen() {
 
             {actionTask?.kind === 'signoff' && (
               <View style={{ marginBottom: 20, alignItems: 'center' }}>
-                <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 10, fontWeight: '600' }}>Work photo(s)</Text>
+                <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 10, fontWeight: '600' }}>Work photo(s)</Text>
                 {Array.isArray(actionTask?.actionImages) && actionTask.actionImages.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', justifyContent: 'center' }}>
                     {actionTask.actionImages.map((url, idx) => (
@@ -1448,7 +1448,7 @@ export default function TasksScreen() {
                     ))}
                   </ScrollView>
                 ) : (
-                  <Text style={{ color: '#9CA3AF', fontSize: 13 }}>No work photos attached</Text>
+                  <Text style={{ color: '#9CA3AF', fontSize: sf(13) }}>No work photos attached</Text>
                 )}
               </View>
             )}
@@ -1459,7 +1459,7 @@ export default function TasksScreen() {
                   <Text
                     style={{
                       color: '#6B7280',
-                      fontSize: 12,
+                      fontSize: sf(12),
                       marginBottom: 6,
                     }}
                   >
@@ -1525,7 +1525,7 @@ export default function TasksScreen() {
                         <Text
                           style={{
                             color: '#6B7280',
-                            fontSize: 12,
+                            fontSize: sf(12),
                             marginBottom: 6,
                           }}
                         >
@@ -1585,7 +1585,7 @@ export default function TasksScreen() {
                       <Text
                         style={{
                           color: '#6B7280',
-                          fontSize: 12,
+                          fontSize: sf(12),
                           marginBottom: 6,
                         }}
                       >
@@ -1655,7 +1655,7 @@ export default function TasksScreen() {
                         <Text
                           style={{
                             marginTop: 4,
-                            fontSize: 12,
+                            fontSize: sf(12),
                             color: '#6B7280',
                           }}
                         >
@@ -1668,7 +1668,7 @@ export default function TasksScreen() {
                 {signoffChoice === 'yes' && (
                   <>
                     <View style={{ marginTop: 10 }}>
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>
                         {actionDocSlug
                           ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
                           : 'Other relevant document (optional)'}
@@ -1717,7 +1717,7 @@ export default function TasksScreen() {
                       </View>
                     </View>
                     <View style={{ marginTop: 10 }}>
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>
                         Other relevant document name
                       </Text>
                       <TextInput
@@ -1727,7 +1727,7 @@ export default function TasksScreen() {
                         onChangeText={setRelevantDocName}
                         style={{
                           height: 36,
-                          fontSize: 14,
+                          fontSize: sf(14),
                           borderWidth: 1,
                           borderColor: '#E5E7EB',
                           borderRadius: 8,
@@ -1739,7 +1739,7 @@ export default function TasksScreen() {
                       />
                     </View>
                     <View style={{ marginTop: 14 }}>
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>Photo (optional)</Text>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Photo (optional)</Text>
                       <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                         {Platform.OS !== 'web' && (
                           <TouchableOpacity
@@ -1801,7 +1801,7 @@ export default function TasksScreen() {
                   <Text
                     style={{
                       color: '#6B7280',
-                      fontSize: 12,
+                      fontSize: sf(12),
                       marginBottom: 6,
                     }}
                   >
@@ -1850,7 +1850,7 @@ export default function TasksScreen() {
               <Text
                 style={{
                   color: '#6B7280',
-                  fontSize: 12,
+                  fontSize: sf(12),
                   marginBottom: 6,
                 }}
               >
@@ -1879,7 +1879,7 @@ export default function TasksScreen() {
                   onPress={() => Keyboard.dismiss()}
                   style={{ alignSelf: 'flex-end', marginTop: 4 }}
                 >
-                  <Text style={{ fontSize: 12, color: '#2563EB', fontWeight: '600' }}>
+                  <Text style={{ fontSize: sf(12), color: '#2563EB', fontWeight: '600' }}>
                     Hide keyboard
                   </Text>
                 </TouchableOpacity>
@@ -1889,7 +1889,7 @@ export default function TasksScreen() {
             {actionTask?.kind !== 'signoff' ? (
               <>
             <View style={{ marginTop: 10 }}>
-              <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>
+              <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>
                 {actionDocSlug
                   ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
                   : 'Other relevant document (optional)'}
@@ -1954,7 +1954,7 @@ export default function TasksScreen() {
             </View>
 
             <View style={{ marginTop: 14 }}>
-              <Text style={{ color: '#6B7280', fontSize: 12, marginBottom: 6 }}>Photo (optional)</Text>
+              <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Photo (optional)</Text>
               <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 {Platform.OS !== 'web' && (
                   <TouchableOpacity
@@ -2095,7 +2095,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.line,
   },
-  menuText: { fontSize: 16, color: Colors.text },
+  menuText: { fontSize: sf(16), color: Colors.text },
   btn: {
     flex: 1,
     borderRadius: Radius.md,
@@ -2116,7 +2116,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: '900',
     color: Colors.primary,
     letterSpacing: 0.4,
@@ -2133,7 +2133,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     gap: 5,
   },
-  tasksHeaderChipText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+  tasksHeaderChipText: { fontSize: sf(12), fontWeight: '800', color: Colors.primary },
 
   // ── Task card ──────────────────────────────────────────────────
   taskCard: {
@@ -2170,7 +2170,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     gap: 5,
   },
-  statusChipText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  statusChipText: { fontSize: sf(11), fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
   duePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2182,7 +2182,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     gap: 5,
   },
-  duePillText: { fontSize: 12, fontWeight: '600', color: Colors.text },
+  duePillText: { fontSize: sf(12), fontWeight: '600', color: Colors.text },
   taskMainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 10 },
   taskAssetThumb: {
     width: 52,
@@ -2202,9 +2202,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  taskAssetTitle: { fontSize: 15, fontWeight: '800', color: Colors.text },
-  taskAssetSerial: { fontSize: 12, color: Colors.sub, marginTop: 2, fontWeight: '600' },
-  taskTitle: { fontSize: 13, fontWeight: '700', color: Colors.accent, marginTop: 4 },
+  taskAssetTitle: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  taskAssetSerial: { fontSize: sf(12), color: Colors.sub, marginTop: 2, fontWeight: '600' },
+  taskTitle: { fontSize: sf(13), fontWeight: '700', color: Colors.accent, marginTop: 4 },
   taskFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2224,7 +2224,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     gap: 4,
   },
-  smallTagText: { fontSize: 11, fontWeight: '700' },
+  smallTagText: { fontSize: sf(11), fontWeight: '700' },
   toDoButton: {
     backgroundColor: Colors.accent,
     paddingVertical: 8,
@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   toDoButtonSignoff: { backgroundColor: Colors.primary },
-  toDoButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  toDoButtonText: { color: '#fff', fontWeight: '800', fontSize: sf(13) },
 
   // ── Filter chips ───────────────────────────────────────────────
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 4 },
@@ -2264,7 +2264,7 @@ const styles = StyleSheet.create({
   },
   subTabActive: { borderBottomColor: Colors.accent },
   subTabText: {
-    fontSize: 12,
+    fontSize: sf(12),
     fontWeight: '800',
     color: Colors.sub2,
     textTransform: 'uppercase',
@@ -2293,8 +2293,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hireCardEquipCol: { flex: 1 },
-  hireCardEquip: { fontSize: 15, fontWeight: '800', color: Colors.text },
-  hireCardSerial: { fontSize: 12, color: Colors.sub, marginTop: 2, fontWeight: '600' },
+  hireCardEquip: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  hireCardSerial: { fontSize: sf(12), color: Colors.sub, marginTop: 2, fontWeight: '600' },
   hireStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2306,22 +2306,22 @@ const styles = StyleSheet.create({
   },
   hireStatusSigned: { backgroundColor: Colors.successBg, borderColor: Colors.successBorder },
   hireStatusPending: { backgroundColor: Colors.warningBg, borderColor: Colors.warningBorder },
-  hireStatusText: { fontSize: 11, fontWeight: '800' },
+  hireStatusText: { fontSize: sf(11), fontWeight: '800' },
   hireCardDivider: { height: 2, backgroundColor: Colors.line, marginVertical: 10 },
   hireCardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   hireCardRowIcon: { marginRight: 8 },
-  hireCardValue: { fontSize: 13, color: Colors.text, fontWeight: '600', flex: 1 },
+  hireCardValue: { fontSize: sf(13), color: Colors.text, fontWeight: '600', flex: 1 },
   hireDatesRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   hireDateBlock: { flex: 1 },
   hireDateLabel: {
-    fontSize: 10,
+    fontSize: sf(10),
     fontWeight: '800',
     color: Colors.sub2,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
-  hireDateValue: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  hireDateValue: { fontSize: sf(14), fontWeight: '700', color: Colors.text },
   hireCardTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2330,5 +2330,5 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: Colors.line,
   },
-  hireCardTag: { fontSize: 12, color: Colors.sub, fontWeight: '600', flex: 1 },
+  hireCardTag: { fontSize: sf(12), color: Colors.sub, fontWeight: '600', flex: 1 },
 });

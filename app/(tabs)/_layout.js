@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // _layout.js - Tab navigation layout — Bold Industrial design
 import { Tabs } from 'expo-router';
 import { Platform, View, Text, StyleSheet } from 'react-native';
@@ -30,7 +31,7 @@ export default function TabsLayout() {
               paddingTop: 6,
             },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: sf(10),
           fontWeight: '700',
           letterSpacing: 0.3,
           textTransform: 'uppercase',
@@ -66,7 +67,7 @@ export default function TabsLayout() {
           tabBarBadgeStyle: {
             backgroundColor: '#EA580C',
             color: '#FFFFFF',
-            fontSize: 10,
+            fontSize: sf(10),
             fontWeight: '800',
             minWidth: 18,
             height: 18,

@@ -1,7 +1,7 @@
 // components/ui/PageHeader.js
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Colors, FontWeights } from '../../constants/uiTheme';
+import { Colors, FontWeights, sf } from '../../constants/uiTheme';
 
 export default function PageHeader({ title, left = null, right = null, style }) {
   return (
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    fontSize: 22,
+    fontSize: sf(22),
     fontWeight: FontWeights.black,
     color: Colors.text,
     flex: 1,

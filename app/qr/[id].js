@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // QRActionScreen: Handles asset check-in/check-out by scanning a QR code
 // Allows users to check assets in and out by updating their status in the backend
 
@@ -197,12 +198,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: sf(24),
     fontWeight: 'bold',
     marginBottom: 12,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: sf(16),
     marginBottom: 6,
   },
 });

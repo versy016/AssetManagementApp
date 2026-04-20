@@ -6,7 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 
 export default function ActivityScreen() {
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
   filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.sm },
   filterBtnText: { color: Colors.primary, fontWeight: '800' },
   badge: { marginLeft: 4, backgroundColor: Colors.accent, borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { color: '#fff', fontWeight: '900', fontSize: 10 },
+  badgeText: { color: '#fff', fontWeight: '900', fontSize: sf(10) },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.card,
@@ -495,19 +495,19 @@ const styles = StyleSheet.create({
   thumb: { width: 52, height: 52, borderRadius: Radius.sm, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { color: Colors.text, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 14 },
+  title: { color: Colors.text, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase', fontSize: sf(14) },
   strong: { fontWeight: '800', color: Colors.primary },
   assetName: { color: Colors.text, fontWeight: '700', marginTop: 2 },
   sub: { color: Colors.sub },
   noteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   noteLine: { color: Colors.sub, flex: 1 },
-  when: { color: Colors.sub2, marginTop: 8, fontSize: 12 },
+  when: { color: Colors.sub2, marginTop: 8, fontSize: sf(12) },
   pill: { borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm },
-  pillText: { color: Colors.primary, fontWeight: '800', fontSize: 11 },
+  pillText: { color: Colors.primary, fontWeight: '800', fontSize: sf(11) },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   transferRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm },
-  chipText: { fontSize: 12, color: Colors.primary },
+  chipText: { fontSize: sf(12), color: Colors.primary },
   chipTextStrong: { fontWeight: '800' },
   chipPrimary: { backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: Colors.accent },
   chipMuted: { backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line },
@@ -834,7 +834,7 @@ const mStyles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.2)' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: Colors.card, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg, padding: 16, gap: 10 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { color: Colors.text, fontWeight: '900', fontSize: 18, textTransform: 'uppercase' },
+  title: { color: Colors.text, fontWeight: '900', fontSize: sf(18), textTransform: 'uppercase' },
   label: { color: Colors.sub, fontWeight: '800', marginTop: 6, marginBottom: 6, textTransform: 'uppercase' },
   smallLabel: { color: Colors.sub, fontWeight: '700', marginBottom: 4 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 const DEFAULT_SIZES = [25, 50, 100, 'All'];
 
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   label: {
-    fontSize: 12,
+    fontSize: sf(12),
     color: Colors.sub,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
   },
   sizeBtnText: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     fontWeight: '700',
   },
@@ -151,13 +151,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   countPrimary: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.text,
     fontWeight: '900',
     lineHeight: 19,
   },
   countSecondary: {
-    fontSize: 12,
+    fontSize: sf(12),
     color: Colors.sub2,
     fontWeight: '600',
     lineHeight: 16,

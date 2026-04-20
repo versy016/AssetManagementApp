@@ -17,7 +17,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { formatDisplayDateLong } from '../utils/date';
 import {
   ALGOLIA_INDEX_CLIENTS,
@@ -1239,14 +1239,14 @@ const styles = StyleSheet.create({
     }),
   },
   title: {
-    fontSize: 24,
+    fontSize: sf(24),
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
     marginBottom: 28,
     textAlign: 'center',
@@ -1263,7 +1263,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: sf(15),
     fontWeight: '700',
     color: Colors.accent,
     marginBottom: 12,
@@ -1293,7 +1293,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   choiceChipText: {
-    fontSize: 14,
+    fontSize: sf(14),
     fontWeight: '600',
     color: Colors.sub,
     textAlign: 'center',
@@ -1302,7 +1302,7 @@ const styles = StyleSheet.create({
     color: Colors.accentDark,
     fontWeight: '700',
   },
-  label: { fontSize: 13, fontWeight: '600', color: Colors.text, marginBottom: 4 },
+  label: { fontSize: sf(13), fontWeight: '600', color: Colors.text, marginBottom: 4 },
   requiredStar: { color: Colors.dangerFg },
   input: {
     backgroundColor: Colors.card,
@@ -1311,7 +1311,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: sf(15),
     color: Colors.text,
     minHeight: 46,
   },
@@ -1326,7 +1326,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   ratePrefix: {
-    fontSize: 15,
+    fontSize: sf(15),
     fontWeight: '700',
     color: Colors.text,
     paddingHorizontal: 12,
@@ -1386,21 +1386,21 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   algoliaEmptyTitle: {
-    fontSize: 14,
+    fontSize: sf(14),
     fontWeight: '700',
     color: Colors.text,
     marginBottom: 6,
   },
   algoliaEmptySub: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     lineHeight: 18,
   },
   suggestItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  suggestMain: { fontSize: 14, color: Colors.text },
+  suggestMain: { fontSize: sf(14), color: Colors.text },
   suggestLoading: { position: 'absolute', right: 12, top: 38 },
-  suggestHint: { fontSize: 12, color: Colors.sub, marginTop: 4 },
-  fieldError: { fontSize: 12, color: Colors.dangerFg, marginTop: 4, marginBottom: 4 },
+  suggestHint: { fontSize: sf(12), color: Colors.sub, marginTop: 4 },
+  fieldError: { fontSize: sf(12), color: Colors.dangerFg, marginTop: 4, marginBottom: 4 },
   ratePeriodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
   chip: {
     paddingHorizontal: 16,
@@ -1411,7 +1411,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
   },
   chipActive: { backgroundColor: Colors.accentMuted, borderColor: Colors.accent },
-  chipText: { fontSize: 14, fontWeight: '600', color: Colors.sub },
+  chipText: { fontSize: sf(14), fontWeight: '600', color: Colors.sub },
   chipTextActive: { color: Colors.accentDark, fontWeight: '700' },
   assetSuggestBox: {
     marginTop: 4,
@@ -1429,8 +1429,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
   },
-  assetSuggestMain: { fontSize: 14, fontWeight: '600', color: Colors.text },
-  assetSuggestSub: { fontSize: 12, color: Colors.sub },
+  assetSuggestMain: { fontSize: sf(14), fontWeight: '600', color: Colors.text },
+  assetSuggestSub: { fontSize: sf(12), color: Colors.sub },
   equipmentActionsRow: {
     marginTop: 8,
     marginBottom: 8,
@@ -1450,7 +1450,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
     borderWidth: 2,
   },
-  equipmentAddText: { fontSize: 12, fontWeight: '600', color: Colors.accent },
+  equipmentAddText: { fontSize: sf(12), fontWeight: '600', color: Colors.accent },
   equipmentAddTextHighlighted: { color: Colors.accentDark, fontWeight: '700' },
   equipmentList: { marginTop: 4, gap: 6 },
   equipmentItem: {
@@ -1465,8 +1465,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     gap: 8,
   },
-  equipmentItemTitle: { fontSize: 13, fontWeight: '700', color: Colors.text },
-  equipmentItemSub: { fontSize: 12, color: Colors.sub, marginTop: 2 },
+  equipmentItemTitle: { fontSize: sf(13), fontWeight: '700', color: Colors.text },
+  equipmentItemSub: { fontSize: sf(12), color: Colors.sub, marginTop: 2 },
   equipmentRemoveBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1475,7 +1475,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.dangerFg,
     backgroundColor: Colors.dangerBg,
   },
-  equipmentRemoveText: { fontSize: 11, fontWeight: '700', color: Colors.dangerFg },
+  equipmentRemoveText: { fontSize: sf(11), fontWeight: '700', color: Colors.dangerFg },
   exportBtn: {
     marginTop: 12,
     backgroundColor: Colors.accent,
@@ -1496,7 +1496,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 50,
   },
-  exportBtnSecondaryText: { fontSize: 15, fontWeight: '700', color: Colors.accent, textTransform: 'uppercase' },
+  exportBtnSecondaryText: { fontSize: sf(15), fontWeight: '700', color: Colors.accent, textTransform: 'uppercase' },
   exportBtnShare: {
     marginTop: 12,
     backgroundColor: Colors.primary,
@@ -1509,8 +1509,8 @@ const styles = StyleSheet.create({
   exportBtnShareDisabledDs: { backgroundColor: Colors.sub },
   exportBtnSecondaryDisabled: { borderColor: Colors.sub2, opacity: 0.75 },
   sendBtnInner: { alignItems: 'center', gap: 3 },
-  sendBtnNote: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
-  sendBtnNote2: { fontSize: 11, color: Colors.sub, fontWeight: '600', marginTop: 2 },
+  sendBtnNote: { fontSize: sf(11), color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  sendBtnNote2: { fontSize: sf(11), color: Colors.sub, fontWeight: '600', marginTop: 2 },
   exportBtnDisabled: { opacity: 0.7 },
-  exportBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
+  exportBtnText: { fontSize: sf(16), fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
 });

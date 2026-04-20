@@ -13,7 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { auth } from '../../firebaseConfig';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import AppTextInput from '../../components/ui/AppTextInput';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { captureLastScannedLocation } from '../../utils/location';
 
@@ -235,9 +235,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     ...Shadows.card,
   },
-  assetTitle: { fontSize: 18, fontWeight: '900', color: Colors.text },
-  assetSubtitle: { fontSize: 14, color: Colors.sub, marginTop: 4 },
-  assetDetail: { fontSize: 13, color: Colors.sub, marginTop: 6 },
+  assetTitle: { fontSize: sf(18), fontWeight: '900', color: Colors.text },
+  assetSubtitle: { fontSize: sf(14), color: Colors.sub, marginTop: 4 },
+  assetDetail: { fontSize: sf(13), color: Colors.sub, marginTop: 6 },
   searchBox: { marginBottom: 12 },
   userRow: {
     flexDirection: 'row',
@@ -247,8 +247,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
     gap: 12,
   },
-  userName: { fontSize: 15, fontWeight: '800', color: Colors.text },
-  userEmail: { fontSize: 13, color: Colors.sub },
+  userName: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  userEmail: { fontSize: sf(13), color: Colors.sub },
   transferBtn: {
     color: Colors.accent,
     fontWeight: '800',

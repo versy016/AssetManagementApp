@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import HireDashboard from './HireDashboard';
 import HireDisclaimerForm from './HireDisclaimerForm';
 import ScreenHeader from './ui/ScreenHeader';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 
 export default function HireView() {
   const [showForm, setShowForm] = useState(false);
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   topButtonText: {
-    fontSize: 13,
+    fontSize: sf(13),
     fontWeight: '700',
     color: '#FFF',
     textTransform: 'uppercase',

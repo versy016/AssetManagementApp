@@ -2,7 +2,7 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights, sf } from '../../constants/uiTheme';
 
 export default function Chip({ label, active, onPress, icon, style, textStyle, tone = 'default' }) {
   const palette = makePalette(tone, active);
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
   },
   text: {
     fontWeight: FontWeights.bold,
-    fontSize: 12,
+    fontSize: sf(12),
     letterSpacing: 0.5,
   },
 });

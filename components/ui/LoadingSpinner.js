@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/uiTheme';
+import { Colors, sf } from '../../constants/uiTheme';
 
 /**
  * Centered loading spinner with optional label.
@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   label: {
     marginTop: 12,
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
   },
 });

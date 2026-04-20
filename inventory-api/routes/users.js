@@ -6,8 +6,8 @@ const path = require('path');
 const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
+const logger = require('../lib/logger');
 const apiConfig = require('../config');
 const { authRequired, adminOnly, ensureAdminInit } = require('../middleware/auth');
 
@@ -485,7 +485,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
         doc.pipe(stream);
 
         if (!useAvery65) {
-          doc.fontSize(10).text(`Asset QR Sheet (${batch.length} codes) — Page ${p + 1} of ${pages}`, { align: 'center' });
+          doc.fontSize(10).text(`Asset QR Sheet (${batch.length} codes) -- Page ${p + 1} of ${pages}`, { align: 'center' });
           doc.moveDown(0.3);
         }
 
@@ -557,9 +557,9 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
  * Returns: Excel file with ID and QR Code columns
  */
 router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
-  console.log('[Excel] Request received, body:', req.body);
+  logger.log('[Excel] Request received, body:', req.body);
   const count = Math.min(Math.max(Number(req.body?.count || 1), 1), 2000); // 1..2000 limit
-  console.log('[Excel] Processing count:', count);
+  logger.log('[Excel] Processing count:', count);
 
   // Where should the /check-in link point?
   const base =
@@ -595,10 +595,10 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
   const used = new Set();
 
   try {
-    console.log('[Excel] Starting QR code generation for', count, 'codes');
+    logger.log('[Excel] Starting QR code generation for', count, 'codes');
     // Generate QR codes
     for (let i = 0; i < count; i += 1) {
-      if (i % 10 === 0) console.log(`[Excel] Generated ${i}/${count} QR codes...`);
+      if (i % 10 === 0) logger.log(`[Excel] Generated ${i}/${count} QR codes...`);
       // Ensure unique id
       let id;
       // eslint-disable-next-line no-constant-condition
@@ -649,7 +649,7 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
       codes.push({ id, pngPath: path.join(QR_DIR, `${id}.png`) });
     }
 
-    console.log('[Excel] Creating Excel workbook with', codes.length, 'codes');
+    logger.log('[Excel] Creating Excel workbook with', codes.length, 'codes');
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('QR Codes');
@@ -709,13 +709,13 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
     const filePath = path.join(SHEETS_DIR, filename);
 
     // Write Excel file
-    console.log('[Excel] Writing Excel file to:', filePath);
+    logger.log('[Excel] Writing Excel file to:', filePath);
     await workbook.xlsx.writeFile(filePath);
-    console.log('[Excel] Excel file written successfully');
+    logger.log('[Excel] Excel file written successfully');
 
     // Return file URL
     const fileUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
-    console.log('[Excel] Returning file URL:', fileUrl);
+    logger.log('[Excel] Returning file URL:', fileUrl);
 
     return res.json({
       success: true,
@@ -854,18 +854,18 @@ router.get('/qr/sheets', async (req, res) => {
     const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
     const SHEETS_DIR = path.join(QR_DIR, 'sheets');
 
-    console.log('[Sheets] SHEETS_DIR:', SHEETS_DIR);
-    console.log('[Sheets] Directory exists:', fs.existsSync(SHEETS_DIR));
+    logger.log('[Sheets] SHEETS_DIR:', SHEETS_DIR);
+    logger.log('[Sheets] Directory exists:', fs.existsSync(SHEETS_DIR));
 
     if (!fs.existsSync(SHEETS_DIR)) {
-      console.log('[Sheets] Directory does not exist, returning empty');
+      logger.log('[Sheets] Directory does not exist, returning empty');
       return res.json({ count: 0, sheets: [] });
     }
 
     const allFiles = fs.readdirSync(SHEETS_DIR);
-    console.log('[Sheets] All files in directory:', allFiles);
+    logger.log('[Sheets] All files in directory:', allFiles);
     const files = allFiles.filter((f) => /\.(pdf|docx|xlsx)$/i.test(f));
-    console.log('[Sheets] Filtered files (pdf|docx|xlsx):', files);
+    logger.log('[Sheets] Filtered files (pdf|docx|xlsx):', files);
     const items = files.map((name) => {
       const full = path.join(SHEETS_DIR, name);
       const st = fs.statSync(full);
@@ -878,7 +878,7 @@ router.get('/qr/sheets', async (req, res) => {
     });
 
     items.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
-    console.log('[Sheets] Returning', items.length, 'items');
+    logger.log('[Sheets] Returning', items.length, 'items');
     return res.json({ count: items.length, sheets: items });
   } catch (e) {
     console.error('[Sheets] List sheets failed:', e);

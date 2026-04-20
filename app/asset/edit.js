@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch, Image, Modal, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -922,15 +923,15 @@ const styles = StyleSheet.create({
   btnLg: { minHeight: 48, borderRadius: Radius.lg, paddingVertical: 14 },
   submit: { backgroundColor: Colors.primary },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },
-  btnTextPrimary: { color: Colors.card, fontWeight: '800', fontSize: 16 },
-  headerId: { fontSize: 12, fontWeight: '700', color: Colors.sub },
+  btnTextPrimary: { color: Colors.card, fontWeight: '800', fontSize: sf(16) },
+  headerId: { fontSize: sf(12), fontWeight: '700', color: Colors.sub },
   dropdown: { borderColor: Colors.line, marginBottom: 16, borderWidth: 2, borderRadius: Radius.sm },
   dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.sm },
   errorBelow: { marginTop: 4, color: Colors.dangerFg, fontWeight: '600' },
   // Disabled visuals for locked fields
   disabledField: { backgroundColor: Colors.chip, borderColor: Colors.line, borderWidth: 2, borderRadius: Radius.sm, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}) },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  lockText: { color: Colors.sub2, fontSize: 12, fontWeight: '700' },
+  lockText: { color: Colors.sub2, fontSize: sf(12), fontWeight: '700' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },
   progressBar: { width: 260, height: 8, borderRadius: Radius.sm, backgroundColor: Colors.chip, marginTop: 8, overflow: 'hidden' },
   progressFill: { height: 8, backgroundColor: Colors.accent, borderRadius: Radius.sm },

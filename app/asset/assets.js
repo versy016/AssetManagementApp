@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/assets.js — Screen showing assets assigned to the current user
 
 import React, { useEffect, useState } from 'react';
@@ -135,6 +136,6 @@ const styles = StyleSheet.create({
   },
   image: { width: 50, height: 50, borderRadius: Radius.sm, marginRight: 10, backgroundColor: Colors.chip },
   info: { flex: 1, justifyContent: 'center' },
-  name: { fontWeight: '900', fontSize: 16, color: Colors.text },
-  serial: { fontSize: 14, color: Colors.sub, marginTop: 2, fontWeight: '600' },
+  name: { fontWeight: '900', fontSize: sf(16), color: Colors.text },
+  serial: { fontSize: sf(14), color: Colors.sub, marginTop: 2, fontWeight: '600' },
 });

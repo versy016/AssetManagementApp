@@ -4,6 +4,7 @@ const router = express.Router();
 
 const AWS = require('aws-sdk');
 const multer = require('multer');
+const prisma = require('../lib/prisma');
 
 const ctrl = require('../controllers/assetTypes.controller');
 
@@ -62,8 +63,6 @@ router.put('/:id', authRequired, adminOnly, (req, res, next) => {
         if (name !== undefined) patch.name = String(name).trim();
         if (image_url !== undefined) patch.image_url = image_url || null;
 
-        const { PrismaClient } = require('../generated/prisma');
-        const prisma = new PrismaClient();
         if (!Object.keys(patch).length) {
           return res.status(400).json({ status: 'error', message: 'No fields to update' });
         }

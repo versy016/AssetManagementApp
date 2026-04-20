@@ -35,7 +35,7 @@ import {
   prettyStatus,
   statusToColor,
 } from '../../components/ui/StatusBadge';
-import { Colors, Radius, Spacing, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
@@ -785,7 +785,7 @@ const Inventory = () => {
                     style={{
                       color: focused ? Colors.text : Colors.sub2,
                       fontWeight: focused ? '800' : 'normal',
-                      fontSize: 14,
+                      fontSize: sf(14),
                     }}
                   >
                     {route.title}
@@ -933,7 +933,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  filterBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  filterBadgeText: { color: '#fff', fontSize: sf(10), fontWeight: '700' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -953,9 +953,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  filterSheetTitle: { fontSize: 18, fontWeight: '900', color: Colors.text, textTransform: 'uppercase' },
+  filterSheetTitle: { fontSize: sf(18), fontWeight: '900', color: Colors.text, textTransform: 'uppercase' },
   filterSheetScroll: { maxHeight: 320 },
-  filterGroupTitle: { fontSize: 12, fontWeight: '700', color: Colors.sub, marginBottom: 8, textTransform: 'uppercase' },
+  filterGroupTitle: { fontSize: sf(12), fontWeight: '700', color: Colors.sub, marginBottom: 8, textTransform: 'uppercase' },
   filterChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     paddingHorizontal: 14,
@@ -966,7 +966,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
   },
   filterChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: Colors.sub },
+  filterChipText: { fontSize: sf(13), fontWeight: '600', color: Colors.sub },
   filterChipTextActive: { color: Colors.accent, fontWeight: '700' },
   filterClearBtn: {
     marginTop: 16,
@@ -975,7 +975,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: Colors.line,
   },
-  filterClearText: { color: Colors.accent, fontWeight: '800', fontSize: 14, textTransform: 'uppercase' },
+  filterClearText: { color: Colors.accent, fontWeight: '800', fontSize: sf(14), textTransform: 'uppercase' },
   filterSelectedTypesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   filterSelectedChip: {
     flexDirection: 'row',
@@ -989,7 +989,7 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     paddingVertical: 6,
   },
-  filterSelectedChipText: { fontSize: 13, fontWeight: '700', color: Colors.accent, maxWidth: 140 },
+  filterSelectedChipText: { fontSize: sf(13), fontWeight: '700', color: Colors.accent, maxWidth: 140 },
   filterTypeInput: {
     backgroundColor: Colors.card,
     borderWidth: 2,
@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.text,
     marginBottom: 8,
   },
@@ -1009,7 +1009,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
   },
   filterTypeItemActive: { backgroundColor: Colors.accentLight },
-  filterTypeItemText: { fontSize: 14, color: Colors.text, fontWeight: '500' },
+  filterTypeItemText: { fontSize: sf(14), color: Colors.text, fontWeight: '500' },
   filterTypeItemTextActive: { color: Colors.accent, fontWeight: '700' },
   extrasWrap: {
     marginTop: 8,
@@ -1050,30 +1050,30 @@ const styles = StyleSheet.create({
   cardImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1, paddingVertical: 10, paddingRight: 4 },
   cardHeaderRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  cardTitle: { fontSize: 15, fontWeight: '800', color: Colors.text, lineHeight: 20 },
-  cardTypeLabel: { fontSize: 11, fontWeight: '700', color: Colors.sub2, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
+  cardTitle: { fontSize: sf(15), fontWeight: '800', color: Colors.text, lineHeight: 20 },
+  cardTypeLabel: { fontSize: sf(11), fontWeight: '700', color: Colors.sub2, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
-  cardSubtitle: { fontSize: 12, color: Colors.sub, fontWeight: '600', flex: 1 },
+  cardSubtitle: { fontSize: sf(12), color: Colors.sub, fontWeight: '600', flex: 1 },
   updatedPill: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  updatedPillText: { fontSize: 11, color: Colors.sub2, fontWeight: '600' },
+  updatedPillText: { fontSize: sf(11), color: Colors.sub2, fontWeight: '600' },
   badge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5 },
-  badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  badgeText: { fontSize: sf(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   metaRow: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: Colors.chip, paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.sm,
     borderWidth: 1.5, borderColor: Colors.line,
   },
-  metaText: { fontSize: 12, color: Colors.text, fontWeight: '600' },
+  metaText: { fontSize: sf(12), color: Colors.text, fontWeight: '600' },
   idChip: {
     paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.sm,
     backgroundColor: Colors.primary, borderWidth: 0,
   },
-  idChipText: { fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.2 },
+  idChipText: { fontSize: sf(11), color: '#fff', fontWeight: '700', letterSpacing: 0.2 },
   moreWrap: { marginTop: 8, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line, gap: 7 },
   detailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailLabel: { color: Colors.text, fontWeight: '600', fontSize: 13 },
-  detailValue: { color: Colors.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12, fontSize: 13 },
+  detailLabel: { color: Colors.text, fontWeight: '600', fontSize: sf(13) },
+  detailValue: { color: Colors.text, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12, fontSize: sf(13) },
   // Sort bar (list header)
   sortBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -1082,18 +1082,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card, marginHorizontal: 10, marginTop: 6,
     borderRadius: Radius.md, ...Shadows.card,
   },
-  sortCountText: { fontSize: 12, color: Colors.sub, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
-  sortLabel: { color: Colors.sub2, fontWeight: '800', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.3 },
+  sortCountText: { fontSize: sf(12), color: Colors.sub, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  sortLabel: { color: Colors.sub2, fontWeight: '800', fontSize: sf(11), textTransform: 'uppercase', letterSpacing: 0.3 },
   sortChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
   sortChipActive: { borderColor: Colors.accent, backgroundColor: Colors.accentLight },
-  sortText: { color: Colors.sub, fontWeight: '800', fontSize: 12 },
+  sortText: { color: Colors.sub, fontWeight: '800', fontSize: sf(12) },
   sortTextActive: { color: Colors.accent },
   notesRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
     backgroundColor: Colors.accentLight, borderWidth: 1.5, borderColor: Colors.accentMuted,
     padding: 8, borderRadius: Radius.sm,
   },
-  notesText: { color: Colors.text, flex: 1, lineHeight: 18, fontSize: 13 },
+  notesText: { color: Colors.text, flex: 1, lineHeight: 18, fontSize: sf(13) },
   cardRight: { paddingTop: 10, paddingRight: 10 },
   expandBtn: { width: 28, height: 28, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, alignItems: 'center', justifyContent: 'center' },
   expandBtnActive: { borderColor: Colors.accent, backgroundColor: Colors.accentLight },
@@ -1108,10 +1108,10 @@ const styles = StyleSheet.create({
   typeCoverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   typeBody: { flex: 1 },
   typeTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  typeTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: Colors.text },
+  typeTitle: { flex: 1, fontSize: sf(16), fontWeight: '800', color: Colors.text },
   typeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: Radius.sm, borderWidth: 1.5 },
-  typeChipText: { fontSize: 12, fontWeight: '700' },
+  typeChipText: { fontSize: sf(12), fontWeight: '700' },
 });
 
 export default Inventory;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 export default function ScreenHeader({
   title = '',
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
   },
   backText: {
-    fontSize: 13,
+    fontSize: sf(13),
     fontWeight: '800',
     color: Colors.text,
   },
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 20,
+    fontSize: sf(20),
     fontWeight: '800',
     color: Colors.text,
   },

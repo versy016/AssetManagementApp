@@ -1,3 +1,4 @@
+import { sf } from '../constants/uiTheme.js';
 import React from 'react';
 import { View, StyleSheet, Text, ScrollView } from 'react-native';
 import { Button } from 'react-native-paper';
@@ -58,13 +59,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontSize: 24,
+        fontSize: sf(24),
         fontWeight: 'bold',
         marginBottom: 10,
         color: '#D32F2F',
     },
     message: {
-        fontSize: 16,
+        fontSize: sf(16),
         textAlign: 'center',
         marginBottom: 20,
         color: '#333',

@@ -1,30 +1,22 @@
-// Login.js - User login screen for the app
-
 import { auth } from '../../firebaseConfig';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
 import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTheme } from 'react-native-paper';
 
-import { Colors } from '../../constants/uiTheme';
-import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
+import AuthLayout from '../../components/ui/AuthLayout';
 import AppTextInput from '../../components/ui/AppTextInput';
 import AppButton from '../../components/ui/AppButton';
 import ErrorMessage from '../../components/ui/ErrorMessage';
 
 export default function Login() {
   const router = useRouter();
-  const theme = useTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const handleForgotPassword = () => {
-    router.push('/(auth)/ForgotPassword');
-  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -37,53 +29,33 @@ export default function Login() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-      // Check if email is verified
       await userCredential.user.reload();
+
       if (!userCredential.user.emailVerified) {
-        // Sign out to prevent access
         await auth.signOut();
-
-        // Show error message in UI
-        setErrorMessage('Your email address has not been verified. Please check your inbox and click the verification link in the email we sent you. Once verified, you can log in.');
-
-        // Also show alert for better visibility
+        setErrorMessage(
+          'Your email address has not been verified. Please check your inbox and click the verification link before logging in.'
+        );
         Alert.alert(
           'Email Verification Required',
-          'Please verify your email address before accessing the app. Check your inbox (and spam folder) for the verification email we sent you. Click the verification link in that email to verify your account, then try logging in again.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Stay on login page - user needs to verify via email
-              },
-            },
-          ],
+          'Please verify your email address before accessing the app. Check your inbox (and spam folder) for the verification email.',
+          [{ text: 'OK' }],
           { cancelable: false }
         );
-
         setLoading(false);
         return;
       }
 
-      // Email is verified, proceed to dashboard
       router.replace('/(tabs)/dashboard');
     } catch (error) {
       let errorMsg = 'Login failed';
       switch (error.code) {
-        case 'auth/invalid-email':
-          errorMsg = 'Invalid email address';
-          break;
-        case 'auth/user-disabled':
-          errorMsg = 'Account disabled';
-          break;
+        case 'auth/invalid-email':       errorMsg = 'Invalid email address'; break;
+        case 'auth/user-disabled':       errorMsg = 'Account disabled'; break;
         case 'auth/user-not-found':
         case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          errorMsg = 'Invalid email or password';
-          break;
-        default:
-          errorMsg = error.message;
+        case 'auth/invalid-credential':  errorMsg = 'Invalid email or password'; break;
+        default:                         errorMsg = error.message;
       }
       setErrorMessage(errorMsg);
     } finally {
@@ -92,11 +64,11 @@ export default function Login() {
   };
 
   return (
-    <ScreenWrapper style={styles.container} withScrollView>
-      <View style={styles.content}>
-        <Text style={styles.brandText}>GearOps</Text>
-        <Text style={styles.title}>Login</Text>
+    <AuthLayout>
+      <Text style={s.heading}>Sign In</Text>
+      <Text style={s.sub}>Welcome back — enter your credentials below</Text>
 
+      <View style={s.form}>
         <AppTextInput
           label="Email"
           value={email}
@@ -112,72 +84,70 @@ export default function Login() {
           secureTextEntry
         />
 
-        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
-          <Text style={styles.accentLink}>Forgot Password?</Text>
+        <TouchableOpacity
+          onPress={() => router.push('/(auth)/ForgotPassword')}
+          style={s.forgotRow}
+        >
+          <Text style={s.forgotText}>Forgot Password?</Text>
         </TouchableOpacity>
 
         <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
-        <AppButton
-          mode="contained"
-          onPress={handleLogin}
-          loading={loading}
-        >
+        <AppButton mode="contained" onPress={handleLogin} loading={loading}>
           Login
         </AppButton>
+      </View>
 
-        <TouchableOpacity
-          onPress={() => router.push('/(auth)/register')}
-          disabled={loading}
-          style={styles.registerLink}
-        >
-          <Text style={styles.accentLink}>
-            Don't have an account? Register
-          </Text>
+      <View style={s.footer}>
+        <Text style={s.footerText}>Don't have an account?</Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/register')} disabled={loading}>
+          <Text style={s.footerLink}> Register</Text>
         </TouchableOpacity>
       </View>
-    </ScreenWrapper>
+    </AuthLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-  },
-  content: {
-    padding: 20,
-    justifyContent: 'center',
-    flex: 1,
-    minHeight: 500,
-  },
-  brandText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 32,
-    marginBottom: 32,
+const s = StyleSheet.create({
+  heading: {
+    fontSize: sf(28),
     fontWeight: '900',
-    textAlign: 'center',
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 1,
+    marginBottom: 4,
   },
-  accentLink: {
-    color: Colors.accent,
-    fontWeight: '600',
+  sub: {
+    fontSize: sf(14),
+    color: Colors.sub,
+    marginBottom: 28,
+    fontWeight: '500',
   },
-  forgotPassword: {
+  form: {
+    gap: 4,
+  },
+  forgotRow: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginBottom: 8,
+    marginTop: 4,
   },
-  registerLink: {
-    marginTop: 24,
-    alignItems: 'center',
+  forgotText: {
+    color: Colors.accent,
+    fontWeight: '700',
+    fontSize: sf(14),
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 28,
+  },
+  footerText: {
+    color: Colors.sub,
+    fontSize: sf(14),
+  },
+  footerLink: {
+    color: Colors.accent,
+    fontWeight: '700',
+    fontSize: sf(14),
   },
 });

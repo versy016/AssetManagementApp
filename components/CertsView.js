@@ -10,7 +10,7 @@ import { router } from 'expo-router';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDisplayDate, formatDisplayDateLong } from '../utils/date';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
@@ -963,7 +963,7 @@ export default function CertsView({ visible: initialVisible }) {
                       onPress={() => setSelectedAsset(a)}
                     >
                       <Text style={{ fontWeight: '700', color: '#0F172A' }}>{a.id}</Text>
-                      <Text style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
+                      <Text style={{ fontSize: sf(13), color: '#64748B', marginTop: 2 }}>
                         {a.asset_types?.name || a.type || '—'} {a.model ? `• ${a.model}` : ''}
                       </Text>
                     </TouchableOpacity>
@@ -992,7 +992,7 @@ export default function CertsView({ visible: initialVisible }) {
             <>
               {selectedAsset && (
                 <View style={{ marginBottom: 12, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8 }}>
-                  <Text style={{ fontSize: 12, color: '#64748B' }}>Asset</Text>
+                  <Text style={{ fontSize: sf(12), color: '#64748B' }}>Asset</Text>
                   <Text style={{ fontWeight: '700', color: '#0F172A' }}>{selectedAsset.id}</Text>
                   <TouchableOpacity onPress={() => setCreateStep(1)} style={{ marginTop: 6 }}>
                     <Text style={styles.inlineBtnText}>Change asset</Text>
@@ -1043,7 +1043,7 @@ export default function CertsView({ visible: initialVisible }) {
                   {createDateDocLinks.length > 0 ? (
                     <View style={{ marginBottom: 16 }}>
                       <Text style={[styles.modalLabel, { marginBottom: 6 }]}>Dates with linked documents</Text>
-                      <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+                      <Text style={{ fontSize: sf(12), color: '#64748B', marginBottom: 8 }}>
                         This asset has date fields linked to document types. Tap a row to use that date for the new document.
                       </Text>
                       <View style={{ gap: 6 }}>
@@ -1068,8 +1068,8 @@ export default function CertsView({ visible: initialVisible }) {
                           >
                             <Feather name="calendar" size={14} color="#64748B" style={{ marginRight: 8 }} />
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: 13 }}>{link.dateField.name}</Text>
-                              <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                              <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: sf(13) }}>{link.dateField.name}</Text>
+                              <Text style={{ fontSize: sf(12), color: '#64748B', marginTop: 2 }}>
                                 {link.dateValue ? formatDisplayDate(link.dateValue) : 'No date set'} → {link.linkedDocField.name}
                               </Text>
                             </View>
@@ -1280,7 +1280,7 @@ export default function CertsView({ visible: initialVisible }) {
             value={filterText}
             onChangeText={setFilterText}
             style={{ flex: 1 }}
-            inputStyle={{ fontSize: 16 }}
+            inputStyle={{ fontSize: sf(16) }}
             right={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 {actionsNode}
@@ -1792,35 +1792,35 @@ const styles = StyleSheet.create({
   certsWrap: { flex: 1, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: Colors.bg },
   certsWrapMobile: { flex: 1 },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
-  sectionTitle: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: 10, textTransform: 'uppercase', flexShrink: 1 },
+  sectionTitle: { fontSize: sf(22), fontWeight: '800', color: Colors.text, marginBottom: 10, textTransform: 'uppercase', flexShrink: 1 },
   toolbarSurface: { marginBottom: 8 },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inlineIconBtn: { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.accentMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.accent },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  metaText: { fontSize: 13, color: Colors.sub, fontWeight: '700' },
+  metaText: { fontSize: sf(13), color: Colors.sub, fontWeight: '700' },
   iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   actionBtn: { paddingHorizontal: 12, height: 34, borderRadius: Radius.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  actionBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 13, textTransform: 'uppercase' },
+  actionBtnText: { color: Colors.accent, fontWeight: '700', fontSize: sf(13), textTransform: 'uppercase' },
   countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.dangerFg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  countDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  countDotText: { color: '#fff', fontSize: sf(10), fontWeight: '700' },
   tableWrap: { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, overflow: 'hidden', ...Shadows.card },
   tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0 },
   th: { paddingVertical: 13, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 },
   thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 },
   thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'flex-start' },
   thSortIcon: { marginLeft: 6, flexShrink: 0 },
-  thText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
+  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
   tableBodyScroll: { flex: 1 },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.line, backgroundColor: '#FFFFFF' },
   rowAlt: { backgroundColor: '#F8F7F5' },
   rowHover: { backgroundColor: Colors.accentLight },
   td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center' },
   tdActions: { alignItems: 'flex-start' },
-  tdText: { fontSize: 14, color: Colors.text, fontWeight: '500' },
+  tdText: { fontSize: sf(14), color: Colors.text, fontWeight: '500' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkText: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
-  dateLabel: { fontSize: 12, color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
-  dateValue: { fontSize: 14, color: Colors.text, fontWeight: '600' },
+  linkText: { fontSize: sf(14), color: Colors.primary, fontWeight: '700' },
+  dateLabel: { fontSize: sf(12), color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
+  dateValue: { fontSize: sf(14), color: Colors.text, fontWeight: '600' },
   dateValueSoon: { color: Colors.warningFg },
   dateValueExpired: { color: Colors.dangerFg },
   errorText: { color: Colors.dangerFg, fontWeight: '700', marginVertical: 10 },
@@ -1830,14 +1830,14 @@ const styles = StyleSheet.create({
   btnGhost: { backgroundColor: 'transparent', borderWidth: 2, borderColor: Colors.line },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 24, width: '100%', maxWidth: 480, ...Shadows.card },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.text, marginBottom: 16, textTransform: 'uppercase' },
-  modalLabel: { fontSize: 13, fontWeight: '700', color: Colors.sub, marginBottom: 4 },
-  modalValue: { fontSize: 16, color: Colors.text, fontWeight: '700' },
+  modalTitle: { fontSize: sf(20), fontWeight: '800', color: Colors.text, marginBottom: 16, textTransform: 'uppercase' },
+  modalLabel: { fontSize: sf(13), fontWeight: '700', color: Colors.sub, marginBottom: 4 },
+  modalValue: { fontSize: sf(16), color: Colors.text, fontWeight: '700' },
   inlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: Radius.sm, backgroundColor: Colors.accentMuted },
-  inlineBtnText: { fontSize: 13, fontWeight: '700', color: Colors.accent },
+  inlineBtnText: { fontSize: sf(13), fontWeight: '700', color: Colors.accent },
   filterSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.card, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg, padding: 20, ...Shadows.card, maxHeight: '78%' },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  groupTitle: { fontSize: 14, fontWeight: '800', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  groupTitle: { fontSize: sf(14), fontWeight: '800', color: Colors.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   filterMenuRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   chipsRow: { flexWrap: 'wrap' },
   quickDateRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
@@ -1877,13 +1877,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileCardTitle: {
-    fontSize: 17,
+    fontSize: sf(17),
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 4,
   },
   mobileCardSubtitle: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     fontWeight: '700',
   },
@@ -1904,7 +1904,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.warningFg,
   },
   mobileStatusText: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '800',
     color: Colors.primary,
   },
@@ -1927,13 +1927,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   mobileDetailLabel: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     fontWeight: '700',
     minWidth: 80,
   },
   mobileDetailValue: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.text,
     fontWeight: '700',
     flex: 1,
@@ -1968,7 +1968,7 @@ const styles = StyleSheet.create({
   },
   mobileActionBtnEdit: { backgroundColor: Colors.warningFg },
   mobileActionBtnDelete: { backgroundColor: Colors.dangerFg },
-  mobileActionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
+  mobileActionBtnText: { color: '#FFFFFF', fontSize: sf(14), fontWeight: '700', textTransform: 'uppercase' },
   mobileEmptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1976,13 +1976,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   mobileEmptyText: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '800',
     color: Colors.text,
     marginTop: 12,
   },
   mobileEmptySubtext: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     marginTop: 4,
   },

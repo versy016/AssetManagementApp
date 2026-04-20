@@ -10,7 +10,7 @@ import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { MaterialIcons } from '@expo/vector-icons';
 import PageHeader from '../../components/ui/PageHeader';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { TourContext, resetTour } from '../../components/TourGuide';
 
 export default function ProfileScreen() {
@@ -121,7 +121,7 @@ export default function ProfileScreen() {
   if (!fbUser) {
     return (
       <View style={styles.center}>
-        <Text style={{ fontSize: 16, marginBottom: 12 }}>You’re not signed in.</Text>
+        <Text style={{ fontSize: sf(16), marginBottom: 12 }}>You’re not signed in.</Text>
         <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.button}>
           <Text style={styles.buttonText}>Go to Login</Text>
         </TouchableOpacity>
@@ -206,23 +206,23 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg, padding: 20 },
   container: { flex: 1, padding: 20, backgroundColor: Colors.bg },
-  heading: { fontSize: 22, fontWeight: '700', marginBottom: 16 },
+  heading: { fontSize: sf(22), fontWeight: '700', marginBottom: 16 },
   field: { marginBottom: 16 },
-  label: { fontSize: 14, color: Colors.sub, marginBottom: 6, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
-  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 14, fontSize: 15, color: Colors.text },
+  label: { fontSize: sf(14), color: Colors.sub, marginBottom: 6, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 14, fontSize: sf(15), color: Colors.text },
   readonly: { backgroundColor: Colors.chip, color: Colors.sub },
-  hint: { fontSize: 12, color: Colors.sub2, marginTop: 6 },
+  hint: { fontSize: sf(12), color: Colors.sub2, marginTop: 6 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 20, gap: 8 },
-  badgeLabel: { fontSize: 14, color: Colors.sub },
+  badgeLabel: { fontSize: sf(14), color: Colors.sub },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.sm, overflow: 'hidden', fontWeight: '800' },
   admin: { backgroundColor: Colors.accentLight, color: Colors.accent },
   user: { backgroundColor: Colors.chip, color: Colors.sub },
   button: { backgroundColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center', borderWidth: 2, borderColor: Colors.primaryDark },
-  buttonText: { color: '#fff', fontWeight: '800', fontSize: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  buttonText: { color: '#fff', fontWeight: '800', fontSize: sf(16), textTransform: 'uppercase', letterSpacing: 0.5 },
   buttonSecondary: { borderWidth: 2, borderColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
-  buttonSecondaryText: { color: Colors.primary, fontWeight: '800', fontSize: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  buttonSecondaryText: { color: Colors.primary, fontWeight: '800', fontSize: sf(16), textTransform: 'uppercase', letterSpacing: 0.5 },
   buttonGhost: { padding: 14, borderRadius: Radius.md, alignItems: 'center', borderWidth: 2, borderColor: Colors.line },
-  buttonGhostText: { color: Colors.text, fontWeight: '700', fontSize: 16 },
+  buttonGhostText: { color: Colors.text, fontWeight: '700', fontSize: sf(16) },
   note: { color: Colors.sub2, marginTop: 10 },
   topbar: { },
   topbarTitle: { },

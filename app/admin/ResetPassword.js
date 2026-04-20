@@ -5,7 +5,7 @@ import { auth } from '../../firebaseConfig';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerText: {
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: '700',
     marginLeft: 8,
     color: Colors.primary,
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   title: {
-    fontSize: 22,
+    fontSize: sf(22),
     fontWeight: '900',
     textTransform: 'uppercase',
     color: Colors.text,
@@ -109,13 +109,13 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   info: {
-    fontSize: 14,
+    fontSize: sf(14),
     marginBottom: 10,
     color: Colors.text,
     fontWeight: '500',
   },
   email: {
-    fontSize: 16,
+    fontSize: sf(16),
     marginBottom: 24,
     color: Colors.primary,
     fontWeight: '700',
@@ -130,12 +130,12 @@ const styles = StyleSheet.create({
   buttonText: {
     color: Colors.card,
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: sf(16),
     textTransform: 'uppercase',
   },
   successMsg: {
     color: Colors.successFg,
-    fontSize: 16,
+    fontSize: sf(16),
     textAlign: 'center',
     marginTop: 20,
     fontWeight: '600',

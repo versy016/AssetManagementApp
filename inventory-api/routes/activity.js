@@ -1,8 +1,7 @@
 // routes/activity.js – Aggregated activity feed
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // GET /activity?limit=50
 router.get('/', async (req, res) => {

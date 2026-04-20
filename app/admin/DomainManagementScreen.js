@@ -8,7 +8,7 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet } 
 import { collection, addDoc, doc, setDoc, deleteDoc, onSnapshot, getFirestore } from 'firebase/firestore';
 // Import Firebase Auth config (not directly used here, but available for future use)
 import { auth } from '../../firebaseConfig';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
 // Initialize Firestore database instance
 const db = getFirestore();
@@ -108,9 +108,9 @@ export default function DomainManagementScreen() {
 // Styles for the domain management screen
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: Colors.bg },
-  title: { fontSize: 24, fontWeight: '900', textTransform: 'uppercase', marginBottom: 20, color: Colors.text },
+  title: { fontSize: sf(24), fontWeight: '900', textTransform: 'uppercase', marginBottom: 20, color: Colors.text },
   card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 16, marginBottom: 24, borderWidth: 2, borderColor: Colors.line, ...Shadows.card },
-  label: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', color: Colors.text, marginBottom: 12 },
+  label: { fontSize: sf(12), fontWeight: '900', textTransform: 'uppercase', color: Colors.text, marginBottom: 12 },
   addRow: {
     flexDirection: 'row',
     gap: 8,
@@ -124,11 +124,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     backgroundColor: Colors.card,
     color: Colors.text,
-    fontSize: 14,
+    fontSize: sf(14),
   },
   button: { backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radius.md, alignItems: 'center' },
-  buttonText: { color: Colors.card, fontWeight: '700', fontSize: 14, textTransform: 'uppercase' },
-  subTitle: { fontSize: 14, fontWeight: '900', textTransform: 'uppercase', color: Colors.text, marginBottom: 12, marginTop: 8 },
+  buttonText: { color: Colors.card, fontWeight: '700', fontSize: sf(14), textTransform: 'uppercase' },
+  subTitle: { fontSize: sf(14), fontWeight: '900', textTransform: 'uppercase', color: Colors.text, marginBottom: 12, marginTop: 8 },
   domainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -140,8 +140,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.line,
   },
-  domainText: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  planText: { fontSize: 13, color: Colors.sub, marginTop: 4 },
+  domainText: { fontSize: sf(15), fontWeight: '700', color: Colors.text },
+  planText: { fontSize: sf(13), color: Colors.sub, marginTop: 4 },
   removeButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.dangerFg },
-  removeButtonText: { color: Colors.dangerFg, fontWeight: '700', fontSize: 12 },
+  removeButtonText: { color: Colors.dangerFg, fontWeight: '700', fontSize: sf(12) },
 });

@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GearOps — Industrial Asset Management</title>
+  <meta name="description" content="GearOps is the modern asset management platform built for field teams. Track, manage and maintain your equipment fleet from any device." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy:    #1E293B;
+      --navy-d:  #0F172A;
+      --navy-l:  #2D3F55;
+      --orange:  #EA580C;
+      --orange-l:#FB923C;
+      --stone:   #F5F3F0;
+      --stone2:  #E8E4DF;
+      --white:   #FFFFFF;
+      --text:    #1C1917;
+      --muted:   #64748B;
+      --border:  #E2E8F0;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--white);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Navbar ─────────────────────────────────────────────── */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      height: 68px;
+      display: flex; align-items: center;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .navbar.scrolled {
+      background: rgba(15,23,42,0.97);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 2rem;
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 0.6rem;
+      text-decoration: none;
+    }
+    .nav-logo-mark {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--orange);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; font-weight: 900; color: var(--white);
+      letter-spacing: -0.03em; flex-shrink: 0;
+    }
+    .nav-logo-text {
+      font-size: 1.2rem; font-weight: 800; color: var(--white);
+      letter-spacing: -0.01em;
+    }
+    .nav-links {
+      display: flex; align-items: center; gap: 0.25rem;
+    }
+    .nav-links a {
+      color: rgba(255,255,255,0.65); text-decoration: none;
+      font-size: 0.88rem; font-weight: 500;
+      padding: 0.45rem 0.9rem; border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-links a:hover { color: var(--white); background: rgba(255,255,255,0.07); }
+    .nav-right { display: flex; align-items: center; gap: 0.75rem; }
+    .btn-nav-login {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: transparent; border: 1.5px solid rgba(255,255,255,0.25);
+      color: var(--white); font-size: 0.88rem; font-weight: 600;
+      padding: 0.48rem 1.1rem; border-radius: 8px;
+      text-decoration: none; transition: all 0.2s; white-space: nowrap;
+    }
+    .btn-nav-login:hover { border-color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.07); }
+    .btn-nav-cta {
+      display: inline-flex; align-items: center;
+      background: var(--orange); color: var(--white);
+      font-size: 0.88rem; font-weight: 700;
+      padding: 0.5rem 1.2rem; border-radius: 8px;
+      text-decoration: none; transition: all 0.2s; white-space: nowrap;
+      border: 1.5px solid var(--orange);
+    }
+    .btn-nav-cta:hover { background: var(--orange-l); border-color: var(--orange-l); transform: translateY(-1px); }
+    .nav-hamburger {
+      display: none; flex-direction: column; gap: 5px;
+      cursor: pointer; padding: 0.5rem; background: none; border: none;
+    }
+    .nav-hamburger span {
+      display: block; width: 22px; height: 2px;
+      background: var(--white); border-radius: 2px; transition: all 0.3s;
+    }
+
+    /* ── Hero ─────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      background: var(--navy-d);
+      display: flex; flex-direction: column;
+      position: relative; overflow: hidden;
+    }
+    /* Grid overlay */
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 72px 72px;
+    }
+    /* Radial glow */
+    .hero-glow {
+      position: absolute; pointer-events: none;
+      width: 900px; height: 900px;
+      background: radial-gradient(ellipse, rgba(234,88,12,0.14) 0%, transparent 65%);
+      top: -200px; left: 50%; transform: translateX(-50%);
+    }
+    .hero-glow-2 {
+      position: absolute; pointer-events: none;
+      width: 600px; height: 600px;
+      background: radial-gradient(ellipse, rgba(99,102,241,0.08) 0%, transparent 65%);
+      bottom: 0; right: -100px;
+    }
+    .hero-content {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 2rem 80px;
+      position: relative; z-index: 1;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      background: rgba(234,88,12,0.12); border: 1px solid rgba(234,88,12,0.35);
+      color: var(--orange-l); font-size: 0.75rem; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 0.38rem 1rem; border-radius: 999px; margin-bottom: 2rem;
+    }
+    .hero-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--orange-l); animation: blink 2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+    .hero h1 {
+      font-size: clamp(2.6rem, 7vw, 5.2rem);
+      font-weight: 900; line-height: 1.04; letter-spacing: -0.03em;
+      color: var(--white); margin-bottom: 1.5rem; max-width: 860px;
+    }
+    .hero h1 .accent { color: var(--orange); }
+    .hero h1 .dim { color: rgba(255,255,255,0.45); }
+    .hero-sub {
+      font-size: clamp(1rem, 2vw, 1.25rem); color: #94A3B8;
+      max-width: 580px; line-height: 1.7; margin-bottom: 2.5rem; font-weight: 400;
+    }
+    .hero-actions {
+      display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+      margin-bottom: 3.5rem;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: var(--orange); color: var(--white);
+      font-size: 1rem; font-weight: 700; padding: 0.85rem 2rem;
+      border-radius: 10px; text-decoration: none;
+      border: 2px solid var(--orange);
+      transition: all 0.25s;
+      box-shadow: 0 0 0 0 rgba(234,88,12,0);
+    }
+    .btn-primary:hover { background: var(--orange-l); border-color: var(--orange-l); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(234,88,12,0.35); }
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: rgba(255,255,255,0.06); color: var(--white);
+      font-size: 1rem; font-weight: 600; padding: 0.85rem 2rem;
+      border-radius: 10px; text-decoration: none;
+      border: 2px solid rgba(255,255,255,0.15);
+      transition: all 0.25s;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.35); transform: translateY(-2px); }
+    /* Platform pills */
+    .hero-platforms {
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: center;
+    }
+    .hero-platforms span { font-size: 0.78rem; color: #475569; font-weight: 500; }
+    .platform-pill {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.7); font-size: 0.8rem; font-weight: 600;
+      padding: 0.35rem 0.85rem; border-radius: 999px;
+    }
+    .platform-pill .pdot { width: 7px; height: 7px; border-radius: 50%; }
+    /* Hero dashboard preview */
+    .hero-visual {
+      position: relative; z-index: 1;
+      padding: 0 2rem 3rem; max-width: 1000px; margin: 0 auto; width: 100%;
+    }
+    .dashboard-preview {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    }
+    .dp-bar {
+      background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 0.75rem 1.25rem;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .dp-dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dp-url {
+      flex: 1; background: rgba(255,255,255,0.07); border-radius: 6px;
+      padding: 0.3rem 0.8rem; font-size: 0.75rem; color: #64748B;
+      font-family: monospace; max-width: 320px; margin: 0 auto;
+    }
+    .dp-body {
+      display: grid; grid-template-columns: 200px 1fr; min-height: 320px;
+    }
+    .dp-sidebar {
+      background: rgba(30,41,59,0.8); padding: 1.25rem 0;
+      border-right: 1px solid rgba(255,255,255,0.05);
+    }
+    .dp-sidebar-item {
+      padding: 0.55rem 1.25rem; font-size: 0.78rem; color: rgba(255,255,255,0.4);
+      display: flex; align-items: center; gap: 0.6rem; cursor: default;
+    }
+    .dp-sidebar-item.active { color: var(--white); background: rgba(234,88,12,0.15); border-right: 2px solid var(--orange); }
+    .dp-sidebar-item .di { width: 16px; text-align: center; }
+    .dp-main { padding: 1.5rem; }
+    .dp-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
+    .dp-stat {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px; padding: 1rem; text-align: center;
+    }
+    .dp-stat .ds-num { font-size: 1.6rem; font-weight: 800; color: var(--white); display: block; line-height: 1; }
+    .dp-stat .ds-lbl { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-top: 0.3rem; }
+    .dp-stat .ds-change { font-size: 0.7rem; color: #22C55E; margin-top: 0.2rem; display: block; }
+    .dp-table { width: 100%; border-collapse: collapse; }
+    .dp-table th { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.5rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .dp-table td { font-size: 0.75rem; color: rgba(255,255,255,0.7); padding: 0.6rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .dp-badge { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; }
+    .db-green { background: rgba(34,197,94,0.15); color: #22C55E; }
+    .db-amber { background: rgba(245,158,11,0.15); color: #F59E0B; }
+    .db-blue  { background: rgba(99,102,241,0.15); color: #818CF8; }
+    .db-red   { background: rgba(239,68,68,0.15);  color: #F87171; }
+
+    /* ── Stats Bar ─────────────────────────────────────────── */
+    .stats-bar { background: var(--navy); padding: 2.5rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .stats-bar-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: 2rem; }
+    .stat-item { text-align: center; }
+    .stat-item .num { font-size: 2.4rem; font-weight: 900; color: var(--white); display: block; line-height: 1; }
+    .stat-item .num span { color: var(--orange); }
+    .stat-item .lbl { font-size: 0.8rem; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-top: 0.3rem; }
+    .stat-divider { width: 1px; height: 48px; background: rgba(255,255,255,0.08); }
+
+    /* ── Sections ──────────────────────────────────────────── */
+    .section { padding: 6rem 2rem; }
+    .section-inner { max-width: 1200px; margin: 0 auto; }
+    .section-tag { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(--orange); margin-bottom: 0.75rem; }
+    .section-title { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 900; color: var(--navy); line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 1rem; }
+    .section-title .accent { color: var(--orange); }
+    .section-desc { font-size: 1.05rem; color: var(--muted); max-width: 580px; line-height: 1.7; }
+
+    /* ── Features ──────────────────────────────────────────── */
+    .features-section { background: var(--stone); }
+    .features-header { text-align: center; margin-bottom: 3.5rem; }
+    .features-header .section-desc { margin: 0 auto; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+    .feature-card {
+      background: var(--white); border-radius: 16px;
+      border: 1px solid var(--border); padding: 2rem;
+      transition: transform 0.25s, box-shadow 0.25s;
+      position: relative; overflow: hidden;
+    }
+    .feature-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--orange); transform: scaleX(0); transform-origin: left;
+      transition: transform 0.3s;
+    }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.1); }
+    .feature-card:hover::before { transform: scaleX(1); }
+    .feature-icon {
+      width: 52px; height: 52px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; margin-bottom: 1.25rem;
+    }
+    .feature-card h3 { font-size: 1.05rem; font-weight: 800; color: var(--navy); margin-bottom: 0.6rem; }
+    .feature-card p { font-size: 0.9rem; color: var(--muted); line-height: 1.6; }
+
+    /* ── How It Works ──────────────────────────────────────── */
+    .hiw-section { background: var(--white); }
+    .hiw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
+    @media(max-width:768px){ .hiw-grid { grid-template-columns: 1fr; gap: 3rem; } }
+    .hiw-steps { display: flex; flex-direction: column; gap: 2rem; }
+    .hiw-step { display: flex; gap: 1.25rem; align-items: flex-start; }
+    .hiw-num {
+      width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+      background: var(--navy); color: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; font-weight: 800;
+    }
+    .hiw-step.active .hiw-num { background: var(--orange); }
+    .hiw-step-body h4 { font-size: 1rem; font-weight: 800; color: var(--navy); margin-bottom: 0.35rem; }
+    .hiw-step-body p { font-size: 0.9rem; color: var(--muted); line-height: 1.6; }
+    .hiw-visual {
+      background: linear-gradient(135deg, var(--navy-d) 0%, var(--navy) 100%);
+      border-radius: 20px; padding: 2rem;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+    }
+    .scan-demo {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 1.5rem; text-align: center;
+    }
+    .qr-box {
+      width: 120px; height: 120px; border-radius: 12px;
+      background: var(--white); margin: 0 auto 1rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 4rem; position: relative;
+    }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--orange), transparent);
+      animation: scanDown 2s ease-in-out infinite;
+      top: 10%;
+    }
+    @keyframes scanDown {
+      0%  { top: 10%; opacity: 1; }
+      90% { top: 90%; opacity: 1; }
+      100%{ top: 10%; opacity: 0; }
+    }
+    .scan-demo p { font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.75rem; }
+    .scan-result {
+      background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
+      border-radius: 8px; padding: 0.75rem 1rem;
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .scan-result .sr-icon { font-size: 1.3rem; }
+    .scan-result .sr-name { font-size: 0.88rem; font-weight: 700; color: var(--white); }
+    .scan-result .sr-sub  { font-size: 0.75rem; color: #94A3B8; }
+    .scan-badge { display: inline-block; background: rgba(34,197,94,0.15); color: #22C55E; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.2rem 0.5rem; border-radius: 4px; }
+
+    /* ── Platforms ─────────────────────────────────────────── */
+    .platforms-section { background: var(--navy-d); }
+    .platforms-section .section-title { color: var(--white); }
+    .platforms-section .section-desc { color: #94A3B8; }
+    .platforms-section .section-tag { color: var(--orange-l); }
+    .platforms-header { text-align: center; margin-bottom: 3.5rem; }
+    .platforms-header .section-desc { margin: 0 auto; }
+    .platforms-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+    @media(max-width:768px){ .platforms-cards { grid-template-columns: 1fr; } }
+    .platform-card {
+      border-radius: 16px; padding: 2rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: transform 0.25s, box-shadow 0.25s;
+      position: relative; overflow: hidden;
+    }
+    .platform-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.4); }
+    .platform-card.featured { border-color: rgba(234,88,12,0.4); background: rgba(234,88,12,0.06); }
+    .pc-icon { font-size: 2.5rem; margin-bottom: 1rem; display: block; }
+    .pc-badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 800;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.2rem 0.6rem; border-radius: 999px; margin-bottom: 1rem;
+    }
+    .pcb-live   { background: rgba(34,197,94,0.15);  color: #22C55E; }
+    .pcb-soon   { background: rgba(99,102,241,0.15); color: #818CF8; }
+    .pcb-new    { background: rgba(245,158,11,0.15); color: #F59E0B; }
+    .platform-card h3 { font-size: 1.2rem; font-weight: 800; color: var(--white); margin-bottom: 0.5rem; }
+    .platform-card p { font-size: 0.88rem; color: #94A3B8; line-height: 1.6; margin-bottom: 1.25rem; }
+    .pc-features { list-style: none; }
+    .pc-features li { font-size: 0.83rem; color: rgba(255,255,255,0.6); padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 0.5rem; }
+    .pc-features li:last-child { border: none; }
+    .pc-check { color: #22C55E; font-size: 0.75rem; }
+
+    /* ── CTA Section ───────────────────────────────────────── */
+    .cta-section {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-d) 100%);
+      padding: 7rem 2rem; text-align: center; position: relative; overflow: hidden;
+    }
+    .cta-glow {
+      position: absolute; width: 700px; height: 700px;
+      background: radial-gradient(ellipse, rgba(234,88,12,0.18) 0%, transparent 65%);
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .cta-inner { max-width: 680px; margin: 0 auto; position: relative; z-index: 1; }
+    .cta-section h2 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 900; color: var(--white); margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.1; }
+    .cta-section h2 span { color: var(--orange); }
+    .cta-section p { font-size: 1.05rem; color: #94A3B8; margin-bottom: 2.5rem; line-height: 1.7; }
+    .cta-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn-cta-lg {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: var(--orange); color: var(--white);
+      font-size: 1.05rem; font-weight: 700; padding: 1rem 2.25rem;
+      border-radius: 10px; text-decoration: none;
+      border: 2px solid var(--orange); transition: all 0.25s;
+      box-shadow: 0 0 40px rgba(234,88,12,0.35);
+    }
+    .btn-cta-lg:hover { background: var(--orange-l); border-color: var(--orange-l); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(234,88,12,0.5); }
+    .btn-ghost-lg {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: rgba(255,255,255,0.06); color: var(--white);
+      font-size: 1.05rem; font-weight: 600; padding: 1rem 2.25rem;
+      border-radius: 10px; text-decoration: none;
+      border: 2px solid rgba(255,255,255,0.2); transition: all 0.25s;
+    }
+    .btn-ghost-lg:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4); transform: translateY(-2px); }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    footer { background: var(--navy-d); border-top: 1px solid rgba(255,255,255,0.06); padding: 4rem 2rem 2rem; }
+    .footer-inner { max-width: 1200px; margin: 0 auto; }
+    .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem; }
+    @media(max-width:768px){ .footer-top { grid-template-columns: 1fr 1fr; gap: 2rem; } }
+    .footer-brand .nav-logo { margin-bottom: 1rem; display: inline-flex; }
+    .footer-brand p { font-size: 0.88rem; color: #475569; line-height: 1.7; max-width: 280px; }
+    .footer-col h4 { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #475569; margin-bottom: 1rem; }
+    .footer-col ul { list-style: none; }
+    .footer-col ul li { margin-bottom: 0.6rem; }
+    .footer-col ul li a { font-size: 0.88rem; color: #64748B; text-decoration: none; transition: color 0.2s; }
+    .footer-col ul li a:hover { color: var(--white); }
+    .footer-bottom { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+    .footer-bottom p { font-size: 0.83rem; color: #374151; }
+    .footer-bottom .built { font-size: 0.83rem; color: #374151; }
+    .footer-badge { display: flex; gap: 0.5rem; }
+    .fbadge { display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.72rem; color: #475569; }
+
+    /* ── Animations ─────────────────────────────────────────── */
+    .fade-up { opacity: 0; transform: translateY(28px); transition: opacity 0.65s ease, transform 0.65s ease; }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── Mobile nav ─────────────────────────────────────────── */
+    .mobile-nav {
+      display: none; flex-direction: column;
+      position: fixed; top: 68px; left: 0; right: 0;
+      background: rgba(15,23,42,0.98); backdrop-filter: blur(16px);
+      padding: 1.5rem 2rem 2rem; z-index: 199;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .mobile-nav.open { display: flex; }
+    .mobile-nav a { color: rgba(255,255,255,0.75); text-decoration: none; font-size: 1rem; font-weight: 600; padding: 0.85rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mobile-nav a:last-child { border: none; }
+    .mobile-nav .mobile-btns { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.25rem; }
+    .mobile-nav .btn-nav-login,
+    .mobile-nav .btn-nav-cta { justify-content: center; font-size: 0.95rem; padding: 0.75rem; }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media(max-width:900px){
+      .nav-links { display: none; }
+      .nav-right .btn-nav-cta { display: none; }
+      .nav-hamburger { display: flex; }
+      .dp-body { grid-template-columns: 1fr; }
+      .dp-sidebar { display: none; }
+      .dp-stats { grid-template-columns: repeat(2,1fr); }
+    }
+    @media(max-width:640px){
+      .stats-bar-inner { gap: 1.5rem; }
+      .stat-divider { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .dp-stats { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── NAVBAR ──────────────────────────────────────────────────────────── -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-logo-mark">G</div>
+        <span class="nav-logo-text">GearOps</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#platforms">Platforms</a>
+        <a href="mailto:sverma@engsurveys.com.au">Contact</a>
+      </div>
+      <div class="nav-right">
+        <a href="/(auth)/login" class="btn-nav-login">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Log In
+        </a>
+        <a href="/(auth)/login" class="btn-nav-cta">Get Started</a>
+      </div>
+      <button class="nav-hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile nav -->
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#features" onclick="closeMobileNav()">Features</a>
+    <a href="#how-it-works" onclick="closeMobileNav()">How It Works</a>
+    <a href="#platforms" onclick="closeMobileNav()">Platforms</a>
+    <a href="mailto:sverma@engsurveys.com.au" onclick="closeMobileNav()">Contact</a>
+    <div class="mobile-btns">
+      <a href="/(auth)/login" class="btn-nav-login">Log In</a>
+      <a href="/(auth)/login" class="btn-nav-cta">Get Started Free</a>
+    </div>
+  </div>
+
+  <!-- ── HERO ──────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-grid"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-glow-2"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">
+        <span class="hero-eyebrow-dot"></span>
+        Now live on Web, iOS &amp; Android
+      </div>
+      <h1>
+        The <span class="accent">smarter way</span><br/>
+        to manage your<br/>
+        <span class="dim">equipment fleet</span>
+      </h1>
+      <p class="hero-sub">
+        GearOps replaces spreadsheets and legacy systems with a fast, modern asset management platform. Track, maintain and allocate your gear from any device — in the field or at the office.
+      </p>
+      <div class="hero-actions">
+        <a href="/(auth)/login" class="btn-primary">
+          Get Started Free
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="#how-it-works" class="btn-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          See How It Works
+        </a>
+      </div>
+      <div class="hero-platforms">
+        <span>Available on</span>
+        <div class="platform-pill"><span class="pdot" style="background:#3B82F6"></span> Web</div>
+        <div class="platform-pill"><span class="pdot" style="background:#A78BFA"></span> iOS</div>
+        <div class="platform-pill"><span class="pdot" style="background:#34D399"></span> Android</div>
+      </div>
+    </div>
+    <!-- Dashboard mockup -->
+    <div class="hero-visual">
+      <div class="dashboard-preview">
+        <div class="dp-bar">
+          <span class="dp-dot" style="background:#EF4444"></span>
+          <span class="dp-dot" style="background:#F59E0B"></span>
+          <span class="dp-dot" style="background:#22C55E"></span>
+          <div class="dp-url">gearops.com.au/dashboard</div>
+        </div>
+        <div class="dp-body">
+          <div class="dp-sidebar">
+            <div class="dp-sidebar-item active"><span class="di">▦</span> Dashboard</div>
+            <div class="dp-sidebar-item"><span class="di">◈</span> Assets</div>
+            <div class="dp-sidebar-item"><span class="di">◉</span> Inventory</div>
+            <div class="dp-sidebar-item"><span class="di">▷</span> Tasks</div>
+            <div class="dp-sidebar-item"><span class="di">◷</span> Hire</div>
+            <div class="dp-sidebar-item"><span class="di">⊕</span> Reports</div>
+          </div>
+          <div class="dp-main">
+            <div class="dp-stats">
+              <div class="dp-stat">
+                <span class="ds-num">347</span>
+                <span class="ds-lbl">Total Assets</span>
+                <span class="ds-change">↑ 12 this month</span>
+              </div>
+              <div class="dp-stat">
+                <span class="ds-num" style="color:#22C55E">289</span>
+                <span class="ds-lbl">In Service</span>
+                <span class="ds-change" style="color:#64748B">83% of fleet</span>
+              </div>
+              <div class="dp-stat">
+                <span class="ds-num" style="color:#F59E0B">34</span>
+                <span class="ds-lbl">On Hire</span>
+                <span class="ds-change" style="color:#64748B">Active jobs</span>
+              </div>
+              <div class="dp-stat">
+                <span class="ds-num" style="color:#F87171">8</span>
+                <span class="ds-lbl">Needs Attention</span>
+                <span class="ds-change" style="color:#F87171">Overdue service</span>
+              </div>
+            </div>
+            <table class="dp-table">
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Last Scan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Hilti TE 60-ATC</td><td>Power Tools</td><td><span class="dp-badge db-green">In Service</span></td><td>2 hrs ago</td></tr>
+                <tr><td>Generator 6.5kVA</td><td>Power</td><td><span class="dp-badge db-blue">On Hire</span></td><td>Today</td></tr>
+                <tr><td>Total Station TS16</td><td>Survey</td><td><span class="dp-badge db-amber">Maintenance</span></td><td>Yesterday</td></tr>
+                <tr><td>Compactor PC80</td><td>Compaction</td><td><span class="dp-badge db-green">In Service</span></td><td>Today</td></tr>
+                <tr><td>Laser Level 3D</td><td>Survey</td><td><span class="dp-badge db-red">Repair</span></td><td>3 days ago</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STATS BAR ──────────────────────────────────────────────────────── -->
+  <div class="stats-bar">
+    <div class="stats-bar-inner">
+      <div class="stat-item"><span class="num">500<span>+</span></span><span class="lbl">Assets Tracked</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><span class="num">3</span><span class="lbl">Platforms</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><span class="num">100<span>%</span></span><span class="lbl">Cloud Backed</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat-item"><span class="num">&lt;2<span>s</span></span><span class="lbl">QR Scan to Record</span></div>
+    </div>
+  </div>
+
+  <!-- ── FEATURES ───────────────────────────────────────────────────────── -->
+  <section class="section features-section" id="features">
+    <div class="section-inner">
+      <div class="features-header fade-up">
+        <div class="section-tag">Features</div>
+        <h2 class="section-title">Everything your team needs.<br/>Nothing they don't.</h2>
+        <p class="section-desc">Built for field technicians, office managers and project leads — all in one platform.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#FFF1E8">📱</div>
+          <h3>QR &amp; Barcode Scanning</h3>
+          <p>Scan any asset in under 2 seconds using your phone camera. Works in the field, in the dark, and offline. No dedicated hardware needed.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#EFF6FF">🌐</div>
+          <h3>Real-Time Sync Across Devices</h3>
+          <p>Update an asset on the job site from your phone and see it instantly on the office dashboard. Live data, everywhere, always.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#F0FDF4">📊</div>
+          <h3>Hire &amp; Job Tracking</h3>
+          <p>Know exactly which assets are out on hire, which job they're on, and when they're due back. Never double-book or lose track of gear again.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#FDF4FF">🔔</div>
+          <h3>Service &amp; Maintenance Alerts</h3>
+          <p>Set service intervals, calibration dates and inspection schedules. GearOps alerts you before equipment is overdue so nothing slips through.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#FFFBEB">📄</div>
+          <h3>Documents &amp; Certificates</h3>
+          <p>Attach manuals, compliance certificates, insurance docs and photos directly to each asset. Everything in one place, accessible from your phone.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon" style="background:#F0FDFA">🔒</div>
+          <h3>Firebase-Powered Security</h3>
+          <p>Enterprise-grade authentication with Firebase. Role-based access control, secure logins, and audit trails for every action in the system.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HOW IT WORKS ───────────────────────────────────────────────────── -->
+  <section class="section hiw-section" id="how-it-works">
+    <div class="section-inner">
+      <div class="hiw-grid">
+        <div>
+          <div class="fade-up">
+            <div class="section-tag">How It Works</div>
+            <h2 class="section-title">Scan. Update.<br/><span class="accent">Done.</span></h2>
+            <p class="section-desc" style="margin-bottom:2.5rem">Managing hundreds of assets doesn't have to be complicated. GearOps makes it a three-step process, every time.</p>
+          </div>
+          <div class="hiw-steps">
+            <div class="hiw-step active fade-up">
+              <div class="hiw-num">1</div>
+              <div class="hiw-step-body">
+                <h4>Scan the QR sticker</h4>
+                <p>Every asset has a GearOps QR sticker. Point your phone camera, the app opens the asset record instantly — no typing, no searching.</p>
+              </div>
+            </div>
+            <div class="hiw-step fade-up">
+              <div class="hiw-num">2</div>
+              <div class="hiw-step-body">
+                <h4>Update the status</h4>
+                <p>Change the status to in service, on hire, under repair or in maintenance. Add notes, photos or documents right from the job site.</p>
+              </div>
+            </div>
+            <div class="hiw-step fade-up">
+              <div class="hiw-num">3</div>
+              <div class="hiw-step-body">
+                <h4>Everything syncs instantly</h4>
+                <p>The change appears on every device immediately. Office managers see the update on the web dashboard in real time — no calls, no spreadsheets.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Scan demo visual -->
+        <div class="hiw-visual fade-up">
+          <div class="scan-demo">
+            <div class="qr-box">
+              ▦
+              <div class="scan-line"></div>
+            </div>
+            <p>Scanning asset sticker…</p>
+            <div class="scan-result">
+              <span class="sr-icon">🔧</span>
+              <div>
+                <div class="sr-name">Hilti TE 60-ATC Combihammer</div>
+                <div class="sr-sub">ID: GEA-0047 · Power Tools · <span class="scan-badge">In Service</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:1.25rem; display:grid; grid-template-columns:1fr 1fr; gap:0.75rem">
+            <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:1rem;text-align:center">
+              <div style="font-size:1.4rem;margin-bottom:0.4rem">📅</div>
+              <div style="font-size:0.7rem;color:#94A3B8;font-weight:600">Last Service</div>
+              <div style="font-size:0.85rem;color:#fff;font-weight:700;margin-top:0.2rem">14 Jan 2026</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:1rem;text-align:center">
+              <div style="font-size:1.4rem;margin-bottom:0.4rem">📍</div>
+              <div style="font-size:0.7rem;color:#94A3B8;font-weight:600">Location</div>
+              <div style="font-size:0.85rem;color:#fff;font-weight:700;margin-top:0.2rem">Site A — Shed 3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PLATFORMS ─────────────────────────────────────────────────────── -->
+  <section class="section platforms-section" id="platforms">
+    <div class="section-inner">
+      <div class="platforms-header fade-up">
+        <div class="section-tag">Platforms</div>
+        <h2 class="section-title">One system.<br/>Every screen.</h2>
+        <p class="section-desc">GearOps works wherever your team works — on the web, on iOS, and on Android. One codebase, consistent experience across all three.</p>
+      </div>
+      <div class="platforms-cards">
+        <div class="platform-card fade-up">
+          <span class="pc-icon">🌐</span>
+          <span class="pc-badge pcb-live">Live Now</span>
+          <h3>Web Dashboard</h3>
+          <p>Full-featured dashboard at gearops.com.au. Designed for office managers with a desktop-first sidebar layout.</p>
+          <ul class="pc-features">
+            <li><span class="pc-check">✔</span> Asset library with search and filters</li>
+            <li><span class="pc-check">✔</span> Hire &amp; job management</li>
+            <li><span class="pc-check">✔</span> Reports and export</li>
+            <li><span class="pc-check">✔</span> Team and role management</li>
+            <li><span class="pc-check">✔</span> Document storage (AWS S3)</li>
+          </ul>
+        </div>
+        <div class="platform-card featured fade-up">
+          <span class="pc-icon">🍎</span>
+          <span class="pc-badge pcb-soon">TestFlight → App Store</span>
+          <h3>iOS App</h3>
+          <p>Currently live on TestFlight. The full iOS app is built for field technicians — fast, native and works in tough conditions.</p>
+          <ul class="pc-features">
+            <li><span class="pc-check">✔</span> QR &amp; barcode scanner</li>
+            <li><span class="pc-check">✔</span> Offline-capable with sync</li>
+            <li><span class="pc-check">✔</span> Photo capture per asset</li>
+            <li><span class="pc-check">✔</span> Push notifications for alerts</li>
+            <li><span class="pc-check">✔</span> Firebase Auth sign-in</li>
+          </ul>
+        </div>
+        <div class="platform-card fade-up">
+          <span class="pc-icon">🤖</span>
+          <span class="pc-badge pcb-new">Coming Soon</span>
+          <h3>Android App</h3>
+          <p>The Android app is in testing and will launch on the Google Play Store alongside the iOS public release.</p>
+          <ul class="pc-features">
+            <li><span class="pc-check">✔</span> Full feature parity with iOS</li>
+            <li><span class="pc-check">✔</span> Google Play distribution</li>
+            <li><span class="pc-check">✔</span> Android QR scanning</li>
+            <li><span class="pc-check">✔</span> Works on all Android 10+ devices</li>
+            <li><span class="pc-check">✔</span> Same Firebase Auth backend</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ────────────────────────────────────────────────────────────── -->
+  <section class="cta-section">
+    <div class="cta-glow"></div>
+    <div class="cta-inner">
+      <h2>Ready to <span>ditch the spreadsheets</span>?</h2>
+      <p>Join the teams already using GearOps to run a tighter, faster equipment operation. Log in and get started today.</p>
+      <div class="cta-actions">
+        <a href="/(auth)/login" class="btn-cta-lg">
+          Log In to GearOps
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="mailto:sverma@engsurveys.com.au" class="btn-ghost-lg">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Contact Us
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ─────────────────────────────────────────────────────────── -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="/" class="nav-logo">
+            <div class="nav-logo-mark">G</div>
+            <span class="nav-logo-text">GearOps</span>
+          </a>
+          <p>Modern asset management for field teams. Track, manage and maintain your equipment fleet — on any device, anywhere.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#platforms">Platforms</a></li>
+            <li><a href="/(auth)/login">Dashboard</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Access</h4>
+          <ul>
+            <li><a href="/(auth)/login">Log In</a></li>
+            <li><a href="/(auth)/register">Register</a></li>
+            <li><a href="/(auth)/ForgotPassword">Forgot Password</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="mailto:sverma@engsurveys.com.au">Contact</a></li>
+            <li><a href="https://engsurveys.com.au" target="_blank" rel="noopener">Engineering Surveys</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 GearOps · gearops.com.au · All rights reserved.</p>
+        <div class="footer-badge">
+          <span class="fbadge">🔒 Firebase Auth</span>
+          <span class="fbadge">☁️ AWS Powered</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ── Navbar scroll effect ─────────────────────────────────────────────
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 20);
+    });
+    navbar.classList.toggle('scrolled', window.scrollY > 20);
+
+    // ── Mobile nav ───────────────────────────────────────────────────────
+    const hamburger = document.getElementById('hamburger');
+    const mobileNav = document.getElementById('mobileNav');
+    let mobileOpen = false;
+    hamburger.addEventListener('click', () => {
+      mobileOpen = !mobileOpen;
+      mobileNav.classList.toggle('open', mobileOpen);
+      const spans = hamburger.querySelectorAll('span');
+      if (mobileOpen) {
+        spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
+        spans[1].style.opacity = '0';
+        spans[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
+      } else {
+        spans.forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+      }
+    });
+    function closeMobileNav() {
+      mobileOpen = false;
+      mobileNav.classList.remove('open');
+      hamburger.querySelectorAll('span').forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+    }
+
+    // ── Scroll animations ────────────────────────────────────────────────
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry, i) => {
+        if (entry.isIntersecting) {
+          setTimeout(() => entry.target.classList.add('visible'), 80);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    let delay = 0;
+    document.querySelectorAll('.fade-up').forEach((el, i) => {
+      // Stagger cards within the same parent
+      const siblings = el.parentElement.querySelectorAll('.fade-up');
+      const index = Array.from(siblings).indexOf(el);
+      el.style.transitionDelay = `${index * 0.08}s`;
+      observer.observe(el);
+    });
+
+    // ── Smooth anchor links (account for fixed nav) ──────────────────────
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          const top = target.getBoundingClientRect().top + window.scrollY - 80;
+          window.scrollTo({ top, behavior: 'smooth' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

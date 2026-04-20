@@ -1,3 +1,4 @@
+import { sf } from './constants/uiTheme';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
@@ -22,7 +23,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E90FF',
   },
   headerText: {
-    fontSize: 18,
+    fontSize: sf(18),
     color: '#fff',
   },
   headerRight: {

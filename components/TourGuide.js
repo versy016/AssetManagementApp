@@ -1,3 +1,4 @@
+import { sf } from '../constants/uiTheme.js';
 import React, { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
 import {
   View,
@@ -1487,16 +1488,16 @@ const styles = StyleSheet.create({
   },
   title: {
     fontWeight: 'bold',
-    fontSize: 18,
+    fontSize: sf(18),
     color: '#333',
   },
   close: {
-    fontSize: 18,
+    fontSize: sf(18),
     color: '#999',
     padding: 4,
   },
   desc: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: '#666',
     marginBottom: 16,
     lineHeight: 20,
@@ -1508,7 +1509,7 @@ const styles = StyleSheet.create({
   },
   pager: {
     color: '#999',
-    fontSize: 12,
+    fontSize: sf(12),
   },
   nextBtn: {
     backgroundColor: '#007AFF',
@@ -1523,7 +1524,7 @@ const styles = StyleSheet.create({
   interactionText: {
     color: '#FFA500',
     fontWeight: '600',
-    fontSize: 12,
+    fontSize: sf(12),
     fontStyle: 'italic',
   }
 });

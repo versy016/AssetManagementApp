@@ -1,11 +1,10 @@
 // controllers/assetTypes.controller.js
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const SERVICE_STATUSES = new Set(['In Service', 'Available', 'available', 'in service']);
 const ON_HIRE_STATUSES = new Set(['On Hire', 'on hire', 'on_hire', 'hire', 'rented']);
 const EOL_STATUSES     = new Set(['End of Life', 'end of life', 'eol', 'retired']);
 
-// Small utility so we don’t repeat pagination math
+// Small utility so we don't repeat pagination math
 function getPagination({ page = 1, pageSize = 20 }) {
   const p = Math.max(1, parseInt(page, 10));
   const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10)));

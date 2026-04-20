@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asset Management App — Test Checklist</title>
+<title>GearOps — Test Checklist</title>
 <style>
   :root {
     --brand:      #1E4FA8;
@@ -274,14 +274,144 @@
 
   /* Expand all btn alignment */
   .spacer { flex: 1; }
+
+  /* ── Tester info panel ── */
+  .tester-panel {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;
+  }
+  .tester-field { display: flex; flex-direction: column; gap: 4px; }
+  .tester-field label {
+    font-size: 10px; font-weight: 700; color: var(--grey);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .tester-field input, .tester-field select {
+    padding: 6px 10px; border-radius: 7px;
+    border: 1.5px solid var(--border);
+    font-size: 13px; font-family: inherit; outline: none;
+    color: var(--text); background: #FAFBFD;
+    transition: border-color 0.15s;
+    min-width: 160px;
+  }
+  .tester-field input:focus, .tester-field select:focus { border-color: var(--brand-mid); background: white; }
+  .tester-field.wide input { min-width: 260px; }
+  .tester-saved-badge {
+    font-size: 11px; color: #059669; font-weight: 600;
+    background: #ECFDF5; border: 1px solid #A7F3D0;
+    padding: 3px 10px; border-radius: 999px;
+    align-self: flex-end; margin-bottom: 2px;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .tester-saved-badge.show { opacity: 1; }
+
+  /* ── Save/Load buttons ── */
+  .btn-save   { background: #ECFDF5; color: #065F46; border: 1.5px solid #A7F3D0; }
+  .btn-save:hover { background: #D1FAE5; }
+  .btn-load   { background: #EFF6FF; color: #1E40AF; border: 1.5px solid #BFDBFE; }
+  .btn-load:hover { background: #DBEAFE; }
+  .btn-export { background: #1E4FA8; color: white; }
+  .btn-export:hover { background: #1a3d8a; }
+  .btn-email  { background: #0F766E; color: white; }
+  .btn-email:hover  { background: #0D6B63; }
+
+  /* ── Export modal overlay ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: white; border-radius: 14px;
+    width: 92%; max-width: 860px; max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-header h2 { font-size: 17px; font-weight: 800; color: var(--text); }
+  .modal-close {
+    width: 32px; height: 32px; border-radius: 8px;
+    border: none; background: var(--grey-light);
+    font-size: 18px; cursor: pointer; color: var(--sub);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { background: var(--border); }
+  .modal-body {
+    overflow-y: auto; padding: 20px 24px;
+    flex: 1;
+  }
+  .modal-footer {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 10px; justify-content: flex-end;
+  }
+
+  /* ── Summary report inside modal ── */
+  .report-header {
+    background: var(--header-bg); color: white;
+    border-radius: 10px; padding: 20px 24px; margin-bottom: 20px;
+  }
+  .report-header h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .report-meta { font-size: 12px; color: #94A3B8; margin-bottom: 14px; }
+  .report-stats {
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .report-stat {
+    padding: 8px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 700;
+  }
+  .rs-total  { background: rgba(255,255,255,0.12); color: #E2E8F0; }
+  .rs-pass   { background: rgba(52,211,153,0.25); color: #6EE7B7; }
+  .rs-fail   { background: rgba(248,113,113,0.25); color: #FCA5A5; }
+  .rs-pend   { background: rgba(251,191,36,0.2); color: #FDE68A; }
+
+  .report-section { margin-bottom: 18px; }
+  .report-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #F8FAFC; border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0; padding: 10px 16px;
+    font-size: 13px; font-weight: 700; color: var(--text);
+  }
+  .report-section-pills { display: flex; gap: 8px; }
+  .rpill { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+  .rpill-pass { background: var(--pass-bg); color: var(--pass); border: 1px solid var(--pass-border); }
+  .rpill-fail { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail-border); }
+  .rpill-pend { background: var(--amber-bg); color: var(--amber); border: 1px solid #FDE68A; }
+
+  .report-test-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 16px; border: 1px solid var(--border); border-top: none;
+    font-size: 12px;
+  }
+  .report-test-row:last-child { border-radius: 0 0 8px 8px; }
+  .report-test-row.rpass { background: #F0FDF4; }
+  .report-test-row.rfail { background: #FFF5F5; }
+  .report-test-row.rpend { background: #FFFBEB; }
+  .rt-status { flex-shrink: 0; font-weight: 800; font-size: 13px; width: 20px; margin-top: 1px; }
+  .rt-pass { color: var(--pass); }
+  .rt-fail { color: var(--fail); }
+  .rt-pend { color: var(--amber); }
+  .rt-body { flex: 1; min-width: 0; }
+  .rt-feature { font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .rt-note { color: var(--sub); font-style: italic; margin-top: 4px; padding: 4px 8px; background: rgba(0,0,0,0.04); border-radius: 5px; border-left: 3px solid var(--brand-mid); }
+  .rt-steps { color: var(--sub); margin-top: 4px; font-size: 11px; line-height: 1.6; }
+
+  .report-divider { height: 1px; background: var(--border); margin: 10px 0; }
 </style>
 </head>
 <body>
 
 <!-- ── Header ── -->
 <div class="app-header">
-  <h1>Asset Management App — Test Checklist</h1>
-  <p id="gen-date">Version 2.0 &nbsp;·&nbsp; Progress is saved automatically in your browser</p>
+  <h1>GearOps — Test Checklist</h1>
+  <p id="gen-date">Version 2.0 &nbsp;·&nbsp; Open from the network drive — progress saves locally in your browser</p>
   <div class="header-meta">
     <div class="progress-wrap">
       <div class="progress-bar-bg">
@@ -300,12 +430,73 @@
 
 <!-- ── Toolbar ── -->
 <div class="toolbar">
-  <button class="btn btn-outline" onclick="expandAll()">↕ Expand All</button>
-  <button class="btn btn-outline" onclick="collapseAll()">↕ Collapse All</button>
-  <button class="btn btn-primary" onclick="exportSummary()">⬇ Export Summary</button>
-  <button class="btn btn-danger"  onclick="clearAll()">✕ Clear All</button>
+  <button class="btn btn-outline" onclick="expandAll()">&#x2195; Expand All</button>
+  <button class="btn btn-outline" onclick="collapseAll()">&#x2195; Collapse All</button>
+  <button class="btn btn-save"   onclick="saveToDisk()">&#x1F4BE; Save to File</button>
+  <button class="btn btn-load"   onclick="document.getElementById('file-loader').click()">&#x1F4C2; Load from File</button>
+  <button class="btn btn-export" onclick="exportSummary()">&#x1F4C4; Export Report</button>
+  <button class="btn btn-email"  onclick="emailReport()">&#x2709; Email Report</button>
+  <button class="btn btn-danger" onclick="clearAll()">&#x2715; Clear All</button>
   <div class="spacer"></div>
-  <input class="search-box" type="text" placeholder="🔍  Search tests…" oninput="filterTests(this.value)" id="search-input">
+  <input class="search-box" type="text" placeholder="Search tests..." oninput="filterTests(this.value)" id="search-input">
+</div>
+
+<!-- ── Tester info panel ── -->
+<div class="tester-panel" id="tester-panel">
+  <div class="tester-field">
+    <label for="tester-name">Tester Name</label>
+    <input type="text" id="tester-name" placeholder="Your full name" oninput="saveTesterInfo()">
+  </div>
+  <div class="tester-field">
+    <label for="tester-platform">Platform / Device</label>
+    <select id="tester-platform" onchange="saveTesterInfo()">
+      <option value="">-- Select --</option>
+      <option value="iOS (iPhone)">iOS (iPhone)</option>
+      <option value="iOS (iPad)">iOS (iPad)</option>
+      <option value="Android (Phone)">Android (Phone)</option>
+      <option value="Android (Tablet)">Android (Tablet)</option>
+      <option value="Web (Desktop)">Web (Desktop)</option>
+      <option value="Web (Mobile)">Web (Mobile)</option>
+    </select>
+  </div>
+  <div class="tester-field">
+    <label for="tester-env">Environment</label>
+    <select id="tester-env" onchange="saveTesterInfo()">
+      <option value="">-- Select --</option>
+      <option value="Development">Development</option>
+      <option value="Staging">Staging</option>
+      <option value="Production">Production</option>
+    </select>
+  </div>
+  <div class="tester-field">
+    <label for="tester-version">App Version</label>
+    <input type="text" id="tester-version" placeholder="e.g. 1.4.2" oninput="saveTesterInfo()">
+  </div>
+  <div class="tester-field wide">
+    <label for="tester-notes">General Notes</label>
+    <input type="text" id="tester-notes" placeholder="Any overall comments about this test run..." oninput="saveTesterInfo()">
+  </div>
+  <span class="tester-saved-badge" id="tester-saved-badge">Saved</span>
+</div>
+
+<!-- Hidden file input for Load from File -->
+<input type="file" id="file-loader" accept=".json" style="display:none" onchange="loadFromDisk(event)">
+
+<!-- ── Export modal ── -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Test Report Preview</h2>
+      <button class="modal-close" onclick="closeModal()" title="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-report-body">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      <button class="btn btn-export" onclick="downloadReport()">&#x2B07; Download HTML Report</button>
+      <button class="btn btn-email"  onclick="emailReport()">&#x2709; Email Report</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Main ── -->
@@ -658,7 +849,8 @@ const SECTIONS = [
 ];
 
 // ─── State ────────────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'ama_checklist_v2';
+const STORAGE_KEY = 'gearops_checklist_v2';
+const TESTER_KEY  = 'gearops_tester_info_v2';
 let state = {};
 
 function loadState() {
@@ -670,6 +862,83 @@ function saveState() {
 }
 function getTestState(id) {
   return state[id] || { result: 'pending', comment: '' };
+}
+
+// ─── Tester info ──────────────────────────────────────────────────────────────
+function getTesterInfo() {
+  return {
+    name:     (document.getElementById('tester-name')    || {}).value || '',
+    platform: (document.getElementById('tester-platform')|| {}).value || '',
+    env:      (document.getElementById('tester-env')     || {}).value || '',
+    version:  (document.getElementById('tester-version') || {}).value || '',
+    notes:    (document.getElementById('tester-notes')   || {}).value || '',
+  };
+}
+function setTesterInfo(info) {
+  if (!info) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('tester-name',     info.name);
+  set('tester-platform', info.platform);
+  set('tester-env',      info.env);
+  set('tester-version',  info.version);
+  set('tester-notes',    info.notes);
+}
+function saveTesterInfo() {
+  localStorage.setItem(TESTER_KEY, JSON.stringify(getTesterInfo()));
+  const badge = document.getElementById('tester-saved-badge');
+  if (badge) { badge.classList.add('show'); setTimeout(() => badge.classList.remove('show'), 1600); }
+}
+function loadTesterInfo() {
+  try { setTesterInfo(JSON.parse(localStorage.getItem(TESTER_KEY) || 'null')); } catch (_) {}
+}
+
+// ─── Save to File (JSON) ──────────────────────────────────────────────────────
+function saveToDisk() {
+  const snapshot = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    testerInfo: getTesterInfo(),
+    results: state,
+  };
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'GearOps_TestResults_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Results saved to file');
+}
+
+// ─── Load from File (JSON) ────────────────────────────────────────────────────
+function loadFromDisk(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const snapshot = JSON.parse(e.target.result);
+      if (snapshot && snapshot.results) {
+        if (!confirm('Load results from "' + file.name + '"?\nThis will replace your local progress in this browser.')) {
+          event.target.value = '';
+          return;
+        }
+        state = snapshot.results;
+        saveState();
+        if (snapshot.testerInfo) {
+          setTesterInfo(snapshot.testerInfo);
+          localStorage.setItem(TESTER_KEY, JSON.stringify(snapshot.testerInfo));
+        }
+        render();
+        showToast('Results loaded from file');
+      } else {
+        alert('This file does not appear to be a valid AMA test results file.');
+      }
+    } catch (_) {
+      alert('Could not read file. Make sure it is a valid JSON results file.');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -821,7 +1090,7 @@ function collapseAll() { document.querySelectorAll('.section-card').forEach(c =>
 
 // ─── Clear all ────────────────────────────────────────────────────────────────
 function clearAll() {
-  if (!confirm('Clear all test results and comments? This cannot be undone.')) return;
+  if (!confirm('Clear all test results and comments? This cannot be undone.\n\nThis only clears your local browser copy.')) return;
   state = {};
   saveState();
   render();
@@ -849,56 +1118,266 @@ function filterTests(query) {
   });
 }
 
-// ─── Export summary ───────────────────────────────────────────────────────────
-function exportSummary() {
-  const date = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
-  let passed = 0, failed = 0, pending = 0;
-  let rows = '';
+// ─── Export Report ───────────────────────────────────────────────────────────
+let _reportHtml = '';
 
+function buildReport() {
+  const tester  = getTesterInfo();
+  const dateStr = new Date().toLocaleString('en-AU', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  let totalPass = 0, totalFail = 0, totalPend = 0;
+
+  // Pre-count totals
+  SECTIONS.forEach(section => {
+    section.tests.forEach(t => {
+      const r = getTestState(t.id).result;
+      if (r === 'pass') totalPass++;
+      else if (r === 'fail') totalFail++;
+      else totalPend++;
+    });
+  });
+  const totalAll = totalPass + totalFail + totalPend;
+  const pct = totalAll > 0 ? Math.round(((totalPass + totalFail) / totalAll) * 100) : 0;
+
+  // Build section rows HTML
+  let sectionsHtml = '';
   SECTIONS.forEach(section => {
     let sp = 0, sf = 0, su = 0;
+    let testRowsHtml = '';
     section.tests.forEach(t => {
       const ts = getTestState(t.id);
-      if (ts.result === 'pass') { passed++; sp++; }
-      else if (ts.result === 'fail') { failed++; sf++; }
-      else { pending++; su++; }
+      const r  = ts.result;
+      if (r === 'pass') sp++;
+      else if (r === 'fail') sf++;
+      else su++;
+
+      const icon  = r === 'pass' ? '&#x2714;' : r === 'fail' ? '&#x2718;' : '&#x25CB;';
+      const cls   = r === 'pass' ? 'rpass' : r === 'fail' ? 'rfail' : 'rpend';
+      const icls  = r === 'pass' ? 'rt-pass' : r === 'fail' ? 'rt-fail' : 'rt-pend';
+      const label = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : 'SKIP';
+
+      const stepsHtml = t.steps.map((s, i) =>
+        (i + 1) + '. ' + s
+      ).join('  |  ');
+
+      const noteHtml = ts.comment
+        ? '<div class="rt-note">Note: ' + ts.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>'
+        : '';
+
+      testRowsHtml += `
+        <div class="report-test-row ${cls}">
+          <div class="rt-status ${icls}">${icon}</div>
+          <div class="rt-body">
+            <div class="rt-feature">${t.feature} <span style="font-size:10px;font-weight:600;opacity:.7">${label}</span></div>
+            <div class="rt-steps">${stepsHtml}</div>
+            ${noteHtml}
+          </div>
+        </div>`;
     });
-    rows += `\n  ${section.num}. ${section.title}:  ✔ ${sp} passed  ✘ ${sf} failed  ○ ${su} untested`;
+
+    const pillsHtml =
+      (sp ? `<span class="rpill rpill-pass">&#x2714; ${sp} pass</span>` : '') +
+      (sf ? `<span class="rpill rpill-fail">&#x2718; ${sf} fail</span>` : '') +
+      (su ? `<span class="rpill rpill-pend">&#x25CB; ${su} skip</span>` : '');
+
+    sectionsHtml += `
+      <div class="report-section">
+        <div class="report-section-head">
+          <span>${section.num}. ${section.title}</span>
+          <div class="report-section-pills">${pillsHtml}</div>
+        </div>
+        ${testRowsHtml}
+      </div>`;
+  });
+
+  // Tester info rows
+  const testerRows = [
+    tester.name     ? '<tr><td style="width:120px;font-weight:600;color:#475569;padding:4px 8px;">Tester</td><td style="padding:4px 8px;">' + tester.name + '</td></tr>' : '',
+    tester.platform ? '<tr><td style="font-weight:600;color:#475569;padding:4px 8px;">Platform</td><td style="padding:4px 8px;">' + tester.platform + '</td></tr>' : '',
+    tester.env      ? '<tr><td style="font-weight:600;color:#475569;padding:4px 8px;">Environment</td><td style="padding:4px 8px;">' + tester.env + '</td></tr>' : '',
+    tester.version  ? '<tr><td style="font-weight:600;color:#475569;padding:4px 8px;">App Version</td><td style="padding:4px 8px;">' + tester.version + '</td></tr>' : '',
+    tester.notes    ? '<tr><td style="font-weight:600;color:#475569;padding:4px 8px;">Notes</td><td style="padding:4px 8px;font-style:italic;">' + tester.notes.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</td></tr>' : '',
+  ].filter(Boolean).join('');
+
+  const testerBlock = testerRows
+    ? '<table style="border-collapse:collapse;font-size:12px;margin-top:10px;">' + testerRows + '</table>'
+    : '<p style="font-size:12px;color:#94A3B8;margin-top:8px;">No tester info provided.</p>';
+
+  // Assemble full report HTML (self-contained, for download)
+  _reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GearOps Test Report - ${dateStr}</title>
+<style>
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background:#F1F5F9; color:#0F172A; font-size:13px; margin:0; padding:24px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .report-header { background:#1E3A5F; color:white; border-radius:10px; padding:24px; margin-bottom:20px; }
+  .report-header h1 { font-size:22px; font-weight:800; margin-bottom:4px; }
+  .report-meta { font-size:12px; color:#94A3B8; margin-bottom:16px; }
+  .report-stats { display:flex; gap:10px; flex-wrap:wrap; }
+  .report-stat { padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700; }
+  .rs-total { background:rgba(255,255,255,.12); color:#E2E8F0; }
+  .rs-pass  { background:rgba(52,211,153,.25); color:#6EE7B7; }
+  .rs-fail  { background:rgba(248,113,113,.25); color:#FCA5A5; }
+  .rs-pend  { background:rgba(251,191,36,.2); color:#FDE68A; }
+  .tester-block { background:white; border:1px solid #CBD5E1; border-radius:10px; padding:16px 20px; margin-bottom:20px; }
+  .tester-block h3 { font-size:13px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+  .report-section { margin-bottom:18px; }
+  .report-section-head { display:flex; align-items:center; justify-content:space-between; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px 8px 0 0; padding:10px 16px; font-size:13px; font-weight:700; }
+  .report-section-pills { display:flex; gap:8px; }
+  .rpill { font-size:11px; font-weight:700; padding:2px 10px; border-radius:999px; }
+  .rpill-pass { background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; }
+  .rpill-fail { background:#FEE2E2; color:#991B1B; border:1px solid #FECACA; }
+  .rpill-pend { background:#FEF3C7; color:#92400E; border:1px solid #FDE68A; }
+  .report-test-row { display:flex; align-items:flex-start; gap:12px; padding:10px 16px; border:1px solid #CBD5E1; border-top:none; font-size:12px; }
+  .report-test-row:last-child { border-radius:0 0 8px 8px; }
+  .rpass { background:#F0FDF4; }
+  .rfail { background:#FFF5F5; }
+  .rpend { background:#FFFBEB; }
+  .rt-status { flex-shrink:0; font-weight:800; font-size:14px; width:20px; margin-top:1px; }
+  .rt-pass { color:#065F46; }
+  .rt-fail { color:#991B1B; }
+  .rt-pend { color:#92400E; }
+  .rt-body { flex:1; min-width:0; }
+  .rt-feature { font-weight:700; color:#0F172A; margin-bottom:2px; }
+  .rt-note { color:#475569; font-style:italic; margin-top:4px; padding:4px 8px; background:rgba(0,0,0,.04); border-radius:5px; border-left:3px solid #2563EB; }
+  .rt-steps { color:#64748B; margin-top:4px; font-size:11px; line-height:1.6; }
+  @media print { body { background:white; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="report-header">
+    <h1>GearOps — Test Report</h1>
+    <div class="report-meta">Generated: ${dateStr} &nbsp;|&nbsp; ${pct}% of tests executed</div>
+    <div class="report-stats">
+      <div class="report-stat rs-total">&#x1F4CB; ${totalAll} Total</div>
+      <div class="report-stat rs-pass">&#x2714; ${totalPass} Passed</div>
+      <div class="report-stat rs-fail">&#x2718; ${totalFail} Failed</div>
+      <div class="report-stat rs-pend">&#x25CB; ${totalPend} Untested</div>
+    </div>
+  </div>
+  <div class="tester-block">
+    <h3>Tester Information</h3>
+    ${testerBlock}
+  </div>
+  ${sectionsHtml}
+</div>
+</body></html>`;
+
+  // Render preview in modal
+  document.getElementById('modal-report-body').innerHTML = `
+    <div class="report-header">
+      <h1>GearOps — Test Report</h1>
+      <div class="report-meta">${dateStr} &nbsp;|&nbsp; ${pct}% executed</div>
+      <div class="report-stats">
+        <div class="report-stat rs-total">&#x1F4CB; ${totalAll} Total</div>
+        <div class="report-stat rs-pass">&#x2714; ${totalPass} Passed</div>
+        <div class="report-stat rs-fail">&#x2718; ${totalFail} Failed</div>
+        <div class="report-stat rs-pend">&#x25CB; ${totalPend} Untested</div>
+      </div>
+    </div>
+    <div style="background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:18px;">
+      <div style="font-size:11px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Tester Information</div>
+      ${testerBlock}
+    </div>
+    ${sectionsHtml}`;
+
+  document.getElementById('export-modal').classList.add('open');
+}
+
+function exportSummary() {
+  buildReport();
+}
+
+function closeModal() {
+  document.getElementById('export-modal').classList.remove('open');
+}
+
+function downloadReport() {
+  if (!_reportHtml) return;
+  const blob = new Blob([_reportHtml], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'GearOps_Test_Report_' + new Date().toISOString().slice(0, 10) + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Report downloaded');
+}
+
+// ─── Email Report ─────────────────────────────────────────────────────────────
+function emailReport() {
+  // Auto-generate the report if it hasn't been built yet
+  // (handles clicking Email Report directly from the toolbar — no modal opened)
+  if (!_reportHtml) buildReport();
+
+  // Download the HTML report so the tester can attach it
+  downloadReport();
+
+  // Build a plain-text summary for the email body
+  const tester  = getTesterInfo();
+  const dateStr = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+
+  let totalPass = 0, totalFail = 0, totalPend = 0;
+  SECTIONS.forEach(s => s.tests.forEach(t => {
+    const r = getTestState(t.id).result;
+    if (r === 'pass') totalPass++; else if (r === 'fail') totalFail++; else totalPend++;
+  }));
+  const totalAll = totalPass + totalFail + totalPend;
+  const pct = totalAll > 0 ? Math.round(((totalPass + totalFail) / totalAll) * 100) : 0;
+
+  let body = 'GearOps Test Report\n';
+  body += '===================\n';
+  body += 'Date: ' + dateStr + ' at ' + timeStr + '\n';
+  if (tester.name)     body += 'Tester: '      + tester.name     + '\n';
+  if (tester.platform) body += 'Platform: '    + tester.platform + '\n';
+  if (tester.env)      body += 'Environment: ' + tester.env      + '\n';
+  if (tester.version)  body += 'App Version: ' + tester.version  + '\n';
+  if (tester.notes)    body += 'Notes: '       + tester.notes    + '\n';
+  body += '\nOVERALL RESULTS\n';
+  body += '  Total:    ' + totalAll  + '\n';
+  body += '  Passed:   ' + totalPass + '\n';
+  body += '  Failed:   ' + totalFail + '\n';
+  body += '  Untested: ' + totalPend + '\n';
+  body += '  Progress: ' + pct + '% tested\n';
+  body += '\nBY SECTION\n';
+  SECTIONS.forEach(s => {
+    let sp = 0, sf = 0, su = 0;
+    s.tests.forEach(t => {
+      const r = getTestState(t.id).result;
+      if (r === 'pass') sp++; else if (r === 'fail') sf++; else su++;
+    });
+    body += '  ' + s.num + '. ' + s.title + ' — Pass: ' + sp + '  Fail: ' + sf + '  Skip: ' + su + '\n';
   });
 
   const failures = [];
-  SECTIONS.forEach(section => {
-    section.tests.forEach(t => {
-      const ts = getTestState(t.id);
-      if (ts.result === 'fail') {
-        failures.push(`  [${section.title}] ${t.feature}${ts.comment ? '\n    Note: ' + ts.comment : ''}`);
-      }
-    });
-  });
-
-  const total = passed + failed + pending;
-  const pct = total > 0 ? Math.round(((passed + failed) / total) * 100) : 0;
-
-  let summary = `ASSET MANAGEMENT APP — TEST SUMMARY\n`;
-  summary += `${'='.repeat(50)}\n`;
-  summary += `Date: ${date}\n`;
-  summary += `Progress: ${pct}% tested\n\n`;
-  summary += `OVERALL RESULTS\n`;
-  summary += `  Total tests:  ${total}\n`;
-  summary += `  ✔ Passed:     ${passed}\n`;
-  summary += `  ✘ Failed:     ${failed}\n`;
-  summary += `  ○ Untested:   ${pending}\n\n`;
-  summary += `BY SECTION\n${rows}\n`;
+  SECTIONS.forEach(s => s.tests.forEach(t => {
+    const ts = getTestState(t.id);
+    if (ts.result === 'fail') {
+      failures.push('  [' + s.title + '] ' + t.feature + (ts.comment ? '\n    Note: ' + ts.comment : ''));
+    }
+  }));
   if (failures.length) {
-    summary += `\nFAILED TESTS (${failures.length})\n${'─'.repeat(40)}\n${failures.join('\n')}\n`;
+    body += '\nFAILED TESTS (' + failures.length + ')\n';
+    body += failures.join('\n') + '\n';
   }
 
-  const blob = new Blob([summary], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `AMA_Test_Summary_${new Date().toISOString().slice(0, 10)}.txt`;
-  a.click();
-  showToast('Summary exported');
+  body += '\n--\nFull HTML report has been downloaded to your machine.\nPlease attach it to this email before sending.';
+
+  const subject = encodeURIComponent('GearOps Test Report — ' + dateStr + (tester.name ? ' (' + tester.name + ')' : ''));
+  const encodedBody = encodeURIComponent(body);
+  const mailto = 'mailto:sverma@engsurveys.com.au?subject=' + subject + '&body=' + encodedBody;
+
+  const link = document.createElement('a');
+  link.href = mailto;
+  link.click();
+
+  showToast('Email opened — attach the downloaded HTML report');
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -912,10 +1391,16 @@ function showToast(msg) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadState();
+  loadTesterInfo();
   render();
   document.getElementById('gen-date').textContent =
-    'Version 2.0  ·  ' + new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) +
-    '  ·  Progress is saved automatically in your browser';
+    'GearOps Test Checklist  ·  ' + new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) +
+    '  ·  Progress auto-saved locally in your browser  ·  Use Save to File to keep your own copy';
+
+  // Close modal on overlay click
+  document.getElementById('export-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
 });
 </script>
 </body>

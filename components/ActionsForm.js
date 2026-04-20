@@ -21,7 +21,7 @@ import { getAuth } from 'firebase/auth';
 import { useTasksCount } from '../contexts/TasksCountContext';
 import { fetchTaskCount } from '../utils/fetchTaskCount';
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { Colors, Radius, Shadows } from '../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 
 const ACTIONS = [
   'Repair',
@@ -531,7 +531,7 @@ export default function ActionsForm({
 
                 {action !== 'Repair' && (
                   <View style={{ marginBottom: 8 }}>
-                    <Text style={{ color: Colors.sub, fontSize: 12, marginBottom: 6, fontWeight: '700' }}>
+                    <Text style={{ color: Colors.sub, fontSize: sf(12), marginBottom: 6, fontWeight: '700' }}>
                       Quick select
                     </Text>
                     <View style={styles.pillRow}>
@@ -622,7 +622,7 @@ export default function ActionsForm({
                         }}
                       />
                       {!!serviceImages.length && (
-                        <Text style={{ color: Colors.subtle, fontSize: 12 }}>{serviceImages.length} file(s) selected</Text>
+                        <Text style={{ color: Colors.subtle, fontSize: sf(12) }}>{serviceImages.length} file(s) selected</Text>
                       )}
                     </View>
                   </LabeledInput>
@@ -690,12 +690,12 @@ export default function ActionsForm({
                       </View>
                       {serviceImages.length > 0 && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <Text style={{ color: Colors.subtle, fontSize: 12 }}>{serviceImages.length} image(s) selected</Text>
+                          <Text style={{ color: Colors.subtle, fontSize: sf(12) }}>{serviceImages.length} image(s) selected</Text>
                           <TouchableOpacity
                             style={[styles.btn, { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#FEE2E2' }]}
                             onPress={() => setServiceImages([])}
                           >
-                            <Text style={{ fontWeight: '700', color: '#B91C1C', fontSize: 12 }}>Clear all</Text>
+                            <Text style={{ fontWeight: '700', color: '#B91C1C', fontSize: sf(12) }}>Clear all</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -764,7 +764,7 @@ export default function ActionsForm({
                         ) : null}
                       </View>
                       {selectedProject ? (
-                        <Text style={{ color: Colors.muted, fontSize: 11, marginTop: 4 }}>Clear project above to change client</Text>
+                        <Text style={{ color: Colors.muted, fontSize: sf(11), marginTop: 4 }}>Clear project above to change client</Text>
                       ) : null}
                     </LabeledInput>
                     {clientSearch.trim().length > 1 && !selectedClient && !selectedProject && (
@@ -825,7 +825,7 @@ export default function ActionsForm({
                         ) : null}
                       </View>
                       {(selectedClient || (clientSearch && clientSearch.trim().length > 0)) ? (
-                        <Text style={{ color: Colors.muted, fontSize: 11, marginTop: 4 }}>Clear client above to change project</Text>
+                        <Text style={{ color: Colors.muted, fontSize: sf(11), marginTop: 4 }}>Clear client above to change project</Text>
                       ) : null}
                     </LabeledInput>
                     {projectSearch.trim().length > 1 && !selectedProject && !(selectedClient || (clientSearch && clientSearch.trim().length > 0)) && (
@@ -1045,8 +1045,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { color: Colors.text, fontSize: 18, fontWeight: '800', textTransform: 'uppercase' },
-  label: { color: Colors.sub, fontSize: 12, marginBottom: 6, fontWeight: '700' },
+  title: { color: Colors.text, fontSize: sf(18), fontWeight: '800', textTransform: 'uppercase' },
+  label: { color: Colors.sub, fontSize: sf(12), marginBottom: 6, fontWeight: '700' },
   input: {
     borderWidth: 2,
     borderColor: Colors.line,

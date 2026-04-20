@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GearOps — Deployment Journey</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #1E293B;
+      --navy-light: #2D3F55;
+      --orange: #EA580C;
+      --orange-light: #FB923C;
+      --stone:  #F5F3F0;
+      --stone2: #E8E4DF;
+      --text:   #1C1917;
+      --muted:  #64748B;
+      --white:  #FFFFFF;
+      --green:  #16A34A;
+      --teal:   #0D9488;
+      --amber:  #D97706;
+      --red:    #DC2626;
+      --indigo: #4F46E5;
+      --border: #CBD5E1;
+
+      --phase1: #1D4ED8;
+      --phase2: #0D9488;
+      --phase3: #EA580C;
+      --phase4: #7C3AED;
+      --phase5: #16A34A;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      background: var(--stone);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(30,41,59,0.97);
+      backdrop-filter: blur(12px);
+      padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px;
+      border-bottom: 2px solid var(--orange);
+    }
+    .nav-brand {
+      font-size: 1.2rem; font-weight: 800; letter-spacing: 0.08em;
+      color: var(--white); text-transform: uppercase;
+    }
+    .nav-brand span { color: var(--orange); }
+    .nav-links {
+      display: flex; gap: 0.25rem;
+    }
+    .nav-links a {
+      color: #94A3B8; text-decoration: none; font-size: 0.78rem;
+      font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 0.4rem 0.75rem; border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .nav-links a:hover { color: var(--white); background: rgba(255,255,255,0.08); }
+    .nav-links a.active { color: var(--orange); }
+
+    /* ── Hero ─────────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--navy) 0%, #0F172A 50%, #1a1a2e 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 80px 2rem 4rem;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 60%, rgba(234,88,12,0.12) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    /* Grid lines */
+    .hero::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+
+    .hero-tag {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: rgba(234,88,12,0.15); border: 1px solid rgba(234,88,12,0.4);
+      color: var(--orange-light); font-size: 0.75rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.4rem 1rem; border-radius: 999px; margin-bottom: 2rem;
+      position: relative; z-index: 1;
+    }
+    .hero-tag::before { content: '●'; font-size: 0.5rem; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .hero h1 {
+      font-size: clamp(2.8rem, 7vw, 5.5rem);
+      font-weight: 900; line-height: 1.05;
+      color: var(--white); letter-spacing: -0.02em;
+      margin-bottom: 0.5rem; position: relative; z-index: 1;
+    }
+    .hero h1 span { color: var(--orange); }
+
+    .hero-sub {
+      font-size: clamp(1rem, 2.5vw, 1.4rem);
+      color: #94A3B8; margin-bottom: 1.5rem;
+      position: relative; z-index: 1; font-weight: 400;
+    }
+
+    .hero-migration {
+      display: flex; align-items: center; gap: 1.5rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 1rem 2rem;
+      margin: 1.5rem 0 2.5rem; position: relative; z-index: 1;
+    }
+    .hero-migration .from {
+      font-size: 1rem; font-weight: 700; color: #64748B;
+      text-decoration: line-through; letter-spacing: 0.06em;
+    }
+    .arrow-path {
+      display: flex; align-items: center; gap: 0.5rem; color: var(--orange);
+      font-size: 1.5rem;
+    }
+    .arrow-line {
+      width: 60px; height: 2px;
+      background: linear-gradient(90deg, #64748B, var(--orange));
+    }
+    .hero-migration .to {
+      font-size: 1.1rem; font-weight: 800; color: var(--white); letter-spacing: 0.08em;
+    }
+
+    .hero-stats {
+      display: flex; gap: 2rem; margin-bottom: 3rem;
+      position: relative; z-index: 1; flex-wrap: wrap; justify-content: center;
+    }
+    .hero-stat {
+      text-align: center;
+    }
+    .hero-stat .num {
+      font-size: 2.2rem; font-weight: 900; color: var(--white);
+      line-height: 1; display: block;
+    }
+    .hero-stat .num span { color: var(--orange); }
+    .hero-stat .lbl {
+      font-size: 0.7rem; color: #64748B; text-transform: uppercase; letter-spacing: 0.1em;
+    }
+
+    .platform-badges {
+      display: flex; gap: 0.75rem; position: relative; z-index: 1; flex-wrap: wrap; justify-content: center;
+    }
+    .platform-badge {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+      color: var(--white); font-size: 0.85rem; font-weight: 600;
+      padding: 0.5rem 1.2rem; border-radius: 8px;
+    }
+    .platform-badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .scroll-hint {
+      position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
+      color: #475569; font-size: 0.75rem; letter-spacing: 0.1em;
+      text-transform: uppercase; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      animation: bounce 2s infinite;
+    }
+    @keyframes bounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(6px)} }
+    .scroll-arrow { font-size: 1.2rem; }
+
+    /* ── Section wrapper ─────────────────────────────────────── */
+    section { padding: 5rem 2rem; max-width: 1100px; margin: 0 auto; }
+    .section-label {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--orange); margin-bottom: 0.75rem;
+    }
+    .section-title {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 900; color: var(--navy); line-height: 1.1;
+      margin-bottom: 0.75rem;
+    }
+    .section-desc {
+      color: var(--muted); font-size: 1rem; max-width: 600px; line-height: 1.7;
+    }
+
+    /* ── Journey Road ─────────────────────────────────────────── */
+    #journey { max-width: 1100px; margin: 0 auto; padding: 5rem 2rem; }
+
+    .journey-header { margin-bottom: 4rem; }
+
+    .phase-road {
+      position: relative;
+    }
+    /* Vertical line */
+    .phase-road::before {
+      content: '';
+      position: absolute; left: 36px; top: 0; bottom: 0; width: 3px;
+      background: linear-gradient(180deg, var(--phase1), var(--phase2), var(--phase3), var(--phase4), var(--phase5));
+      border-radius: 2px;
+    }
+
+    .phase-card {
+      position: relative; margin-bottom: 3rem;
+      padding-left: 90px;
+      opacity: 0; transform: translateX(-20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .phase-card.visible { opacity: 1; transform: translateX(0); }
+
+    /* Phase node on the line */
+    .phase-node {
+      position: absolute; left: 16px; top: 0;
+      width: 42px; height: 42px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      border: 3px solid var(--white);
+      box-shadow: 0 0 0 3px currentColor, 0 4px 16px rgba(0,0,0,0.2);
+      z-index: 1;
+      transition: transform 0.3s;
+    }
+    .phase-card:hover .phase-node { transform: scale(1.15); }
+
+    .phase-inner {
+      background: var(--white);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      transition: box-shadow 0.3s, transform 0.3s;
+    }
+    .phase-card:hover .phase-inner {
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      transform: translateY(-2px);
+    }
+
+    .phase-header {
+      padding: 1.25rem 1.5rem;
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+      cursor: pointer; user-select: none;
+    }
+
+    .phase-meta { flex: 1; }
+    .phase-num {
+      font-size: 0.65rem; font-weight: 800; letter-spacing: 0.15em;
+      text-transform: uppercase; margin-bottom: 0.3rem;
+    }
+    .phase-name {
+      font-size: 1.25rem; font-weight: 800; color: var(--navy); line-height: 1.2;
+    }
+    .phase-tagline {
+      font-size: 0.85rem; color: var(--muted); margin-top: 0.3rem;
+    }
+
+    .phase-right {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;
+    }
+    .phase-duration {
+      background: var(--stone); border: 1px solid var(--stone2);
+      border-radius: 6px; padding: 0.3rem 0.75rem;
+      font-size: 0.78rem; font-weight: 700; color: var(--navy);
+      white-space: nowrap;
+    }
+    .phase-toggle {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid var(--border); background: var(--stone);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; color: var(--muted);
+      transition: all 0.3s;
+    }
+    .phase-card.open .phase-toggle { transform: rotate(180deg); background: var(--navy); color: var(--white); border-color: var(--navy); }
+
+    /* Accent top border by phase */
+    .phase-1 .phase-inner { border-top: 4px solid var(--phase1); }
+    .phase-2 .phase-inner { border-top: 4px solid var(--phase2); }
+    .phase-3 .phase-inner { border-top: 4px solid var(--phase3); }
+    .phase-4 .phase-inner { border-top: 4px solid var(--phase4); }
+    .phase-5 .phase-inner { border-top: 4px solid var(--phase5); }
+
+    .phase-1 .phase-node { background: var(--phase1); color: var(--phase1); }
+    .phase-2 .phase-node { background: var(--phase2); color: var(--phase2); }
+    .phase-3 .phase-node { background: var(--phase3); color: var(--phase3); }
+    .phase-4 .phase-node { background: var(--phase4); color: var(--phase4); }
+    .phase-5 .phase-node { background: var(--phase5); color: var(--phase5); }
+
+    .phase-1 .phase-num { color: var(--phase1); }
+    .phase-2 .phase-num { color: var(--phase2); }
+    .phase-3 .phase-num { color: var(--phase3); }
+    .phase-4 .phase-num { color: var(--phase4); }
+    .phase-5 .phase-num { color: var(--phase5); }
+
+    /* Collapsible body */
+    .phase-body {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+    .phase-card.open .phase-body { max-height: 1200px; }
+
+    .phase-body-inner {
+      padding: 0 1.5rem 1.5rem;
+      border-top: 1px solid var(--stone2);
+    }
+
+    .activity-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.25rem;
+    }
+    @media(max-width:640px){ .activity-grid { grid-template-columns: 1fr; } }
+
+    .activity-col h4 {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;
+    }
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 0.6rem;
+      margin-bottom: 0.6rem; font-size: 0.88rem; color: var(--text); line-height: 1.4;
+    }
+    .activity-icon {
+      width: 20px; height: 20px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; flex-shrink: 0; margin-top: 1px;
+    }
+
+    .gate-box {
+      margin-top: 1.25rem; padding: 1rem 1.25rem;
+      border-radius: 10px; border: 1px dashed;
+    }
+    .gate-box h4 {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; margin-bottom: 0.6rem;
+    }
+    .gate-item {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      font-size: 0.83rem; margin-bottom: 0.4rem; color: var(--text);
+    }
+    .gate-check { color: var(--green); flex-shrink: 0; margin-top: 1px; }
+
+    .who-row {
+      display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem;
+    }
+    .who-badge {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+      padding: 0.25rem 0.65rem; border-radius: 999px;
+      background: var(--stone); border: 1px solid var(--stone2); color: var(--navy);
+    }
+
+    /* ── Migration Strip ──────────────────────────────────────── */
+    #migration {
+      background: var(--navy);
+      padding: 5rem 2rem;
+    }
+    .migration-inner { max-width: 1100px; margin: 0 auto; }
+
+    .migration-inner .section-title { color: var(--white); }
+    .migration-inner .section-desc { color: #94A3B8; }
+
+    .sticker-journey {
+      display: grid; grid-template-columns: 1fr auto 1fr; gap: 2rem;
+      align-items: center; margin: 3rem 0;
+    }
+    @media(max-width:680px){ .sticker-journey { grid-template-columns: 1fr; } }
+
+    .sticker-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; padding: 2rem; text-align: center;
+    }
+    .sticker-card.old { opacity: 0.5; }
+    .sticker-card.new { border-color: rgba(234,88,12,0.4); background: rgba(234,88,12,0.06); }
+
+    .sticker-icon { font-size: 3rem; margin-bottom: 1rem; display: block; }
+    .sticker-card h3 { font-size: 1.1rem; font-weight: 800; color: var(--white); margin-bottom: 0.5rem; }
+    .sticker-card p { font-size: 0.85rem; color: #94A3B8; }
+    .sticker-old-label {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #DC2626; background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.3);
+      border-radius: 999px; padding: 0.2rem 0.75rem; display: inline-block; margin-top: 0.75rem;
+    }
+    .sticker-new-label {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--orange-light); background: rgba(234,88,12,0.12); border: 1px solid rgba(234,88,12,0.3);
+      border-radius: 999px; padding: 0.2rem 0.75rem; display: inline-block; margin-top: 0.75rem;
+    }
+
+    .sticker-arrow {
+      font-size: 2.5rem; color: var(--orange); text-align: center;
+    }
+
+    .migration-steps {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;
+    }
+    .migration-step {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 1.25rem;
+      position: relative; overflow: hidden;
+    }
+    .migration-step::before {
+      content: attr(data-step);
+      position: absolute; top: -10px; right: -5px;
+      font-size: 4rem; font-weight: 900; color: rgba(255,255,255,0.04);
+      line-height: 1; pointer-events: none;
+    }
+    .migration-step .step-icon { font-size: 1.5rem; margin-bottom: 0.75rem; display: block; }
+    .migration-step h4 { font-size: 0.85rem; font-weight: 800; color: var(--white); margin-bottom: 0.4rem; }
+    .migration-step p { font-size: 0.78rem; color: #94A3B8; line-height: 1.5; }
+
+    /* ── Platform Section ─────────────────────────────────────── */
+    #platforms { background: var(--white); padding: 5rem 2rem; }
+    .platforms-inner { max-width: 1100px; margin: 0 auto; }
+
+    .platform-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem; margin-top: 2.5rem;
+    }
+    .platform-card {
+      border-radius: 16px; padding: 2rem;
+      border: 2px solid; position: relative; overflow: hidden;
+    }
+    .platform-card::before {
+      content: ''; position: absolute; inset: 0;
+      opacity: 0.05;
+    }
+    .platform-card.web { border-color: #1D4ED8; background: linear-gradient(135deg, #EFF6FF 0%, var(--white) 100%); }
+    .platform-card.ios { border-color: #6D28D9; background: linear-gradient(135deg, #F5F3FF 0%, var(--white) 100%); }
+    .platform-card.android { border-color: #059669; background: linear-gradient(135deg, #ECFDF5 0%, var(--white) 100%); }
+
+    .platform-card h3 {
+      font-size: 1.2rem; font-weight: 800; margin-bottom: 0.3rem;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .platform-card.web h3 { color: #1D4ED8; }
+    .platform-card.ios h3 { color: #6D28D9; }
+    .platform-card.android h3 { color: #059669; }
+
+    .platform-card .status-pill {
+      font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.2rem 0.6rem; border-radius: 999px;
+    }
+    .pill-live { background: #DCFCE7; color: #16A34A; }
+    .pill-tf   { background: #EDE9FE; color: #6D28D9; }
+    .pill-new  { background: #D1FAE5; color: #059669; }
+
+    .platform-card .desc { font-size: 0.88rem; color: var(--muted); margin: 0.75rem 0; line-height: 1.6; }
+
+    .platform-tasks { list-style: none; }
+    .platform-tasks li {
+      font-size: 0.83rem; padding: 0.4rem 0;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+      display: flex; align-items: center; gap: 0.6rem; color: var(--text);
+    }
+    .platform-tasks li:last-child { border-bottom: none; }
+    .task-done { color: var(--green); }
+    .task-todo { color: var(--amber); }
+    .task-new  { color: var(--indigo); }
+
+    /* ── Risk Section ─────────────────────────────────────────── */
+    #risks { padding: 5rem 2rem; background: var(--stone); }
+    .risks-inner { max-width: 1100px; margin: 0 auto; }
+
+    .risk-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem; margin-top: 2rem;
+    }
+    .risk-card {
+      background: var(--white); border-radius: 12px;
+      border: 1px solid var(--border); padding: 1.25rem;
+      border-left: 4px solid;
+    }
+    .risk-high   { border-left-color: var(--red); }
+    .risk-medium { border-left-color: var(--amber); }
+    .risk-low    { border-left-color: var(--green); }
+
+    .risk-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
+    .risk-name { font-size: 0.9rem; font-weight: 700; color: var(--navy); }
+    .risk-level {
+      font-size: 0.62rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 0.2rem 0.6rem; border-radius: 999px; white-space: nowrap;
+    }
+    .lvl-high   { background: #FEE2E2; color: var(--red); }
+    .lvl-medium { background: #FEF3C7; color: var(--amber); }
+    .lvl-low    { background: #DCFCE7; color: var(--green); }
+
+    .risk-mitigation { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+    .risk-owner { font-size: 0.72rem; font-weight: 700; color: var(--navy); margin-top: 0.5rem; }
+
+    /* ── Team Section ─────────────────────────────────────────── */
+    #team { background: var(--white); padding: 5rem 2rem; }
+    .team-inner { max-width: 1100px; margin: 0 auto; }
+
+    .team-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem; margin-top: 2rem;
+    }
+    .team-card {
+      background: var(--stone); border-radius: 12px; padding: 1.5rem; text-align: center;
+      border: 1px solid var(--stone2); transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .team-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+    .team-avatar {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; margin: 0 auto 1rem;
+    }
+    .team-card h4 { font-size: 0.95rem; font-weight: 800; color: var(--navy); margin-bottom: 0.3rem; }
+    .team-card .role-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .team-responsibilities { list-style: none; text-align: left; }
+    .team-responsibilities li {
+      font-size: 0.78rem; color: var(--text); padding: 0.25rem 0;
+      border-bottom: 1px solid var(--stone2); display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+    .team-responsibilities li:last-child { border: none; }
+    .rsp-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--orange); flex-shrink: 0; margin-top: 6px; }
+
+    /* ── Go Live Section ──────────────────────────────────────── */
+    #golive {
+      background: linear-gradient(135deg, var(--navy) 0%, #0F172A 100%);
+      padding: 6rem 2rem; text-align: center; position: relative; overflow: hidden;
+    }
+    #golive::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 100%, rgba(234,88,12,0.25) 0%, transparent 60%);
+    }
+    .golive-inner { max-width: 700px; margin: 0 auto; position: relative; z-index: 1; }
+    .golive-icon { font-size: 4rem; margin-bottom: 1.5rem; display: block; animation: floatIcon 3s ease-in-out infinite; }
+    @keyframes floatIcon { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+    #golive h2 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 900; color: var(--white); margin-bottom: 0.75rem; }
+    #golive h2 span { color: var(--orange); }
+    #golive p { font-size: 1rem; color: #94A3B8; margin-bottom: 2.5rem; line-height: 1.7; }
+
+    .checklist-final {
+      display: flex; flex-direction: column; gap: 0.75rem;
+      text-align: left; margin-bottom: 2.5rem;
+    }
+    .checklist-item {
+      display: flex; align-items: center; gap: 1rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px; padding: 0.9rem 1.25rem;
+    }
+    .check-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .check-text { font-size: 0.9rem; color: var(--white); font-weight: 600; }
+    .check-sub { font-size: 0.75rem; color: #64748B; margin-top: 0.15rem; }
+
+    .golive-cta {
+      display: inline-block;
+      background: var(--orange); color: var(--white);
+      font-size: 1rem; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; padding: 1rem 2.5rem;
+      border-radius: 10px; border: none; cursor: pointer;
+      box-shadow: 0 0 30px rgba(234,88,12,0.4);
+      transition: all 0.2s;
+    }
+    .golive-cta:hover { background: var(--orange-light); transform: translateY(-2px); box-shadow: 0 0 40px rgba(234,88,12,0.6); }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    footer {
+      background: #0F172A; padding: 2rem;
+      text-align: center; color: #475569; font-size: 0.8rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    footer strong { color: #94A3B8; }
+
+    /* ── Progress Tracker ────────────────────────────────────── */
+    .progress-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 3px; z-index: 200;
+      background: rgba(255,255,255,0.1);
+    }
+    .progress-fill {
+      height: 100%; background: linear-gradient(90deg, var(--phase1), var(--orange), var(--phase5));
+      width: 0%; transition: width 0.1s linear;
+    }
+
+    /* ── Scroll animations ────────────────────────────────────── */
+    .fade-in {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <!-- Progress bar -->
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-brand">Gear<span>Ops</span></div>
+    <div class="nav-links">
+      <a href="#journey">Journey</a>
+      <a href="#migration">Migration</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#risks">Risks</a>
+      <a href="#team">Team</a>
+      <a href="#golive">Go Live</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-tag">Live Deployment Plan — April 2026</div>
+    <h1>The <span>GearOps</span><br/>Rollout Journey</h1>
+    <p class="hero-sub">A smooth, phased transition from Go Codes to a modern multi-platform system</p>
+
+    <div class="hero-migration">
+      <div class="from">GO CODES</div>
+      <div class="arrow-path">
+        <div class="arrow-line"></div>
+        <span>→</span>
+      </div>
+      <div class="to">GEAROPS ✦</div>
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-stat"><span class="num">5</span><span class="lbl">Phases</span></div>
+      <div class="hero-stat"><span class="num">~<span>7</span></span><span class="lbl">Weeks</span></div>
+      <div class="hero-stat"><span class="num">100<span>–</span>500</span><span class="lbl">Assets Migrated</span></div>
+      <div class="hero-stat"><span class="num">3</span><span class="lbl">Platforms</span></div>
+    </div>
+
+    <div class="platform-badges">
+      <div class="platform-badge"><span class="dot" style="background:#1D4ED8"></span> Web</div>
+      <div class="platform-badge"><span class="dot" style="background:#6D28D9"></span> iOS</div>
+      <div class="platform-badge"><span class="dot" style="background:#059669"></span> Android</div>
+    </div>
+
+    <div class="scroll-hint">
+      <span>Scroll to begin</span>
+      <span class="scroll-arrow">↓</span>
+    </div>
+  </div>
+
+  <!-- Journey -->
+  <section id="journey">
+    <div class="journey-header fade-in">
+      <div class="section-label">The Rollout Plan</div>
+      <h2 class="section-title">Five phases.<br/>One smooth journey.</h2>
+      <p class="section-desc">Each phase builds on the last. We don't go live until every gate is cleared. Click any phase to see what's happening inside it.</p>
+    </div>
+
+    <div class="phase-road">
+
+      <!-- Phase 1 -->
+      <div class="phase-card phase-1" data-phase="1">
+        <div class="phase-node">🔬</div>
+        <div class="phase-inner">
+          <div class="phase-header" onclick="togglePhase(this)">
+            <div class="phase-meta">
+              <div class="phase-num">Phase 01</div>
+              <div class="phase-name">Testing & Hardening</div>
+              <div class="phase-tagline">No one touches a real asset until this is clean.</div>
+            </div>
+            <div class="phase-right">
+              <div class="phase-duration">⏱ 2 Weeks</div>
+              <div class="phase-toggle">▾</div>
+            </div>
+          </div>
+          <div class="phase-body">
+            <div class="phase-body-inner">
+              <div class="activity-grid">
+                <div class="activity-col">
+                  <h4>What happens</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DBEAFE;color:#1D4ED8">🌐</div>
+                    Full QA pass on gearops.com.au — all flows, all browsers
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#EDE9FE;color:#6D28D9">📱</div>
+                    iOS TestFlight internal build — team installs and tests on real iPhones
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#D1FAE5;color:#059669">🤖</div>
+                    Android APK sideloaded for field tech testing — real device, real scans
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FEF3C7;color:#D97706">🗄️</div>
+                    Supabase staging environment mirroring production data shape
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FFE4E6;color:#DC2626">🐛</div>
+                    All P0 and P1 bugs logged, triaged, and resolved before gate
+                  </div>
+                </div>
+                <div class="activity-col">
+                  <h4>Who's doing it</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">👨‍💻</div>
+                    Dev/IT run functional and data tests across all platforms
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🔧</div>
+                    Field technicians do real-world QR scan tests in the yard
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🖥️</div>
+                    Office staff preview the web dashboard and report any friction
+                  </div>
+                </div>
+              </div>
+              <div class="gate-box" style="background:#F0FDF4;border-color:#86EFAC">
+                <h4 style="color:#16A34A">✓ Gate to Phase 2 — Testing must prove:</h4>
+                <div class="gate-item"><span class="gate-check">✔</span> Zero P0/P1 bugs outstanding</div>
+                <div class="gate-item"><span class="gate-check">✔</span> All core flows pass on iOS, Android & Web</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Staging stable for 48+ hours with no crashes</div>
+                <div class="gate-item"><span class="gate-check">✔</span> QR scan resolves correct asset record 100% of scans</div>
+              </div>
+              <div class="who-row">
+                <span class="who-badge">Dev / IT</span>
+                <span class="who-badge">Field Technician</span>
+                <span class="who-badge">Office Staff</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="phase-card phase-2" data-phase="2">
+        <div class="phase-node">🔎</div>
+        <div class="phase-inner">
+          <div class="phase-header" onclick="togglePhase(this)">
+            <div class="phase-meta">
+              <div class="phase-num">Phase 02</div>
+              <div class="phase-name">Pilot Migration</div>
+              <div class="phase-tagline">50 assets. Learn everything before the full rollout.</div>
+            </div>
+            <div class="phase-right">
+              <div class="phase-duration">⏱ 1 Week</div>
+              <div class="phase-toggle">▾</div>
+            </div>
+          </div>
+          <div class="phase-body">
+            <div class="phase-body-inner">
+              <div class="activity-grid">
+                <div class="activity-col">
+                  <h4>What happens</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#CCFBF1;color:#0D9488">📋</div>
+                    Select 50 representative assets from Go Codes as the pilot batch
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#CCFBF1;color:#0D9488">⬆️</div>
+                    Import those 50 asset records into GearOps via migration script
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#CCFBF1;color:#0D9488">🏷️</div>
+                    Remove old Go Codes stickers, apply new GearOps QR stickers
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#CCFBF1;color:#0D9488">📷</div>
+                    Scan every new sticker — confirm 100% resolve to correct records
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#CCFBF1;color:#0D9488">📝</div>
+                    Document any friction, errors, or process improvements found
+                  </div>
+                </div>
+                <div class="activity-col">
+                  <h4>Why a pilot first?</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">⚡</div>
+                    Catch data mapping issues before they affect 500 assets
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🎯</div>
+                    Train field techs on the sticker replacement procedure hands-on
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">⏱️</div>
+                    Measure time per asset — helps forecast the full migration window
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🛡️</div>
+                    Zero risk to the broader fleet — issues stay contained to 50 assets
+                  </div>
+                </div>
+              </div>
+              <div class="gate-box" style="background:#F0FDFA;border-color:#5EEAD4">
+                <h4 style="color:#0D9488">✓ Gate to Phase 3 — Pilot must confirm:</h4>
+                <div class="gate-item"><span class="gate-check">✔</span> All 50 pilot assets scanned and verified in GearOps</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Sticker scan accuracy 100% (no wrong record matches)</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Data import row count matches Go Codes source</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Project Lead sign-off documented</div>
+              </div>
+              <div class="who-row">
+                <span class="who-badge">Project Lead</span>
+                <span class="who-badge">Field Technician</span>
+                <span class="who-badge">Dev / IT</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="phase-card phase-3" data-phase="3">
+        <div class="phase-node">🚛</div>
+        <div class="phase-inner">
+          <div class="phase-header" onclick="togglePhase(this)">
+            <div class="phase-meta">
+              <div class="phase-num">Phase 03</div>
+              <div class="phase-name">Full Asset Migration</div>
+              <div class="phase-tagline">All 100–500 assets moved. The old system goes quiet.</div>
+            </div>
+            <div class="phase-right">
+              <div class="phase-duration">⏱ 3 Weeks</div>
+              <div class="phase-toggle">▾</div>
+            </div>
+          </div>
+          <div class="phase-body">
+            <div class="phase-body-inner">
+              <div class="activity-grid">
+                <div class="activity-col">
+                  <h4>What happens</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FED7AA;color:#EA580C">📦</div>
+                    Full CSV export from Go Codes — validate row counts before anything
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FED7AA;color:#EA580C">⬆️</div>
+                    Batch import all remaining assets into GearOps in controlled runs
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FED7AA;color:#EA580C">🏷️</div>
+                    Field teams work through assets in batches — peel, clean, apply, scan
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FED7AA;color:#EA580C">✨</div>
+                    Any new gear acquired during this window goes straight into GearOps
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FED7AA;color:#EA580C">🔒</div>
+                    Go Codes put into read-only mode — no new entries allowed
+                  </div>
+                </div>
+                <div class="activity-col">
+                  <h4>How it stays smooth</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">📋</div>
+                    Assets batched by location/site — no scrambling across the yard
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">📊</div>
+                    Daily progress tracked in the migration checklist spreadsheet
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🗂️</div>
+                    Photo audit trail kept for each replaced sticker (before/after)
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🔁</div>
+                    Supabase backup taken before each import batch — rollback ready
+                  </div>
+                </div>
+              </div>
+              <div class="gate-box" style="background:#FFF7ED;border-color:#FED7AA">
+                <h4 style="color:#EA580C">✓ Gate to Phase 4 — Migration must confirm:</h4>
+                <div class="gate-item"><span class="gate-check">✔</span> 100% of scoped assets imported and stickered</div>
+                <div class="gate-item"><span class="gate-check">✔</span> All new gear allocated directly in GearOps</div>
+                <div class="gate-item"><span class="gate-check">✔</span> No data discrepancies between Go Codes export and GearOps records</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Go Codes read-only lock confirmed</div>
+              </div>
+              <div class="who-row">
+                <span class="who-badge">Project Lead</span>
+                <span class="who-badge">Field Technician</span>
+                <span class="who-badge">Dev / IT</span>
+                <span class="who-badge">Office Manager</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="phase-card phase-4" data-phase="4">
+        <div class="phase-node">🚀</div>
+        <div class="phase-inner">
+          <div class="phase-header" onclick="togglePhase(this)">
+            <div class="phase-meta">
+              <div class="phase-num">Phase 04</div>
+              <div class="phase-name">Go Live — All Platforms</div>
+              <div class="phase-tagline">Web. App Store. Play Store. All at once.</div>
+            </div>
+            <div class="phase-right">
+              <div class="phase-duration">⏱ 1 Week</div>
+              <div class="phase-toggle">▾</div>
+            </div>
+          </div>
+          <div class="phase-body">
+            <div class="phase-body-inner">
+              <div class="activity-grid">
+                <div class="activity-col">
+                  <h4>What happens</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#EDE9FE;color:#6D28D9">📱</div>
+                    iOS app submitted to App Store — build promoted from TestFlight
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#D1FAE5;color:#059669">🤖</div>
+                    Android AAB submitted to Google Play production track
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DBEAFE;color:#1D4ED8">🌐</div>
+                    Web production deployment confirmed live on gearops.com.au
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FEE2E2;color:#DC2626">💀</div>
+                    Go Codes officially decommissioned — access revoked
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#FEF3C7;color:#D97706">📣</div>
+                    All-staff announcement: GearOps is now live, Go Codes is retired
+                  </div>
+                </div>
+                <div class="activity-col">
+                  <h4>Timing it right</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">📅</div>
+                    Go live on a Monday — support team is fresh, week ahead to catch issues
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🕐</div>
+                    Apple review submitted 5 days early — buffer for any rejection/revision
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">🛟</div>
+                    Dev/IT on-call for first 48 hours post-launch
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">📡</div>
+                    Supabase monitoring dashboard live — watch for query spikes or errors
+                  </div>
+                </div>
+              </div>
+              <div class="gate-box" style="background:#FAF5FF;border-color:#C4B5FD">
+                <h4 style="color:#7C3AED">✓ Gate to Phase 5 — Go Live confirmed when:</h4>
+                <div class="gate-item"><span class="gate-check">✔</span> iOS app publicly available on the App Store</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Android app live on Google Play</div>
+                <div class="gate-item"><span class="gate-check">✔</span> gearops.com.au responding correctly in production</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Go Codes access fully revoked</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Staff notified via email announcement</div>
+              </div>
+              <div class="who-row">
+                <span class="who-badge">Project Lead</span>
+                <span class="who-badge">Dev / IT</span>
+                <span class="who-badge">Office Manager</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 5 -->
+      <div class="phase-card phase-5" data-phase="5">
+        <div class="phase-node">📈</div>
+        <div class="phase-inner">
+          <div class="phase-header" onclick="togglePhase(this)">
+            <div class="phase-meta">
+              <div class="phase-num">Phase 05</div>
+              <div class="phase-name">Stabilisation & Growth</div>
+              <div class="phase-tagline">Watch, listen, and make it even better.</div>
+            </div>
+            <div class="phase-right">
+              <div class="phase-duration">⏱ Ongoing</div>
+              <div class="phase-toggle">▾</div>
+            </div>
+          </div>
+          <div class="phase-body">
+            <div class="phase-body-inner">
+              <div class="activity-grid">
+                <div class="activity-col">
+                  <h4>What happens</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DCFCE7;color:#16A34A">📊</div>
+                    Monitor Supabase usage, error rates, and query performance daily
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DCFCE7;color:#16A34A">🐛</div>
+                    Hotfix any issues via OTA update (no App Store re-review needed for JS fixes)
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DCFCE7;color:#16A34A">💬</div>
+                    Collect feedback from field techs and office staff — first 2 weeks are gold
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DCFCE7;color:#16A34A">📈</div>
+                    Track adoption rate: target 80%+ of staff active in GearOps within 2 weeks
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#DCFCE7;color:#16A34A">🗺️</div>
+                    Begin roadmap for next features based on real user feedback
+                  </div>
+                </div>
+                <div class="activity-col">
+                  <h4>Success looks like</h4>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">✅</div>
+                    Zero critical bugs in the first 72 hours post-launch
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">✅</div>
+                    All assets scannable and resolving in &lt; 2 seconds
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">✅</div>
+                    Go Codes receives zero new entries (monitored for 30 days)
+                  </div>
+                  <div class="activity-item">
+                    <div class="activity-icon" style="background:#F3F4F6;color:#374151">✅</div>
+                    Staff say it's faster than Go Codes was
+                  </div>
+                </div>
+              </div>
+              <div class="gate-box" style="background:#F0FDF4;border-color:#86EFAC">
+                <h4 style="color:#16A34A">🎉 Deployment complete when:</h4>
+                <div class="gate-item"><span class="gate-check">✔</span> 80%+ staff adoption rate reached</div>
+                <div class="gate-item"><span class="gate-check">✔</span> No P0/P1 incidents for 14 consecutive days</div>
+                <div class="gate-item"><span class="gate-check">✔</span> Go Codes archived and access fully removed</div>
+                <div class="gate-item"><span class="gate-check">✔</span> 30-day retrospective completed with the team</div>
+              </div>
+              <div class="who-row">
+                <span class="who-badge">All Team</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Migration Strip -->
+  <div id="migration">
+    <div class="migration-inner">
+      <div class="fade-in">
+        <div class="section-label" style="color:var(--orange-light)">Physical Migration</div>
+        <h2 class="section-title">Out with the old sticker.<br/>In with the new.</h2>
+        <p class="section-desc">Every asset gets a GearOps QR sticker. The process is simple, and each one is verified on the spot.</p>
+      </div>
+
+      <div class="sticker-journey fade-in">
+        <div class="sticker-card old">
+          <span class="sticker-icon">🏷️</span>
+          <h3>Go Codes Sticker</h3>
+          <p>Legacy barcode label.<br/>Old system, old data.</p>
+          <div class="sticker-old-label">RETIRING</div>
+        </div>
+        <div class="sticker-arrow">→</div>
+        <div class="sticker-card new">
+          <span class="sticker-icon">⬛</span>
+          <h3>GearOps QR Sticker</h3>
+          <p>New QR code. Scans directly into the app on iOS, Android or web camera.</p>
+          <div class="sticker-new-label">REPLACING</div>
+        </div>
+      </div>
+
+      <div class="migration-steps fade-in">
+        <div class="migration-step" data-step="1">
+          <span class="step-icon">📷</span>
+          <h4>Photograph the old sticker</h4>
+          <p>Create an audit trail before removing anything. Photo stored per asset.</p>
+        </div>
+        <div class="migration-step" data-step="2">
+          <span class="step-icon">🧹</span>
+          <h4>Clean the surface</h4>
+          <p>Isopropyl wipe, let dry. New sticker needs a clean bond to last in the field.</p>
+        </div>
+        <div class="migration-step" data-step="3">
+          <span class="step-icon">🏷️</span>
+          <h4>Apply GearOps sticker</h4>
+          <p>Peel, align, press firmly. Each sticker pre-printed with the correct asset ID.</p>
+        </div>
+        <div class="migration-step" data-step="4">
+          <span class="step-icon">📱</span>
+          <h4>Scan to verify</h4>
+          <p>Open GearOps, scan the new sticker. Confirm the right asset record loads.</p>
+        </div>
+        <div class="migration-step" data-step="5">
+          <span class="step-icon">✅</span>
+          <h4>Mark complete</h4>
+          <p>Tick off in the migration sheet. Move to the next asset.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Platforms -->
+  <div id="platforms" style="background:var(--white); padding: 5rem 2rem;">
+    <div class="platforms-inner" style="max-width:1100px; margin:0 auto;">
+      <div class="fade-in">
+        <div class="section-label">Platform Status</div>
+        <h2 class="section-title">Three platforms.<br/>One codebase.</h2>
+        <p class="section-desc">GearOps is built on React Native + Expo, which means the same app ships to web, iOS and Android. Here's where each platform sits today.</p>
+      </div>
+      <div class="platform-cards">
+        <div class="platform-card web fade-in">
+          <h3>🌐 Web <span class="status-pill pill-live">Live</span></h3>
+          <p class="desc">gearops.com.au is already running. The deployment goal here is full feature parity, stability hardening, and a polished production environment.</p>
+          <ul class="platform-tasks">
+            <li><span class="task-done">✔</span> Site is live and accessible</li>
+            <li><span class="task-done">✔</span> Auth and login working</li>
+            <li><span class="task-todo">◐</span> Full QA pass in progress</li>
+            <li><span class="task-todo">◐</span> Production performance audit</li>
+            <li><span class="task-new">○</span> Custom domain SSL verified</li>
+            <li><span class="task-new">○</span> Monitoring & alerting live</li>
+          </ul>
+        </div>
+        <div class="platform-card ios fade-in">
+          <h3>🍎 iOS <span class="status-pill pill-tf">TestFlight</span></h3>
+          <p class="desc">Currently on TestFlight for internal testing. The path to App Store is EAS Build → submit production build → Apple review → public release.</p>
+          <ul class="platform-tasks">
+            <li><span class="task-done">✔</span> TestFlight build distributed</li>
+            <li><span class="task-done">✔</span> Internal testers active</li>
+            <li><span class="task-todo">◐</span> Remaining bugs from Phase 1 testing</li>
+            <li><span class="task-new">○</span> Production EAS build</li>
+            <li><span class="task-new">○</span> App Store Connect submission</li>
+            <li><span class="task-new">○</span> Apple review → public release</li>
+          </ul>
+        </div>
+        <div class="platform-card android fade-in">
+          <h3>🤖 Android <span class="status-pill pill-new">New</span></h3>
+          <p class="desc">Fresh platform. First build will be an internal APK for field tech testing, then a production AAB goes to Google Play once testing passes.</p>
+          <ul class="platform-tasks">
+            <li><span class="task-new">○</span> EAS credentials & keystore setup</li>
+            <li><span class="task-new">○</span> Internal APK build + sideload test</li>
+            <li><span class="task-new">○</span> Field tech QR scan verification</li>
+            <li><span class="task-new">○</span> Google Play Console setup</li>
+            <li><span class="task-new">○</span> Production AAB build + submit</li>
+            <li><span class="task-new">○</span> Google Play review → release</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risks -->
+  <div id="risks" style="padding:5rem 2rem; background:var(--stone);">
+    <div class="risks-inner" style="max-width:1100px; margin:0 auto;">
+      <div class="fade-in">
+        <div class="section-label">Risk Register</div>
+        <h2 class="section-title">What could slow us down —<br/>and how we prevent it.</h2>
+        <p class="section-desc">Every risk has an owner and a plan. These are reviewed at each phase gate.</p>
+      </div>
+      <div class="risk-grid fade-in">
+        <div class="risk-card risk-high">
+          <div class="risk-header">
+            <div class="risk-name">Assets not fully catalogued in Go Codes</div>
+            <span class="risk-level lvl-high">High</span>
+          </div>
+          <div class="risk-mitigation">Audit all Go Codes records before migration. Reconcile any discrepancies against physical asset list before Phase 3.</div>
+          <div class="risk-owner">📌 Owner: Project Lead</div>
+        </div>
+        <div class="risk-card risk-high">
+          <div class="risk-header">
+            <div class="risk-name">Supabase migration breaks production</div>
+            <span class="risk-level lvl-high">High</span>
+          </div>
+          <div class="risk-mitigation">All migrations tested on staging first. Supabase backup taken before every push. Rollback script prepared and tested.</div>
+          <div class="risk-owner">📌 Owner: Dev / IT</div>
+        </div>
+        <div class="risk-card risk-high">
+          <div class="risk-header">
+            <div class="risk-name">Data loss during Go Codes CSV export</div>
+            <span class="risk-level lvl-high">High</span>
+          </div>
+          <div class="risk-mitigation">Full CSV backed up to secure storage immediately after export. Row count validated before any import begins.</div>
+          <div class="risk-owner">📌 Owner: Dev / IT</div>
+        </div>
+        <div class="risk-card risk-medium">
+          <div class="risk-header">
+            <div class="risk-name">iOS App Store review delays</div>
+            <span class="risk-level lvl-medium">Medium</span>
+          </div>
+          <div class="risk-mitigation">Submit the production build at least 5 days before target go-live. TestFlight remains the fallback for internal teams during review.</div>
+          <div class="risk-owner">📌 Owner: Dev / IT</div>
+        </div>
+        <div class="risk-card risk-medium">
+          <div class="risk-header">
+            <div class="risk-name">QR sticker misapplied or damaged</div>
+            <span class="risk-level lvl-medium">Medium</span>
+          </div>
+          <div class="risk-mitigation">Print 10% spare stickers for every batch. Scan verification immediately after application. Any failed scan → replace on the spot.</div>
+          <div class="risk-owner">📌 Owner: Field Tech Lead</div>
+        </div>
+        <div class="risk-card risk-medium">
+          <div class="risk-header">
+            <div class="risk-name">Field staff resist the new system</div>
+            <span class="risk-level lvl-medium">Medium</span>
+          </div>
+          <div class="risk-mitigation">Pilot group becomes champions. Hands-on training session before Phase 3. Quick-reference cheat sheet printed and in their kit.</div>
+          <div class="risk-owner">📌 Owner: Office Manager</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team -->
+  <div id="team" style="background:var(--white); padding:5rem 2rem;">
+    <div class="team-inner" style="max-width:1100px; margin:0 auto;">
+      <div class="fade-in">
+        <div class="section-label">The Team</div>
+        <h2 class="section-title">Who's responsible for what.</h2>
+        <p class="section-desc">Clear ownership is what keeps a rollout smooth. Every task in this deployment has a named role accountable for it.</p>
+      </div>
+      <div class="team-cards fade-in">
+        <div class="team-card">
+          <div class="team-avatar" style="background:#FFF7ED">🧭</div>
+          <h4>Project Lead</h4>
+          <div class="role-label">Shivam Verma · sverma@engsurveys.com.au</div>
+          <ul class="team-responsibilities">
+            <li><span class="rsp-dot"></span>Phase gate sign-offs</li>
+            <li><span class="rsp-dot"></span>Asset migration decisions</li>
+            <li><span class="rsp-dot"></span>Go Codes decommission approval</li>
+            <li><span class="rsp-dot"></span>Stakeholder communications</li>
+          </ul>
+        </div>
+        <div class="team-card">
+          <div class="team-avatar" style="background:#EFF6FF">👨‍💻</div>
+          <h4>Dev / IT</h4>
+          <div class="role-label">Technical deployment lead</div>
+          <ul class="team-responsibilities">
+            <li><span class="rsp-dot"></span>EAS builds (iOS & Android)</li>
+            <li><span class="rsp-dot"></span>Supabase migrations</li>
+            <li><span class="rsp-dot"></span>Web deployment & monitoring</li>
+            <li><span class="rsp-dot"></span>Data import scripts</li>
+          </ul>
+        </div>
+        <div class="team-card">
+          <div class="team-avatar" style="background:#ECFDF5">🔧</div>
+          <h4>Field Technician</h4>
+          <div class="role-label">On-the-ground migration</div>
+          <ul class="team-responsibilities">
+            <li><span class="rsp-dot"></span>Sticker removal & replacement</li>
+            <li><span class="rsp-dot"></span>Scan verification per asset</li>
+            <li><span class="rsp-dot"></span>Feedback on app usability</li>
+            <li><span class="rsp-dot"></span>Physical asset checklist</li>
+          </ul>
+        </div>
+        <div class="team-card">
+          <div class="team-avatar" style="background:#FAF5FF">🖥️</div>
+          <h4>Office Manager</h4>
+          <div class="role-label">Web dashboard & staff comms</div>
+          <ul class="team-responsibilities">
+            <li><span class="rsp-dot"></span>Staff training coordination</li>
+            <li><span class="rsp-dot"></span>New gear allocation in GearOps</li>
+            <li><span class="rsp-dot"></span>Web dashboard feedback</li>
+            <li><span class="rsp-dot"></span>Go-live announcement email</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Go Live -->
+  <div id="golive">
+    <div class="golive-inner">
+      <span class="golive-icon">🚀</span>
+      <h2>Ready to <span>go live?</span></h2>
+      <p>When every phase gate is cleared, every asset is scanned, and every platform is published — it's time. GearOps replaces Go Codes completely. No turning back.</p>
+
+      <div class="checklist-final">
+        <div class="checklist-item">
+          <span class="check-icon">✅</span>
+          <div>
+            <div class="check-text">All 5 phase gates cleared</div>
+            <div class="check-sub">Testing → Pilot → Full Migration → Go Live → Stabilisation</div>
+          </div>
+        </div>
+        <div class="checklist-item">
+          <span class="check-icon">✅</span>
+          <div>
+            <div class="check-text">All 100–500 assets migrated and stickered</div>
+            <div class="check-sub">Every asset scanned and verified in GearOps</div>
+          </div>
+        </div>
+        <div class="checklist-item">
+          <span class="check-icon">✅</span>
+          <div>
+            <div class="check-text">iOS on App Store · Android on Play Store · Web live</div>
+            <div class="check-sub">All three platforms publicly available</div>
+          </div>
+        </div>
+        <div class="checklist-item">
+          <span class="check-icon">✅</span>
+          <div>
+            <div class="check-text">Go Codes decommissioned</div>
+            <div class="check-sub">Access revoked. Data archived. Old stickers gone.</div>
+          </div>
+        </div>
+        <div class="checklist-item">
+          <span class="check-icon">✅</span>
+          <div>
+            <div class="check-text">Staff trained and using GearOps</div>
+            <div class="check-sub">80%+ adoption within 2 weeks of go-live</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="golive-cta" onclick="window.print()">🖨️ Print this plan</button>
+    </div>
+  </div>
+
+  <footer>
+    <strong>GearOps</strong> Deployment Journey — gearops.com.au · Created April 2026 · Version 1.0
+  </footer>
+
+  <script>
+    // ── Progress bar ──────────────────────────────────────────────────────────
+    const fill = document.getElementById('progressFill');
+    window.addEventListener('scroll', () => {
+      const scrolled = window.scrollY;
+      const total = document.body.scrollHeight - window.innerHeight;
+      fill.style.width = Math.round((scrolled / total) * 100) + '%';
+    });
+
+    // ── Phase toggle ──────────────────────────────────────────────────────────
+    function togglePhase(header) {
+      const card = header.closest('.phase-card');
+      card.classList.toggle('open');
+    }
+
+    // ── Scroll animations (IntersectionObserver) ──────────────────────────────
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.phase-card, .fade-in').forEach((el, i) => {
+      el.style.transitionDelay = `${i * 0.08}s`;
+      observer.observe(el);
+    });
+
+    // ── Active nav link on scroll ─────────────────────────────────────────────
+    const sections = ['journey','migration','platforms','risks','team','golive'];
+    const navLinks = document.querySelectorAll('.nav-links a');
+
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && window.scrollY >= el.offsetTop - 120) current = id;
+      });
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+      });
+    });
+
+    // ── Open Phase 1 by default ───────────────────────────────────────────────
+    document.querySelector('.phase-card[data-phase="1"]').classList.add('open');
+  </script>
+</body>
+</html>

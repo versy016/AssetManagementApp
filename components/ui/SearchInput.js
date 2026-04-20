@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights, sf } from '../../constants/uiTheme';
 
 export default function SearchInput({
     value,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     },
     input: {
         flex: 1,
-        fontSize: 15,
+        fontSize: sf(15),
         fontWeight: FontWeights.regular,
         height: '100%',
         padding: 0,

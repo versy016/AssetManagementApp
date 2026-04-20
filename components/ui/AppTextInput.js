@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput as RNTextInput } from 'react-native';
-import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights, sf } from '../../constants/uiTheme';
 
 export default function AppTextInput({
     label,
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     label: {
-        fontSize: 13,
+        fontSize: sf(13),
         fontWeight: FontWeights.bold,
         color: Colors.text,
         marginBottom: 6,
@@ -70,13 +70,13 @@ const styles = StyleSheet.create({
         borderRadius: Radius.sm,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        fontSize: 14,
+        fontSize: sf(14),
         fontFamily: 'Inter',
         color: Colors.text,
         fontWeight: FontWeights.regular,
     },
     errorText: {
-        fontSize: 11,
+        fontSize: sf(11),
         fontWeight: FontWeights.medium,
         color: Colors.dangerFg,
         marginTop: 4,

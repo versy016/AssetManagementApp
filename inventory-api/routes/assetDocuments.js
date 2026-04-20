@@ -1,8 +1,7 @@
 // routes/assetDocuments.js - Nested routes under /assets for attachments
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const { PrismaClient } = require('../generated/prisma');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const multer = require('multer');
 const AWS = require('aws-sdk');
 const path = require('path');

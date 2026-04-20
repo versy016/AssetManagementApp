@@ -10,7 +10,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { TourTarget } from '../../components/TourGuide';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
+import logger from '../../utils/logger';
 
 export default function AdminConsole() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function AdminConsole() {
     const u = auth.currentUser;
     if (!u) throw new Error('No current user');
     const token = await u.getIdToken(true);
-    console.log('[Admin] using idToken len=', token?.length);
+    logger.log('[Admin] using idToken len=', token?.length);
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -112,23 +113,23 @@ export default function AdminConsole() {
 
   // 🎯 Generate Excel file with ID and QR Code columns
   const generateQRCodes = async () => {
-    console.log('[Admin] generateQRCodes → Function called');
+    logger.log('[Admin] generateQRCodes → Function called');
     const count = Number(qrCount);
-    console.log('[Admin] generateQRCodes → Count:', count, 'qrCount:', qrCount);
+    logger.log('[Admin] generateQRCodes → Count:', count, 'qrCount:', qrCount);
     if (!Number.isFinite(count) || count < 1 || count > MAX_QR_COUNT) {
-      console.log('[Admin] generateQRCodes → Validation failed');
+      logger.log('[Admin] generateQRCodes → Validation failed');
       return Alert.alert('Validation', `Number of QR codes must be between 1 and ${MAX_QR_COUNT}.`);
     }
 
-    console.log('[Admin] generateQRCodes → Setting working to true');
+    logger.log('[Admin] generateQRCodes → Setting working to true');
     setWorking(true);
     try {
-      console.log('[Admin] generateQRCodes → Starting, count:', count);
+      logger.log('[Admin] generateQRCodes → Starting, count:', count);
       const headers = await authHeader();
-      console.log('[Admin] generateQRCodes → Headers ready');
+      logger.log('[Admin] generateQRCodes → Headers ready');
 
       const url = `${API_BASE_URL}/users/qr/generate-excel`;
-      console.log('[Admin] generateQRCodes → Fetching:', url);
+      logger.log('[Admin] generateQRCodes → Fetching:', url);
 
       // Generate Excel file with QR codes
       const excelRes = await fetch(url, {
@@ -137,10 +138,10 @@ export default function AdminConsole() {
         body: JSON.stringify({ count }),
       });
 
-      console.log('[Admin] generateQRCodes → Response status:', excelRes.status, excelRes.ok);
+      logger.log('[Admin] generateQRCodes → Response status:', excelRes.status, excelRes.ok);
 
       const excel = await excelRes.json();
-      console.log('[Admin] generateQRCodes → Response data:', excel);
+      logger.log('[Admin] generateQRCodes → Response data:', excel);
 
       if (!excelRes.ok) {
         throw new Error(excel?.error || 'Failed to generate Excel file');
@@ -166,14 +167,14 @@ export default function AdminConsole() {
     const url = `${API_BASE_URL}/users/qr/sheets`;
     const t0 = Date.now();
     try {
-      console.log('[Admin] refreshSheets →', url);
+      logger.log('[Admin] refreshSheets →', url);
       const res = await fetch(url); // public; no headers
       const raw = await res.text();
-      console.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
-      console.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
+      logger.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
+      logger.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
       const data = JSON.parse(raw);
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      console.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
+      logger.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
       setAllSheets(data?.sheets || []);
     } catch (e) {
       console.warn('[Admin] refreshSheets error:', e?.message || e);
@@ -200,7 +201,7 @@ export default function AdminConsole() {
     return (
       <View style={styles.center}>
         <MaterialIcons name="lock" size={40} color={Colors.sub2} />
-        <Text style={{ marginTop: 10, fontSize: 16, color: Colors.text }}>
+        <Text style={{ marginTop: 10, fontSize: sf(16), color: Colors.text }}>
           Admin access required.
         </Text>
         <TouchableOpacity onPress={() => router.replace('/')} style={[styles.button, { marginTop: 16 }]}>
@@ -310,7 +311,7 @@ export default function AdminConsole() {
                 <Text style={styles.subTitle}>Generated Excel File</Text>
                 <TourTarget id="web-admin-qr-download-btn">
                   <View style={styles.qrRow}>
-                    <Text style={{ fontSize: 14, color: Colors.text }}>{excelFile.name}</Text>
+                    <Text style={{ fontSize: sf(14), color: Colors.text }}>{excelFile.name}</Text>
                     <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
                       <Text style={styles.link}>Download Excel</Text>
                     </TouchableOpacity>
@@ -332,7 +333,7 @@ export default function AdminConsole() {
               ) : (
                 allSheets.map((s, idx) => (
                   <View key={`${s.name}-${idx}`} style={styles.qrRow}>
-                    <Text style={{ fontSize: 14, color: Colors.text }}>{s.name}</Text>
+                    <Text style={{ fontSize: sf(14), color: Colors.text }}>{s.name}</Text>
                     <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
                       <Text style={styles.link}>{s.name.endsWith('.xlsx') ? 'Download Excel' : 'Download'}</Text>
                     </TouchableOpacity>
@@ -351,25 +352,25 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: Colors.bg },
   wrapper: { flex: 1, padding: 20, backgroundColor: Colors.bg },
-  title: { fontSize: 22, fontWeight: '900', textTransform: 'uppercase', marginBottom: 12 },
+  title: { fontSize: sf(22), fontWeight: '900', textTransform: 'uppercase', marginBottom: 12 },
   tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   tab: { flex: 1, paddingVertical: 10, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, alignItems: 'center' },
   tabActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
   tabText: { color: Colors.sub, fontWeight: '700' },
   tabTextActive: { color: Colors.accent },
   card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 16, borderWidth: 2, borderColor: Colors.line, ...Shadows.card },
-  label: { fontSize: 13, color: Colors.text, fontWeight: '700', textTransform: 'uppercase', marginTop: 8, marginBottom: 6 },
-  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, fontSize: 16, backgroundColor: Colors.card, color: Colors.text },
+  label: { fontSize: sf(13), color: Colors.text, fontWeight: '700', textTransform: 'uppercase', marginTop: 8, marginBottom: 6 },
+  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, fontSize: sf(16), backgroundColor: Colors.card, color: Colors.text },
   button: { backgroundColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
-  buttonText: { color: Colors.card, fontWeight: '700', fontSize: 16, textTransform: 'uppercase' },
+  buttonText: { color: Colors.card, fontWeight: '700', fontSize: sf(16), textTransform: 'uppercase' },
   buttonOutline: { borderWidth: 2, borderColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
-  buttonOutlineText: { color: Colors.primary, fontWeight: '700', fontSize: 16, textTransform: 'uppercase' },
-  helpText: { color: Colors.sub, marginTop: 10, fontSize: 12 },
-  subTitle: { fontSize: 16, fontWeight: '900', textTransform: 'uppercase', marginBottom: 8, color: Colors.text },
+  buttonOutlineText: { color: Colors.primary, fontWeight: '700', fontSize: sf(16), textTransform: 'uppercase' },
+  helpText: { color: Colors.sub, marginTop: 10, fontSize: sf(12) },
+  subTitle: { fontSize: sf(16), fontWeight: '900', textTransform: 'uppercase', marginBottom: 8, color: Colors.text },
   qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.line },
-  qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 14, color: Colors.text },
+  qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: sf(14), color: Colors.text },
   link: { color: Colors.accent, fontWeight: '700' },
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  topbarTitle: { fontSize: 22, fontWeight: '900', textTransform: 'uppercase', color: Colors.text },
+  topbarTitle: { fontSize: sf(22), fontWeight: '900', textTransform: 'uppercase', color: Colors.text },
   backBtn: { padding: 6, marginRight: 6 },
 });

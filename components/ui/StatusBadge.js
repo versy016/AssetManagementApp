@@ -1,7 +1,7 @@
 // components/ui/StatusBadge.js — Bold Industrial Status Badges
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Radius } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 
 /**
  * Canonical asset status configuration — Bold Industrial palette.
@@ -134,12 +134,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   label: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   labelSm: {
-    fontSize: 10,
+    fontSize: sf(10),
   },
 });

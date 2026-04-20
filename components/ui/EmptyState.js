@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Radius, FontWeights } from '../../constants/uiTheme';
+import { Colors, Radius, FontWeights, sf } from '../../constants/uiTheme';
 
 /**
  * Centered empty-state display: icon square, title, subtitle, optional hint.
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   title: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: FontWeights.bold,
     color: Colors.text,
     textAlign: 'center',
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: sf(13),
     fontWeight: FontWeights.regular,
     color: Colors.sub,
     textAlign: 'center',
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   hint: {
-    fontSize: 11,
+    fontSize: sf(11),
     fontWeight: FontWeights.medium,
     color: Colors.sub2,
     textAlign: 'center',

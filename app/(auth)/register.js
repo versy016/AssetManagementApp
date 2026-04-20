@@ -1,16 +1,14 @@
-// Register.js - User registration screen for the app
-
 import { auth } from '../../firebaseConfig';
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Alert, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTheme } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 
-import { Colors } from '../../constants/uiTheme';
+import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
-import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import AuthLayout from '../../components/ui/AuthLayout';
 import AppTextInput from '../../components/ui/AppTextInput';
 import AppButton from '../../components/ui/AppButton';
 import ErrorMessage from '../../components/ui/ErrorMessage';
@@ -19,12 +17,13 @@ const db = getFirestore();
 
 export default function Register() {
   const router = useRouter();
-  const theme = useTheme();
   const isMountedRef = useRef(true);
+  const redirectTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
   }, []);
 
@@ -35,23 +34,6 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
-  const redirectTimerRef = useRef(null);
-
-  // Cleanup redirect timer on unmount
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Debug: Log state changes
-  useEffect(() => {
-    if (registrationSuccess) {
-      console.log('Registration success state is true, email:', registeredEmail);
-    }
-  }, [registrationSuccess, registeredEmail]);
 
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
@@ -62,30 +44,17 @@ export default function Register() {
   };
 
   const getFirebaseErrorMessage = (error) => {
-    if (!error || !error.code) {
-      return error?.message || 'An unexpected error occurred';
-    }
-
+    if (!error?.code) return error?.message || 'An unexpected error occurred';
     switch (error.code) {
-      case 'auth/email-already-in-use':
-        return 'This email address is already registered. Please use a different email or try logging in.';
-      case 'auth/invalid-email':
-        return 'Please enter a valid email address.';
-      case 'auth/weak-password':
-        return 'Password is too weak. Please use at least 6 characters.';
-      case 'auth/operation-not-allowed':
-        return 'Email/password accounts are not enabled. Please contact support.';
-      case 'auth/network-request-failed':
-        return 'Network error. Please check your internet connection and try again.';
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'auth/invalid-credential':
-        return 'Invalid credentials. Please check your information and try again.';
+      case 'auth/email-already-in-use':  return 'This email is already registered. Try logging in instead.';
+      case 'auth/invalid-email':         return 'Please enter a valid email address.';
+      case 'auth/weak-password':         return 'Password is too weak. Use at least 6 characters.';
+      case 'auth/operation-not-allowed': return 'Email/password accounts are not enabled. Contact support.';
+      case 'auth/network-request-failed':return 'Network error. Check your connection and try again.';
+      case 'auth/too-many-requests':     return 'Too many attempts. Please try again later.';
       default:
-        // For non-Firebase errors or unknown Firebase errors, return a cleaner message
-        if (error.message && error.message.includes('Firebase:')) {
-          // Remove "Firebase: Error" prefix if present
-          return error.message.replace(/^Firebase:\s*Error\s*\([^)]+\)\s*:?\s*/i, '').trim() || 'An error occurred during registration.';
+        if (error.message?.includes('Firebase:')) {
+          return error.message.replace(/^Firebase:\s*Error\s*\([^)]+\)\s*:?\s*/i, '').trim() || 'An error occurred.';
         }
         return error.message || 'An error occurred during registration.';
     }
@@ -93,143 +62,85 @@ export default function Register() {
 
   const handleRegister = async () => {
     if (!name || !email || !password) {
-      if (isMountedRef.current) {
-        setErrorMessage('Please enter your name, email, and password.');
-      }
+      if (isMountedRef.current) setErrorMessage('Please enter your name, email, and password.');
       return;
     }
-
     setLoading(true);
     setErrorMessage('');
-
     try {
-      // Check if email domain is allowed
       const allowed = await isEmailAllowed(email);
-      if (!allowed) {
-        throw new Error('Your email domain is not allowed.');
-      }
+      if (!allowed) throw new Error('Your email domain is not allowed.');
 
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
-
-      // Send email verification
       await sendEmailVerification(userCredential.user);
 
-      // Create user in database (don't fail registration if this fails)
       try {
         await fetch(`${API_BASE_URL}/users`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            id: userCredential.user.uid,
-            name,
-            useremail: email,
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: userCredential.user.uid, name, useremail: email }),
         });
-      } catch (dbError) {
-        console.warn('Failed to create user in database:', dbError);
-        // Continue with registration success even if DB call fails
-      }
+      } catch { /* DB failure doesn't block registration */ }
 
-      // Store email before signing out
       const registeredEmailValue = email;
-
-      // Sign out immediately to prevent navbar from showing
       await auth.signOut();
-
-      // Small delay to ensure signOut completes and state updates
       await new Promise(resolve => setTimeout(resolve, 200));
 
       if (isMountedRef.current) {
-        console.log('Setting registration success state');
-        // Show success state on the page - use functional updates to ensure state is set
         setRegistrationSuccess(true);
         setRegisteredEmail(registeredEmailValue);
         setLoading(false);
-
-        // Clear form
-        setName('');
-        setPassword('');
-        setEmail('');
-
-        // Auto-redirect to login after 10 seconds
+        setName(''); setPassword(''); setEmail('');
         redirectTimerRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            router.replace('/(auth)/login');
-          }
+          if (isMountedRef.current) router.replace('/(auth)/login');
         }, 10000);
-      } else {
-        console.warn('Component unmounted before setting success state');
       }
     } catch (error) {
-      console.error('Registration error:', error);
       if (isMountedRef.current) {
-        const friendlyMessage = getFirebaseErrorMessage(error);
-        setErrorMessage(friendlyMessage);
+        setErrorMessage(getFirebaseErrorMessage(error));
         setLoading(false);
       }
     }
   };
 
-  // Show success message if registration was successful
   if (registrationSuccess && registeredEmail) {
-    console.log('Rendering success screen for:', registeredEmail);
     return (
-      <ScreenWrapper style={styles.container} withScrollView>
-        <View style={styles.content}>
-          <View style={styles.successContainer}>
-            <Text style={styles.brandText}>GearOps</Text>
-            <Text style={[styles.successIcon, { color: Colors.accent }]}>✓</Text>
-            <Text style={[styles.successTitle, { color: Colors.text }]}>
-              Registration Successful!
-            </Text>
-            <Text style={[styles.successMessage, { color: Colors.subText }]}>
-              We've sent a verification email to:
-            </Text>
-            <Text style={[styles.successEmail, { color: Colors.accent }]}>
-              {registeredEmail}
-            </Text>
-            <View style={styles.instructionsBox}>
-              <Text style={[styles.instructionsTitle, { color: Colors.text }]}>
-                Next Steps:
-              </Text>
-              <Text style={[styles.instructionsText, { color: Colors.subText }]}>
-                1. Check your email inbox (and spam folder){'\n'}
-                2. Click the verification link in the email{'\n'}
-                3. The link will expire in 1 hour{'\n'}
-                4. Once verified, you can log in to your account
-              </Text>
-            </View>
-            <AppButton
-              mode="contained"
-              onPress={() => router.replace('/(auth)/login')}
-              style={styles.goToLoginButton}
-            >
-              Go to Login
-            </AppButton>
-            <Text style={[styles.autoRedirectText, { color: Colors.subText }]}>
-              Redirecting to login in a few seconds...
+      <AuthLayout subtitle="Account Created">
+        <View style={s.successBox}>
+          <View style={s.successIconWrap}>
+            <MaterialIcons name="mark-email-read" size={40} color={Colors.successFg} />
+          </View>
+          <Text style={s.successTitle}>Registration Successful!</Text>
+          <Text style={s.successMsg}>We've sent a verification email to:</Text>
+          <Text style={s.successEmail}>{registeredEmail}</Text>
+
+          <View style={s.stepsBox}>
+            <Text style={s.stepsTitle}>Next Steps</Text>
+            <Text style={s.stepsText}>
+              1. Check your email inbox (and spam folder){'\n'}
+              2. Click the verification link in the email{'\n'}
+              3. The link will expire in 1 hour{'\n'}
+              4. Once verified, you can log in
             </Text>
           </View>
+
+          <AppButton mode="contained" onPress={() => router.replace('/(auth)/login')}>
+            Go to Login
+          </AppButton>
+          <Text style={s.redirectNote}>Redirecting to login in a few seconds…</Text>
         </View>
-      </ScreenWrapper>
+      </AuthLayout>
     );
   }
 
   return (
-    <ScreenWrapper style={styles.container} withScrollView>
-      <View style={styles.content}>
-        <Text style={styles.brandText}>GearOps</Text>
-        <Text style={styles.title}>Register</Text>
+    <AuthLayout subtitle="Create Account">
+      <Text style={s.heading}>Register</Text>
+      <Text style={s.sub}>Create your GearOps account below</Text>
 
-        <AppTextInput
-          label="Full Name"
-          value={name}
-          onChangeText={setName}
-        />
-
+      <View style={s.form}>
+        <AppTextInput label="Full Name" value={name} onChangeText={setName} />
         <AppTextInput
           label="Email"
           value={email}
@@ -237,7 +148,6 @@ export default function Register() {
           autoCapitalize="none"
           keyboardType="email-address"
         />
-
         <AppTextInput
           label="Password"
           value={password}
@@ -247,114 +157,109 @@ export default function Register() {
 
         <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
-        <AppButton
-          mode="contained"
-          onPress={handleRegister}
-          loading={loading}
-        >
+        <View style={s.btnGap} />
+        <AppButton mode="contained" onPress={handleRegister} loading={loading}>
           Register
         </AppButton>
+      </View>
 
-        <TouchableOpacity
-          onPress={() => router.replace('/(auth)/login')}
-          style={styles.loginLink}
-        >
-          <Text style={styles.accentLink}>
-            Already have an account? Login
-          </Text>
+      <View style={s.footer}>
+        <Text style={s.footerText}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
+          <Text style={s.footerLink}> Login</Text>
         </TouchableOpacity>
       </View>
-    </ScreenWrapper>
+    </AuthLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-  },
-  content: {
-    padding: 20,
-    justifyContent: 'center',
-    flex: 1,
-    minHeight: 500,
-  },
-  brandText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 32,
-    marginBottom: 32,
+const s = StyleSheet.create({
+  heading: {
+    fontSize: sf(28),
     fontWeight: '900',
-    textAlign: 'center',
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 1,
+    marginBottom: 4,
   },
-  accentLink: {
-    color: Colors.accent,
+  sub: {
+    fontSize: sf(14),
+    color: Colors.sub,
+    marginBottom: 28,
     fontWeight: '500',
   },
-  loginLink: {
-    marginTop: 24,
-    alignItems: 'center',
+  form: {
+    gap: 4,
   },
-  successContainer: {
-    alignItems: 'center',
-    width: '100%',
+  btnGap: { height: 8 },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 28,
   },
-  successIcon: {
-    fontSize: 64,
-    fontWeight: 'bold',
-    marginBottom: 16,
+  footerText: { color: Colors.sub, fontSize: sf(14) },
+  footerLink: { color: Colors.accent, fontWeight: '700', fontSize: sf(14) },
+  successBox: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  successIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.successBg,
+    borderWidth: 2,
+    borderColor: Colors.successBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   successTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    fontSize: sf(22),
+    fontWeight: '900',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     textAlign: 'center',
   },
-  successMessage: {
-    fontSize: 16,
+  successMsg: {
+    fontSize: sf(14),
+    color: Colors.sub,
     textAlign: 'center',
-    marginBottom: 8,
   },
   successEmail: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: sf(15),
+    fontWeight: '700',
+    color: Colors.accent,
     textAlign: 'center',
-    marginBottom: 24,
   },
-  instructionsBox: {
+  stepsBox: {
     backgroundColor: Colors.accentLight,
     borderWidth: 2,
-    borderColor: Colors.line,
-    borderRadius: 6,
+    borderColor: Colors.accentMuted,
+    borderRadius: Radius.lg,
     padding: 16,
-    marginBottom: 24,
     width: '100%',
+    marginVertical: 4,
   },
-  instructionsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
+  stepsTitle: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  instructionsText: {
-    fontSize: 14,
+  stepsText: {
+    fontSize: sf(13),
+    color: Colors.sub,
     lineHeight: 22,
   },
-  goToLoginButton: {
-    marginBottom: 12,
-    minWidth: 200,
-  },
-  autoRedirectText: {
-    fontSize: 12,
+  redirectNote: {
+    fontSize: sf(12),
+    color: Colors.sub2,
     fontStyle: 'italic',
     textAlign: 'center',
+    marginTop: 4,
   },
 });

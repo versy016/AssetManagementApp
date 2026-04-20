@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  Image,
   ActivityIndicator,
   Alert,
   Modal,
@@ -16,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ActionsForm from '../../components/ActionsForm';
 
@@ -308,7 +307,8 @@ export default function ScannedAssetsList() {
     const isProcessed = checkedInAssets.includes(item.id);
     const isSelected = selectedIds.includes(item.id);
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, isProcessed && { borderColor: Colors.successBorder }]}>
+        <View style={[styles.cardAccent, isProcessed && styles.cardAccentDone]} />
         {!isProcessed && (
           <TouchableOpacity
             style={styles.checkboxWrap}
@@ -318,7 +318,7 @@ export default function ScannedAssetsList() {
             <MaterialIcons
               name={isSelected ? 'check-box' : 'check-box-outline-blank'}
               size={24}
-              color={isSelected ? '#1E90FF' : '#999'}
+              color={isSelected ? Colors.primary : Colors.sub2}
             />
           </TouchableOpacity>
         )}
@@ -327,7 +327,9 @@ export default function ScannedAssetsList() {
           onPress={() => !loading && handleCheckIn(item.id)}
           disabled={loading}
         >
-          <Image source={{ uri: 'https://via.placeholder.com/50' }} style={styles.image} />
+          <View style={styles.iconWrap}>
+            <MaterialIcons name={isProcessed ? 'check-circle' : 'inventory-2'} size={22} color={isProcessed ? Colors.successFg : Colors.primary} />
+          </View>
           <View style={styles.info}>
             <Text style={styles.idLine}>
               ID: {item.id}{item.assetType ? ` · ${item.assetType}` : ''}
@@ -338,9 +340,9 @@ export default function ScannedAssetsList() {
             </Text>
           </View>
           {isProcessed ? (
-            <MaterialIcons name="check-circle" size={24} color="green" />
+            <MaterialIcons name="check-circle" size={24} color={Colors.successFg} />
           ) : (
-            <MaterialIcons name="arrow-forward-ios" size={16} color="#666" />
+            <MaterialIcons name="arrow-forward-ios" size={16} color={Colors.sub} />
           )}
         </TouchableOpacity>
       </View>
@@ -354,7 +356,7 @@ export default function ScannedAssetsList() {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#1E90FF" />
+            <MaterialIcons name="arrow-back" size={20} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.title}>Scanned Assets</Text>
         </View>
@@ -364,7 +366,7 @@ export default function ScannedAssetsList() {
             <MaterialIcons
               name={allPendingSelected ? 'check-box' : 'check-box-outline-blank'}
               size={22}
-              color={allPendingSelected ? '#1E90FF' : '#666'}
+              color={allPendingSelected ? Colors.primary : Colors.sub}
             />
             <Text style={styles.selectAllText}>
               {allPendingSelected ? 'Deselect all' : 'Select all'} ({pendingIds.length} pending)
@@ -374,7 +376,7 @@ export default function ScannedAssetsList() {
 
         {loading || bulkLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#1E90FF" />
+            <ActivityIndicator size="large" color={Colors.primary} />
             {bulkLoading && <Text style={styles.bulkLoadingText}>Updating…</Text>}
           </View>
         ) : (
@@ -443,7 +445,7 @@ export default function ScannedAssetsList() {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Other actions</Text>
             <TouchableOpacity onPress={() => setShowOtherPicker(false)}>
-              <MaterialIcons name="close" size={24} color="#333" />
+              <MaterialIcons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
           </View>
           <View style={styles.otherActionsList}>
@@ -536,7 +538,7 @@ export default function ScannedAssetsList() {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Transfer to user</Text>
             <TouchableOpacity onPress={() => setShowUserPicker(false)}>
-              <MaterialIcons name="close" size={24} color="#333" />
+              <MaterialIcons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
           </View>
           <TextInput
@@ -581,14 +583,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
+    paddingVertical: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+    paddingBottom: 12,
   },
   backButton: {
     marginRight: 12,
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 20,
+    fontSize: sf(20),
     fontWeight: '900',
     color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   selectAllRow: {
     flexDirection: 'row',
@@ -598,7 +614,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   selectAllText: {
-    fontSize: 15,
+    fontSize: sf(15),
     color: Colors.text,
     marginLeft: 8,
   },
@@ -609,7 +625,7 @@ const styles = StyleSheet.create({
   },
   bulkLoadingText: {
     marginTop: 8,
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
   },
   list: {
@@ -619,13 +635,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.card,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     paddingVertical: 12,
     paddingRight: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 2,
     borderColor: Colors.line,
+    overflow: 'hidden',
     ...Shadows.card,
+  },
+  cardAccent: {
+    width: 4,
+    alignSelf: 'stretch',
+    backgroundColor: Colors.primary,
+    marginRight: 12,
+  },
+  cardAccentDone: {
+    backgroundColor: Colors.successFg,
   },
   checkboxWrap: {
     paddingLeft: 12,
@@ -637,29 +663,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  image: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 16,
-    backgroundColor: Colors.chip,
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    flexShrink: 0,
   },
   info: {
     flex: 1,
   },
   idLine: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub2,
     marginBottom: 2,
   },
   name: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 4,
   },
   status: {
-    fontSize: 14,
+    fontSize: sf(14),
     color: Colors.sub,
   },
   bulkBar: {
@@ -675,7 +706,7 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   bulkBarLabel: {
-    fontSize: 12,
+    fontSize: sf(12),
     color: Colors.sub2,
     marginBottom: 8,
   },
@@ -705,12 +736,12 @@ const styles = StyleSheet.create({
   bulkBtnText: {
     color: Colors.card,
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: sf(14),
   },
   bulkBtnTextSecondary: {
     color: Colors.accent,
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: sf(14),
   },
   otherActionsList: {
     padding: 12,
@@ -725,7 +756,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   otherActionLabel: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '700',
     color: Colors.text,
   },
@@ -739,7 +770,7 @@ const styles = StyleSheet.create({
   doneButtonText: {
     color: Colors.card,
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: sf(16),
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -764,7 +795,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: sf(18),
     fontWeight: '900',
     color: Colors.text,
   },
@@ -775,7 +806,7 @@ const styles = StyleSheet.create({
     margin: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 16,
+    fontSize: sf(16),
     backgroundColor: Colors.card,
     color: Colors.text,
   },
@@ -788,12 +819,12 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
   },
   userName: {
-    fontSize: 16,
+    fontSize: sf(16),
     fontWeight: '700',
     color: Colors.text,
   },
   userEmail: {
-    fontSize: 13,
+    fontSize: sf(13),
     color: Colors.sub,
     marginTop: 2,
   },

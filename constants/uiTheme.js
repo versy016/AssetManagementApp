@@ -43,6 +43,14 @@ export const Colors = {
   dangerFg: '#DC2626',
   dangerBorder: '#FECACA',
 
+  // Aliases for legacy check-in screen colour names
+  border: '#C0BBB5',
+  subtle: '#4A4540',
+  blue: '#1E293B',
+  slate: '#4A4540',
+  amber: '#EA580C',
+  muted: '#7C786E',
+
   // Asset status colors
   statusInService: '#0D9488',
   statusInServiceBg: '#F0FDFA',
@@ -98,6 +106,18 @@ export const Shadows = {
   },
 };
 
+/** Global text scale: production renders ~5% larger than local dev — normalize with 0.95 */
+export const FONT_SCALE = 0.95;
+
+/**
+ * Scaled font size (5% smaller than the design token).
+ * Use for every `fontSize` in StyleSheets so prod matches dev.
+ */
+export function sf(size) {
+  if (size == null || typeof size !== 'number' || Number.isNaN(size)) return size;
+  return Math.round(size * FONT_SCALE * 100) / 100;
+}
+
 // Font weights used in Bold Industrial
 export const FontWeights = {
   regular: '400',
@@ -117,8 +137,21 @@ export const STATUS_CONFIG = {
   end_of_life: { label: 'End of Life', fg: Colors.statusEOL, bg: Colors.statusEOLBg, border: Colors.line },
 };
 
+function scaleMd3Fonts(fonts) {
+  if (!fonts || typeof fonts !== 'object') return fonts;
+  const out = { ...fonts };
+  for (const key of Object.keys(out)) {
+    const token = out[key];
+    if (token && typeof token === 'object' && typeof token.fontSize === 'number') {
+      out[key] = { ...token, fontSize: sf(token.fontSize) };
+    }
+  }
+  return out;
+}
+
 export const theme = {
   ...DefaultTheme,
+  fonts: scaleMd3Fonts(DefaultTheme.fonts),
   colors: {
     ...DefaultTheme.colors,
     primary: Colors.primary,

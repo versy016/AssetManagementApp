@@ -1,4 +1,4 @@
-// [id].js — Clean Light Theme Check‑In / Transfer Screen
+// [id].js -- Clean Light Theme Check‑In / Transfer Screen
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -28,9 +28,10 @@ import * as Clipboard from 'expo-clipboard';
 import * as LinkingExpo from 'expo-linking';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import logger from '../../utils/logger';
 
 // ---------- Import Theme Constants ----------
-import { Colors, Radius, Shadows } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
 const badgeTone = (status) => {
   const s = String(status || '').toLowerCase();
@@ -126,40 +127,14 @@ export default function CheckInScreen() {
 
   const isAssignedToAdmin = React.useMemo(() => {
     try {
-      if (!asset?.assigned_to_id) {
-        console.log('No assigned_to_id, not assigned to admin');
-        return false;
-      }
-
-      // If we don't have the users list yet, we can't determine if user is admin
-      if (!Array.isArray(users) || users.length === 0) {
-        console.log('Users list not loaded yet, assuming not admin');
-        return false;
-      }
-
-      // Find the assigned user in our users list
-      const assignedUser = users.find(u => String(u.id) === String(asset.assigned_to_id));
-
-      if (!assignedUser) {
-        console.log('Assigned user not found in users list, assuming not admin');
-        return false;
-      }
-
-      // Check if user email contains 'admin@' (case insensitive)
-      const userEmail = String(assignedUser.useremail || '').toLowerCase();
-      const isAdmin = userEmail.startsWith('admin@');
-
-      console.log('Assigned user check:', {
-        userId: assignedUser.id,
-        name: assignedUser.name,
-        email: userEmail,
-        isAdmin: isAdmin
-      });
-
-      return isAdmin;
-    } catch (error) {
-      console.error('Error checking if assigned to admin:', error);
-      return false; // On error, default to not admin
+      if (!asset?.assigned_to_id) return false;
+      if (!Array.isArray(users) || users.length === 0) return false;
+      const assignedUser = users.find((u) => String(u.id) === String(asset.assigned_to_id));
+      if (!assignedUser) return false;
+      // Use DB role -- never use email heuristics for permission checks
+      return String(assignedUser.role || '').toUpperCase() === 'ADMIN';
+    } catch {
+      return false;
     }
   }, [asset, users]);
   // Multi-scan context parsed from returnTo
@@ -366,8 +341,8 @@ export default function CheckInScreen() {
         // Get Firebase Auth and current user
         const auth = getAuth();
         const currentUser = auth.currentUser;
-        console.log("👤 Current user:", currentUser);
-        console.log("🌐 API_BASE_URL:", API_BASE_URL);
+        logger.log('Current user:', currentUser?.uid);
+        logger.log('API_BASE_URL:', API_BASE_URL);
 
         if (currentUser) {
           setUser(currentUser); // Set user state if logged in
@@ -453,7 +428,7 @@ export default function CheckInScreen() {
           }
         }
 
-        console.log("📦 Asset data:", assetData);
+        logger.log('Asset data:', assetData?.id);
         setAsset(assetData); // Store asset info with user name
       } catch (err) {
         // Handle fetch or network errors
@@ -1261,7 +1236,7 @@ export default function CheckInScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerBox}>
           <MaterialIcons name="error-outline" size={48} color={Colors.red} />
-          <Text style={[styles.title, { marginTop: 16, fontSize: 20, fontWeight: '700' }]}>Connection Error</Text>
+          <Text style={[styles.title, { marginTop: 16, fontSize: sf(20), fontWeight: '700' }]}>Connection Error</Text>
           <Text style={{ color: Colors.subtle, textAlign: 'center', marginTop: 8, marginHorizontal: 24 }}>
             {error}
           </Text>
@@ -1740,7 +1715,7 @@ export default function CheckInScreen() {
                       <MaterialIcons name="search" size={18} color={Colors.blue} />
                       <Text style={styles.optionTitle}>Lookup by Details</Text>
                     </View>
-                    <Text style={styles.optionDesc}>Use any combination. We’ll use the first close match (top 10).</Text>
+                    <Text style={styles.optionDesc}>Use any combination. We'll use the first close match (top 10).</Text>
                     <Text style={styles.fieldLabel}>Model</Text>
                     <View onLayout={(e) => { modelYRef.current = e.nativeEvent.layout.y; }}>
                       <TextInput
@@ -1914,55 +1889,51 @@ const styles = StyleSheet.create({
 
   headerCard: {
     backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    ...Shadows.card,
   },
   heroIconWrap: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.line,
   },
-  pageTitle: { color: Colors.text, fontSize: 20, fontWeight: '800' },
-  pageSubtitle: { color: Colors.subtle, fontSize: 13, marginTop: 2 },
+  pageTitle: { color: Colors.text, fontSize: sf(20), fontWeight: '800' },
+  pageSubtitle: { color: Colors.subtle, fontSize: sf(13), marginTop: 2 },
 
   card: {
     backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     padding: 16,
     marginBottom: 16,
+    ...Shadows.card,
   },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  assetTitle: { color: Colors.text, fontSize: 18, fontWeight: '700' },
-  assetSerial: { color: Colors.subtle, fontSize: 14, marginTop: 4, fontWeight: '500' },
+  assetTitle: { color: Colors.text, fontSize: sf(18), fontWeight: '700' },
+  assetSerial: { color: Colors.subtle, fontSize: sf(14), marginTop: 4, fontWeight: '500' },
   idPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primary,
+    borderWidth: 0,
   },
-  idPillText: { color: Colors.slate, fontWeight: '700', letterSpacing: 0.4 },
+  idPillText: { color: '#FFFFFF', fontWeight: '700', letterSpacing: 0.4, fontSize: sf(12) },
 
   infoGrid: { flexDirection: 'row', marginTop: 14 },
   infoCell: { flex: 1, paddingRight: 12 },
-  infoLabel: { color: Colors.subtle, fontSize: 12, letterSpacing: 0.4 },
-  infoValue: { color: Colors.text, fontSize: 15, fontWeight: '700', marginTop: 2, flexShrink: 1 },
+  infoLabel: { color: Colors.subtle, fontSize: sf(12), letterSpacing: 0.4 },
+  infoValue: { color: Colors.text, fontSize: sf(15), fontWeight: '700', marginTop: 2, flexShrink: 1 },
 
   chip: {
     paddingHorizontal: 10,
@@ -1970,26 +1941,22 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  chipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+  chipText: { fontSize: sf(12), fontWeight: '800', letterSpacing: 0.4 },
 
-  sectionTitle: { color: Colors.subtle, fontSize: 14, fontWeight: '700', marginBottom: 10, marginTop: 6, letterSpacing: 0.5 },
+  sectionTitle: { color: Colors.subtle, fontSize: sf(14), fontWeight: '700', marginBottom: 10, marginTop: 6, letterSpacing: 0.5 },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     flexBasis: '48%',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
     paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 60,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...Shadows.card,
   },
   /* Multi-scan style: primary and secondary action buttons */
   quickActionBar: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
@@ -2002,49 +1969,49 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-  quickActionBtnPrimary: { backgroundColor: '#1E90FF' },
-  quickActionBtnSecondary: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#1E90FF' },
-  quickActionBtnNeutral: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB' },
-  quickActionBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
-  quickActionBtnTextSecondary: { color: '#1E90FF', fontWeight: '600', fontSize: 14 },
-  quickActionBtnTextNeutral: { color: Colors.slate, fontWeight: '600', fontSize: 14 },
+  quickActionBtnPrimary: { backgroundColor: Colors.primary },
+  quickActionBtnSecondary: { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.line },
+  quickActionBtnNeutral: { backgroundColor: Colors.chip, borderWidth: 2, borderColor: Colors.line },
+  quickActionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: sf(14) },
+  quickActionBtnTextSecondary: { color: Colors.primary, fontWeight: '700', fontSize: sf(14) },
+  quickActionBtnTextNeutral: { color: Colors.sub, fontWeight: '700', fontSize: sf(14) },
   tileText: {
     color: Colors.text,
     fontWeight: '700',
     fontSize: Platform.select({
-      ios: 13,
-      android: 13,
-      default: 14,
+      ios: sf(13),
+      android: sf(13),
+      default: sf(14),
     }),
     textAlign: 'center',
     includeFontPadding: false, // Android: remove extra padding
   },
   backToDashboardTile: {
-    backgroundColor: '#E5E7EB',
-    borderColor: '#9CA3AF',
+    backgroundColor: Colors.chip,
+    borderColor: Colors.lineStrong,
     paddingHorizontal: 12,
   },
   backToDashboardText: {
-    color: Colors.blue,
+    color: Colors.primary,
   },
   backToScanBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.primaryLight,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     maxWidth: '100%',
   },
   backToScanText: {
-    color: Colors.blue,
+    color: Colors.primary,
     fontWeight: '700',
     fontSize: Platform.select({
-      ios: 12,
-      android: 12,
-      default: 13,
+      ios: sf(12),
+      android: sf(12),
+      default: sf(13),
     }),
     textAlign: 'center',
     includeFontPadding: false,
@@ -2071,15 +2038,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 44,
   },
-  footerBtnPrimary: { backgroundColor: '#1E90FF' },
-  footerBtnSecondary: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#1E90FF' },
+  footerBtnPrimary: { backgroundColor: Colors.primary },
+  footerBtnSecondary: { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.line },
   footerBtnText: {
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: Platform.select({
-      ios: 12,
-      android: 12,
-      default: 14,
+      ios: sf(12),
+      android: sf(12),
+      default: sf(14),
     }),
     textAlign: 'center',
     flexShrink: 1,
@@ -2136,47 +2103,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  modalTitle: { color: Colors.text, fontSize: 16, fontWeight: '800' },
-  fieldLabel: { color: Colors.subtle, fontSize: 12, marginTop: 6, marginBottom: 4, letterSpacing: 0.3 },
-  fieldHint: { color: Colors.subtle, fontSize: 12, marginTop: 6 },
+  modalTitle: { color: Colors.text, fontSize: sf(16), fontWeight: '800' },
+  fieldLabel: { color: Colors.subtle, fontSize: sf(12), marginTop: 6, marginBottom: 4, letterSpacing: 0.3 },
+  fieldHint: { color: Colors.subtle, fontSize: sf(12), marginTop: 6 },
   input: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 12 : 10,
     color: Colors.text,
   },
   optionCard: {
-    backgroundColor: '#FBFDFF',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.lg,
     padding: 14,
   },
   optionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  optionTitle: { color: Colors.text, fontWeight: '800', fontSize: 14 },
+  optionTitle: { color: Colors.text, fontWeight: '800', fontSize: sf(14) },
   optionDesc: { color: Colors.subtle, marginBottom: 8 },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   btnPrimary: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.blue, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14,
+    backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 10, paddingHorizontal: 14,
   },
   btnPrimaryText: { color: '#fff', fontWeight: '800' },
   btnGhost: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: Colors.border, borderRadius: 10,
+    borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md,
     paddingVertical: 10, paddingHorizontal: 14,
   },
-  btnGhostText: { color: Colors.blue, fontWeight: '800' },
+  btnGhostText: { color: Colors.primary, fontWeight: '800' },
   searchContainer: {
     marginHorizontal: 16,
     marginBottom: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: '#F9FAFB',
+    borderRadius: Radius.pill,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 12 : 4,
     flexDirection: 'row',
@@ -2191,17 +2158,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   userName: { color: Colors.text, fontWeight: '700' },
-  userEmail: { color: Colors.subtle, marginTop: 2, fontSize: 12 },
+  userEmail: { color: Colors.subtle, marginTop: 2, fontSize: sf(12) },
 
   avatar: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    borderRadius: Radius.md,
+    backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 2,
+    borderColor: Colors.line,
   },
   infoRow: {
     flexDirection: 'row',
@@ -2229,12 +2196,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: Colors.line,
   },
   actionText: {
-    color: '#333',
-    fontWeight: '600',
-    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '700',
+    fontSize: sf(16),
   },
 
 });

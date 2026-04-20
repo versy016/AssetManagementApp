@@ -1,3 +1,4 @@
+import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/type/edit.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -767,7 +768,7 @@ export default function EditAssetType() {
     return (
       <SafeAreaView style={s.center}>
         <MaterialIcons name="lock" size={32} color="#64748B" />
-        <Text style={{ marginTop: 12, fontSize: 16, color: '#111827' }}>Admin access required.</Text>
+        <Text style={{ marginTop: 12, fontSize: sf(16), color: '#111827' }}>Admin access required.</Text>
         <TouchableOpacity onPress={() => router.replace('/Inventory')} style={[s.btn, { marginTop: 16, backgroundColor: '#2563EB' }]}>
           <Text style={{ color: Colors.card, fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
@@ -923,7 +924,7 @@ export default function EditAssetType() {
                           placeholder="No Reminder"
                           keyboardType="numeric"
                         />
-                        <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 6 }}>
+                        <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 6 }}>
                           {(Number(presetState[p.key]?.reminderLeadDays)||0) > 0
                             ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
                             : 'No Reminder'}
@@ -1018,7 +1019,7 @@ export default function EditAssetType() {
                         placeholder="No Reminder"
                         keyboardType="numeric"
                       />
-                      <Text style={{ color: '#6B7280', fontSize: 12, marginTop: 6 }}>
+                      <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 6 }}>
                         {(Number(row.reminderLeadDays)||0) > 0
                           ? `Reminder to be sent ${Number(row.reminderLeadDays)} days before expiry date`
                           : 'No Reminder'}
@@ -1226,13 +1227,13 @@ export default function EditAssetType() {
         <View style={[s.summaryBackdrop, { justifyContent: 'center', padding: 24 }]}>
           <View style={[s.summaryCard, { maxWidth: 400 }]}>
             <Text style={s.summaryTitle}>Cannot edit or delete field</Text>
-            <Text style={{ fontSize: 15, color: '#374151', marginTop: 8, marginBottom: 20 }}>{conflictModalMessage}</Text>
+            <Text style={{ fontSize: sf(15), color: '#374151', marginTop: 8, marginBottom: 20 }}>{conflictModalMessage}</Text>
             <TouchableOpacity
               style={{ alignSelf: 'flex-end', backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}
               onPress={() => setConflictModalMessage(null)}
               activeOpacity={0.8}
             >
-              <Text style={{ color: Colors.card, fontWeight: '600', fontSize: 15 }}>OK</Text>
+              <Text style={{ color: Colors.card, fontWeight: '600', fontSize: sf(15) }}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1395,7 +1396,7 @@ const s = StyleSheet.create({
   submit: { backgroundColor: Colors.primary },
   previewThumb: { width: 44, height: 44, borderRadius: Radius.sm, alignSelf: 'center', borderWidth: 2, borderColor: Colors.line },
 
-  sectionTitle: { fontSize: 18, fontWeight: '900', borderBottomWidth: 2, borderBottomColor: Colors.line, paddingBottom: 6, marginBottom: 14, color: Colors.text },
+  sectionTitle: { fontSize: sf(18), fontWeight: '900', borderBottomWidth: 2, borderBottomColor: Colors.line, paddingBottom: 6, marginBottom: 14, color: Colors.text },
 
   // grid for presets
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
@@ -1411,25 +1412,25 @@ const s = StyleSheet.create({
     alignItems: 'stretch',
     ...CardShadow,
   },
-  gridLabel: { marginLeft: 10, fontSize: 14, color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
+  gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
   gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
-  gridTick: { color: Colors.card, fontSize: 12, fontWeight: '800', lineHeight: 12 },
+  gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: 11, color: Colors.sub, marginBottom: 4, fontWeight: '700' },
+  reqLabel: { fontSize: sf(11), color: Colors.sub, marginBottom: 4, fontWeight: '700' },
 
   // pills
   pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm, alignSelf: 'flex-start' },
-  pillText: { color: Colors.card, fontSize: 11, fontWeight: '800' },
+  pillText: { color: Colors.card, fontSize: sf(11), fontWeight: '800' },
   pillNew: { backgroundColor: Colors.successFg },
   pillUpd: { backgroundColor: Colors.accent },
   pillDel: { backgroundColor: Colors.dangerFg },
 
   // cards
   card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginTop: 8, backgroundColor: Colors.card, ...CardShadow },
-  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6, color: Colors.text },
-  subLabel: { fontSize: 14, fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
+  cardTitle: { fontSize: sf(16), fontWeight: '800', marginBottom: 6, color: Colors.text },
+  subLabel: { fontSize: sf(14), fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
 
   // dropdown
@@ -1477,7 +1478,7 @@ const s = StyleSheet.create({
     borderColor: Colors.line,
     ...CardShadow,
   },
-  summaryTitle: { fontSize: 18, fontWeight: '900', color: Colors.primaryDark },
+  summaryTitle: { fontSize: sf(18), fontWeight: '900', color: Colors.primaryDark },
   summaryH: { fontWeight: '800', color: Colors.primaryDark, marginTop: 6 },
   summaryItem: { color: Colors.sub, marginTop: 4, fontWeight: '600' },
 
