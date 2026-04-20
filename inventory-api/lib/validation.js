@@ -41,10 +41,10 @@ function validate(schema) {
 }
 
 // ─── Reusable field definitions ───────────────────────────────────────────────
-const optionalString   = z.string().trim().optional();
-const optionalEmail    = z.string().trim().email('Must be a valid email').optional();
-const optionalISODate  = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').optional();
-const optionalUrl      = z.string().trim().url('Must be a valid URL').optional().or(z.literal(''));
+const optionalString   = z.string().trim().nullable().optional();
+const optionalEmail    = z.string().trim().email('Must be a valid email').nullable().optional();
+const optionalISODate  = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').nullable().optional();
+const optionalUrl      = z.string().trim().url('Must be a valid URL').nullable().optional().or(z.literal(''));
 
 // ─── Asset schemas ────────────────────────────────────────────────────────────
 const createAsset = z.object({
