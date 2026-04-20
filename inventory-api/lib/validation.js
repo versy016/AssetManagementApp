@@ -24,9 +24,12 @@ const { ALL_STATUSES, ACTION_DB_TYPE } = require('./assetStatus');
  */
 function validate(schema) {
   return (req, res, next) => {
-    const result = schema.safeParse(req.body);
+    // Parse against an empty object if body is absent (e.g. multipart before multer runs)
+    const result = schema.safeParse(req.body ?? {});
     if (!result.success) {
-      const errors = result.error.errors.map((e) => ({
+      // Zod v3 uses .issues; .errors is an alias — guard both to be safe
+      const issues = result.error?.issues ?? result.error?.errors ?? [];
+      const errors = issues.map((e) => ({
         field:   e.path.join('.') || 'body',
         message: e.message,
       }));
@@ -76,9 +79,15 @@ const updateAsset = z.object({
   fields:            z.string().optional(),
 }).passthrough();
 
+// All action types accepted by the route (superset of ACTION_DB_TYPE)
+const ALL_ACTION_TYPES = [...new Set([
+  ...Object.values(ACTION_DB_TYPE),
+  'MAINTENANCE', 'STOLEN', 'STATUS_CHANGE',
+])];
+
 const createAction = z.object({
-  type:         z.enum(Object.values(ACTION_DB_TYPE), {
-    errorMap: () => ({ message: `type must be one of: ${Object.values(ACTION_DB_TYPE).join(', ')}` }),
+  type: z.enum(ALL_ACTION_TYPES, {
+    errorMap: () => ({ message: `type must be one of: ${ALL_ACTION_TYPES.join(', ')}` }),
   }),
   note:         optionalString,
   data:         z.record(z.unknown()).optional(),
