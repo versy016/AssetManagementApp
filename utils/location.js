@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import logger from './logger';
 
 /**
  * Request foreground location permission (if needed) and return a human-readable location.
@@ -10,7 +11,7 @@ export const captureLastScannedLocation = async () => {
     try {
       ExpoLocation = require('expo-location');
     } catch (err) {
-      console.warn('[location] expo-location module unavailable', err);
+      logger.warn('[location] expo-location module unavailable', err);
       return null;
     }
 

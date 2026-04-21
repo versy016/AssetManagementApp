@@ -3,11 +3,21 @@
     "apps": [],
     "details": [
       {
-        "appID": "TEAMID.com.engsurveys.assetmanager",
-        "paths": [
-          "/check-in/*"
+        "appIDs": [
+          "7QSCBJMSR3.com.gearops.app"
+        ],
+        "components": [
+          {
+            "/": "/check-in/*",
+            "comment": "Asset check-in deep links"
+          }
         ]
       }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "7QSCBJMSR3.com.gearops.app"
     ]
   }
 }

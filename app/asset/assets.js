@@ -10,6 +10,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { auth } from '../../firebaseConfig';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import logger from '../../utils/logger';
 
 export default function MyAssets() {
   const [assets, setAssets] = useState([]);
@@ -31,7 +32,7 @@ export default function MyAssets() {
         const data = await res.json();
         setAssets(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error('Failed to fetch user assets:', err);
+        logger.error('Failed to fetch user assets:', err);
         setAssets([]);
       } finally {
         setLoading(false);

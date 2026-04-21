@@ -1,7 +1,6 @@
-// app/(tabs)/asset/[assetId].js
+// app/asset/[assetId].js
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useWindowDimensions } from 'react-native';
 import {
   View,
   Text,
@@ -13,97 +12,23 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  useWindowDimensions,
-  Modal,
-  Pressable,
 } from 'react-native';
-import * as LinkingExpo from 'expo-linking';
-import * as Clipboard from 'expo-clipboard';
-import * as DocumentPicker from 'expo-document-picker';
-import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
+import StatusBadge from '../../components/ui/StatusBadge';
+import { Row, DetailsGrid } from '../../components/asset/AssetRows';
+import AssetQRModal from '../../components/asset/AssetQRModal';
+import AssetActionBar from '../../components/asset/AssetActionBar';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
-import { API_BASE_URL } from '../../inventory-api/apiBase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../firebaseConfig';
-import QRCode from 'react-native-qrcode-svg';
+import { useAssetDetail } from '../../hooks/useAssetDetail';
 
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
-
-
-
-// Display-only: format dates like "10 Oct 2025"
-function prettyDate(d) {
-  try {
-    if (!d) return 'N/A';
-    let dt = null;
-    if (typeof d === 'string') {
-      const s = d.trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        const [y, m, day] = s.split('-').map(Number);
-        dt = new Date(y, m - 1, day);
-      } else {
-        const parsed = parseISO(s);
-        dt = isValid(parsed) ? parsed : new Date(s);
-      }
-    } else if (d instanceof Date) {
-      dt = d;
-    } else {
-      const t = new Date(d);
-      dt = Number.isNaN(+t) ? null : t;
-    }
-    if (!dt || !isValid(dt)) return 'N/A';
-    return format(dt, 'dd MMM yyyy');
-  } catch { return 'N/A'; }
-}
-
-/* ---------- Cross-platform clipboard ---------- */
-async function copyText(text, successMsg = 'Copied to clipboard') {
-  try {
-    if (Platform.OS === 'web') {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // legacy fallback
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      window.alert(successMsg);
-      return;
-    }
-    if (Clipboard?.setString) {
-      Clipboard.setString(text);
-      Alert.alert('Copied', successMsg);
-      return;
-    }
-    throw new Error('Clipboard unavailable');
-  } catch {
-    Platform.OS === 'web'
-      ? window.prompt('Copy this text:', text)
-      : Alert.alert('Copy failed', 'Could not copy to clipboard.');
-  }
-}
-
-/** Platform-aware map preview.
- * - Web: <iframe> Google Maps embed
- * - Native: dynamically require WebView to avoid web bundling error
- */
 function MapPreview({ location }) {
   const url = `https://www.google.com/maps?q=${encodeURIComponent(location)}&z=16&output=embed`;
 
   if (Platform.OS === 'web') {
-    // Render a raw iframe on web; RNW will pass it through to the DOM.
     return (
       <View style={styles.mapCard}>
         <div style={{ width: '100%', height: '100%' }}>
@@ -119,8 +44,6 @@ function MapPreview({ location }) {
     );
   }
 
-  // Native (iOS/Android): render an iframe inside WebView.
-  // Google requires the embed URL to be used within an iframe; loading it directly in WebView triggers an error.
   const { WebView } = require('react-native-webview');
   const html = `<!doctype html>
     <html>
@@ -159,883 +82,61 @@ function MapPreview({ location }) {
 
 export default function AssetDetailPage() {
   const { assetId, returnTo } = useLocalSearchParams();
-  const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
-  const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
-  const isImportedId = useMemo(() => isUUID(String(assetId || '')), [assetId]);
-  const [asset, setAsset] = useState(null);
-  const [actions, setActions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
-  const router = useRouter();
-  const navigation = useNavigation();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [notesExpanded, setNotesExpanded] = useState(false);
-  const [notesSectionExpanded, setNotesSectionExpanded] = useState(false);
   const { width } = useWindowDimensions();
   const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
-  const [qrOpen, setQrOpen] = useState(false);
-  const [typeFields, setTypeFields] = useState([]); // definitions for this asset type
-  const [assetDocs, setAssetDocs] = useState([]); // DB-backed documents
-  const [dateDocLinks, setDateDocLinks] = useState({}); // { dateSlug: docSlug }
-  const [docLabels, setDocLabels] = useState({}); // { docSlug: label }
-  const [attachBusySlug, setAttachBusySlug] = useState('');
+  const router = useRouter();
 
-  const parseReturnTarget = useCallback((target) => {
-    if (!target) return null;
-    if (typeof target === 'object') return target;
-    if (typeof target === 'string') {
-      const [path, query = ''] = target.split('?');
-      if (!path) return null;
-      const params = {};
-      if (query) {
-        query.split('&').forEach((part) => {
-          if (!part) return;
-          const [rawKey, rawValue = ''] = part.split('=');
-          const key = decodeURIComponent(rawKey || '');
-          if (!key) return;
-          params[key] = decodeURIComponent(rawValue || '');
-        });
-      }
-      return { pathname: path, params };
-    }
-    return null;
-  }, []);
+  const detail = useAssetDetail({ assetId, returnTo });
+  const {
+    asset,
+    loading,
+    err,
+    isImportedId,
+    isAdmin,
+    normalizedReturnTo,
+    customFieldEntries,
+    linkedAssetIds,
+    hasDocUrlInFields,
+    currentDetails,
+    currentActionImages,
+    noteItems,
+    workDetailHistory,
+    typedNotes,
+    assetNote,
+    nextService,
+    isOverdue,
+    notesExpanded,
+    setNotesExpanded,
+    notesSectionExpanded,
+    setNotesSectionExpanded,
+    qrOpen,
+    setQrOpen,
+    docHistoryOpen,
+    setDocHistoryOpen,
+    maintenanceExpanded,
+    setMaintenanceExpanded,
+    activeTab,
+    setActiveTab,
+    docDeletingId,
+    handleBack,
+    handleDelete,
+    handleDeleteDocument,
+    buildDynamicData,
+    copyId,
+    copyDeepLink,
+    qrPayload,
+    displayLocation,
+    openMaps,
+    prettyDate,
+    prettyDateTime,
+    typeMeta,
+    initials,
+    load,
+    renderFieldValue,
+    formatFieldLabel,
+  } = detail;
 
-  const navigateToReturnTarget = useCallback((target) => {
-    const parsed = parseReturnTarget(target);
-    if (!parsed) return false;
-    try {
-      router.replace(parsed);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [parseReturnTarget, router]);
-
-  const load = useCallback(async () => {
-    if (!assetId) return;
-    setLoading(true);
-    setErr('');
-    try {
-      // Hide imported (UUID) assets until QR is assigned
-      if (isImportedId) {
-        throw new Error('This imported asset is hidden until a QR is assigned to it. Assign via Transfer In > Assign Imported Asset.');
-      }
-      const res = await fetch(`${API_BASE_URL}/assets/${assetId}`);
-      if (!res.ok) throw new Error(`Failed to load asset (${res.status})`);
-      const data = await res.json();
-      setAsset(data);
-      // Load type field definitions to resolve Date → Document links
-      try {
-        const typeId = data?.type_id || data?.asset_types?.id;
-        if (typeId) {
-          const fr = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-          if (fr.ok) {
-            const defs = await fr.json();
-            const arr = Array.isArray(defs) ? defs : [];
-            setTypeFields(arr);
-            const links = {};
-            const docNames = {};
-            const bySlug = Object.fromEntries(arr.map(d => [String(d.slug || '').toLowerCase(), d]));
-            for (const d of arr) {
-              const code = String(d?.field_type?.slug || d?.field_type?.name || '').toLowerCase();
-              if (code !== 'date') continue;
-              try {
-                const vr = d.validation_rules && typeof d.validation_rules === 'object' ? d.validation_rules : (d.validation_rules ? JSON.parse(d.validation_rules) : null);
-                const link = vr && (vr.requires_document_slug || vr.require_document_slug);
-                const raw = Array.isArray(link) ? (link[0] || '') : (link || '');
-                const docSlug = String(raw || '').toLowerCase();
-                if (docSlug) {
-                  const dateSlug = String(d.slug || '').toLowerCase();
-                  links[dateSlug] = docSlug;
-                  // Prefer label from the document field def if it exists
-                  const docDef = bySlug[docSlug];
-                  const label = docDef?.name || docDef?.label || docDef?.slug || raw;
-                  docNames[docSlug] = label;
-                }
-              } catch {}
-            }
-            setDateDocLinks(links);
-            setDocLabels(docNames);
-          }
-        }
-      } catch {}
-      // Load DB-backed documents for this asset
-      try {
-        const dr = await fetch(`${API_BASE_URL}/asset-documents/documents?assetId=${encodeURIComponent(assetId)}`);
-        if (dr.ok) {
-          const dj = await dr.json();
-          setAssetDocs(Array.isArray(dj?.items) ? dj.items : Array.isArray(dj) ? dj : []);
-        } else { setAssetDocs([]); }
-      } catch { setAssetDocs([]); }
-      // fetch related actions for detail display
-      try {
-        const ar = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`);
-        if (ar.ok) {
-          const json = await ar.json();
-          setActions(Array.isArray(json?.actions) ? json.actions : []);
-        } else {
-          setActions([]);
-        }
-      } catch {
-        setActions([]);
-      }
-    } catch (e) {
-      setErr(e.message || 'Failed to load asset');
-    } finally {
-      setLoading(false);
-    }
-  }, [assetId]);
-
-  // Determine DB admin role
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      try {
-        if (!u) { setIsAdmin(false); return; }
-        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
-        const dbUser = res.ok ? await res.json() : null;
-        setIsAdmin(dbUser?.role === 'ADMIN');
-      } catch {
-        setIsAdmin(false);
-      }
-    });
-    return unsub;
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const customFieldEntries = useMemo(() => {
-    if (!asset?.fields || typeof asset.fields !== 'object') return [];
-    return Object.entries(asset.fields);
-  }, [asset]);
-
-  const linkedAssetIds = useMemo(() => {
-    if (!asset?.fields || typeof asset.fields !== 'object') return [];
-    const f = asset.fields;
-    const candidates = new Set();
-    ['linked_asset_id','related_asset_id','related_assets','parent_asset_id','child_asset_ids','paired_with']
-      .forEach((k) => {
-        const v = f[k];
-        if (!v) return;
-        if (Array.isArray(v)) v.forEach((x) => typeof x === 'string' && x !== asset?.id && candidates.add(x));
-        else if (typeof v === 'string' && v !== asset?.id) candidates.add(v);
-      });
-    return Array.from(candidates);
-  }, [asset]);
-
-  const formatFieldLabel = (slug) => {
-    try {
-      const s = String(slug || '').replace(/_/g, ' ').trim();
-      return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-    } catch { return String(slug || ''); }
-  };
-
-  const renderValue = (slug, v, helpers = {}) => {
-    // Link helper for document URLs
-    const isUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s);
-    const isDocLike = (s) => /\.(pdf|docx?|xls[x]?|pptx?)($|\?)/i.test(s);
-    const renderDocLink = (url) => (
-      <TouchableOpacity
-        onPress={() => Linking.openURL(url).catch(() => Alert.alert('Could not open the document'))}
-        style={{ paddingVertical: 2 }}
-      >
-        <Text style={{ color: Colors.accent, fontWeight: '800' }}>View</Text>
-      </TouchableOpacity>
-    );
-
-    // If a field value is a URL, show a link instead of raw text (especially for document URL fields)
-    if (typeof v === 'string' && isUrl(v) && isDocLike(v)) {
-      return renderDocLink(v);
-    }
-    if (typeof v === 'string' && isUrl(v)) {
-      return (
-        <TouchableOpacity
-          onPress={() => Linking.openURL(v).catch(() => Alert.alert('Could not open the link'))}
-          style={{ paddingVertical: 2 }}
-        >
-          <Text style={{ color: Colors.accent, fontWeight: '800' }}>View</Text>
-        </TouchableOpacity>
-      );
-    }
-
-    const normalizedSlug = String(slug || '').toLowerCase();
-    const isReportField = normalizedSlug.includes('service_report') || normalizedSlug.includes('repair_report');
-    if (isReportField) {
-      const attachBusy = helpers.attachBusySlug === normalizedSlug;
-      const onAttach = helpers.onAttachReport;
-      return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={{ color: Colors.dangerFg, fontWeight: '700' }}>Not provided</Text>
-          {onAttach ? (
-            <TouchableOpacity
-              onPress={() => onAttach({ slug: normalizedSlug, label: normalizedSlug.includes('repair') ? 'Repair Report' : 'Service Report' })}
-              style={{ backgroundColor: Colors.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
-            >
-              {attachBusy ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Attach report</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      );
-    }
-
-    if (Array.isArray(v)) {
-      // format array items too if date-like
-      const arr = v.map((item) => {
-        if (typeof item === 'string' && (/^\d{4}-\d{2}-\d{2}$/.test(item) || /T\d{2}:\d{2}/.test(item))) {
-          return prettyDate(item);
-        }
-        return String(item);
-      });
-      return arr.join(', ');
-    }
-    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-
-    const isDateishSlug = typeof slug === 'string' && /date|_at|time/i.test(slug);
-    if (v && (isDateishSlug || (typeof v === 'string' && (/^\d{4}-\d{2}-\d{2}$/.test(v) || /T\d{2}:\d{2}/.test(v))))) {
-      return prettyDate(v);
-    }
-    if (isDateishSlug && typeof v === 'number' && isFinite(v)) {
-      return prettyDate(new Date(v));
-    }
-    return (v ?? 'N/A');
-  };
-
-  const handleAttachReport = useCallback(async ({ slug, label }) => {
-    try {
-      setAttachBusySlug(slug);
-      const pick = await DocumentPicker.getDocumentAsync({
-        multiple: false,
-        copyToCacheDirectory: true,
-        type: [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'image/*',
-        ],
-      });
-      if (pick.canceled) { setAttachBusySlug(''); return; }
-      const assetFile = pick.assets?.[0];
-      if (!assetFile) { setAttachBusySlug(''); return; }
-
-      const fd = new FormData();
-      if (Platform.OS === 'web') {
-        const resp = await fetch(assetFile.uri);
-        const blob = await resp.blob();
-        const file = new File([blob], assetFile.name || 'report.pdf', { type: assetFile.mimeType || blob.type || 'application/pdf' });
-        fd.append('file', file, file.name);
-      } else {
-        fd.append('file', {
-          uri: assetFile.uri,
-          name: assetFile.name || 'report.pdf',
-          type: assetFile.mimeType || 'application/pdf',
-        });
-      }
-      const docField = typeFields.find((d) => String(d.slug || '').toLowerCase() === slug);
-      if (docField?.id) {
-        fd.append('asset_type_field_id', String(docField.id));
-      }
-      fd.append('title', label);
-      fd.append('kind', label);
-
-      const upload = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!upload.ok) {
-        throw new Error(await upload.text());
-      }
-      Alert.alert('Success', `${label} attached`);
-      await load();
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to attach report');
-    } finally {
-      setAttachBusySlug('');
-    }
-  }, [assetId, typeFields, load]);
-
-  const renderFieldValue = useCallback((slug, value) => renderValue(slug, value, {
-    onAttachReport: handleAttachReport,
-    attachBusySlug,
-  }), [handleAttachReport, attachBusySlug]);
-
-  const handleBack = () => {
-    // Prefer native back() so the existing stack entry is popped cleanly,
-    // avoiding duplicate entries that force the user to press back twice.
-    try {
-      if (router?.canGoBack?.() && router.canGoBack()) {
-        router.back();
-        return;
-      }
-    } catch {}
-    if (navigation?.canGoBack?.()) {
-      router.back();
-      return;
-    }
-    // No history (deep link / reload): navigate to the explicit returnTo target.
-    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
-    // Final fallback: Inventory tab
-    router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
-  };
-
-  const confirmDelete = async () => {
-    if (Platform.OS === 'web') {
-      return window.confirm('Delete this asset? This cannot be undone.');
-    }
-    return new Promise((resolve) => {
-      Alert.alert('Delete asset', 'This cannot be undone. Continue?', [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
-      ]);
-    });
-  };
-
-  const handleDelete = async () => {
-    const ok = await confirmDelete();
-    if (!ok) return;
-    try {
-      // Hard delete
-      const uid = auth.currentUser?.uid;
-      const headers = uid ? { 'X-User-Id': uid } : {};
-      const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, { method: 'DELETE', headers });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || 'Failed to delete');
-      }
-      if (Platform.OS !== 'web') Alert.alert('Deleted', 'Asset removed.');
-      router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
-    } catch (e) {
-      Alert.alert('Error', e.message || 'Failed to delete asset');
-    }
-  };
-
-  const [docDeletingId, setDocDeletingId] = useState(null);
-  const handleDeleteDocument = useCallback(async (docId) => {
-    const ok = Platform.OS === 'web'
-      ? window.confirm('Remove this document from the asset?')
-      : await new Promise((resolve) => {
-          Alert.alert('Remove document', 'Remove this document from the asset?', [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
-          ]);
-        });
-    if (!ok) return;
-    const aId = asset?.id || assetId;
-    if (!aId || !docId) return;
-    setDocDeletingId(docId);
-    try {
-      const uid = auth.currentUser?.uid;
-      const headers = { 'Content-Type': 'application/json', ...(uid ? { 'X-User-Id': uid } : {}) };
-      const res = await fetch(`${API_BASE_URL}/asset-documents/${aId}/documents/${docId}`, { method: 'DELETE', headers });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || 'Failed to delete document');
-      }
-      await load();
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to delete document');
-    } finally {
-      setDocDeletingId(null);
-    }
-  }, [asset?.id, assetId, load]);
-
-  // Helper: build ordered dynamic rows with doc shown beneath its date.
-  // Any additional (older) DB-backed documents are returned as a separate
-  // history list so we only show the latest per field in Additional Fields.
-  const buildDynamicData = () => {
-    const rows = [];
-    const history = [];
-    const consumedDocSlugs = new Set();
-    const consumedDocIds = new Set();
-    const toYmd = (val) => {
-      try {
-        if (!val) return '';
-        if (typeof val === 'string') {
-          // Expecting YYYY-MM-DD for stored dates
-          const s = val.trim();
-          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-          const d = new Date(val);
-          if (isNaN(+d)) return '';
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        }
-        const d = new Date(val);
-        if (isNaN(+d)) return '';
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-      } catch { return ''; }
-    };
-    const norm = (s) => String(s || '').toLowerCase().trim();
-    const normSlug = (s) => norm(s).replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-    const docMatchesTokens = (d, tokens = []) => {
-      const title = norm(d?.title || '');
-      const kind  = norm(d?.kind || '');
-      return tokens.some((t) => !!t && (title.includes(t) || kind.includes(t)));
-    };
-    const pickBestByDate = (list, wantedYmd) => {
-      if (!Array.isArray(list) || list.length === 0) return null;
-      const scored = list.map((d) => {
-        const dy = toYmd(d?.related_date);
-        const hasExact = wantedYmd && dy && dy === wantedYmd ? 2 : 0;
-        const ts = new Date(d?.created_at || d?.related_date || 0).getTime() || 0;
-        return { d, score: hasExact, ts };
-      });
-      scored.sort((a, b) => (b.score - a.score) || (b.ts - a.ts));
-      return scored[0]?.d || null;
-    };
-    for (const [slugRaw, value] of customFieldEntries) {
-      const slug = String(slugRaw || '');
-      const lower = slug.toLowerCase();
-      const maybeDocSlug = dateDocLinks[lower];
-      // If this field is a document that will be rendered under its date, skip duplicate later
-      if (consumedDocSlugs.has(lower)) continue;
-      if (maybeDocSlug) {
-        // Push date row
-        rows.push({ label: formatFieldLabel(slug), value: renderFieldValue(slug, value), right: false });
-        // Compute the document row
-        const docSlug = String(maybeDocSlug);
-        let docUrl = (docSlug === 'documentation_url') ? (asset?.documentation_url || '') : '';
-        const needsStrictDate = /service_report|repair_report/i.test(docSlug || '');
-        // Prefer DB-backed document for this doc field and date
-        try {
-          const def = (typeFields || []).find(d => norm(d.slug) === norm(docSlug));
-          const fieldId = def?.id ? String(def.id) : null;
-          const wantedYmd = toYmd(value);
-          const acceptable = (cand) => {
-            if (!cand?.url) return null;
-            if (needsStrictDate) {
-              if (!wantedYmd) return null;
-              const candDate = toYmd(cand.related_date);
-              if (candDate !== wantedYmd) return null;
-            }
-            return cand;
-          };
-          if (fieldId && Array.isArray(assetDocs) && assetDocs.length) {
-            const forField = assetDocs.filter(d => String(d.asset_type_field_id || '') === fieldId);
-            const want = acceptable(pickBestByDate(forField, wantedYmd));
-            if (want) {
-              docUrl = want.url;
-              if (want.id) consumedDocIds.add(String(want.id));
-            }
-          }
-          // Fallback 1: match by tokens from doc field label/slug
-          if (!docUrl && Array.isArray(assetDocs) && assetDocs.length && !needsStrictDate) {
-            const label = (def?.name || def?.label || docSlug || '').toString();
-            const tokens = [norm(label), normSlug(docSlug)];
-            const cand = pickBestByDate(assetDocs.filter(d => docMatchesTokens(d, tokens)), wantedYmd) || null;
-            if (cand?.url) docUrl = cand.url;
-            if (cand?.id) consumedDocIds.add(String(cand.id));
-          }
-          // Fallback 2: no good token match — pick any doc with the same date
-          if (!docUrl && wantedYmd && Array.isArray(assetDocs) && assetDocs.length) {
-            const byDate = assetDocs.filter(d => toYmd(d.related_date) === wantedYmd);
-            const cand = acceptable(pickBestByDate(byDate, wantedYmd));
-            if (cand) {
-              docUrl = cand.url;
-              if (cand.id) consumedDocIds.add(String(cand.id));
-            }
-          }
-        } catch {}
-        if (!docUrl && asset?.fields && !needsStrictDate) {
-          if (asset.fields[docSlug]) docUrl = asset.fields[docSlug];
-          else {
-            for (const [k, v] of Object.entries(asset.fields)) {
-              const norm = String(k || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-              if (norm === docSlug) { docUrl = v; break; }
-            }
-          }
-        }
-        // As a last resort, show top-level documentation_url if present
-        if (!docUrl && asset?.documentation_url && !needsStrictDate) docUrl = asset.documentation_url;
-        const docLabel = docLabels[docSlug] ? String(docLabels[docSlug]) : formatFieldLabel(docSlug);
-        rows.push({ label: docLabel, value: renderFieldValue(docSlug, docUrl || 'N/A'), right: false });
-        consumedDocSlugs.add(docSlug);
-      } else if (!Object.values(dateDocLinks).includes(lower)) {
-        // Regular non-date or unrelated field; and not a doc consumed elsewhere
-        let v = value;
-        try {
-          // If this is a document-like field and is empty, prefer DB-backed document
-          const def = (typeFields || []).find(d => String(d.slug || '').toLowerCase() === lower);
-          const typeSlug = String(def?.field_type?.slug || def?.field_type?.name || '').toLowerCase();
-          const looksDoc = typeSlug === 'url' || /document|certificate|licen|permit|report|attachment|upload/i.test(def?.name || def?.label || '');
-          if (looksDoc && (!(typeof v === 'string' && /^https?:\/\//i.test(v)))) {
-            const fieldId = def?.id ? String(def.id) : null;
-            if (fieldId && Array.isArray(assetDocs) && assetDocs.length) {
-              const sorted = assetDocs
-                .filter(d => String(d.asset_type_field_id || '') === fieldId)
-                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0));
-              if (sorted[0]?.url) v = sorted[0].url;
-              if (sorted[0]?.id) consumedDocIds.add(String(sorted[0].id));
-            }
-            // Fallback: title/kind contains field label/slug
-            if (!(typeof v === 'string' && /^https?:\/\//i.test(v)) && Array.isArray(assetDocs) && assetDocs.length) {
-              const label = (def?.name || def?.label || slug || '').toString();
-              const tokens = [norm(label), lower];
-              const cand = assetDocs
-                .filter(d => docMatchesTokens(d, tokens))
-                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0))[0];
-              if (cand?.url) v = cand.url;
-              if (cand?.id) consumedDocIds.add(String(cand.id));
-            }
-          }
-        } catch {}
-        rows.push({ label: formatFieldLabel(slug), value: renderFieldValue(slug, v), right: false });
-      }
-    }
-
-    // Collect remaining DB-backed documents as history (do NOT show in Additional Fields)
-    try {
-      if (Array.isArray(assetDocs) && assetDocs.length) {
-        const leftovers = assetDocs
-          .filter((d) => d && d.url && !consumedDocIds.has(String(d.id)))
-          .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0) || new Date(b.related_date || 0) - new Date(a.related_date || 0));
-        for (const d of leftovers) {
-          let label = d.title || d.kind || 'Attachment';
-          try {
-            const def = (typeFields || []).find(f => String(f.id) === String(d.asset_type_field_id));
-            if (def?.name) label = def.name;
-          } catch {}
-          const pretty = (() => {
-            const txt = String(label || '').trim();
-            if (!txt) return 'Attachment';
-            const s = txt.replace(/_/g, ' ');
-            return s.slice(0,1).toUpperCase() + s.slice(1);
-          })();
-          history.push({
-            id: d.id,
-            label: pretty,
-            date: d.related_date || d.created_at || null,
-            url: d.url,
-          });
-        }
-      }
-    } catch {}
-
-    return { rows, history };
-  };
-
-  const copyId = () => copyText(asset?.id || assetId, 'Asset ID copied');
-  const copyDeepLink = () => {
-    const _app = LinkingExpo.createURL(`check-in/${asset?.id || assetId}`);
-    const web = `https://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com/check-in/${asset?.id || assetId}`;
-    copyText(web, 'Shareable link copied');
-  };
-
-  const qrPayload = () => {
-    const id = asset?.id || assetId;
-    const base = String(API_BASE_URL || '').replace(/\/+$/, '');
-    return `${base}/check-in/${id}`;
-  };
-
-  const displayLocation = (asset?.location && String(asset.location).trim()) || DEFAULT_ADDRESS;
-
-  // Avoid duplicate document link: hide the bottom fallback button ONLY when
-  // we actually rendered a valid document URL inline next to a linked date.
-  const hasDocUrlInFields = useMemo(() => {
-    try {
-      const isHttpUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s);
-      if (!asset) return false;
-      const fields = (asset.fields && typeof asset.fields === 'object') ? asset.fields : {};
-
-      // Helper to resolve a doc url for a given doc slug
-      const resolveDocUrl = (docSlug) => {
-        if (!docSlug) return '';
-        const slug = String(docSlug).toLowerCase();
-        if (slug === 'documentation_url' && isHttpUrl(asset.documentation_url)) return asset.documentation_url;
-        // direct hit
-        if (isHttpUrl(fields[slug])) return fields[slug];
-        // try normalized match over keys like "Service Report" -> service_report
-        for (const [k, v] of Object.entries(fields)) {
-          const norm = String(k || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
-          if (norm === slug && isHttpUrl(v)) return v;
-        }
-        // last resort: if no field found but top-level doc exists, treat it as the linked doc
-        if (isHttpUrl(asset.documentation_url)) return asset.documentation_url;
-        return '';
-      };
-
-      // 1) Next Service mapping
-      if (dateDocLinks && dateDocLinks['next_service_date']) {
-        const url = resolveDocUrl(dateDocLinks['next_service_date']);
-        if (isHttpUrl(url)) return true;
-      }
-      // 2) Any custom date -> doc mapping
-      for (const [dateSlug, docSlug] of Object.entries(dateDocLinks || {})) {
-        if (!dateSlug || !docSlug) continue;
-        const url = resolveDocUrl(docSlug);
-        if (isHttpUrl(url)) return true;
-      }
-      // Also consider DB-backed documents
-      if (Array.isArray(assetDocs) && assetDocs.length) return true;
-      return false;
-    } catch { return false; }
-  }, [asset, dateDocLinks, assetDocs]);
-
-  const openMaps = () => {
-    const q = encodeURIComponent(displayLocation);
-    const url = Platform.select({
-      ios: `http://maps.apple.com/?q=${q}`,
-      android: `geo:0,0?q=${q}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${q}`,
-    });
-    Linking.openURL(url).catch(() => Alert.alert('Could not open maps'));
-  };
-
-  const statusKey = normalizeStatus(asset?.status);
-  const latestMatchingAction = useMemo(() => {
-    const all = Array.isArray(actions) ? actions : [];
-    if (!all.length) return null;
-
-    // Pick the most recent REPAIR / MAINTENANCE / END_OF_LIFE action,
-    // but ignore service/repair actions that have been signed off/completed.
-    // (actions are already ordered desc).
-    const wanted = new Set(['REPAIR', 'MAINTENANCE', 'END_OF_LIFE']);
-    return (
-      all.find((a) => {
-        const t = String(a?.type).toUpperCase();
-        if (!wanted.has(t)) return false;
-        if (t === 'REPAIR' || t === 'MAINTENANCE') {
-          const d = (a && a.data) || {};
-          if (d.completed === true || d.signed_off === true || d.signed_off_at) {
-            return false;
-          }
-        }
-        return true;
-      }) || null
-    );
-  }, [actions]);
-  const currentDetails = useMemo(() => {
-    if (!latestMatchingAction) return null;
-    const base = latestMatchingAction.details || {};
-    const date = base.date || latestMatchingAction.occurred_at || null;
-    const summary = base.summary || latestMatchingAction.note || null;
-    const notes =
-      base.notes ||
-      (!base.summary && latestMatchingAction.note ? latestMatchingAction.note : null);
-    return { ...base, date, summary, notes };
-  }, [latestMatchingAction]);
-  const currentActionImages = useMemo(() => {
-    try {
-      const urls = new Set();
-      const fromAction = latestMatchingAction?.data?.images;
-      if (Array.isArray(fromAction)) {
-        fromAction.filter(Boolean).forEach((u) => urls.add(u));
-      }
-
-      const isImageUrl = (u) => {
-        if (!u || typeof u !== 'string') return false;
-        try {
-          const clean = u.split('?')[0].toLowerCase();
-          return /\.(png|jpe?g|webp|gif)$/.test(clean);
-        } catch { return false; }
-      };
-
-      // Also pull in image-like documents whose date matches this action
-      if (latestMatchingAction && Array.isArray(assetDocs) && assetDocs.length) {
-        const baseDate = latestMatchingAction.occurred_at || latestMatchingAction.created_at || null;
-        const toYmd = (val) => {
-          try {
-            if (!val) return '';
-            const d = new Date(val);
-            if (Number.isNaN(+d)) return '';
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-          } catch { return ''; }
-        };
-        const baseYmd = baseDate ? toYmd(baseDate) : '';
-
-        assetDocs.forEach((doc) => {
-          const url = doc?.url;
-          if (!isImageUrl(url)) return;
-          const docYmd = toYmd(doc.related_date || doc.created_at);
-          if (baseYmd && docYmd && docYmd === baseYmd) {
-            urls.add(url);
-          }
-        });
-      }
-
-      return Array.from(urls);
-    } catch { return []; }
-  }, [latestMatchingAction, assetDocs]);
-  const [docHistoryOpen, setDocHistoryOpen] = useState(false);
-  const [maintenanceExpanded, setMaintenanceExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState('notes');
-  const prettyDateTime = (d) => {
-    try {
-      const t = typeof d === 'string' ? new Date(d) : new Date(d);
-      return isValid(t) ? format(t, 'dd MMM yyyy HH:mm') : prettyDate(d);
-    } catch { return prettyDate(d); }
-  };
-
-  const typeMeta = (t) => {
-    const k = String(t || '').toUpperCase();
-    switch (k) {
-      case 'TRANSFER':     return { label: 'Transfer', description: 'Transfer', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
-      case 'CHECK_IN':     return { label: 'Transfer In', description: 'Transfer in', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
-      case 'CHECK_OUT':    return { label: 'Transfer Out', description: 'Transfer out', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
-      case 'STATUS_CHANGE':return { label: 'Status', description: 'Status change', bg: '#FEF3C7', fg: '#92400E', bd: '#FDE68A' };
-      case 'REPAIR':       return { label: 'Repair', description: 'Repair', bg: '#FFF7ED', fg: '#9A3412', bd: '#FED7AA' };
-      case 'MAINTENANCE':  return { label: 'Maintenance', description: 'Service / maintenance', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
-      case 'HIRE':         return { label: 'Hire', description: 'Hire', bg: '#E0F2FE', fg: '#075985', bd: '#BAE6FD' };
-      case 'END_OF_LIFE':  return { label: 'End of Life', description: 'End of life', bg: '#FEF2F2', fg: '#B91C1C', bd: '#FECACA' };
-      case 'LOST':         return { label: 'Lost', description: 'Reported lost', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
-      case 'STOLEN':       return { label: 'Stolen', description: 'Reported stolen', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
-      default:             return { label: k || 'Note', description: k ? `${k.replace(/_/g, ' ').toLowerCase()}` : 'Note', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
-    }
-  };
-
-  const initials = (s) => {
-    try {
-      const src = String(s || '').trim();
-      if (!src) return '?';
-      const parts = src.split(/[\s@._-]+/).filter(Boolean);
-      const a = (parts[0] || '')[0] || '';
-      const b = (parts[1] || '')[0] || '';
-      return (a + b).toUpperCase() || '?';
-    } catch { return '?'; }
-  };
-  const noteItems = useMemo(() => {
-    try {
-      const arr = Array.isArray(actions) ? actions : [];
-      const interestingTypes = new Set([
-        'TRANSFER',
-        'CHECK_IN',
-        'CHECK_OUT',
-        'STATUS_CHANGE',
-        'REPAIR',
-        'MAINTENANCE',
-        'HIRE',
-        'END_OF_LIFE',
-        'LOST',
-        'STOLEN',
-      ]);
-      return arr
-        .filter((a) => {
-          if (!a) return false;
-          if (typeof a.note === 'string') return true;
-          const t = String(a.type || '').toUpperCase();
-          return interestingTypes.has(t);
-        })
-        .map((a) => {
-          const typeUpper = String(a.type || '').toUpperCase();
-          const fromLabel = a.from_user?.name || a.from_user?.useremail || a.from_user_id || '';
-          const toLabel   = a.to_user?.name   || a.to_user?.useremail   || a.to_user_id   || '';
-          let text = (a.note || '').trim();
-
-          // Prefer name-based rendering for transfer/check in/out
-          if (typeUpper === 'TRANSFER') {
-            text = `Transfer ${asset?.id || ''} from ${fromLabel || 'Unassigned'} to ${toLabel || 'Unassigned'}`;
-          } else if (typeUpper === 'CHECK_IN') {
-            text = 'Transfer In';
-          } else if (typeUpper === 'CHECK_OUT') {
-            text = `Transfer Out ${asset?.id || ''} to ${toLabel || 'Assignee'}`;
-          }
-
-          // If no custom note, fall back to a sensible default for key action types
-          if (!text) {
-            if (typeUpper === 'REPAIR') text = 'Repair logged';
-            else if (typeUpper === 'MAINTENANCE') text = 'Service / maintenance logged';
-            else if (typeUpper === 'HIRE') text = 'Hire logged';
-            else if (typeUpper === 'END_OF_LIFE') text = 'Marked as End of Life';
-            else if (typeUpper === 'LOST') text = 'Reported lost';
-            else if (typeUpper === 'STOLEN') text = 'Reported stolen';
-            else if (typeUpper === 'STATUS_CHANGE') text = 'Status updated';
-            else text = typeUpper || 'Update';
-          }
-
-          const performer = a.performer?.name || a.performer?.useremail || a.performed_by || '';
-          const whoName = performer || fromLabel || toLabel || 'System';
-          const imgs = Array.isArray(a?.data?.images) ? a.data.images.filter(Boolean) : [];
-          return ({
-            id: a.id,
-            note: text,
-            when: a.occurred_at,
-            who: whoName,
-            type: a.type || '',
-            images: imgs,
-          });
-        });
-    } catch { return []; }
-  }, [actions, asset?.id]);
-
-  // Full work detail history: REPAIR and MAINTENANCE only, with details and photos
-  const workDetailHistory = useMemo(() => {
-    try {
-      const arr = Array.isArray(actions) ? actions : [];
-      const wanted = new Set(['REPAIR', 'MAINTENANCE']);
-      return arr
-        .filter((a) => a && wanted.has(String(a?.type || '').toUpperCase()))
-        .map((a) => {
-          const base = a.details || {};
-          const date = base.date || a.occurred_at || a.created_at || null;
-          const summary = base.summary || a.note || null;
-          // Only use base.notes so we don't duplicate a.note when it was already used as summary
-          const notes = base.notes ?? null;
-          const images = Array.isArray(a?.data?.images) ? a.data.images.filter(Boolean) : [];
-          const signed_off_at = a?.data?.signed_off_at || null;
-          return {
-            id: a.id,
-            type: String(a.type || '').toUpperCase(),
-            date,
-            occurred_at: a.occurred_at,
-            signed_off_at,
-            summary,
-            priority: base.priority,
-            estimated_cost: base.estimated_cost,
-            notes,
-            images,
-          };
-        })
-        .sort((a, b) => {
-          const ta = (a.signed_off_at || a.occurred_at || a.date) ? new Date(a.signed_off_at || a.occurred_at || a.date).getTime() : 0;
-          const tb = (b.signed_off_at || b.occurred_at || b.date) ? new Date(b.signed_off_at || b.occurred_at || b.date).getTime() : 0;
-          return tb - ta;
-        });
-    } catch { return []; }
-  }, [actions]);
-
-  // Notes typed by users during check-in/transfer/status (flagged on server)
-  const typedNotes = useMemo(() => {
-    try {
-      const arr = Array.isArray(actions) ? actions : [];
-      return arr
-        .filter((a) => a && a.data && typeof a.data.user_note_text === 'string' && a.data.user_note_text.trim())
-        .map((a) => {
-          const performer = a.performer?.name || a.performer?.useremail || a.performed_by || '';
-          const fromLabel = a.from_user?.name || a.from_user?.useremail || a.from_user_id || '';
-          const toLabel   = a.to_user?.name   || a.to_user?.useremail   || a.to_user_id   || '';
-          const whoName = performer || fromLabel || toLabel || 'System';
-          return ({ id: a.id, note: a.data.user_note_text.trim(), when: a.occurred_at, who: whoName });
-        });
-    } catch { return []; }
-  }, [actions]);
-
-  // Top-level note saved on the asset itself (e.g., from Dashboard action modal)
-  const assetNote = useMemo(() => {
-    try {
-      const t = (asset?.notes || '').toString();
-      return t.trim();
-    } catch { return ''; }
-  }, [asset]);
-
-  const nextService = (() => {
-    const raw = asset?.next_service_date;
-    if (!raw) return null;
-    const d = typeof raw === 'string' ? parseISO(raw) : new Date(raw);
-    return isValid(d) ? d : null;
-  })();
-  const overdueDays = nextService ? differenceInCalendarDays(new Date(), nextService) : 0;
-  const isOverdue = nextService ? overdueDays > 0 : false;
-
+  // Loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.centerWrap}>
@@ -1045,6 +146,7 @@ export default function AssetDetailPage() {
     );
   }
 
+  // Imported ID error
   if (err && isImportedId) {
     return (
       <SafeAreaView style={styles.centerWrap}>
@@ -1053,11 +155,7 @@ export default function AssetDetailPage() {
         <Text style={{ marginTop: 8, color: Colors.sub, paddingHorizontal: 24, textAlign: 'center' }}>{err}</Text>
         <TouchableOpacity
           style={{ marginTop: 18 }}
-          onPress={() => {
-            try { if (router?.canGoBack?.() && router.canGoBack()) { router.back(); return; } } catch {}
-            if (normalizedReturnTo) { router.replace(normalizedReturnTo); return; }
-            router.replace('/(tabs)/Inventory');
-          }}
+          onPress={handleBack}
         >
           <Text style={{ color: Colors.accent, fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
@@ -1065,6 +163,7 @@ export default function AssetDetailPage() {
     );
   }
 
+  // General error
   if (err) {
     return (
       <SafeAreaView style={styles.centerWrap}>
@@ -1076,6 +175,7 @@ export default function AssetDetailPage() {
     );
   }
 
+  // No asset found
   if (!asset) {
     return (
       <SafeAreaView style={styles.centerWrap}>
@@ -1093,678 +193,459 @@ export default function AssetDetailPage() {
       />
 
       <View style={styles.mainContentWrap}>
-      <ScrollView
-        style={styles.detailScrollView}
-        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
-      >
-        {/* Hero image spanning full width */}
-        <Image
-          source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
-          style={styles.heroImage}
-        />
+        <ScrollView
+          style={styles.detailScrollView}
+          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
+        >
+          {/* Hero image */}
+          <Image
+            source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
+            style={styles.heroImage}
+          />
 
-        <View style={styles.detailCard}>
-          {/* Title Row — status badge removed to avoid duplication */}
-          <View style={styles.titleRow}>
-            <Text style={styles.assetName}>
-              {asset.asset_types?.name || 'Asset'} · SN: {asset.serial_number || 'N/A'}
-            </Text>
-          </View>
+          <View style={styles.detailCard}>
+            {/* Title Row */}
+            <View style={styles.titleRow}>
+              <Text style={styles.assetName}>
+                {asset.asset_types?.name || 'Asset'} · SN: {asset.serial_number || 'N/A'}
+              </Text>
+            </View>
 
-          {/* Meta chips */}
-          <View style={styles.metaRow}>
-            <TouchableOpacity onPress={copyId} style={styles.metaChip}>
-              <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
-              <Text style={styles.metaChipText}>ID: {asset.id}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
-              <MaterialIcons name="link" size={16} color={Colors.accent} />
-              <Text style={styles.metaChipText}>Copy Link</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
-              <MaterialIcons name="place" size={16} color={Colors.accent} />
-              <Text style={styles.metaChipText}>Maps</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
-              <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
-            </TouchableOpacity>
-          </View>
+            {/* Meta chips */}
+            <View style={styles.metaRow}>
+              <TouchableOpacity onPress={copyId} style={styles.metaChip}>
+                <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
+                <Text style={styles.metaChipText}>ID: {asset.id}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
+                <MaterialIcons name="link" size={16} color={Colors.accent} />
+                <Text style={styles.metaChipText}>Copy Link</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
+                <MaterialIcons name="place" size={16} color={Colors.accent} />
+                <Text style={styles.metaChipText}>Maps</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
+                <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
+              </TouchableOpacity>
+            </View>
 
-          {/* Core fields */}
-          {(() => {
-            const coreRows = [
-              { label: 'Status', value: <StatusBadge status={asset.status} /> },
-              { label: 'Assigned To', value: asset.users?.name || 'N/A' },
-              { label: 'Last Scanned Location', value: displayLocation },
-              { label: 'Model', value: asset.model || 'N/A' },
-              { label: 'Other ID', value: asset.other_id || 'N/A' },
-              { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : 'N/A' },
-            ];
-            coreRows.push(
-              { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
-              { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
-              { label: 'Description', value: asset.description || 'No description' },
-            );
-            if (isWebWide) {
+            {/* Core fields */}
+            {(() => {
+              const coreRows = [
+                { label: 'Status', value: <StatusBadge status={asset.status} /> },
+                { label: 'Assigned To', value: asset.users?.name || 'N/A' },
+                { label: 'Last Scanned Location', value: displayLocation },
+                { label: 'Model', value: asset.model || 'N/A' },
+                { label: 'Other ID', value: asset.other_id || 'N/A' },
+                { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : 'N/A' },
+                { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
+                { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
+                { label: 'Description', value: asset.description || 'No description' },
+              ];
+              if (isWebWide) {
+                return (
+                  <>
+                    <Text style={styles.sectionH}>Overview</Text>
+                    <DetailsGrid rows={coreRows} />
+                  </>
+                );
+              }
               return (
                 <>
                   <Text style={styles.sectionH}>Overview</Text>
-                  <DetailsGrid rows={coreRows} />
+                  {coreRows.map((r, i) => (
+                    <Row
+                      key={`core-${i}`}
+                      label={r.label}
+                      value={r.value}
+                      rightAlign={r.right !== false}
+                    />
+                  ))}
                 </>
               );
-            }
-            return (
-              <>
-                <Text style={styles.sectionH}>Overview</Text>
-                {coreRows.map((r, i) => (
-                  <Row
-                    key={`core-${i}`}
-                    label={r.label}
-                    value={r.value}
-                    rightAlign={r.right !== false}
-                  />
-                ))}
-              </>
-            );
-          })()}
+            })()}
 
-          {currentDetails && (
-            <>
-              <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
-              {isWebWide ? (
-                (() => {
-                  const rows = [];
-                  if (currentDetails.date) rows.push({ label: 'Date', value: prettyDate(currentDetails.date) });
-                  if (currentDetails.summary) rows.push({ label: 'Summary', value: currentDetails.summary });
-                  if (currentDetails.priority) rows.push({ label: 'Priority', value: String(currentDetails.priority) });
-                  if (typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null) {
-                    rows.push({ label: 'Estimated Cost', value: `$${Number(currentDetails.estimated_cost).toFixed(2)}` });
-                  }
-                  if (currentDetails.eol_reason) rows.push({ label: 'Reason', value: currentDetails.eol_reason });
-                  if (currentDetails.notes) rows.push({ label: 'Notes', value: currentDetails.notes });
-                  if (currentActionImages.length > 0) {
-                    rows.push({
-                      label: 'Work photo',
-                      value: (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', flexWrap: 'nowrap' }}>
-                          {currentActionImages.map((url, idx) => (
-                            <Image key={`curr-wp-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                          ))}
-                        </ScrollView>
-                      ),
-                    });
-                  }
-                  return <DetailsGrid rows={rows} />;
-                })()
-              ) : (
-                <View style={styles.currentWorkCard}>
-                  {currentDetails.summary && (
-                    <Text style={styles.currentWorkSummary}>{currentDetails.summary}</Text>
-                  )}
-                  <View style={styles.currentWorkMetaRow}>
-                    {currentDetails.date && (
-                      <View style={styles.currentWorkMetaItem}>
-                        <MaterialIcons name="event" size={14} color="#4B5563" />
-                        <Text style={styles.currentWorkMetaLabel}>Date</Text>
-                        <Text style={styles.currentWorkMetaValue}>{prettyDate(currentDetails.date)}</Text>
-                      </View>
+            {/* Current work details */}
+            {currentDetails && (
+              <>
+                <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
+                {isWebWide ? (
+                  (() => {
+                    const rows = [];
+                    if (currentDetails.date) rows.push({ label: 'Date', value: prettyDate(currentDetails.date) });
+                    if (currentDetails.summary) rows.push({ label: 'Summary', value: currentDetails.summary });
+                    if (currentDetails.priority) rows.push({ label: 'Priority', value: String(currentDetails.priority) });
+                    if (typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null) {
+                      rows.push({ label: 'Estimated Cost', value: `$${Number(currentDetails.estimated_cost).toFixed(2)}` });
+                    }
+                    if (currentDetails.eol_reason) rows.push({ label: 'Reason', value: currentDetails.eol_reason });
+                    if (currentDetails.notes) rows.push({ label: 'Notes', value: currentDetails.notes });
+                    if (currentActionImages.length > 0) {
+                      rows.push({
+                        label: 'Work photo',
+                        value: (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', flexWrap: 'nowrap' }}>
+                            {currentActionImages.map((url, idx) => (
+                              <Image key={`curr-wp-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                            ))}
+                          </ScrollView>
+                        ),
+                      });
+                    }
+                    return <DetailsGrid rows={rows} />;
+                  })()
+                ) : (
+                  <View style={styles.currentWorkCard}>
+                    {currentDetails.summary && (
+                      <Text style={styles.currentWorkSummary}>{currentDetails.summary}</Text>
                     )}
-                    {currentDetails.priority && (
-                      <View style={styles.currentWorkMetaItem}>
-                        <MaterialIcons name="flag" size={14} color="#4B5563" />
-                        <Text style={styles.currentWorkMetaLabel}>Priority</Text>
-                        <Text style={styles.currentWorkMetaValue}>{String(currentDetails.priority)}</Text>
-                      </View>
+                    <View style={styles.currentWorkMetaRow}>
+                      {currentDetails.date && (
+                        <View style={styles.currentWorkMetaItem}>
+                          <MaterialIcons name="event" size={14} color="#4B5563" />
+                          <Text style={styles.currentWorkMetaLabel}>Date</Text>
+                          <Text style={styles.currentWorkMetaValue}>{prettyDate(currentDetails.date)}</Text>
+                        </View>
+                      )}
+                      {currentDetails.priority && (
+                        <View style={styles.currentWorkMetaItem}>
+                          <MaterialIcons name="flag" size={14} color="#4B5563" />
+                          <Text style={styles.currentWorkMetaLabel}>Priority</Text>
+                          <Text style={styles.currentWorkMetaValue}>{String(currentDetails.priority)}</Text>
+                        </View>
+                      )}
+                      {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
+                        <View style={styles.currentWorkMetaItem}>
+                          <MaterialIcons name="attach-money" size={14} color="#4B5563" />
+                          <Text style={styles.currentWorkMetaLabel}>Est. Cost</Text>
+                          <Text style={styles.currentWorkMetaValue}>{`$${Number(currentDetails.estimated_cost).toFixed(2)}`}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {currentDetails.eol_reason && (
+                      <Text style={styles.currentWorkNote}>
+                        {currentDetails.eol_reason}
+                      </Text>
                     )}
-                    {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
-                      <View style={styles.currentWorkMetaItem}>
-                        <MaterialIcons name="attach-money" size={14} color="#4B5563" />
-                        <Text style={styles.currentWorkMetaLabel}>Est. Cost</Text>
-                        <Text style={styles.currentWorkMetaValue}>{`$${Number(currentDetails.estimated_cost).toFixed(2)}`}</Text>
-                      </View>
+                    {currentDetails.notes && (
+                      <Text style={styles.currentWorkNote}>
+                        {currentDetails.notes}
+                      </Text>
+                    )}
+                    {currentActionImages.length > 0 && (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginTop: 8 }}
+                      >
+                        {currentActionImages.map((url, idx) => (
+                          <Image
+                            key={`curr-wp-${idx}`}
+                            source={{ uri: url }}
+                            style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }}
+                          />
+                        ))}
+                      </ScrollView>
                     )}
                   </View>
-                  {currentDetails.eol_reason && (
-                    <Text style={styles.currentWorkNote}>
-                      {currentDetails.eol_reason}
+                )}
+              </>
+            )}
+
+            {/* Additional/Custom fields */}
+            {customFieldEntries.length > 0 && (
+              <>
+                <Text style={[styles.sectionH, { marginTop: 16 }]}>Additional Fields</Text>
+                {(() => {
+                  const { rows: dynRows } = buildDynamicData();
+                  if (isWebWide) return <DetailsGrid rows={dynRows} />;
+                  return dynRows.map((r, idx) => (
+                    <Row key={`dyn-${idx}`} label={r.label} value={r.value} />
+                  ));
+                })()}
+              </>
+            )}
+
+            {/* Tab bar */}
+            <View style={styles.tabBar}>
+              {[
+                { key: 'notes',       label: 'Notes',        count: (assetNote ? 1 : 0) + typedNotes.length },
+                { key: 'documents',   label: 'Documents',   count: (() => { try { return buildDynamicData().history.length; } catch { return 0; } })() },
+                { key: 'maintenance', label: 'Maintenance',  count: workDetailHistory.length },
+                { key: 'history',     label: 'History',     count: noteItems.length },
+              ].map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.tabItem, isActive && styles.tabItemActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                      {tab.label}
                     </Text>
-                  )}
-                  {currentDetails.notes && (
-                    <Text style={styles.currentWorkNote}>
-                      {currentDetails.notes}
-                    </Text>
-                  )}
-                  {currentActionImages.length > 0 && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={{ marginTop: 8 }}
-                    >
-                      {currentActionImages.map((url, idx) => (
-                        <Image
-                          key={`curr-wp-${idx}`}
-                          source={{ uri: url }}
-                          style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }}
-                        />
-                      ))}
-                    </ScrollView>
-                  )}
-                </View>
-              )}
-            </>
-          )}
-          {/* Notes and History moved below Additional Fields */}
+                    {tab.count > 0 && (
+                      <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
+                        <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
+                          {tab.count}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-          {/* Dynamic fields */}
-          {customFieldEntries.length > 0 && (
-            <>
-              <Text style={[styles.sectionH, { marginTop: 16 }]}>Additional Fields</Text>
-              {(() => {
-                const { rows: dynRows } = buildDynamicData();
-                if (isWebWide) return <DetailsGrid rows={dynRows} />;
-                return dynRows.map((r, idx) => (
-                  <Row key={`dyn-${idx}`} label={r.label} value={r.value} />
-                ));
-              })()}
-            </>
-          )}
+            {/* Tab: History */}
+            {activeTab === 'history' && (
+              <View style={styles.tabPanel}>
+                {noteItems.length === 0 ? (
+                  <View style={styles.tabEmpty}>
+                    <MaterialIcons name="history" size={32} color={Colors.line} />
+                    <Text style={styles.tabEmptyText}>No history yet.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
+                      const meta = typeMeta(n.type);
+                      const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
+                      return (
+                        <View key={n.id} style={styles.noteCard}>
+                          <View style={styles.noteHead}>
+                            <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
+                                {activityDescription}
+                              </Text>
+                              <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                              <Text style={[styles.noteWhen, { fontSize: sf(12), color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
+                                {n.who || 'System'}
+                              </Text>
+                            </View>
+                            {!!n.type && (
+                              <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                                <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.noteText}>{n.note}</Text>
+                          {!!(n.images && n.images.length) && (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                              {n.images.map((url, idx) => (
+                                <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                              ))}
+                            </ScrollView>
+                          )}
+                        </View>
+                      );
+                    })}
+                    {noteItems.length > 5 && (
+                      <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
+                        <Text style={styles.noteToggleText}>{notesExpanded ? 'Show less' : `Show all ${noteItems.length}`}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
 
-          {/* ── Tab bar ───────────────────────────────────────── */}
-          <View style={styles.tabBar}>
-            {[
-              { key: 'notes',       label: 'Notes',        count: (assetNote ? 1 : 0) + typedNotes.length },
-              { key: 'documents',   label: 'Documents',   count: (() => { try { return buildDynamicData().history.length; } catch { return 0; } })() },
-              { key: 'maintenance', label: 'Maintenance',  count: workDetailHistory.length },
-              { key: 'history',     label: 'History',     count: noteItems.length },
-            ].map((tab) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[styles.tabItem, isActive && styles.tabItemActive]}
-                  onPress={() => setActiveTab(tab.key)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                    {tab.label}
-                  </Text>
-                  {tab.count > 0 && (
-                    <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
-                      <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
-                        {tab.count}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* ── Tab: History ──────────────────────────────────── */}
-          {activeTab === 'history' && (
-            <View style={styles.tabPanel}>
-              {noteItems.length === 0 ? (
-                <View style={styles.tabEmpty}>
-                  <MaterialIcons name="history" size={32} color={Colors.line} />
-                  <Text style={styles.tabEmptyText}>No history yet.</Text>
-                </View>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
-                    const meta = typeMeta(n.type);
-                    const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
+            {/* Tab: Documents */}
+            {activeTab === 'documents' && (
+              <View style={styles.tabPanel}>
+                {(() => {
+                  try {
+                    const { history } = buildDynamicData();
+                    if (!history || !history.length) {
+                      return (
+                        <View style={styles.tabEmpty}>
+                          <MaterialIcons name="insert-drive-file" size={32} color={Colors.line} />
+                          <Text style={styles.tabEmptyText}>No documents attached.</Text>
+                        </View>
+                      );
+                    }
+                    const rows = history.map((h) => ({
+                      label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
+                      value: (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {renderFieldValue('documentation_url', h.url)}
+                          <TouchableOpacity
+                            onPress={() => handleDeleteDocument(h.id)}
+                            disabled={docDeletingId === h.id}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ padding: 4 }}
+                          >
+                            <MaterialIcons name="delete" size={20} color={docDeletingId === h.id ? '#999' : '#c00'} />
+                          </TouchableOpacity>
+                        </View>
+                      ),
+                      right: false,
+                    }));
+                    const visible = docHistoryOpen ? rows : rows.slice(0, 3);
                     return (
+                      <>
+                        {isWebWide
+                          ? <DetailsGrid rows={visible} />
+                          : visible.map((r, i) => <Row key={`hist-${i}`} label={r.label} value={r.value} />)
+                        }
+                        {rows.length > 3 && (
+                          <TouchableOpacity onPress={() => setDocHistoryOpen((v) => !v)} style={[styles.noteToggle, { marginTop: 8 }]}>
+                            <Text style={styles.noteToggleText}>{docHistoryOpen ? 'Show less' : `Show all ${rows.length}`}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    );
+                  } catch { return null; }
+                })()}
+              </View>
+            )}
+
+            {/* Tab: Maintenance */}
+            {activeTab === 'maintenance' && (
+              <View style={styles.tabPanel}>
+                {workDetailHistory.length === 0 ? (
+                  <View style={styles.tabEmpty}>
+                    <MaterialIcons name="build" size={32} color={Colors.line} />
+                    <Text style={styles.tabEmptyText}>No maintenance record yet.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 12 }}>
+                    {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 3)).map((w) => {
+                      const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
+                      const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
+                      const isService = w.type === 'MAINTENANCE';
+                      const summaryWithNext = [
+                        (w.summary || '').trim(),
+                        isService && asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
+                      ].filter(Boolean).join('. ');
+                      return (
+                        <View key={w.id} style={styles.noteCard}>
+                          <View style={styles.noteHead}>
+                            <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
+                              <Text style={styles.noteWhen}>{prettyDateTime(w.signed_off_at || w.occurred_at || w.date)}</Text>
+                            </View>
+                            <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                              <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                            </View>
+                          </View>
+                          <View style={{ marginTop: 8, gap: 4 }}>
+                            {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
+                            {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
+                            {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
+                              <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
+                            )}
+                            {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
+                          </View>
+                          {!!(w.images && w.images.length) && (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                              {w.images.map((url, idx) => (
+                                <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                              ))}
+                            </ScrollView>
+                          )}
+                        </View>
+                      );
+                    })}
+                    {workDetailHistory.length > 3 && (
+                      <TouchableOpacity onPress={() => setMaintenanceExpanded((v) => !v)} style={[styles.noteToggle, { marginTop: 4 }]}>
+                        <Text style={styles.noteToggleText}>{maintenanceExpanded ? 'Show less' : `Show all ${workDetailHistory.length}`}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Tab: Notes */}
+            {activeTab === 'notes' && (
+              <View style={styles.tabPanel}>
+                {!assetNote && typedNotes.length === 0 ? (
+                  <View style={styles.tabEmpty}>
+                    <MaterialIcons name="notes" size={32} color={Colors.line} />
+                    <Text style={styles.tabEmptyText}>No notes yet.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {!!assetNote && (
+                      <View key="asset-note" style={styles.noteCard}>
+                        <Text style={styles.noteText}>{assetNote}</Text>
+                      </View>
+                    )}
+                    {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)).map((n) => (
                       <View key={n.id} style={styles.noteCard}>
                         <View style={styles.noteHead}>
                           <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
                           <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
-                              {activityDescription}
-                            </Text>
+                            <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
                             <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                            <Text style={[styles.noteWhen, { fontSize: sf(12), color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
-                              {n.who || 'System'}
-                            </Text>
                           </View>
-                          {!!n.type && (
-                            <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                              <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                            </View>
-                          )}
                         </View>
                         <Text style={styles.noteText}>{n.note}</Text>
-                        {!!(n.images && n.images.length) && (
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                            {n.images.map((url, idx) => (
-                              <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                            ))}
-                          </ScrollView>
-                        )}
                       </View>
-                    );
-                  })}
-                  {noteItems.length > 5 && (
-                    <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
-                      <Text style={styles.noteToggleText}>{notesExpanded ? 'Show less' : `Show all ${noteItems.length}`}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* ── Tab: Documents ────────────────────────────────── */}
-          {activeTab === 'documents' && (
-            <View style={styles.tabPanel}>
-              {(() => {
-                try {
-                  const { history } = buildDynamicData();
-                  if (!history || !history.length) {
-                    return (
-                      <View style={styles.tabEmpty}>
-                        <MaterialIcons name="insert-drive-file" size={32} color={Colors.line} />
-                        <Text style={styles.tabEmptyText}>No documents attached.</Text>
-                      </View>
-                    );
-                  }
-                  const rows = history.map((h) => ({
-                    label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
-                    value: (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {renderFieldValue('documentation_url', h.url)}
-                        <TouchableOpacity
-                          onPress={() => handleDeleteDocument(h.id)}
-                          disabled={docDeletingId === h.id}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ padding: 4 }}
-                        >
-                          <MaterialIcons name="delete" size={20} color={docDeletingId === h.id ? '#999' : '#c00'} />
-                        </TouchableOpacity>
-                      </View>
-                    ),
-                    right: false,
-                  }));
-                  const visible = docHistoryOpen ? rows : rows.slice(0, 3);
-                  return (
-                    <>
-                      {isWebWide
-                        ? <DetailsGrid rows={visible} />
-                        : visible.map((r, i) => <Row key={`hist-${i}`} label={r.label} value={r.value} />)
-                      }
-                      {rows.length > 3 && (
-                        <TouchableOpacity onPress={() => setDocHistoryOpen((v) => !v)} style={[styles.noteToggle, { marginTop: 8 }]}>
-                          <Text style={styles.noteToggleText}>{docHistoryOpen ? 'Show less' : `Show all ${rows.length}`}</Text>
-                        </TouchableOpacity>
-                      )}
-                    </>
-                  );
-                } catch { return null; }
-              })()}
-            </View>
-          )}
-
-          {/* ── Tab: Maintenance ──────────────────────────────── */}
-          {activeTab === 'maintenance' && (
-            <View style={styles.tabPanel}>
-              {workDetailHistory.length === 0 ? (
-                <View style={styles.tabEmpty}>
-                  <MaterialIcons name="build" size={32} color={Colors.line} />
-                  <Text style={styles.tabEmptyText}>No maintenance record yet.</Text>
-                </View>
-              ) : (
-                <View style={{ gap: 12 }}>
-                  {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 3)).map((w) => {
-                    const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
-                    const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
-                    const isService = w.type === 'MAINTENANCE';
-                    const summaryWithNext = [
-                      (w.summary || '').trim(),
-                      isService && asset?.next_service_date ? `Next service: ${prettyDate(asset.next_service_date)}` : '',
-                    ].filter(Boolean).join('. ');
-                    return (
-                      <View key={w.id} style={styles.noteCard}>
-                        <View style={styles.noteHead}>
-                          <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{meta.label?.charAt(0) || '?'}</Text></View>
-                          <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={[styles.noteWho, { marginBottom: 2 }]}>{typeHeading}</Text>
-                            <Text style={styles.noteWhen}>{prettyDateTime(w.signed_off_at || w.occurred_at || w.date)}</Text>
-                          </View>
-                          <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                            <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                          </View>
-                        </View>
-                        <View style={{ marginTop: 8, gap: 4 }}>
-                          {summaryWithNext ? <Row label="Summary" value={summaryWithNext} rightAlign={false} /> : null}
-                          {w.priority ? <Row label="Priority" value={String(w.priority)} rightAlign={false} /> : null}
-                          {typeof w.estimated_cost !== 'undefined' && w.estimated_cost !== null && (
-                            <Row label="Estimated cost" value={`$${Number(w.estimated_cost).toFixed(2)}`} rightAlign={false} />
-                          )}
-                          {w.notes ? <Row label="Notes" value={w.notes} rightAlign={false} /> : null}
-                        </View>
-                        {!!(w.images && w.images.length) && (
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                            {w.images.map((url, idx) => (
-                              <Image key={`${w.id}-wd-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                            ))}
-                          </ScrollView>
-                        )}
-                      </View>
-                    );
-                  })}
-                  {workDetailHistory.length > 3 && (
-                    <TouchableOpacity onPress={() => setMaintenanceExpanded((v) => !v)} style={[styles.noteToggle, { marginTop: 4 }]}>
-                      <Text style={styles.noteToggleText}>{maintenanceExpanded ? 'Show less' : `Show all ${workDetailHistory.length}`}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* ── Tab: Notes ────────────────────────────────────── */}
-          {activeTab === 'notes' && (
-            <View style={styles.tabPanel}>
-              {!assetNote && typedNotes.length === 0 ? (
-                <View style={styles.tabEmpty}>
-                  <MaterialIcons name="notes" size={32} color={Colors.line} />
-                  <Text style={styles.tabEmptyText}>No notes yet.</Text>
-                </View>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  {!!assetNote && (
-                    <View key="asset-note" style={styles.noteCard}>
-                      <Text style={styles.noteText}>{assetNote}</Text>
-                    </View>
-                  )}
-                  {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)).map((n) => (
-                    <View key={n.id} style={styles.noteCard}>
-                      <View style={styles.noteHead}>
-                        <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
-                        <View style={{ flex: 1, paddingRight: 8 }}>
-                          <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
-                          <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.noteText}>{n.note}</Text>
-                    </View>
-                  ))}
-                  {(assetNote ? 1 : 0) + typedNotes.length > 4 && (
-                    <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
-                      <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Linked assets */}
-          {linkedAssetIds.length > 0 && (
-            <>
-              <Text style={[styles.sectionH, { marginTop: 18 }]}>Linked Assets</Text>
-              <View style={styles.linkedWrap}>
-                {linkedAssetIds.map((id) => (
-                  <TouchableOpacity
-                    key={id}
-                    style={styles.linkedChip}
-                    onPress={() =>
-                      router.push({ pathname: '/(tabs)/asset/[assetId]', params: { assetId: id } })
-                    }
-                  >
-                    <MaterialIcons name="link" size={16} color={Colors.accent} />
-                    <Text style={styles.linkedChipText}>{id}</Text>
-                  </TouchableOpacity>
-                ))}
+                    ))}
+                    {(assetNote ? 1 : 0) + typedNotes.length > 4 && (
+                      <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
+                        <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
-            </>
-          )}
+            )}
 
-          {/* Docs */}
-          {false && asset.documentation_url && !hasDocUrlInFields && (
-            <TouchableOpacity
-              onPress={() => {
-                Linking.openURL(asset.documentation_url).catch((err) => {
-                  console.error('Error opening URL:', err);
-                  Alert.alert('Could not open the document');
-                });
-              }}
-              style={styles.documentButton}
-            >
-              <Text style={styles.documentText}>📄 View Attached Document</Text>
-            </TouchableOpacity>
-          )}
-          {/* Map (works on all platforms) */}
-          <MapPreview location={displayLocation} />
+            {/* Linked assets */}
+            {linkedAssetIds.length > 0 && (
+              <>
+                <Text style={[styles.sectionH, { marginTop: 18 }]}>Linked Assets</Text>
+                <View style={styles.linkedWrap}>
+                  {linkedAssetIds.map((id) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={styles.linkedChip}
+                      onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: id } })}
+                    >
+                      <MaterialIcons name="link" size={16} color={Colors.accent} />
+                      <Text style={styles.linkedChipText}>{id}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
-          {/* Helpful shortcuts
-          <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap' }}>
-            <Shortcut
-              icon="search"
-              label="Search with this ID"
-              onPress={() => router.push({ pathname: '/search', params: { query: asset.id } })}
-            />
-            {asset.model ? (
-              <Shortcut
-                icon="tune"
-                label="Find same model"
-                onPress={() => router.push({ pathname: '/search', params: { model: asset.model } })}
-              />
-            ) : null}
-          </View> */}
-          
-        </View>
-      </ScrollView>
-      {/* Sticky action bar (always visible on web, at bottom on native) */}
-      <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
-        {(() => {
-          const isQRReserved = String(asset?.description || '').trim().toLowerCase() === 'qr reserved asset';
-          if (isQRReserved) {
-            return normalizeStatus(asset?.status) === 'available' ? (
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnSecondary]}
-                onPress={() =>
-                  router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
-                }
-              >
-                <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                <Text style={styles.actionText}>Transfer Out</Text>
-              </TouchableOpacity>
-            ) : normalizeStatus(asset?.status) === 'rented' ? (
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnPrimary]}
-                onPress={() => router.push(`/check-in/${asset.id}`)}
-              >
-                <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                <Text style={styles.actionText}>Transfer In</Text>
-              </TouchableOpacity>
-            ) : null;
-          }
-          return (
-            <>
-              {normalizeStatus(asset?.status) === 'available' ? (
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnSecondary]}
-                  onPress={() =>
-                    router.push({ pathname: '/qr-scanner', params: { intent: 'check-out', assetId: asset.id } })
-                  }
-                >
-                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                  <Text style={styles.actionText}>Transfer Out</Text>
-                </TouchableOpacity>
-              ) : normalizeStatus(asset?.status) === 'rented' ? (
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnPrimary]}
-                  onPress={() => router.push(`/check-in/${asset.id}`)}
-                >
-                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                  <Text style={styles.actionText}>Transfer In</Text>
-                </TouchableOpacity>
-              ) : (
-                isAdmin ? (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnSecondary]}
-                    onPress={() => {
-                      router.push({
-                        pathname: '/asset/new',
-                        params: { fromAssetId: asset.id },
-                      });
-                    }}
-                  >
-                    <MaterialIcons name="content-copy" size={18} color="#fff" />
-                    <Text style={styles.actionText}>Copy</Text>
-                  </TouchableOpacity>
-                ) : null
-              )}
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnPrimary]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/asset/edit',
-                    params: {
-                      assetId: asset.id,
-                      returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
-                    },
-                  })
-                }
-              >
-                <MaterialIcons name="edit" size={18} color="#fff" />
-                <Text style={styles.actionText}>Edit</Text>
-              </TouchableOpacity>
-              {isAdmin && (
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnDanger]}
-                  onPress={handleDelete}
-                >
-                  <MaterialIcons name="delete-outline" size={18} color="#fff" />
-                  <Text style={styles.actionText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          );
-        })()}
-      </View>
-      </View>
-      {/* QR modal */}
-      <Modal
-        visible={qrOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setQrOpen(false)}
-      >
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setQrOpen(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: Colors.card, padding: 18, borderRadius: Radius.lg, alignItems: 'center', width: 340, maxWidth: '90%' }}>
-            <QRCode value={qrPayload()} size={260} ecl="M" />
-            <Text style={{ marginTop: 12, fontWeight: '700', color: Colors.text }}>{asset?.id || assetId}</Text>
-            <Text style={{ marginTop: 8, color: Colors.sub, textAlign: 'center' }}>
-              Scan this QR to open the asset and perform check-in or check-out.
-            </Text>
-            <TouchableOpacity onPress={() => setQrOpen(false)} style={{ marginTop: 12 }}>
-              <Text style={{ color: Colors.accent, fontWeight: '800' }}>Close</Text>
-            </TouchableOpacity>
+            {/* Map */}
+            <MapPreview location={displayLocation} />
           </View>
-        </View>
-      </Modal>
+        </ScrollView>
+
+        {/* Action bar */}
+        <AssetActionBar
+          asset={asset}
+          isAdmin={isAdmin}
+          normalizedReturnTo={normalizedReturnTo}
+          onDelete={handleDelete}
+        />
+      </View>
+
+      {/* QR modal */}
+      <AssetQRModal
+        visible={qrOpen}
+        onClose={() => setQrOpen(false)}
+        qrValue={qrPayload()}
+        assetId={asset?.id || assetId}
+      />
     </SafeAreaView>
   );
 }
 
-function Row({ label, value, rightAlign = true }) {
-  const isPrimitive = typeof value === 'string' || typeof value === 'number';
-
-  // Non-primitive values (e.g. buttons/links/components)
-  if (!isPrimitive) {
-    if (!rightAlign) {
-      return (
-        <View style={styles.detailRowStack}>
-          <Text style={styles.label}>{label}</Text>
-          <View style={styles.valueBelow}>{value}</View>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.detailRow}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.valueContainer}>{value}</View>
-      </View>
-    );
-  }
-
-  const text = value == null ? 'N/A' : String(value);
-  // Allow longer values (like locations) to stay in the right-hand column;
-  // only stack when they are very long or explicitly requested.
-  const shouldStack = !rightAlign || text.length > 60;
-
-  if (shouldStack) {
-    return (
-      <View style={styles.detailRowStack}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.valueBelow}>
-          <Text style={[styles.value, { textAlign: 'left', alignSelf: 'flex-start' }]}>
-            {text}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.valueContainer}>
-        <Text style={styles.value}>{text}</Text>
-      </View>
-    </View>
-  );
-}
-
-function DetailsGrid({ rows = [] }) {
-  return (
-    <View style={styles.webGrid}>
-      {rows.map((r, idx) => (
-        <View key={`dg-${idx}`} style={styles.webGridRow}>
-          <View style={styles.webGridLabel}><Text style={styles.webGridLabelText}>{r.label}</Text></View>
-          <View style={styles.webGridValue}>
-            {typeof r.value === 'string' || typeof r.value === 'number'
-              ? <Text style={styles.webGridValueText}>{r.value ?? 'N/A'}</Text>
-              : r.value}
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function Shortcut({ icon, label, onPress }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.shortcut}>
-      <MaterialIcons name={icon} size={16} color="#1E90FF" />
-      <Text style={styles.shortcutText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-/* ----------------- styles ----------------- */
 const styles = StyleSheet.create({
   centerWrap: {
     flex: 1,
     backgroundColor: Colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.card,
-    borderBottomColor: Colors.line,
-    borderBottomWidth: 2,
-    paddingBottom: 12,
-  },
-  title: {
-    fontSize: sf(20),
-    fontWeight: 'bold',
-    marginLeft: 12,
-    color: Colors.accent,
   },
   heroImage: {
     width: '100%',
@@ -1782,13 +663,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.line,
     ...Shadows.card,
-  },
-  image: {
-    height: 200,
-    borderRadius: Radius.md,
-    marginBottom: 14,
-    resizeMode: 'contain',
-    backgroundColor: Colors.chip,
   },
   mapCard: {
     height: 220,
@@ -1831,45 +705,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
   metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
-    marginVertical: 0,
-    gap: 8,
-  },
-  detailRowStack: {
-    paddingVertical: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
-    marginVertical: 0,
-    gap: 4,
-  },
-  label: {
-    fontWeight: '700',
-    color: Colors.sub2,
-    fontSize: sf(12),
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  valueContainer: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  valueBelow: {
-    marginTop: 4,
-    width: '100%',
-    alignItems: 'flex-start',
-  },
-  value: {
-    color: Colors.text,
-    fontSize: sf(15),
-    fontWeight: '500',
-    textAlign: 'right',
-  },
   sectionH: {
     fontSize: sf(16),
     fontWeight: '800',
@@ -1896,34 +731,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
   linkedChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
-
-  documentButton: {
-    marginTop: 16,
-    marginBottom: 16,
-    padding: 2,
-    backgroundColor: Colors.chip,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-  },
-  documentText: {
-    color: Colors.accent,
-    fontWeight: 'bold',
-  },
   mainContentWrap: { flex: 1, minHeight: 0 },
   detailScrollView: {
     flex: 1,
     ...(Platform.OS === 'web' ? { overflow: 'auto' } : {}),
-  },
-  actionsRow: {
-    flexDirection: 'row', justifyContent: 'center', gap: 8,
-    padding: 16, borderTopColor: Colors.line, borderTopWidth: 2, backgroundColor: Colors.bg,
-  },
-  actionsRowSticky: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
   },
   actionBtn: {
     flex: 1,
@@ -1934,115 +745,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    ...Platform.select({
-      ios: { shadowColor: Colors.text, shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 3, height: 3 } },
-      android: { elevation: 3 },
-      default: {},
-    }),
   },
   actionBtnPrimary: { backgroundColor: Colors.accent },
-  actionBtnSecondary: { backgroundColor: Colors.primary },
-  actionBtnDanger: { backgroundColor: Colors.dangerFg },
   actionText: {
     color: '#fff',
     fontWeight: '800',
     fontSize: sf(15),
-  },
-  shortcut: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: Colors.chip,
-    borderRadius: Radius.lg,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  shortcutText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
-
-  // Web grid (wider layout)
-  webGrid: {
-    borderWidth: 2,
-    borderColor: Colors.line,
-    borderRadius: Radius.md,
-    overflow: 'hidden',
-    marginTop: 4,
-  },
-  webGridRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
-  },
-  webGridLabel: {
-    width: '32%',
-    minWidth: 220,
-    backgroundColor: Colors.chip,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRightWidth: 2,
-    borderRightColor: Colors.line,
-    justifyContent: 'center',
-  },
-  webGridLabelText: { color: Colors.sub, fontWeight: '800' },
-  webGridValue: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-  },
-  webGridValueText: { color: Colors.text, fontWeight: '600' },
-
-  // Notes styles
-  noteCard: {
-    borderWidth: 2,
-    borderColor: Colors.line,
-    borderRadius: Radius.md,
-    padding: 10,
-    backgroundColor: Colors.bg,
-  },
-  noteHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  noteAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.line,
-    marginRight: 10,
-  },
-  noteAvatarText: { fontWeight: '800', color: Colors.accent, fontSize: sf(12) },
-  noteWho: { color: Colors.text, fontWeight: '700' },
-  noteWhen: { color: Colors.sub2, fontSize: sf(12), marginTop: 2 },
-  noteBadge: {
-    borderWidth: 2,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  noteBadgeText: { fontWeight: '800', fontSize: sf(10) },
-  noteText: { color: Colors.text },
-  noteToggle: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: Radius.sm,
-    borderWidth: 2,
-    borderColor: Colors.line,
-    backgroundColor: Colors.chip,
-  },
-  noteToggleText: { color: Colors.accent, fontWeight: '800' },
-  sectionDivider: {
-    height: 2,
-    backgroundColor: Colors.line,
-    marginTop: 16,
-    marginBottom: 4,
   },
 
   // Tab bar
@@ -2113,8 +821,52 @@ const styles = StyleSheet.create({
     fontSize: sf(14),
     fontWeight: '600',
   },
-  collapsibleHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  collapsibleMeta: { marginLeft: 6, color: Colors.sub2, fontWeight: '700' },
+
+  // Notes styles
+  noteCard: {
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
+    padding: 10,
+    backgroundColor: Colors.bg,
+  },
+  noteHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  noteAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.line,
+    marginRight: 10,
+  },
+  noteAvatarText: { fontWeight: '800', color: Colors.accent, fontSize: sf(12) },
+  noteWho: { color: Colors.text, fontWeight: '700' },
+  noteWhen: { color: Colors.sub2, fontSize: sf(12), marginTop: 2 },
+  noteBadge: {
+    borderWidth: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  noteBadgeText: { fontWeight: '800', fontSize: sf(10) },
+  noteText: { color: Colors.text },
+  noteToggle: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
+  },
+  noteToggleText: { color: Colors.accent, fontWeight: '800' },
 
   // Current work (mobile card)
   currentWorkCard: {

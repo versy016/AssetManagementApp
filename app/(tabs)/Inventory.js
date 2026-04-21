@@ -22,6 +22,7 @@ import { TabView, TabBar } from 'react-native-tab-view';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
+import logger from '../../utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { TourTarget } from '../../components/TourGuide';
@@ -122,7 +123,7 @@ const AssetTypesTab = ({ query, filters }) => {
       const data = await res.json();
       setAssetTypes(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching asset types:', err);
+      logger.error('Error fetching asset types:', err);
       setAssetTypes([]);
     } finally {
       setRefreshing(false);
@@ -156,7 +157,7 @@ const AssetTypesTab = ({ query, filters }) => {
       }
       setTypeCounts(acc);
     } catch (e) {
-      console.error('Error building type counts:', e);
+      logger.error('Error building type counts:', e);
       setTypeCounts({});
     }
   }, []);
@@ -427,7 +428,7 @@ const AllAssetsTab = ({ query, filters }) => {
           .filter(a => !isUUID(String(a?.id || '')));
         setAssets(filtered);
       } catch (err) {
-        console.error('Failed to fetch assets:', err);
+        logger.error('Failed to fetch assets:', err);
         setAssets([]);
       } finally {
         setLoaded(true);

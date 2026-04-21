@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import PageHeader from '../../components/ui/PageHeader';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { TourContext, resetTour } from '../../components/TourGuide';
+import logger from '../../utils/logger';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -61,7 +62,7 @@ export default function ProfileScreen() {
         setEmail(dbUser?.useremail || fbUser.email || '');
         setRole(isAdminClaim ? 'ADMIN' : (dbUser?.role || 'USER'));
       } catch (e) {
-        console.error(e);
+        logger.error(e);
         Alert.alert('Error', 'Could not load your profile.');
       } finally {
         setLoading(false);
@@ -92,7 +93,7 @@ export default function ProfileScreen() {
 
       Alert.alert('Saved', 'Your profile has been updated.');
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       Alert.alert('Error', e.message || 'Failed to save profile.');
     } finally {
       setSaving(false);

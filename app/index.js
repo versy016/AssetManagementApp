@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
+import logger from '../utils/logger';
 
 export default function Index() {
   const [user, setUser] = useState(null);
@@ -55,7 +56,7 @@ export default function Index() {
             router.replace('/(tabs)/dashboard');
           }
         } catch (error) {
-          console.error('Error processing token:', error);
+          logger.error('Error processing token:', error);
         }
       } else {
         if (isMountedRef.current) {

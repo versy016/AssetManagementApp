@@ -2,8 +2,9 @@
 // Handles shortcut execution logic after QR scan
 
 import { API_BASE_URL } from '../inventory-api/apiBase';
-import { SHORTCUT_TYPES } from '../constants/ShortcutTypes';
+import { SHORTCUT_TYPES, canUseShortcut } from '../constants/ShortcutTypes';
 import { captureLastScannedLocation } from './location';
+import logger from './logger';
 
 /**
  * Execute a shortcut by navigating to QR scanner with context
@@ -11,7 +12,10 @@ import { captureLastScannedLocation } from './location';
  * @param {object} router - Expo router instance
  * @param {object} user - Current user object
  */
-export const executeShortcut = (shortcutType, router, user) => {
+export const executeShortcut = (shortcutType, router, user, isAdmin = false) => {
+    if (!canUseShortcut(shortcutType, isAdmin)) {
+        return;
+    }
     // Special case: Generate QR Sheet doesn't need scanning
     if (shortcutType === SHORTCUT_TYPES.GENERATE_QR_SHEET.id) {
         router.push('/admin?tab=qr');
@@ -56,9 +60,14 @@ export const processScannedAsset = async (
     user,
     onSuccess,
     onError,
-    returnTarget = '/(tabs)/dashboard'
+    returnTarget = '/(tabs)/dashboard',
+    isAdmin = false
 ) => {
     try {
+        if (!canUseShortcut(shortcutType, isAdmin)) {
+            onError?.('This shortcut requires an administrator account.');
+            return;
+        }
         switch (shortcutType) {
             case SHORTCUT_TYPES.QUICK_VIEW.id:
                 await handleQuickView(assetId, router, onSuccess);
@@ -91,7 +100,7 @@ export const processScannedAsset = async (
                 onError?.('Unknown shortcut type');
         }
     } catch (error) {
-        console.error('[ShortcutExecutor] Error processing asset:', error);
+        logger.error('[ShortcutExecutor] Error processing asset:', error);
         onError?.(error.message || 'Failed to process shortcut');
     }
 };
@@ -104,6 +113,28 @@ const handleQuickView = async (assetId, router, onSuccess) => {
     onSuccess?.('Opening asset details...');
 };
 
+/**
+ * User row that holds "office inventory" (transfer-in target, Office Gear filter).
+ * Prefer admin@*, then any ADMIN with email, then a user whose name contains "office".
+ * Do not use "first ADMIN in API order" — that often matches the logged-in admin incorrectly.
+ */
+export function pickOfficeInventoryAssignee(users) {
+    if (!Array.isArray(users)) return null;
+    return (
+        users.find((u) => {
+            const email = String(u?.useremail || u?.email || '').toLowerCase();
+            return email.startsWith('admin@');
+        }) ||
+        users.find(
+            (u) =>
+                String(u?.role || '').toUpperCase() === 'ADMIN' &&
+                (u?.useremail || u?.email)
+        ) ||
+        users.find((u) => String(u?.name || '').toLowerCase().includes('office')) ||
+        null
+    );
+}
+
 const findFirstAdminUser = async (token) => {
     try {
         const res = await fetch(`${API_BASE_URL}/users`, {
@@ -112,17 +143,7 @@ const findFirstAdminUser = async (token) => {
         if (!res.ok) throw new Error('Failed to fetch users');
         const users = await res.json();
         if (!Array.isArray(users)) return null;
-        return (
-            users.find((u) => {
-                const email = String(u?.useremail || u?.email || '').toLowerCase();
-                return email.startsWith('admin@');
-            }) ||
-            users.find(
-                (u) =>
-                    String(u?.role || '').toUpperCase() === 'ADMIN' &&
-                    (u?.useremail || u?.email)
-            )
-        );
+        return pickOfficeInventoryAssignee(users);
     } catch (e) {
         console.error('[ShortcutExecutor] admin lookup failed', e);
         return null;

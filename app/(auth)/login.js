@@ -66,7 +66,6 @@ export default function Login() {
   return (
     <AuthLayout>
       <Text style={s.heading}>Sign In</Text>
-      <Text style={s.sub}>Welcome back — enter your credentials below</Text>
 
       <View style={s.form}>
         <AppTextInput
@@ -115,13 +114,7 @@ const s = StyleSheet.create({
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 4,
-  },
-  sub: {
-    fontSize: sf(14),
-    color: Colors.sub,
     marginBottom: 28,
-    fontWeight: '500',
   },
   form: {
     gap: 4,

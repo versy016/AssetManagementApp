@@ -1,5 +1,6 @@
 // components/CertsView.js (restored with fixes)
 import React, { useEffect, useMemo, useState, useRef } from 'react';
+import logger from '../utils/logger';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Alert, Modal, Linking, useWindowDimensions, InteractionManager } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 // import { DatePickerModal } from 'react-native-paper-dates';
@@ -35,7 +36,7 @@ const openDocumentLink = (url) => {
       Linking.openURL(href);
     }
   } catch (error) {
-    console.error('Error opening document link:', error);
+    logger.error('Error opening document link:', error);
   }
 };
 
@@ -43,7 +44,7 @@ const openDocumentLink = (url) => {
 // try {
 //   registerTranslation('en', en);
 // } catch (error) {
-//   console.warn('Failed to register date translation:', error);
+//   logger.warn('Failed to register date translation:', error);
 // }
 
 export default function CertsView({ visible: initialVisible }) {
@@ -179,7 +180,7 @@ export default function CertsView({ visible: initialVisible }) {
       const email = u?.email ? String(u.email).toLowerCase() : null;
       setMe({ uid: u?.uid || null, email });
     } catch (error) {
-      console.error('Error loading current user:', error);
+      logger.error('Error loading current user:', error);
     }
   }, []);
 
@@ -577,7 +578,7 @@ export default function CertsView({ visible: initialVisible }) {
       return hay.includes(q);
     });
     } catch (error) {
-      console.error('Error filtering rows:', error);
+      logger.error('Error filtering rows:', error);
       return [];
     }
   }, [rows, latestRows, filterText, filterType, filterAssigned, onlyMine, me.email, filterDoc, filterRange.start, filterRange.end, filterExp, showHistory]);
@@ -593,7 +594,7 @@ export default function CertsView({ visible: initialVisible }) {
     try {
       return Array.isArray(filteredRows) ? filteredRows : [];
     } catch (error) {
-      console.error('Error getting filtered rows:', error);
+      logger.error('Error getting filtered rows:', error);
       return [];
     }
   }, [filteredRows]);
@@ -1435,7 +1436,7 @@ export default function CertsView({ visible: initialVisible }) {
                   dateDisplay = r.dateValue ? formatDisplayDate(r.dateValue) : '—';
                   updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
                 } catch (error) {
-                  console.warn('Error formatting dates:', error);
+                  logger.warn('Error formatting dates:', error);
                 }
                 const now = new Date(); now.setHours(0, 0, 0, 0);
                 const status = (() => {

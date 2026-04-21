@@ -34,7 +34,6 @@
     "development": {
       "ios": {
         "appleId": "shivamverma78698@gmail.com",
-        "ascAppId": "6749434013",
         "appleTeamId": "7QSCBJMSR3"
       },
       "android": {
@@ -44,14 +43,12 @@
     "preview": {
       "ios": {
         "appleId": "shivamverma78698@gmail.com",
-        "ascAppId": "6749434013",
         "appleTeamId": "7QSCBJMSR3"
       }
     },
     "production": {
       "ios": {
         "appleId": "shivamverma78698@gmail.com",
-        "ascAppId": "6749434013",
         "appleTeamId": "7QSCBJMSR3"
       }
     }

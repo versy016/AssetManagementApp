@@ -18,6 +18,7 @@ import { getAuth } from 'firebase/auth';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import logger from '../../utils/logger';
 
 export default function QuickNoteScreen() {
   const params = useLocalSearchParams();
@@ -91,7 +92,7 @@ export default function QuickNoteScreen() {
           if (token) headers.Authorization = `Bearer ${token}`;
         }
       } catch (e) {
-        console.warn('Token error:', e);
+        logger.warn('Token error:', e);
       }
 
       const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/actions`, {
@@ -119,7 +120,7 @@ export default function QuickNoteScreen() {
         },
       ]);
     } catch (e) {
-      console.error('QuickNote submit error', e);
+      logger.error('QuickNote submit error', e);
       Alert.alert('Error', e.message || 'Failed to save note');
     } finally {
       setSubmitting(false);

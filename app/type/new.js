@@ -1,6 +1,7 @@
 import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/types/new.js
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
+import logger from '../../utils/logger';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView,
   Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
@@ -17,7 +18,6 @@ import FormButton from '../../components/ui/FormButton';
 import FormActions from '../../components/ui/FormActions';
 import { TourTarget, TourContext } from '../../components/TourGuide';
 import { MaterialIcons } from '@expo/vector-icons';
-import logger from '../../utils/logger';
 
 // ---- Default fields (always present on assets) -----------------------------
 const DEFAULT_FIELDS = [
@@ -161,7 +161,7 @@ export default function NewAssetType() {
         } else {
           // Fallback: try to find the element by querying the DOM
           // This is a last resort if ref access fails
-          console.warn(`Could not access DOM node for ${key}, trying fallback scroll`);
+          logger.warn(`Could not access DOM node for ${key}, trying fallback scroll`);
           if (key === 'save' || key === 'library') {
             window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
           }
@@ -184,7 +184,7 @@ export default function NewAssetType() {
         });
       }
     } catch (e) {
-      console.error(`Error measuring ${key}:`, e);
+      logger.error(`Error measuring ${key}:`, e);
       // Fallback: try scrollToEnd for bottom sections
       if (key === 'save' || key === 'library') {
         if (Platform.OS === 'web') {
@@ -246,7 +246,7 @@ export default function NewAssetType() {
         const data = await r.json();
         if (alive) setFieldTypes(Array.isArray(data) ? data : data?.data || []);
       } catch (e) {
-        console.error('Field types load error:', e);
+        logger.error('Field types load error:', e);
         Alert.alert('Error', 'Failed to load field types.');
       } finally {
         if (alive) setLoadingFieldTypes(false);
@@ -471,7 +471,7 @@ export default function NewAssetType() {
         router.replace({ pathname: '/Inventory', params: { tab: 'types' } });
       }
     } catch (err) {
-      console.error('Create asset type error:', err);
+      logger.error('Create asset type error:', err);
       Alert.alert('Error', err.message || 'Failed to create asset type');
     } finally {
       setSubmitting(false);

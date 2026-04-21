@@ -23,6 +23,8 @@ import QRCode from 'react-native-qrcode-svg';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
+import logger from '../../utils/logger';
+import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
 import SearchInput from '../../components/ui/SearchInput';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Chip from '../../components/ui/Chip';
@@ -148,24 +150,13 @@ export default function SearchScreen(props = {}) {
         if (!res.ok) return;
         const data = await res.json();
         if (!ignore && Array.isArray(data)) {
-          const mapped = data.map((u) => ({ id: u.id, name: u.name || '', useremail: u.useremail || '' }));
+          const mapped = data.map((u) => ({
+            id: u.id,
+            name: u.name || '',
+            useremail: u.useremail || u.email || '',
+            role: u.role,
+          }));
           setFilterUsers(mapped);
-
-          // If launched with preset=office, find and pre-apply the office/admin user filter
-          // Use DB role only -- never rely on email heuristics for permission/identity checks
-          if (params?.preset === 'office') {
-            const officeUser =
-              data.find((u) => String(u?.role || '').toUpperCase() === 'ADMIN') ||
-              data.find((u) => String(u?.name || '').toLowerCase().includes('office'));
-            if (officeUser) {
-              setFilters((f) => ({ ...f, assignedToUserIds: [officeUser.id] }));
-            }
-          }
-
-          // preset=mine -- show only the current user's assets
-          if (params?.preset === 'mine') {
-            setFilters((f) => ({ ...f, onlyMine: true }));
-          }
         }
       } catch {
         if (!ignore) setFilterUsers([]);
@@ -173,6 +164,27 @@ export default function SearchScreen(props = {}) {
     })();
     return () => { ignore = true; };
   }, []);
+
+  const presetKey = Array.isArray(params?.preset) ? params.preset[0] : params?.preset;
+
+  // Apply URL presets whenever users load or preset changes (matches transfer-in "office" user).
+  useEffect(() => {
+    if (!filterUsers.length) return;
+    if (presetKey === 'office') {
+      const officeUser = pickOfficeInventoryAssignee(filterUsers);
+      setFilters((f) => ({
+        ...f,
+        onlyMine: false,
+        assignedToUserIds: officeUser?.id ? [String(officeUser.id)] : [],
+      }));
+    } else if (presetKey === 'mine') {
+      setFilters((f) => ({
+        ...f,
+        onlyMine: true,
+        assignedToUserIds: [],
+      }));
+    }
+  }, [presetKey, filterUsers]);
 
   // Debounce Query
   useEffect(() => {
@@ -575,7 +587,7 @@ export default function SearchScreen(props = {}) {
       const returnTo = computeReturnTarget();
       router.push({ pathname: '/asset/[assetId]', params: { assetId: String(id), returnTo } });
     } catch (err) {
-      console.warn('Navigation error:', err);
+      logger.warn('Navigation error:', err);
     }
   }, [router, computeReturnTarget]);
 
@@ -798,7 +810,7 @@ export default function SearchScreen(props = {}) {
     <Container style={embed ? styles.embedContainer : styles.container}>
       {!hideHeader && (
         <ScreenHeader
-          title={params?.preset === 'office' ? 'Office Gear' : params?.preset === 'mine' ? 'My Assets' : 'Search'}
+          title={presetKey === 'office' ? 'Office Gear' : presetKey === 'mine' ? 'My Assets' : 'Search'}
           backLabel="Dashboard"
           onBack={Platform.OS === 'web' ? undefined : () => router.replace('/(tabs)/dashboard')}
         />
@@ -824,13 +836,13 @@ export default function SearchScreen(props = {}) {
         </TourTarget>
         {/* Quick filters -- hidden in office/mine preset mode */}
         <View style={styles.quickRow}>
-          {params?.preset !== 'office' && params?.preset !== 'mine' && (
+          {presetKey !== 'office' && presetKey !== 'mine' && (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
               <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
             </View>
           )}
-          {params?.preset === 'office' && <View />}
+          {presetKey === 'office' && <View />}
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {/* Sort button: only in grid view; list view uses column header arrows */}
@@ -872,16 +884,13 @@ export default function SearchScreen(props = {}) {
       </View>
 
       {/* Preset banners */}
-      {params?.preset === 'office' && (
+      {presetKey === 'office' && (
         <View style={styles.presetBanner}>
           <MaterialIcons name="business" size={16} color="#1D4ED8" />
           <Text style={styles.presetBannerText}>Showing assets assigned to the office</Text>
-          <TouchableOpacity onPress={() => setFilters((f) => ({ ...f, assignedToUserIds: [] }))} style={styles.presetBannerClear}>
-            <MaterialIcons name="close" size={14} color="#1D4ED8" />
-          </TouchableOpacity>
         </View>
       )}
-      {params?.preset === 'mine' && (
+      {presetKey === 'mine' && (
         <View style={styles.presetBanner}>
           <MaterialIcons name="person" size={16} color="#1D4ED8" />
           <Text style={styles.presetBannerText}>Showing assets assigned to you</Text>

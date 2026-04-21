@@ -16,6 +16,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { LogBox } from 'react-native';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { formatDisplayDate } from '../../utils/date';
+import logger from '../../utils/logger';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import FormButton from '../../components/ui/FormButton';
 import { useTasksCount } from '../../contexts/TasksCountContext';
@@ -278,7 +279,7 @@ export default function NewAsset() {
           // Dynamic fields
           if (data.fields && typeof data.fields === 'object') setFieldValues(data.fields);
         })
-        .catch(console.error);
+        .catch((e) => logger.error('Preselect asset fetch error', e));
     }
   }, [preselectId]);
 
@@ -347,7 +348,7 @@ export default function NewAsset() {
         });
         setFieldValues(seed);
       } catch (e) {
-        console.error('field schema fetch error', e);
+        logger.error('field schema fetch error', e);
       }
     }
     load();

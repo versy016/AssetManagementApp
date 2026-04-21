@@ -29,6 +29,7 @@ import * as LinkingExpo from 'expo-linking';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import logger from '../../utils/logger';
+import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
 
 // ---------- Import Theme Constants ----------
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
@@ -125,18 +126,17 @@ export default function CheckInScreen() {
     return s === 'end of life';
   }, [asset]);
 
-  const isAssignedToAdmin = React.useMemo(() => {
+  /** True only when assignee is the designated office inventory user (not "any admin"). */
+  const isAssignedToOffice = React.useMemo(() => {
     try {
       if (!asset?.assigned_to_id) return false;
-      if (!Array.isArray(users) || users.length === 0) return false;
-      const assignedUser = users.find((u) => String(u.id) === String(asset.assigned_to_id));
-      if (!assignedUser) return false;
-      // Use DB role -- never use email heuristics for permission checks
-      return String(assignedUser.role || '').toUpperCase() === 'ADMIN';
+      const aid = String(asset.assigned_to_id);
+      const officeUser = pickOfficeInventoryAssignee(users);
+      return !!(officeUser?.id && String(officeUser.id) === aid);
     } catch {
       return false;
     }
-  }, [asset, users]);
+  }, [asset?.assigned_to_id, users]);
   // Multi-scan context parsed from returnTo
   const multiScanCtx = useMemo(() => {
     if (!returnTo) return null;
@@ -1326,9 +1326,11 @@ export default function CheckInScreen() {
                 onPress={handleBackToScanned}
                 style={styles.backToScanBtn}
               >
+                <MaterialIcons name="qr-code-scanner" size={16} color={Colors.accent} />
                 <Text style={styles.backToScanText} numberOfLines={2}>
                   {`Back to Scanned Assets (${(multiScanCtx?.checked || []).length} of ${(multiScanCtx?.items || []).length} scanned)`}
                 </Text>
+                <MaterialIcons name="arrow-forward-ios" size={12} color={Colors.accent} />
               </TouchableOpacity>
             </View>
           ) : null}
@@ -1375,7 +1377,8 @@ export default function CheckInScreen() {
                   onPress={() => router.replace('/(tabs)/dashboard')}
                   disabled={loading}
                 >
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
@@ -1388,7 +1391,7 @@ export default function CheckInScreen() {
                     onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
                     disabled={loading}
                   >
-                    <MaterialIcons name="assignment" size={18} color="#1E90FF" />
+                    <MaterialIcons name="assignment" size={18} color={Colors.accent} />
                     <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Assign Imported Asset
                     </Text>
@@ -1420,7 +1423,8 @@ export default function CheckInScreen() {
                   style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                 >
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
@@ -1428,7 +1432,7 @@ export default function CheckInScreen() {
             ) : isPlaceholder ? (
               <>
                 <View style={styles.quickActionBar}>
-                  {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
+                  {!isAssignedToOffice ? (
                     <TouchableOpacity
                       testID="transfer-to-office-button"
                       style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
@@ -1440,7 +1444,19 @@ export default function CheckInScreen() {
                         {loading ? 'Loading...' : 'Transfer to office'}
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
+                    <TouchableOpacity
+                      testID="transfer-to-me-button"
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                      onPress={() => handleAction('transferToMe')}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="person" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        {loading ? 'Loading...' : 'Transfer to me'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
                     onPress={() => setSwapOpen(true)}
@@ -1457,7 +1473,7 @@ export default function CheckInScreen() {
                       onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
                       disabled={loading}
                     >
-                      <MaterialIcons name="assignment" size={18} color="#1E90FF" />
+                      <MaterialIcons name="assignment" size={18} color={Colors.accent} />
                       <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                         Assign Imported Asset
                       </Text>
@@ -1480,7 +1496,7 @@ export default function CheckInScreen() {
                     onPress={() => setShowCreateNoteInput(true)}
                     disabled={loading}
                   >
-                    <MaterialIcons name="note-add" size={18} color="#1E90FF" />
+                    <MaterialIcons name="note-add" size={18} color={Colors.accent} />
                     <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Create note
                     </Text>
@@ -1489,7 +1505,8 @@ export default function CheckInScreen() {
                     style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                     onPress={() => router.replace('/(tabs)/dashboard')}
                   >
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                    <MaterialIcons name="home" size={16} color="#FFFFFF" />
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
                       Back to Dashboard
                     </Text>
                   </TouchableOpacity>
@@ -1499,7 +1516,7 @@ export default function CheckInScreen() {
               <>
                 {/* Quick actions: same style and placement as multi-scan */}
                 <View style={styles.quickActionBar}>
-                  {(!asset?.assigned_to_id || !isAssignedToAdmin) && (
+                  {!isAssignedToOffice ? (
                     <TouchableOpacity
                       testID="transfer-to-office-button"
                       style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
@@ -1511,7 +1528,19 @@ export default function CheckInScreen() {
                         {loading ? 'Loading...' : 'Transfer to office'}
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
+                    <TouchableOpacity
+                      testID="transfer-to-me-button"
+                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
+                      onPress={() => handleAction('transferToMe')}
+                      disabled={loading}
+                    >
+                      <MaterialIcons name="person" size={18} color="#fff" />
+                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                        {loading ? 'Loading...' : 'Transfer to me'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
                     onPress={openTransferMenu}
@@ -1522,7 +1551,7 @@ export default function CheckInScreen() {
                       Transfer to user
                     </Text>
                   </TouchableOpacity>
-                  {(myUserId && asset.assigned_to_id !== myUserId) && (
+                  {(myUserId && String(asset.assigned_to_id) !== String(myUserId) && !isAssignedToOffice) && (
                     <TouchableOpacity
                       style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
                       onPress={() => handleAction('transferToMe')}
@@ -1540,7 +1569,7 @@ export default function CheckInScreen() {
                       onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
                       disabled={loading}
                     >
-                      <MaterialIcons name="content-copy" size={18} color="#1E90FF" />
+                      <MaterialIcons name="content-copy" size={18} color={Colors.accent} />
                       <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                         Copy Asset
                       </Text>
@@ -1551,7 +1580,7 @@ export default function CheckInScreen() {
                     onPress={() => setShowCreateNoteInput(true)}
                     disabled={loading}
                   >
-                    <MaterialIcons name="note-add" size={18} color="#1E90FF" />
+                    <MaterialIcons name="note-add" size={18} color={Colors.accent} />
                     <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
                       Create note
                     </Text>
@@ -1560,7 +1589,8 @@ export default function CheckInScreen() {
                     style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                     onPress={() => router.replace('/(tabs)/dashboard')}
                   >
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
+                    <MaterialIcons name="home" size={16} color="#FFFFFF" />
+                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
                       Back to Dashboard
                     </Text>
                   </TouchableOpacity>
@@ -1599,8 +1629,8 @@ export default function CheckInScreen() {
               style={[styles.footerBtn, styles.footerBtnSecondary]}
               onPress={() => setShowOtherModal(true)}
             >
-              <MaterialIcons name="more-horiz" size={18} color="#1E90FF" />
-              <Text style={[styles.footerBtnText, { color: '#1E90FF' }]} numberOfLines={2}>
+              <MaterialIcons name="more-horiz" size={18} color={Colors.accent} />
+              <Text style={[styles.footerBtnText, { color: Colors.accent }]} numberOfLines={2}>
                 Other Actions
               </Text>
             </TouchableOpacity>
@@ -1970,11 +2000,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   quickActionBtnPrimary: { backgroundColor: Colors.primary },
-  quickActionBtnSecondary: { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.line },
-  quickActionBtnNeutral: { backgroundColor: Colors.chip, borderWidth: 2, borderColor: Colors.line },
+  quickActionBtnSecondary: { backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.accent },
+  quickActionBtnNeutral: {
+    backgroundColor: Colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
   quickActionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: sf(14) },
-  quickActionBtnTextSecondary: { color: Colors.primary, fontWeight: '700', fontSize: sf(14) },
-  quickActionBtnTextNeutral: { color: Colors.sub, fontWeight: '700', fontSize: sf(14) },
+  quickActionBtnTextSecondary: { color: Colors.accent, fontWeight: '800', fontSize: sf(14), letterSpacing: 0.2 },
+  quickActionBtnTextNeutral: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: sf(14),
+    flexShrink: 1,
+    minWidth: 0,
+  },
   tileText: {
     color: Colors.text,
     fontWeight: '700',
@@ -1995,19 +2035,22 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   backToScanBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     borderWidth: 2,
-    borderColor: Colors.line,
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentLight,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: Radius.pill,
     maxWidth: '100%',
+    ...Shadows.card,
   },
   backToScanText: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: Colors.accent,
+    fontWeight: '800',
     fontSize: Platform.select({
       ios: sf(12),
       android: sf(12),
@@ -2015,6 +2058,8 @@ const styles = StyleSheet.create({
     }),
     textAlign: 'center',
     includeFontPadding: false,
+    letterSpacing: 0.3,
+    flexShrink: 1,
   },
 
   footerBar: {
@@ -2039,7 +2084,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   footerBtnPrimary: { backgroundColor: Colors.primary },
-  footerBtnSecondary: { backgroundColor: Colors.primaryLight, borderWidth: 2, borderColor: Colors.line },
+  footerBtnSecondary: { backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.accent },
   footerBtnText: {
     color: '#FFFFFF',
     fontWeight: '600',

@@ -9,6 +9,7 @@ import {
     SHORTCUT_COLOR_PALETTES,
     SHORTCUT_TYPES,
 } from '../constants/ShortcutTypes';
+import logger from './logger';
 
 const STORAGE_KEY_PREFIX = 'shortcuts_';
 // Cap at total number of defined shortcut types so every type can be added
@@ -52,7 +53,7 @@ export const loadShortcuts = async (userId, isAdmin = false) => {
             return type !== undefined;
         });
     } catch (error) {
-        console.error('[ShortcutManager] Error loading shortcuts:', error);
+        logger.error('[ShortcutManager] Error loading shortcuts:', error);
         return getDefaultShortcuts(isAdmin);
     }
 };
@@ -79,7 +80,7 @@ export const saveShortcuts = async (userId, shortcuts) => {
         await AsyncStorage.setItem(key, JSON.stringify(data));
         return true;
     } catch (error) {
-        console.error('[ShortcutManager] Error saving shortcuts:', error);
+        logger.error('[ShortcutManager] Error saving shortcuts:', error);
         return false;
     }
 };

@@ -111,6 +111,20 @@ export const getShortcutType = (id) => {
     return Object.values(SHORTCUT_TYPES).find((type) => type.id === id);
 };
 
+/** Stable tile order on the dashboard (subset filtered by permissions / platform). */
+export const SHORTCUT_DISPLAY_ORDER = [
+    SHORTCUT_TYPES.QUICK_VIEW.id,
+    SHORTCUT_TYPES.QUICK_TRANSFER.id,
+    SHORTCUT_TYPES.QUICK_TRANSFER_IN.id,
+    SHORTCUT_TYPES.QUICK_TRANSFER_OUT.id,
+    SHORTCUT_TYPES.QUICK_SERVICE.id,
+    SHORTCUT_TYPES.QUICK_REPAIR.id,
+    SHORTCUT_TYPES.QUICK_NOTE.id,
+    SHORTCUT_TYPES.OFFICE_ASSETS.id,
+    SHORTCUT_TYPES.HIRE_DISCLAIMER.id,
+    SHORTCUT_TYPES.GENERATE_QR_SHEET.id,
+];
+
 // Get all available shortcut types for a user
 export const getAvailableShortcutTypes = (isAdmin = false, webOnly = false) => {
     return Object.values(SHORTCUT_TYPES).filter((type) => {
@@ -122,6 +136,19 @@ export const getAvailableShortcutTypes = (isAdmin = false, webOnly = false) => {
         }
         return true;
     });
+};
+
+/**
+ * All shortcuts the user may see (fixed list, no custom add/remove).
+ * Admin-only entries (`requiresAdmin: true`) are omitted unless isAdmin is true.
+ */
+export const getDisplayShortcuts = (isAdmin = false, webOnly = false) => {
+    const allowed = new Set(
+        getAvailableShortcutTypes(isAdmin, webOnly).map((t) => t.id)
+    );
+    return SHORTCUT_DISPLAY_ORDER.filter((id) => allowed.has(id))
+        .map((id) => getShortcutType(id))
+        .filter(Boolean);
 };
 
 // Validate if a shortcut type exists and user has permission

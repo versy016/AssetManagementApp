@@ -22,6 +22,7 @@ import { useTasksCount } from '../contexts/TasksCountContext';
 import { fetchTaskCount } from '../utils/fetchTaskCount';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
+import logger from '../utils/logger';
 
 const ACTIONS = [
   'Repair',
@@ -413,7 +414,7 @@ export default function ActionsForm({
               body: fd,
             });
           } catch (e) {
-            console.error('ActionsForm report upload failed', e);
+            logger.error('ActionsForm report upload failed', e);
           }
         }
 
@@ -447,7 +448,7 @@ export default function ActionsForm({
               body: JSON.stringify(actionBody),
             });
             if (!postRes.ok) {
-              console.warn('ActionsForm bulk action failed for', otherId);
+              logger.warn('ActionsForm bulk action failed for', otherId);
             }
           }
         }
@@ -481,7 +482,7 @@ export default function ActionsForm({
       // Close the sheet immediately on success (no blocking alert)
       onClose && onClose();
     } catch (e) {
-      console.error('ActionsForm submit error', e);
+      logger.error('ActionsForm submit error', e);
       Alert.alert('Error', e?.message || 'Failed to submit action');
     } finally {
       setSubmitting(false);

@@ -66,7 +66,7 @@ export default function AdminConsole() {
         const dbUser = res.ok ? await res.json() : null;
         setIsAdmin(dbUser?.role === 'ADMIN');
       } catch (e) {
-        console.error(e);
+        logger.error(e);
         Alert.alert('Error', 'Failed to verify admin privileges.');
       } finally {
         setLoading(false);
@@ -152,7 +152,7 @@ export default function AdminConsole() {
       await refreshSheets();
       Alert.alert('Success', `Generated ${count} QR codes in Excel file.`);
     } catch (e) {
-      console.error('[Admin] generateQRCodes → Error:', e);
+      logger.error('[Admin] generateQRCodes → Error:', e);
       Alert.alert('Error', e.message || 'Failed to generate Excel file');
     } finally {
       setWorking(false);
@@ -177,7 +177,7 @@ export default function AdminConsole() {
       logger.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
       setAllSheets(data?.sheets || []);
     } catch (e) {
-      console.warn('[Admin] refreshSheets error:', e?.message || e);
+      logger.warn('[Admin] refreshSheets error:', e?.message || e);
     }
   };
 

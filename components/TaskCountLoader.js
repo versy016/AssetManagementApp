@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../inventory-api/apiBase';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import logger from '../utils/logger';
 
 async function registerPushTokenAndSendToApi(uid) {
   if (Platform.OS === 'web' || !Device.isDevice) return;
@@ -35,7 +36,7 @@ async function registerPushTokenAndSendToApi(uid) {
       body: JSON.stringify({ expo_push_token: token }),
     });
   } catch (e) {
-    if (__DEV__) console.warn('Push registration failed', e?.message);
+    logger.warn('Push registration failed', e?.message);
   }
 }
 

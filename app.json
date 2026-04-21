@@ -9,9 +9,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.engsurveys.assetmanager",
+      "bundleIdentifier": "com.gearops.app",
       "associatedDomains": [
-        "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
+        "applinks:gearops.com.au",
+        "applinks:www.gearops.com.au"
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -27,7 +28,8 @@
       },
       "entitlements": {
         "com.apple.developer.associated-domains": [
-          "applinks:ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com"
+          "applinks:gearops.com.au",
+          "applinks:www.gearops.com.au"
         ]
       },
       "runtimeVersion": "1.0.5"
@@ -41,10 +43,16 @@
       "intentFilters": [
         {
           "action": "VIEW",
+          "autoVerify": true,
           "data": [
             {
               "scheme": "https",
-              "host": "ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com",
+              "host": "gearops.com.au",
+              "pathPrefix": "/check-in"
+            },
+            {
+              "scheme": "https",
+              "host": "www.gearops.com.au",
               "pathPrefix": "/check-in"
             }
           ],
@@ -100,11 +108,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "7635902a-7b88-48ef-9e6a-dccbe71980d4"
+        "projectId": "2c66c30e-f54f-4ad4-b305-c05d4b35a9a5"
       }
     },
-    "updates": {
-      "url": "https://u.expo.dev/7635902a-7b88-48ef-9e6a-dccbe71980d4"
-    }
+    "owner": "shivamsv19"
   }
 }

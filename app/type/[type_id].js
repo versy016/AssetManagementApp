@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
+import logger from '../../utils/logger';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge, {
   STATUS_CONFIG,
@@ -162,7 +163,7 @@ export default function AssetsType() {
           : [];
         setAssets(list);
       })
-      .catch((err) => console.error('Failed to fetch filtered assets:', err))
+      .catch((err) => logger.error('Failed to fetch filtered assets:', err))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [type_id]);

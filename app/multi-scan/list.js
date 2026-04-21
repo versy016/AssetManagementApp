@@ -418,7 +418,7 @@ export default function ScannedAssetsList() {
                 style={[styles.bulkBtn, styles.bulkBtnSecondary]}
                 onPress={() => setShowOtherPicker(true)}
               >
-                <MaterialIcons name="more-horiz" size={18} color="#1E90FF" />
+                <MaterialIcons name="more-horiz" size={18} color={Colors.accent} />
                 <Text style={styles.bulkBtnTextSecondary}>Other</Text>
               </TouchableOpacity>
             </View>
@@ -429,7 +429,9 @@ export default function ScannedAssetsList() {
           <TouchableOpacity
             style={styles.doneButton}
             onPress={() => router.replace('/(tabs)/dashboard')}
+            activeOpacity={0.85}
           >
+            <MaterialIcons name="home" size={16} color="#FFFFFF" />
             <Text style={styles.doneButtonText}>Back to Dashboard</Text>
           </TouchableOpacity>
         )}
@@ -761,16 +763,23 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   doneButton: {
+    alignSelf: 'center',
     backgroundColor: Colors.primary,
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: Radius.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     marginTop: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   doneButtonText: {
-    color: Colors.card,
-    fontWeight: '900',
-    fontSize: sf(16),
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: sf(14),
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,

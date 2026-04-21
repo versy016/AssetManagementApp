@@ -6,6 +6,7 @@
  */
 
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import logger from './logger';
 
 export async function fetchDropdownOptions() {
   try {
@@ -37,7 +38,7 @@ export async function fetchDropdownOptions() {
     };
   } catch (error) {
     // Log error and return empty fallback structure
-    console.error('❌ Error fetching dropdown options:', error);
+    logger.error('❌ Error fetching dropdown options:', error);
     return { assetTypes: [], models: [], users: [], statuses: [], assetIds: [] };
   }
 }

@@ -2,6 +2,7 @@ import { sf } from '../constants/uiTheme.js';
 import React from 'react';
 import { View, StyleSheet, Text, ScrollView } from 'react-native';
 import { Button } from 'react-native-paper';
+import logger from '../utils/logger';
 
 export default class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -15,7 +16,7 @@ export default class ErrorBoundary extends React.Component {
 
     componentDidCatch(error, errorInfo) {
         // Log to console first
-        console.error('ErrorBoundary caught an error', error, errorInfo);
+        logger.error('ErrorBoundary caught an error', error, errorInfo);
 
         this.setState({ errorInfo });
     }

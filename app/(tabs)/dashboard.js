@@ -4,13 +4,14 @@
 import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert,
-  ActivityIndicator, Dimensions, Modal, Platform, useWindowDimensions, StatusBar,
+  ActivityIndicator, Modal, Platform, StatusBar,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { auth } from '../../firebaseConfig';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import logger from '../../utils/logger';
 import PropTypes from 'prop-types';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import SearchScreen from '../search';
@@ -20,28 +21,22 @@ import CertsView from '../../components/CertsView';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import HireView from '../../components/HireView';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
-import AddShortcutModal from '../../components/AddShortcutModal';
-import { getShortcutType, getShortcutPalette } from '../../constants/ShortcutTypes';
-import ShortcutManager from '../../utils/ShortcutManager';
+import { getShortcutType, getDisplayShortcuts, canUseShortcut } from '../../constants/ShortcutTypes';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
 import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
+import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
 const C = Colors; // shorthand
 
 const Dashboard = ({ isAdmin }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [shortcuts, setShortcuts] = useState([]);
-  const [shortcutModalVisible, setShortcutModalVisible] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [adminClaim, setAdminClaim] = useState(false);
   const [dbAdmin, setDbAdmin] = useState(false);
   const [recent, setRecent] = useState({ items: [], loading: true });
-  const { width: windowWidth } = useWindowDimensions();
   const SHOW_RECENT = true;
   // On web, always use the web layout regardless of window width.
   // The WebNavbar handles branding + navigation at all sizes (hamburger on mobile, full bar on desktop).
@@ -68,7 +63,7 @@ const Dashboard = ({ isAdmin }) => {
           setAdminClaim(!!tokenResult?.claims?.admin);
         }
       } catch (err) {
-        console.error('Auth/claims error:', err);
+        logger.error('Auth/claims error:', err);
       } finally {
         setLoading(false);
       }
@@ -91,6 +86,15 @@ const Dashboard = ({ isAdmin }) => {
   }, [user?.uid]);
 
   const canAdmin = isAdmin || adminClaim || dbAdmin;
+
+  const shortcuts = useMemo(
+    () =>
+      getDisplayShortcuts(canAdmin, Platform.OS === 'web').map((t) => ({
+        id: `tile_${t.id}`,
+        type: t.id,
+      })),
+    [canAdmin]
+  );
 
   // ─── Tour ───
   const { startTour, finishTour, setDisabled: setTourDisabled, ensureVisible, currentStep } = useContext(TourContext);
@@ -180,40 +184,13 @@ const Dashboard = ({ isAdmin }) => {
     return () => { cancelled = true; };
   }, []);
 
-  // ─── Shortcuts ───
-  useEffect(() => {
-    if (!user?.uid) return;
-    (async () => {
-      const loaded = await ShortcutManager.loadShortcuts(user.uid, canAdmin);
-      setShortcuts(loaded);
-    })();
-  }, [user?.uid, canAdmin]);
-
-  const handleAddShortcut = async (shortcutType, colorKey) => {
-    if (!user?.uid) return;
-    const success = await ShortcutManager.addShortcut(user.uid, shortcutType, canAdmin, colorKey);
-    if (success) setShortcuts(await ShortcutManager.loadShortcuts(user.uid, canAdmin));
-    else Alert.alert('Error', 'Could not add shortcut. You may have reached the maximum limit.');
-  };
-
-
-  const handleRemoveShortcut = async (shortcutId) => {
-    if (!user?.uid) return;
-    Alert.alert('Remove Shortcut', 'Are you sure you want to remove this shortcut?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-        text: 'Remove', style: 'destructive',
-          onPress: async () => {
-            const success = await ShortcutManager.removeShortcut(user.uid, shortcutId);
-          if (success) setShortcuts(await ShortcutManager.loadShortcuts(user.uid, canAdmin));
-          },
-        },
-    ]);
-  };
-
   const handleExecuteShortcut = (shortcutType) => {
     if (!user) { Alert.alert('Error', 'You must be logged in to use shortcuts'); return; }
-    executeShortcut(shortcutType, router, user);
+    if (!canUseShortcut(shortcutType, canAdmin)) {
+      Alert.alert('Admin only', 'This shortcut is only available to administrators.');
+      return;
+    }
+    executeShortcut(shortcutType, router, user, canAdmin);
   };
 
   // ─── Quick Actions ───
@@ -231,7 +208,6 @@ const Dashboard = ({ isAdmin }) => {
     catch (error) { Alert.alert('Logout Error', error.message); }
   };
 
-  const userName = user?.displayName || user?.email?.split('@')[0] || 'User';
   const userInitials = (user?.displayName || user?.email || 'US').substring(0, 2).toUpperCase();
 
   // ─── Action color mapping ───
@@ -263,88 +239,34 @@ const Dashboard = ({ isAdmin }) => {
   // ═══════════════════════════════════════════════════════
   // RENDER: Shortcuts Section
   // ═══════════════════════════════════════════════════════
-  const renderShortcutsSection = () => {
-    const canAddMore = ShortcutManager.canAddMoreShortcuts(shortcuts);
-    return (
-      <View ref={shortcutsRef} style={s.shortcutsSection}>
-        <View style={s.sectionHeaderRow}>
-          <Text style={s.shortcutsHeading}>Shortcuts</Text>
-          <TouchableOpacity style={s.managePill} onPress={() => setShortcutModalVisible(true)}>
-            <MaterialIcons name="tune" size={14} color={C.accent} />
-            <Text style={s.managePillText}>{shortcuts.length ? 'Manage' : 'Add shortcuts'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {shortcuts.length === 0 ? (
-          <TouchableOpacity style={s.shortcutsEmpty} onPress={() => setShortcutModalVisible(true)}>
-            <MaterialIcons name="add-circle-outline" size={32} color={C.accent} />
-            <Text style={s.shortcutsEmptyTitle}>Add your first shortcut</Text>
-            <Text style={s.shortcutsEmptySubtitle}>Scan, transfer and more actions in one tap</Text>
-          </TouchableOpacity>
-        ) : Platform.OS === 'web' ? (
-          /* Web: keep horizontal pill row */
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 10, paddingRight: 4 }}>
-              {shortcuts.map((shortcut) => {
-                const shortcutType = getShortcutType(shortcut.type);
-                if (!shortcutType) return null;
-                const palette = getShortcutPalette(shortcut.colorKey);
-                return (
-                  <TouchableOpacity
-                    key={shortcut.id}
-                    style={[s.shortcutCard, { backgroundColor: palette.bg, borderColor: palette.border }]}
-                    onPress={() => handleExecuteShortcut(shortcut.type)}
-                    onLongPress={() => handleRemoveShortcut(shortcut.id)}
-                  >
-                    <MaterialIcons name={shortcutType.icon} size={18} color={palette.fg} />
-                    <Text style={[s.shortcutText, { color: palette.fg }]} numberOfLines={1}>
-                      {shortcutType.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-              {canAddMore && (
-                <TouchableOpacity style={s.shortcutAddCard} onPress={() => setShortcutModalVisible(true)}>
-                  <MaterialIcons name="add" size={22} color={C.accent} />
-                  <Text style={s.shortcutAddText}>Add</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </ScrollView>
-        ) : (
-          /* Mobile: 3-column grid, Bold Industrial style */
-          <View style={s.shortcutGrid}>
-            {shortcuts.map((shortcut) => {
-              const shortcutType = getShortcutType(shortcut.type);
-              if (!shortcutType) return null;
-              return (
-                <TouchableOpacity
-                  key={shortcut.id}
-                  style={s.shortcutGridCard}
-                  onPress={() => handleExecuteShortcut(shortcut.type)}
-                  onLongPress={() => handleRemoveShortcut(shortcut.id)}
-                  activeOpacity={0.75}
-                >
-                  <View style={[s.shortcutGridIcon, { backgroundColor: shortcutType.bgColor }]}>
-                    <MaterialIcons name={shortcutType.icon} size={24} color={shortcutType.color} />
-                  </View>
-                  <Text style={s.shortcutGridLabel} numberOfLines={2}>
-                    {shortcutType.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-            {canAddMore && (
-              <TouchableOpacity style={s.shortcutGridAdd} onPress={() => setShortcutModalVisible(true)}>
-                <MaterialIcons name="add" size={24} color={C.accent} />
-                <Text style={s.shortcutAddText}>Add</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+  const renderShortcutsSection = () => (
+    <View ref={shortcutsRef} style={s.shortcutsSection}>
+      <View style={s.sectionHeaderRow}>
+        <Text style={s.shortcutsHeading}>Shortcuts</Text>
       </View>
-    );
-  };
+      <View style={s.shortcutGrid}>
+        {shortcuts.map((shortcut) => {
+          const shortcutType = getShortcutType(shortcut.type);
+          if (!shortcutType) return null;
+          return (
+            <TouchableOpacity
+              key={shortcut.id}
+              style={s.shortcutGridCard}
+              onPress={() => handleExecuteShortcut(shortcut.type)}
+              activeOpacity={0.75}
+            >
+              <View style={[s.shortcutGridIcon, { backgroundColor: shortcutType.bgColor }]}>
+                <MaterialIcons name={shortcutType.icon} size={24} color={shortcutType.color} />
+              </View>
+              <Text style={s.shortcutGridLabel} numberOfLines={2}>
+                {shortcutType.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 
   // ═══════════════════════════════════════════════════════
   // RENDER: Recent Activity
@@ -551,16 +473,6 @@ const Dashboard = ({ isAdmin }) => {
         </View>
       </Modal>
 
-      {/* ─── Add Shortcut Modal ─── */}
-      <AddShortcutModal
-        visible={shortcutModalVisible}
-        onClose={() => setShortcutModalVisible(false)}
-        onAddShortcut={handleAddShortcut}
-        onRemoveShortcut={handleRemoveShortcut}
-        existingShortcuts={shortcuts}
-        isAdmin={canAdmin}
-      />
-
     </ScreenWrapper>
   );
 };
@@ -685,65 +597,6 @@ const s = StyleSheet.create({
     color: C.text,
     letterSpacing: -0.3,
   },
-  managePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Radius.md,
-    borderWidth: 2,
-    borderColor: C.line,
-    backgroundColor: C.card,
-  },
-  managePillText: {
-    fontSize: sf(11),
-    fontWeight: '700',
-    color: C.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  shortcutsEmpty: {
-    borderWidth: 2,
-    borderColor: C.line,
-    borderRadius: Radius.lg,
-    paddingHorizontal: 18,
-    paddingVertical: 28,
-    alignItems: 'center',
-    backgroundColor: C.card,
-    gap: 6,
-  },
-  shortcutsEmptyTitle: { fontSize: sf(16), fontWeight: '800', color: C.text },
-  shortcutsEmptySubtitle: { fontSize: sf(13), color: C.sub, textAlign: 'center' },
-  // Web horizontal pill cards (unchanged)
-  shortcutCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: Radius.md,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    minWidth: 110,
-  },
-  shortcutText: { fontSize: sf(13), fontWeight: '700' },
-  shortcutAddCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: Radius.md,
-    borderWidth: 2,
-    borderColor: C.accent,
-    borderStyle: 'dashed',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    minWidth: 90,
-  },
-  shortcutAddText: { fontSize: sf(11), color: C.accent, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
-
   // Mobile 3-column Bold Industrial grid
   shortcutGrid: {
     flexDirection: 'row',
@@ -779,22 +632,6 @@ const s = StyleSheet.create({
     textAlign: 'center',
     color: C.text,
   },
-  shortcutGridAdd: {
-    width: '30.5%',
-    flexGrow: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 6,
-    borderRadius: Radius.lg,
-    borderWidth: 2,
-    borderColor: C.accent,
-    borderStyle: 'dashed',
-    backgroundColor: 'transparent',
-  },
-
   // Recent Activity
   activitySection: { marginTop: 4, marginBottom: 16 },
   activityEmpty: { alignItems: 'center', paddingVertical: 24, gap: 8 },

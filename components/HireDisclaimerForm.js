@@ -19,6 +19,7 @@ import { DatePickerModal, TimePickerModal } from 'react-native-paper-dates';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { formatDisplayDateLong } from '../utils/date';
+import logger from '../utils/logger';
 import {
   ALGOLIA_INDEX_CLIENTS,
   ALGOLIA_INDEX_PROJECTS,
@@ -280,7 +281,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         });
         if (__DEV__) {
           const h0 = list[0];
-          console.log('[HireDisclaimer][Algolia clients]', {
+          logger.log('[HireDisclaimer][Algolia clients]', {
             index: ALGOLIA_INDEX_CLIENTS,
             query: q,
             serverQuery,
@@ -296,7 +297,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         setClientHits([]);
         setCompanyAlgoliaMeta(null);
         setAlgoliaCompanyError('Could not load client suggestions. Check network or Algolia key/index access.');
-        if (__DEV__) console.warn('[HireDisclaimer] Algolia clients:', e?.message || e);
+        if (__DEV__) logger.warn('[HireDisclaimer] Algolia clients:', e?.message || e);
       } finally {
         if (seq === companyAlgoliaSeq.current) setAlgoliaSearchingCompany(false);
       }
@@ -330,7 +331,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         });
         if (__DEV__) {
           const h0 = list[0];
-          console.log('[HireDisclaimer][Algolia projects]', {
+          logger.log('[HireDisclaimer][Algolia projects]', {
             index: ALGOLIA_INDEX_PROJECTS,
             query: q,
             serverQuery,
@@ -346,7 +347,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         setProjectHits([]);
         setProjectAlgoliaMeta(null);
         setAlgoliaProjectError('Could not load project suggestions. Check network or Algolia key/index access.');
-        if (__DEV__) console.warn('[HireDisclaimer] Algolia projects:', e?.message || e);
+        if (__DEV__) logger.warn('[HireDisclaimer] Algolia projects:', e?.message || e);
       } finally {
         if (seq === projectAlgoliaSeq.current) setAlgoliaSearchingProject(false);
       }

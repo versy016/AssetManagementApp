@@ -1,5 +1,6 @@
 import { sf } from '../constants/uiTheme.js';
 import React, { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
+import logger from '../utils/logger';
 import {
   View,
   Text,
@@ -138,7 +139,7 @@ export function TourProvider({ children }) {
       id: 'section-shortcuts',
       route: '/(tabs)/dashboard',
       title: 'Shortcuts',
-      description: 'Create custom shortcuts for frequent actions or asset lists.',
+      description: 'One-tap actions: transfer, service, repair, office gear, and more. Admin-only tiles (e.g. QR Sheet) appear when you have admin access.',
       targetId: 'section-shortcuts',
       interaction: true,
     },
@@ -824,7 +825,7 @@ export function TourProvider({ children }) {
                 }));
               }
             } catch (e) {
-              console.warn('TourGuide: Error getting bounding rect on web', id, e);
+              logger.warn('TourGuide: Error getting bounding rect on web', id, e);
             }
           } else if (typeof window !== 'undefined' && domNode && domNode.nodeType === 1) {
             // Fallback: if it's a DOM node, try to access getBoundingClientRect
@@ -837,7 +838,7 @@ export function TourProvider({ children }) {
                 }));
               }
             } catch (e) {
-              console.warn('TourGuide: Could not measure target on web', id, e);
+              logger.warn('TourGuide: Could not measure target on web', id, e);
             }
           }
         } else {
@@ -851,7 +852,7 @@ export function TourProvider({ children }) {
           });
         }
       } catch (e) {
-        console.warn('TourGuide: Failed to measure target', id, e);
+        logger.warn('TourGuide: Failed to measure target', id, e);
       }
     };
     setTimeout(measure, 50);
