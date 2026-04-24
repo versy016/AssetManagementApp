@@ -9,9 +9,11 @@ import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import { fetchFields } from './useAssetTypeFields';
 import logger from '../utils/logger';
 import { showError, showSuccess, confirm } from '../utils/showError';
 import { normalizeStatus } from '../components/ui/StatusBadge';
+import { transferRecipientMatchesFirebaseUser } from '../utils/activityLabels';
 
 // Helper: format dates like "10 Oct 2025"
 function prettyDate(d) {
@@ -81,6 +83,7 @@ export function useAssetDetail({ assetId, returnTo }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authUser, setAuthUser] = useState(() => auth.currentUser || null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [notesSectionExpanded, setNotesSectionExpanded] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -142,47 +145,47 @@ export function useAssetDetail({ assetId, returnTo }) {
     setErr('');
     try {
       if (isImportedId) {
-        throw new Error('This imported asset is hidden until a QR is assigned to it. Assign via Transfer In > Assign Imported Asset.');
+        throw new Error('This imported asset is hidden until a QR is assigned to it. Assign via Transfer to office > Assign Imported Asset.');
       }
       const res = await fetch(`${API_BASE_URL}/assets/${assetId}`);
       if (!res.ok) throw new Error(`Failed to load asset (${res.status})`);
       const data = await res.json();
       setAsset(data);
 
-      // Load type field definitions
+      // Load type field definitions (served from module-level cache via useAssetTypeFields)
       try {
         const typeId = data?.type_id || data?.asset_types?.id;
         if (typeId) {
-          const fr = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-          if (fr.ok) {
-            const defs = await fr.json();
-            const arr = Array.isArray(defs) ? defs : [];
-            setTypeFields(arr);
-            const links = {};
-            const docNames = {};
-            const bySlug = Object.fromEntries(arr.map(d => [String(d.slug || '').toLowerCase(), d]));
-            for (const d of arr) {
-              const code = String(d?.field_type?.slug || d?.field_type?.name || '').toLowerCase();
-              if (code !== 'date') continue;
-              try {
-                const vr = d.validation_rules && typeof d.validation_rules === 'object' ? d.validation_rules : (d.validation_rules ? JSON.parse(d.validation_rules) : null);
-                const link = vr && (vr.requires_document_slug || vr.require_document_slug);
-                const raw = Array.isArray(link) ? (link[0] || '') : (link || '');
-                const docSlug = String(raw || '').toLowerCase();
-                if (docSlug) {
-                  const dateSlug = String(d.slug || '').toLowerCase();
-                  links[dateSlug] = docSlug;
-                  const docDef = bySlug[docSlug];
-                  const label = docDef?.name || docDef?.label || docDef?.slug || raw;
-                  docNames[docSlug] = label;
-                }
-              } catch {}
+          const arr = await fetchFields(typeId);
+          setTypeFields(arr);
+          const links = {};
+          const docNames = {};
+          const bySlug = Object.fromEntries(arr.map(d => [String(d.slug || '').toLowerCase(), d]));
+          for (const d of arr) {
+            const code = String(d?.field_type?.slug || d?.field_type?.name || '').toLowerCase();
+            if (code !== 'date') continue;
+            try {
+              const vr = d.validation_rules && typeof d.validation_rules === 'object' ? d.validation_rules : (d.validation_rules ? JSON.parse(d.validation_rules) : null);
+              const link = vr && (vr.requires_document_slug || vr.require_document_slug);
+              const raw = Array.isArray(link) ? (link[0] || '') : (link || '');
+              const docSlug = String(raw || '').toLowerCase();
+              if (docSlug) {
+                const dateSlug = String(d.slug || '').toLowerCase();
+                links[dateSlug] = docSlug;
+                const docDef = bySlug[docSlug];
+                const label = docDef?.name || docDef?.label || docDef?.slug || raw;
+                docNames[docSlug] = label;
+              }
+            } catch (e) {
+              logger.warn('useAssetDetail: doc-link field parse failed', e?.message || e);
             }
-            setDateDocLinks(links);
-            setDocLabels(docNames);
           }
+          setDateDocLinks(links);
+          setDocLabels(docNames);
         }
-      } catch {}
+      } catch (e) {
+        logger.warn('useAssetDetail: date-doc-links setup failed', e?.message || e);
+      }
 
       // Load DB-backed documents
       try {
@@ -212,9 +215,10 @@ export function useAssetDetail({ assetId, returnTo }) {
     }
   }, [assetId, isImportedId]);
 
-  // Check admin status
+  // Auth user + admin status
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
+      setAuthUser(u || null);
       try {
         if (!u) { setIsAdmin(false); return; }
         const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
@@ -364,7 +368,9 @@ export function useAssetDetail({ assetId, returnTo }) {
         router.back();
         return;
       }
-    } catch {}
+    } catch (e) {
+      logger.warn('useAssetDetail: canGoBack check failed', e?.message || e);
+    }
     if (navigation?.canGoBack?.()) {
       router.back();
       return;
@@ -545,7 +551,9 @@ export function useAssetDetail({ assetId, returnTo }) {
               if (cand?.id) consumedDocIds.add(String(cand.id));
             }
           }
-        } catch {}
+        } catch (e) {
+          logger.warn('useAssetDetail: doc field resolution failed', e?.message || e);
+        }
         rows.push({ label: formatFieldLabel(slug), value: renderFieldValue(slug, v), right: false });
       }
     }
@@ -560,7 +568,9 @@ export function useAssetDetail({ assetId, returnTo }) {
           try {
             const def = (typeFields || []).find(f => String(f.id) === String(d.asset_type_field_id));
             if (def?.name) label = def.name;
-          } catch {}
+          } catch (e) {
+            logger.warn('useAssetDetail: leftover doc label lookup failed', e?.message || e);
+          }
           const pretty = (() => {
             const txt = String(label || '').trim();
             if (!txt) return 'Attachment';
@@ -575,7 +585,9 @@ export function useAssetDetail({ assetId, returnTo }) {
           });
         }
       }
-    } catch {}
+    } catch (e) {
+      logger.warn('useAssetDetail: leftover docs append failed', e?.message || e);
+    }
 
     return { rows, history };
   };
@@ -729,12 +741,16 @@ export function useAssetDetail({ assetId, returnTo }) {
   };
 
   // Type metadata (for action badges)
-  const typeMeta = (t) => {
+  const typeMeta = useCallback((t, opts = {}) => {
     const k = String(t || '').toUpperCase();
+    const transferToMe = !!opts.transferToMe;
+    if (k === 'TRANSFER' && transferToMe) {
+      return { label: 'Transfer to me', description: 'Assigned to you', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
+    }
     switch (k) {
-      case 'TRANSFER':     return { label: 'Transfer', description: 'Transfer', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
-      case 'CHECK_IN':     return { label: 'Transfer In', description: 'Transfer in', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
-      case 'CHECK_OUT':    return { label: 'Transfer Out', description: 'Transfer out', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
+      case 'TRANSFER':     return { label: 'Transfer', description: 'Transfer between users', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
+      case 'CHECK_IN':     return { label: 'Transfer to office', description: 'Returned to office', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
+      case 'CHECK_OUT':    return { label: 'Transfer out of office', description: 'Left office inventory', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
       case 'STATUS_CHANGE':return { label: 'Status', description: 'Status change', bg: '#FEF3C7', fg: '#92400E', bd: '#FDE68A' };
       case 'REPAIR':       return { label: 'Repair', description: 'Repair', bg: '#FFF7ED', fg: '#9A3412', bd: '#FED7AA' };
       case 'MAINTENANCE':  return { label: 'Maintenance', description: 'Service / maintenance', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
@@ -744,7 +760,7 @@ export function useAssetDetail({ assetId, returnTo }) {
       case 'STOLEN':       return { label: 'Stolen', description: 'Reported stolen', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
       default:             return { label: k || 'Note', description: k ? `${k.replace(/_/g, ' ').toLowerCase()}` : 'Note', bg: '#F3F4F6', fg: '#374151', bd: '#E5E7EB' };
     }
-  };
+  }, []);
 
   // Get initials
   const initials = (s) => {
@@ -785,14 +801,17 @@ export function useAssetDetail({ assetId, returnTo }) {
           const typeUpper = String(a.type || '').toUpperCase();
           const fromLabel = a.from_user?.name || a.from_user?.useremail || a.from_user_id || '';
           const toLabel   = a.to_user?.name   || a.to_user?.useremail   || a.to_user_id   || '';
+          const transferToMe = typeUpper === 'TRANSFER' && transferRecipientMatchesFirebaseUser(a.to_user, authUser);
           let text = (a.note || '').trim();
 
           if (typeUpper === 'TRANSFER') {
-            text = `Transfer ${asset?.id || ''} from ${fromLabel || 'Unassigned'} to ${toLabel || 'Unassigned'}`;
+            text = transferToMe
+              ? `Transfer to me (${asset?.id || ''})`
+              : `Transfer (${asset?.id || ''}: ${fromLabel || '?'} → ${toLabel || '?'})`;
           } else if (typeUpper === 'CHECK_IN') {
-            text = 'Transfer In';
+            text = 'Transfer to office';
           } else if (typeUpper === 'CHECK_OUT') {
-            text = `Transfer Out ${asset?.id || ''} to ${toLabel || 'Assignee'}`;
+            text = `Transfer out of office (${asset?.id || ''}${toLabel ? ` → ${toLabel}` : ''})`;
           }
 
           if (!text) {
@@ -815,11 +834,12 @@ export function useAssetDetail({ assetId, returnTo }) {
             when: a.occurred_at,
             who: whoName,
             type: a.type || '',
+            transferToMe,
             images: imgs,
           });
         });
     } catch { return []; }
-  }, [actions, asset?.id]);
+  }, [actions, asset?.id, authUser]);
 
   // Work detail history
   const workDetailHistory = useMemo(() => {

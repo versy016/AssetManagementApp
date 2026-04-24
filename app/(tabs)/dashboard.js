@@ -23,6 +23,7 @@ import HireView from '../../components/HireView';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import { getShortcutType, getDisplayShortcuts, canUseShortcut } from '../../constants/ShortcutTypes';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
+import { formatActivityListTitle } from '../../utils/activityLabels';
 import { TourTarget, TourContext, shouldShowTour, resetTour } from '../../components/TourGuide';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
@@ -144,42 +145,25 @@ const Dashboard = ({ isAdmin }) => {
     if (ensureVisible && scrollViewRef.current) ensureVisible(scrollViewRef.current);
   }, [ensureVisible]);
 
-  // ─── Recent Activity ───
+  // ─── Recent Activity (via /assets/stats — single request replaces 26-request waterfall) ───
   useEffect(() => {
     if (!SHOW_RECENT) return;
     let cancelled = false;
     (async () => {
       try {
         setRecent((r) => ({ ...r, loading: true }));
-        const res = await fetch(`${API_BASE_URL}/assets`);
+        const res = await fetch(`${API_BASE_URL}/assets/stats?limit=10`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const list = (Array.isArray(data) ? data : [])
-          .filter(a => (a?.description || '').toLowerCase() !== 'qr reserved asset');
-        const sorted = list.sort((a, b) => {
-          const av = new Date(a?.updated_at || a?.last_updated || a?.date_purchased || 0).getTime();
-          const bv = new Date(b?.updated_at || b?.last_updated || b?.date_purchased || 0).getTime();
-          return bv - av;
-        }).slice(0, 25);
-
-        const actionsBatches = await Promise.allSettled(
-          sorted.map(async (a) => {
-            const r = await fetch(`${API_BASE_URL}/assets/${a.id}/actions`);
-            if (!r.ok) return null;
-            const j = await r.json();
-            const arr = Array.isArray(j?.actions) ? j.actions : [];
-            if (!arr[0]) return null;
-            return { asset: a, action: arr[0] };
-          })
-        );
-
-        const merged = actionsBatches
-          .map(x => (x.status === 'fulfilled' ? x.value : null))
-          .filter(Boolean)
-          .sort((a, b) => new Date(b.action?.occurred_at || 0) - new Date(a.action?.occurred_at || 0))
-          .slice(0, 10);
-
-        if (!cancelled) setRecent({ items: merged, loading: false });
-      } catch { if (!cancelled) setRecent({ items: [], loading: false }); }
+        // Normalise to the { asset, action } shape the render code already expects
+        const items = (Array.isArray(data?.recent_activity) ? data.recent_activity : [])
+          .filter(a => (a?.asset?.name || '').toLowerCase() !== 'qr reserved asset')
+          .map(a => ({ asset: a.asset, action: a }));
+        if (!cancelled) setRecent({ items, loading: false });
+      } catch (e) {
+        logger.warn('dashboard: stats fetch failed', e?.message || e);
+        if (!cancelled) setRecent({ items: [], loading: false });
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -292,6 +276,7 @@ const Dashboard = ({ isAdmin }) => {
                 TRANSFER: C.primary,
                 REPAIR: C.accent,
                 CHECK_IN: C.successFg,
+                CHECK_OUT: C.infoFg,
                 MAINTENANCE: C.warningFg,
               };
           return (
@@ -305,10 +290,15 @@ const Dashboard = ({ isAdmin }) => {
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={s.activityTitle} numberOfLines={1}>
-                      {item.asset?.model || item.asset?.description || 'Asset'} — {actionType.replace(/_/g, ' ')}
+                      {item.asset?.model || item.asset?.description || 'Asset'} —{' '}
+                      {formatActivityListTitle(actionType, {
+                        firebaseUser: user,
+                        toUser: item.action?.to_user,
+                        toLabel: item.action?.to,
+                      })}
               </Text>
                     <Text style={s.activitySub} numberOfLines={1}>
-                      {item.action?.note || item.action?.performed_by_name || ''}
+                      {item.action?.note || item.action?.performed_by?.name || ''}
                     </Text>
                   </View>
                   <Text style={s.activityTime}>{getRelativeTime(item.action?.occurred_at)}</Text>

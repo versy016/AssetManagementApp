@@ -20,7 +20,7 @@ export default function AssetQRModal({ visible, onClose, qrValue, assetId }) {
           <QRCode value={qrValue} size={260} ecl="M" />
           <Text style={styles.assetId}>{assetId}</Text>
           <Text style={styles.instruction}>
-            Scan this QR to open the asset and perform check-in or check-out.
+            Scan this QR to open the asset and transfer to office, transfer out of office, or other actions.
           </Text>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.closeButton}>Close</Text>

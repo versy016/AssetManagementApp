@@ -22,6 +22,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import QRCode from 'react-native-qrcode-svg';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { fetchFields } from '../../hooks/useAssetTypeFields';
 import { auth } from '../../firebaseConfig';
 import logger from '../../utils/logger';
 import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
@@ -34,7 +35,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
-import { statusToColor as _statusToColor, prettyStatus } from '../../components/ui/StatusBadge';
+import StatusBadge from '../../components/ui/StatusBadge';
 
 const RECENT_KEY = 'search_recents_v2';
 const ASSET_TYPE_OPTIONS = [
@@ -445,11 +446,8 @@ export default function SearchScreen(props = {}) {
     setTypeFieldError(null);
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-        if (!res.ok) throw new Error('Failed to load fields');
-        const defs = await res.json();
+        const arr = await fetchFields(typeId);
         if (cancelled) return;
-        const arr = Array.isArray(defs) ? defs : [];
         setTypeFieldDefs(arr);
         setActiveTypeId(typeId);
       } catch (err) {
@@ -774,8 +772,6 @@ export default function SearchScreen(props = {}) {
   };
 
   // --- Render Helpers ---
-  const statusToColor = _statusToColor;
-
   const formatDaysUntil = (iso) => {
     try {
       if (!iso) return '--';
@@ -944,7 +940,6 @@ export default function SearchScreen(props = {}) {
             <Text style={styles.metaText}>{metrics.total} assets found • {metrics.tookMs} ms</Text>
             <View style={styles.gridContainer}>
             {paginatedItems.map((item) => {
-              const statusColor = statusToColor(item?.status);
               const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
               const desc = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
               const model = item?.model ?? item?.fields?.model;
@@ -975,9 +970,7 @@ export default function SearchScreen(props = {}) {
                         </Text>
                       </View>
                     </View>
-                    <View style={[styles.mobileStatusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-                      <Text style={[styles.mobileStatusText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
-                    </View>
+                    <StatusBadge status={item?.status} size="sm" />
                   </View>
 
                   <View style={styles.mobileCardDetails}>
@@ -1112,7 +1105,6 @@ export default function SearchScreen(props = {}) {
                 </View>
                 <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator={false}>
                   {paginatedItems.map((item, idx) => {
-                    const statusColor = statusToColor(item?.status);
                     const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
                     const model = item?.model ?? item?.fields?.model;
                     const serial = item?.serial_number ?? item?.fields?.serial_number;
@@ -1193,9 +1185,7 @@ export default function SearchScreen(props = {}) {
                         </View>
                         {/* Status */}
                     <View style={[styles.td, columnStyle('status')]}>
-                          <View style={[styles.badge, { backgroundColor: statusColor.bg, borderColor: statusColor.bd }]}>
-                            <Text style={[styles.badgeText, { color: statusColor.fg }]}>{prettyStatus(item?.status)}</Text>
-                          </View>
+                          <StatusBadge status={item?.status} size="sm" />
                         </View>
                         {/* Date Purchased */}
                     <View style={[styles.td, columnStyle('purchased')]}>

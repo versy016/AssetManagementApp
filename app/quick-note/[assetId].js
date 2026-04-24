@@ -19,6 +19,7 @@ import ScreenHeader from '../../components/ui/ScreenHeader';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import logger from '../../utils/logger';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 
 export default function QuickNoteScreen() {
   const params = useLocalSearchParams();
@@ -167,6 +168,7 @@ export default function QuickNoteScreen() {
               onChangeText={setNote}
               multiline
               numberOfLines={4}
+              maxLength={FIELD_LIMITS.NOTES}
             />
             <TouchableOpacity
               style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}

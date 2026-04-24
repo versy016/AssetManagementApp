@@ -10,6 +10,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getAuthHeaders } from '../../utils/authHeaders';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
@@ -364,12 +365,11 @@ export default function NewAssetType() {
     setSubmitting(true);
     try {
       // 1) Create type (image optional)
+      const authH = await getAuthHeaders();
       const form = new FormData();
       form.append('name', name.trim());
       if (image?.file) form.append('image', image.file);
-      const uid = auth.currentUser?.uid;
-      const headers = uid ? { 'X-User-Id': uid } : {};
-      const createTypeRes = await fetch(`${API_BASE_URL}/asset-types`, { method: 'POST', body: form, headers });
+      const createTypeRes = await fetch(`${API_BASE_URL}/asset-types`, { method: 'POST', body: form, headers: authH });
       if (!createTypeRes.ok) throw new Error(await createTypeRes.text() || 'Failed to create asset type');
       const created = await createTypeRes.json();
       const newType = created?.data || created?.assetType || created;
@@ -446,7 +446,7 @@ export default function NewAssetType() {
       for (const payload of toCreate) {
         const r = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
+          headers: { 'Content-Type': 'application/json', ...authH },
           body: JSON.stringify(payload),
         });
         if (!r.ok) {

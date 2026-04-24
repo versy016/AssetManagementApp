@@ -19,8 +19,8 @@ export const ASSET_STATUS = Object.freeze({
 
 // ─── Action type labels (shown in UI / sent in request bodies) ────────────────
 export const ACTION_TYPE = Object.freeze({
-  CHECK_IN:         'Check In',
-  CHECK_OUT:        'Check Out',
+  CHECK_IN:         'Transfer to office',
+  CHECK_OUT:        'Transfer out of office',
   SERVICE:          'Service',
   REPAIR:           'Repair',
   HIRE:             'Hire',

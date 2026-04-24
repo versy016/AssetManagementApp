@@ -30,11 +30,9 @@ import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import SearchInput from '../../components/ui/SearchInput';
 import EmptyState from '../../components/ui/EmptyState';
-import {
+import StatusBadge, {
   STATUS_CONFIG,
   normalizeStatus,
-  prettyStatus,
-  statusToColor,
 } from '../../components/ui/StatusBadge';
 import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
 
@@ -511,7 +509,6 @@ const AllAssetsTab = ({ query, filters }) => {
 
     const subtitle = [serial ? `SN ${serial}` : null, model || null].filter(Boolean).join(' · ');
 
-    const s = statusToColor(item?.status);
     const isExpanded = expandedIds.has(String(item.id));
 
     // Relative time for last updated
@@ -559,9 +556,7 @@ const AllAssetsTab = ({ query, filters }) => {
               <Text style={styles.cardTitle} numberOfLines={1}>{name}</Text>
               {!!type && <Text style={styles.cardTypeLabel} numberOfLines={1}>{type}</Text>}
             </View>
-            <View style={[styles.badge, { backgroundColor: s.bg, borderColor: s.bd }]}>
-              <Text style={[styles.badgeText, { color: s.fg }]}>{prettyStatus(item?.status)}</Text>
-            </View>
+            <StatusBadge status={item?.status} size="sm" />
           </View>
 
           {/* Subtitle: serial / model / updated */}
@@ -1057,8 +1052,6 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: sf(12), color: Colors.sub, fontWeight: '600', flex: 1 },
   updatedPill: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   updatedPillText: { fontSize: sf(11), color: Colors.sub2, fontWeight: '600' },
-  badge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5 },
-  badgeText: { fontSize: sf(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   metaRow: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

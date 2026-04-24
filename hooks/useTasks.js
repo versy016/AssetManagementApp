@@ -9,8 +9,10 @@ import { auth } from '../firebaseConfig';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import { fetchFields } from './useAssetTypeFields';
 import { useTasksCount } from '../contexts/TasksCountContext';
 import { showError, showSuccess } from '../utils/showError';
+import logger from '../utils/logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers (pure, no state)
@@ -154,7 +156,8 @@ export function useTasks() {
         if (!res.ok) throw new Error('Failed to fetch hires');
         const json = await res.json();
         if (!cancelled) setHires(Array.isArray(json.hires) ? json.hires : []);
-      } catch {
+      } catch (e) {
+        logger.error('useTasks: hires fetch failed', e?.message || e);
         if (!cancelled) setHires([]);
       } finally {
         if (!cancelled) setHiresLoading(false);
@@ -225,10 +228,9 @@ export function useTasks() {
         const defsCache = {};
         await Promise.all(typeIds.map(async (tId) => {
           try {
-            const r = await fetch(`${API_BASE_URL}/assets/asset-types/${tId}/fields`);
-            const arr = await r.json();
-            defsCache[tId] = Array.isArray(arr) ? arr : [];
-          } catch {
+            defsCache[tId] = await fetchFields(tId);
+          } catch (e) {
+            logger.warn('useTasks: type fields fetch failed', { tId, message: e?.message || e });
             defsCache[tId] = [];
           }
         }));
@@ -381,7 +383,8 @@ export function useTasks() {
             return { loading: false, items: deduped };
           });
         }
-      } catch {
+      } catch (e) {
+        logger.error('useTasks: main tasks fetch failed', e?.message || e);
         if (!cancelled) setTasks({ items: [], loading: false });
       }
     })();
@@ -461,7 +464,9 @@ export function useTasks() {
             });
           return { ...prev, items: deduped };
         });
-      } catch {}
+      } catch (e) {
+        logger.error('useTasks: pending signoff merge failed', e?.message || e);
+      }
     })();
     return () => { cancelled = true; };
   }, [user?.uid]);
@@ -544,12 +549,15 @@ export function useTasks() {
             const images = Array.isArray(found?.data?.images) ? found.data.images : [];
             setActionTask((prev) => (prev ? { ...prev, actionImages: images } : prev));
           }
-        } catch {}
+        } catch (e) {
+          logger.warn('useTasks: action images fetch failed', e?.message || e);
+        }
       }
       if (task?.typeId) {
-        const defsRes = await fetch(`${API_BASE_URL}/assets/asset-types/${task.typeId}/fields`);
-        const defs = await defsRes.json();
-        const arr = Array.isArray(defs) ? defs : [];
+        const arr = await fetchFields(task.typeId).catch((e) => {
+          logger.warn('useTasks: openActionModal fields fetch failed', e?.message || e);
+          return [];
+        });
         let linkedSlug = '';
         let linkedFieldId = null;
         if (task.fieldKey) {
@@ -596,7 +604,9 @@ export function useTasks() {
                 break;
               }
             }
-          } catch {}
+          } catch (e) {
+            logger.warn('useTasks: linked doc field lookup failed', e?.message || e);
+          }
         }
         if (linkedSlug) setActionDocSlug(linkedSlug);
         if (linkedFieldId) setActionDocFieldId(linkedFieldId);
@@ -610,9 +620,13 @@ export function useTasks() {
           ) {
             setActionNeedsNextService(true);
           }
-        } catch {}
+        } catch (e) {
+          logger.warn('useTasks: next service date field lookup failed', e?.message || e);
+        }
       }
-    } catch {}
+    } catch (e) {
+      logger.warn('useTasks: openActionModal setup failed', e?.message || e);
+    }
     setActionOpen(true);
   };
 
@@ -832,7 +846,9 @@ export function useTasks() {
           headers['X-User-Email'] = u.email || '';
           headers['X-User-Name'] = u.displayName || (u.email ? u.email.split('@')[0] : '');
         }
-      } catch {}
+      } catch (e) {
+        logger.warn('useTasks: auth header build failed', e?.message || e);
+      }
 
       let body = { fields: {} };
       const k = String(actionTask.fieldKey || '').toLowerCase();
@@ -881,7 +897,9 @@ export function useTasks() {
               body.documentation_url = upj.document.url;
             }
           }
-        } catch {}
+        } catch (e) {
+          logger.warn('useTasks: document upload failed (non-fatal)', e?.message || e);
+        }
       }
 
       if (actionNote && String(actionNote).trim()) body.notes = String(actionNote).trim();
@@ -901,7 +919,9 @@ export function useTasks() {
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: actionType, note, occurred_at: new Date().toISOString() }),
         });
-      } catch {}
+      } catch (e) {
+        logger.warn('useTasks: action record failed (non-fatal)', e?.message || e);
+      }
 
       if (actionPhoto?.uri) {
         try {

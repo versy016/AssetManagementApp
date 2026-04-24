@@ -11,6 +11,16 @@ const logger = require('../lib/logger');
 const { validate, schemas } = require('../lib/validation');
 const apiConfig = require('../config');
 const { authRequired, adminOnly, ensureAdminInit } = require('../middleware/auth');
+const {
+  QR_DIR,
+  SHEETS_DIR,
+  ensureQRDirs,
+  resolveBase,
+  resolveApiBase,
+  sheetUrl,
+  fileTimestamp,
+  generateQRCodes,
+} = require('../lib/qrService');
 
 // Note: Public exception for listing sheets is handled on the route itself
 
@@ -134,105 +144,30 @@ router.get('/lookup/by-email', authRequired, adminOnly, async (req, res) => {
 });
 
 /**
- * NEW: Generate QR codes & seed placeholder assets
- * POST /qr/generate      ← if this router is mounted at "/", client calls /qr/generate
- *                         ← if mounted at "/users", client calls /users/qr/generate
+ * Generate QR codes & seed placeholder assets
+ * POST /users/qr/generate
  * Body: { count: number }   (default 65)
  * Admin-only
  *
  * Response:
- * { count: number, codes: [{ id: string, url: string }] }
+ * { count: number, codes: [{ id: string, url: string, pngUrl: string }], sheets: [...] }
  */
 router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
-  const count = Math.min(Math.max(Number(req.body?.count || 65), 1), 500); // 1..500 hard limit
+  const count = Math.min(Math.max(Number(req.body?.count || 65), 1), 500);
 
-  // Where should the /check-in link point?
-  const base =
-    process.env.CHECKIN_BASE_URL ||
-    req.get('X-External-Base-Url') ||
-    // Try to reconstruct from the request
-    `${req.protocol}://${req.get('host')}`;
-
-  // Public base for serving static QR images/sheets
-  const apiBase =
-    process.env.PUBLIC_API_BASE_URL ||
-    req.get('X-External-Base-Url') ||
-    `${req.protocol}://${req.get('host')}`;
+  const base = resolveBase(req);
+  const apiBase = resolveApiBase(req);
   const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
 
-  // Output folders (project-root/utils/qrcodes and sheets)
-  const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
-  const SHEETS_DIR = path.join(QR_DIR, 'sheets');
-  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
-  ensureDir(QR_DIR);
-  ensureDir(SHEETS_DIR);
-
-  // Helper to make 8-char ID (A–Z, 0–9)
-  const makeId = () => {
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let out = '';
-    for (let i = 0; i < 8; i += 1) {
-      out += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    return out;
-  };
-
-  const codes = [];
-  const used = new Set();
+  let codes;
+  try {
+    codes = await generateQRCodes({ count, base, apiBase, staticMount: STATIC_MOUNT });
+  } catch (e) {
+    logger.error('[qr/generate] QR generation failed:', e);
+    return res.status(500).json({ error: e.message || 'QR generation failed' });
+  }
 
   try {
-    for (let i = 0; i < count; i += 1) {
-      // ensure unique id (avoid collisions within this batch and DB)
-      let id;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        id = makeId();
-        if (used.has(id)) continue;
-        const existing = await prisma.assets.findUnique({ where: { id } });
-        if (!existing) break;
-      }
-      used.add(id);
-
-      // Seed a minimal asset row
-      try {
-        await prisma.assets.create({
-          data: {
-            id,
-            serial_number: null,
-            model: null,
-            description: 'QR reserved asset',
-            location: null,
-            assigned_to_id: null,
-            type_id: null,
-            status: 'available', // normalized
-          },
-        });
-      } catch (e) {
-        // Unique violation? Try again with a new id
-        if (e?.code === 'P2002') {
-          used.delete(id);
-          i -= 1;
-          continue;
-        }
-        console.error('Failed to insert asset', id, e);
-        return res.status(500).json({ error: 'Failed to insert asset rows' });
-      }
-
-      const url = `${base.replace(/\/+$/, '')}/check-in/${id}`;
-
-      // Persist PNG for this code under utils/qrcodes/<id>.png
-      try {
-        const filePath = path.join(QR_DIR, `${id}.png`);
-        await QRCode.toFile(filePath, url);
-      } catch (e) {
-        console.error('Failed to write QR PNG', id, e);
-        return res.status(500).json({ error: 'Failed to write QR images' });
-      }
-
-      // Keep both check-in URL and static PNG URL
-      const pngUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/${id}.png`;
-      codes.push({ id, url, pngUrl });
-    }
 
     // Template + layout controls
     const template = (req.body?.template || req.query?.template || '').toString().toLowerCase();
@@ -282,11 +217,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
 
     const pages = Math.ceil(codes.length / perPage);
 
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, '')
-      .replace('T', '_')
-      .slice(0, 15);
+    const timestamp = fileTimestamp();
 
     const sheetUrls = [];
 
@@ -339,8 +270,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
         const data = {};
         for (let i = 0; i < Math.min(needed, batch.length); i += 1) {
           const idx = i + 1;
-          const { id } = batch[i];
-          const pngPath = path.join(QR_DIR, `${id}.png`);
+          const { id, pngPath } = batch[i];
           let img = null;
           try { img = fs.readFileSync(pngPath); } catch { }
           data[`QR_${idx}`] = img; // Buffer for image module
@@ -361,13 +291,12 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
         doc.attachModule(imageModule);
         doc.loadZip(zip);
         doc.setData(data);
-        try { doc.render(); } catch (e) { console.error('DOCX render failed:', e); return res.status(500).json({ error: 'DOCX render failed' }); }
+        try { doc.render(); } catch (e) { logger.error('DOCX render failed:', e); return res.status(500).json({ error: 'DOCX render failed' }); }
         const out = doc.getZip().generate({ type: 'nodebuffer' });
         const filename = `avery65_${timestamp}_p${p + 1}.docx`;
         const outPath = path.join(SHEETS_DIR, filename);
         fs.writeFileSync(outPath, out);
-        const publicUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
-        sheetUrls.push(publicUrl);
+        sheetUrls.push(sheetUrl(apiBase, STATIC_MOUNT, filename));
       }
 
       const items = codes.map(({ id, pngUrl, url: checkInUrl }) => ({ id, url: pngUrl, checkInUrl }));
@@ -416,8 +345,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
           const cellYTop = offY + row * labelH; // distance from top
           const cellY = a4Height - (cellYTop + labelH); // convert to bottom-left origin
 
-          const pngPath = path.join(QR_DIR, `${id}.png`);
-          const pngBytes = fs.readFileSync(pngPath);
+          const pngBytes = fs.readFileSync(batch[i].pngPath);
           const png = await outDoc.embedPng(pngBytes);
 
           if (layout === 'leftqr') {
@@ -470,8 +398,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
 
         const pdfBytes = await outDoc.save();
         fs.writeFileSync(outPath, pdfBytes);
-        const publicUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
-        sheetUrls.push(publicUrl);
+        sheetUrls.push(sheetUrl(apiBase, STATIC_MOUNT, filename));
       }
     } else {
       // Fallback to PdfKit grid with simple header/background-less
@@ -491,12 +418,11 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
         }
 
         for (let i = 0; i < batch.length; i += 1) {
-          const id = batch[i].id;
           const row = Math.floor(i / cols);
           const col = i % cols;
           const cellX = offX + col * labelW;
           const cellY = offY + row * labelH;
-          const pngPath = path.join(QR_DIR, `${id}.png`);
+          const { id, pngPath } = batch[i];
 
           if (useAvery65 && layout === 'leftqr') {
             const mm2pt = (mm) => (mm * 72.0) / 25.4;
@@ -536,8 +462,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
 
         doc.end();
         await new Promise((resFinish) => stream.on('finish', resFinish));
-        const publicUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
-        sheetUrls.push(publicUrl);
+        sheetUrls.push(sheetUrl(apiBase, STATIC_MOUNT, filename));
       }
     }
 
@@ -546,7 +471,7 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
     const sheets = sheetUrls.map((url, i) => ({ index: i + 1, url }));
     return res.json({ count: items.length, codes: items, sheets });
   } catch (e) {
-    console.error('QR generation failed:', e);
+    logger.error('[qr/generate] Sheet generation failed:', e);
     return res.status(500).json({ error: 'QR generation failed' });
   }
 });
@@ -559,97 +484,23 @@ router.post('/qr/generate', authRequired, adminOnly, async (req, res) => {
  */
 router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
   logger.log('[Excel] Request received, body:', req.body);
-  const count = Math.min(Math.max(Number(req.body?.count || 1), 1), 2000); // 1..2000 limit
+  const count = Math.min(Math.max(Number(req.body?.count || 1), 1), 2000);
   logger.log('[Excel] Processing count:', count);
 
-  // Where should the /check-in link point?
-  const base =
-    process.env.CHECKIN_BASE_URL ||
-    req.get('X-External-Base-Url') ||
-    `${req.protocol}://${req.get('host')}`;
-
-  // Public base for serving static QR images/sheets
-  const apiBase =
-    process.env.PUBLIC_API_BASE_URL ||
-    req.get('X-External-Base-Url') ||
-    `${req.protocol}://${req.get('host')}`;
+  const base = resolveBase(req);
+  const apiBase = resolveApiBase(req);
   const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
 
-  // Output folders
-  const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
-  const SHEETS_DIR = path.join(QR_DIR, 'sheets');
-  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
-  ensureDir(QR_DIR);
-  ensureDir(SHEETS_DIR);
-
-  // Helper to make 8-char ID (A–Z, 0–9)
-  const makeId = () => {
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let out = '';
-    for (let i = 0; i < 8; i += 1) {
-      out += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    return out;
-  };
-
-  const codes = [];
-  const used = new Set();
-
+  let codes;
   try {
     logger.log('[Excel] Starting QR code generation for', count, 'codes');
-    // Generate QR codes
-    for (let i = 0; i < count; i += 1) {
-      if (i % 10 === 0) logger.log(`[Excel] Generated ${i}/${count} QR codes...`);
-      // Ensure unique id
-      let id;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        id = makeId();
-        if (used.has(id)) continue;
-        const existing = await prisma.assets.findUnique({ where: { id } });
-        if (!existing) break;
-      }
-      used.add(id);
+    codes = await generateQRCodes({ count, base, apiBase, staticMount: STATIC_MOUNT });
+  } catch (e) {
+    logger.error('[Excel] QR code generation failed:', e);
+    return res.status(500).json({ error: e.message || 'QR generation failed' });
+  }
 
-      // Seed a minimal asset row
-      try {
-        await prisma.assets.create({
-          data: {
-            id,
-            serial_number: null,
-            model: null,
-            description: 'QR reserved asset',
-            location: null,
-            assigned_to_id: null,
-            type_id: null,
-            status: 'available',
-          },
-        });
-      } catch (e) {
-        // Unique violation? Try again with a new id
-        if (e?.code === 'P2002') {
-          used.delete(id);
-          i -= 1;
-          continue;
-        }
-        console.error('Failed to insert asset', id, e);
-        return res.status(500).json({ error: 'Failed to insert asset rows' });
-      }
-
-      const url = `${base.replace(/\/+$/, '')}/check-in/${id}`;
-
-      // Persist PNG for this code
-      try {
-        const filePath = path.join(QR_DIR, `${id}.png`);
-        await QRCode.toFile(filePath, url);
-      } catch (e) {
-        console.error('Failed to write QR PNG', id, e);
-        return res.status(500).json({ error: 'Failed to write QR images' });
-      }
-
-      codes.push({ id, pngPath: path.join(QR_DIR, `${id}.png`) });
-    }
-
+  try {
     logger.log('[Excel] Creating Excel workbook with', codes.length, 'codes');
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
@@ -672,7 +523,6 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
     // Add data rows with QR code images
     for (let i = 0; i < codes.length; i += 1) {
       const { id, pngPath } = codes[i];
-      const rowNumber = i + 2; // Row 1 is header, so data starts at row 2
       const row = worksheet.addRow({ id });
 
       // Add QR code image to the second column (column B, index 1)
@@ -701,12 +551,7 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
     worksheet.getColumn(2).width = 20; // QR Code column
 
     // Generate filename
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, '')
-      .replace('T', '_')
-      .slice(0, 15);
-    const filename = `qr_codes_${timestamp}.xlsx`;
+    const filename = `qr_codes_${fileTimestamp()}.xlsx`;
     const filePath = path.join(SHEETS_DIR, filename);
 
     // Write Excel file
@@ -715,7 +560,7 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
     logger.log('[Excel] Excel file written successfully');
 
     // Return file URL
-    const fileUrl = `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
+    const fileUrl = sheetUrl(apiBase, STATIC_MOUNT, filename);
     logger.log('[Excel] Returning file URL:', fileUrl);
 
     return res.json({
@@ -728,7 +573,7 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
       },
     });
   } catch (e) {
-    console.error('Excel generation failed:', e);
+    logger.error('[Excel] Excel generation failed:', e);
     return res.status(500).json({ error: 'Excel generation failed: ' + e.message });
   }
 });
@@ -742,9 +587,7 @@ router.post('/qr/generate-excel', authRequired, adminOnly, async (req, res) => {
 router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
   try {
     const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
-    const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
-    const SHEETS_DIR = path.join(QR_DIR, 'sheets');
-    if (!fs.existsSync(SHEETS_DIR)) fs.mkdirSync(SHEETS_DIR, { recursive: true });
+    ensureQRDirs();
 
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean).map(String) : null;
     // Fallback: pick existing PNGs (up to 65)
@@ -756,13 +599,12 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
       if (!chosen.length) return res.status(400).json({ error: 'No IDs provided and no existing QR PNGs found' });
     }
 
-    const checkBase = process.env.CHECKIN_BASE_URL || `${req.protocol}://${req.get('host')}`;
-    // Ensure PNGs exist for each id
+    const checkBase = resolveBase(req);
+    // Ensure PNGs exist for each id (re-generate if missing — no DB seeding)
     for (const id of chosen) {
       const file = path.join(QR_DIR, `${id}.png`);
       if (!fs.existsSync(file)) {
-        const url = `${checkBase}/check-in/${id}`;
-        await QRCode.toFile(file, url);
+        await QRCode.toFile(file, `${checkBase.replace(/\/+$/, '')}/check-in/${id}`);
       }
     }
 
@@ -825,16 +667,17 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
     doc.attachModule(imageModule);
     doc.loadZip(zip);
     doc.setData(data);
-    try { doc.render(); } catch (e) { console.error('DOCX preview render failed:', e); return res.status(500).json({ error: 'DOCX render failed' }); }
+    try { doc.render(); } catch (e) { logger.error('DOCX preview render failed:', e); return res.status(500).json({ error: 'DOCX render failed' }); }
 
     const out = doc.getZip().generate({ type: 'nodebuffer' });
     const filename = `preview_${Date.now()}.docx`;
     const outPath = path.join(SHEETS_DIR, filename);
     fs.writeFileSync(outPath, out);
-    const url = `${(process.env.PUBLIC_API_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${filename}`;
+    const apiBase = resolveApiBase(req);
+    const url = sheetUrl(apiBase, STATIC_MOUNT, filename);
     return res.json({ count: chosen.length, sheet: { url, name: filename } });
   } catch (e) {
-    console.error('Preview generation failed:', e);
+    logger.error('[qr/preview] Preview generation failed:', e);
     return res.status(500).json({ error: 'Preview generation failed' });
   }
 });
@@ -846,14 +689,8 @@ router.post('/qr/preview', authRequired, adminOnly, async (req, res) => {
  */
 router.get('/qr/sheets', async (req, res) => {
   try {
-    const apiBase =
-      process.env.PUBLIC_API_BASE_URL ||
-      req.get('X-External-Base-Url') ||
-      `${req.protocol}://${req.get('host')}`;
+    const apiBase = resolveApiBase(req);
     const STATIC_MOUNT = apiConfig.STATIC_MOUNT || '/qrcodes';
-
-    const QR_DIR = path.join(__dirname, '..', '..', 'utils', 'qrcodes');
-    const SHEETS_DIR = path.join(QR_DIR, 'sheets');
 
     logger.log('[Sheets] SHEETS_DIR:', SHEETS_DIR);
     logger.log('[Sheets] Directory exists:', fs.existsSync(SHEETS_DIR));
@@ -872,7 +709,7 @@ router.get('/qr/sheets', async (req, res) => {
       const st = fs.statSync(full);
       return {
         name,
-        url: `${apiBase.replace(/\/+$/, '')}${STATIC_MOUNT}/sheets/${name}`,
+        url: sheetUrl(apiBase, STATIC_MOUNT, name),
         size: st.size,
         mtime: st.mtime.toISOString(),
       };
@@ -882,7 +719,7 @@ router.get('/qr/sheets', async (req, res) => {
     logger.log('[Sheets] Returning', items.length, 'items');
     return res.json({ count: items.length, sheets: items });
   } catch (e) {
-    console.error('[Sheets] List sheets failed:', e);
+    logger.error('[Sheets] List sheets failed:', e);
     return res.status(500).json({ error: 'Failed to list sheets' });
   }
 });

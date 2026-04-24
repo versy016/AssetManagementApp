@@ -21,8 +21,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { invalidateAssetTypeFields } from '../../hooks/useAssetTypeFields';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
+import { getAuthHeaders } from '../../utils/authHeaders';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
@@ -356,6 +358,7 @@ export default function EditAssetType() {
         const t = await r.text();
         throw new Error(t || 'Failed to update field');
       }
+      invalidateAssetTypeFields(id);
       Alert.alert('Saved', `Updated "${row.name}"`);
       setEditableCustom((prev) => prev.map((x) => (x.id === row.id ? { ...x, dirty: false } : x)));
     } catch (e) {
@@ -414,6 +417,7 @@ export default function EditAssetType() {
         }
         throw new Error(msg || 'Delete failed');
       }
+      invalidateAssetTypeFields(id);
       setEditableCustom((prev) => prev.filter((x) => x.id !== row.id));
       Alert.alert('Deleted', `"${row.name}" removed`);
     } catch (e) {
@@ -502,6 +506,8 @@ export default function EditAssetType() {
     if (!name.trim()) return Alert.alert('Validation', 'Name is required');
 
     setSaving(true);
+    // Resolve auth header once — reused for every fetch in this handler
+    const authH = await getAuthHeaders();
     try {
       // (A) Update core (name/image) with change detection
       const trimmedName = name.trim();
@@ -522,7 +528,7 @@ export default function EditAssetType() {
           resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
             method: 'PUT',
             body: fd,
-            headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
+            headers: { ...authH },
           });
         } else {
           const payload = { name: trimmedName };
@@ -531,10 +537,7 @@ export default function EditAssetType() {
 
           resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
             method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}),
-            },
+            headers: { 'Content-Type': 'application/json', ...authH },
             body: JSON.stringify(payload),
           });
         }
@@ -598,7 +601,7 @@ export default function EditAssetType() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}),
+              ...authH,
             },
             body: JSON.stringify(payload),
           });
@@ -628,7 +631,7 @@ export default function EditAssetType() {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
-                ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}),
+                ...authH,
               },
               body: JSON.stringify(body),
             });
@@ -641,7 +644,7 @@ export default function EditAssetType() {
           const old = existingBySlug[p.key];
           const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${old.id}`, {
             method: 'DELETE',
-            headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
+            headers: { ...authH },
           });
           if (!r.ok) presetErrors.push(`${p.label}: ${(await r.text()) || 'Failed to delete (may have values)'}`);
         }
@@ -674,7 +677,7 @@ export default function EditAssetType() {
         }
         const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${row.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authH },
           body: JSON.stringify(payload),
         });
         if (!r.ok) editErrors.push(`${row.name}: ${(await r.text()) || 'Failed to update'}`);
@@ -707,7 +710,7 @@ export default function EditAssetType() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}),
+            ...authH,
           },
           body: JSON.stringify(payload),
         });
@@ -717,10 +720,12 @@ export default function EditAssetType() {
       if (presetErrors.length || newErrors.length || editErrors.length) {
         Alert.alert('Saved with warnings', [...presetErrors, ...editErrors, ...newErrors].slice(0, 8).join('\n'));
       } else {
+        invalidateAssetTypeFields(id);
         showToast('Asset type updated');
         setTimeout(() => router.replace('/Inventory?tab=types'), 1000);
         return;
       }
+      invalidateAssetTypeFields(id);
       router.replace('/Inventory?tab=types');
     } catch (e) {
       Alert.alert('Error', e.message || 'Update failed');
@@ -744,7 +749,7 @@ export default function EditAssetType() {
     try {
       const res = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
         method: 'DELETE',
-        headers: { ...(auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {}) },
+        headers: { ...authH },
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message || body?.error || 'Delete failed');

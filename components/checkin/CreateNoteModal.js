@@ -9,6 +9,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { sharedStyles } from './shared';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 
 export default function CreateNoteModal({
   visible,
@@ -55,6 +56,7 @@ export default function CreateNoteModal({
                 style={[sharedStyles.input, { minHeight: 80 }]}
                 placeholderTextColor={Colors.subtle}
                 multiline
+                maxLength={FIELD_LIMITS.NOTES}
                 editable={!createNoteSubmitting}
               />
               <TouchableOpacity

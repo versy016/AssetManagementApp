@@ -40,22 +40,38 @@ function validate(schema) {
   };
 }
 
+// ─── Field length limits (kept in sync with frontend maxLength props) ──────────
+const LIMITS = {
+  NAME:          120,  // asset type name, user name
+  SERIAL:        100,  // serial number, other_id
+  MODEL:         120,  // model / make
+  DESCRIPTION:   255,  // short display label
+  LOCATION:      255,  // location string
+  NOTES:        2000,  // free-text notes / action note
+  URL:          2048,  // documentation_url
+  EMAIL:         254,  // RFC 5321 max
+  PUSH_TOKEN:    512,  // Expo push token
+  FIELD_VALUE:  1000,  // custom asset field values
+};
+// Export so the frontend can import from a shared JS module if desired
+const STRING_LIMITS = LIMITS;
+
 // ─── Reusable field definitions ───────────────────────────────────────────────
 const optionalString   = z.string().trim().nullable().optional();
-const optionalEmail    = z.string().trim().email('Must be a valid email').nullable().optional();
+const optionalEmail    = z.string().trim().email('Must be a valid email').max(LIMITS.EMAIL).nullable().optional();
 const optionalISODate  = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').nullable().optional();
-const optionalUrl      = z.string().trim().url('Must be a valid URL').nullable().optional().or(z.literal(''));
+const optionalUrl      = z.string().trim().url('Must be a valid URL').max(LIMITS.URL).nullable().optional().or(z.literal(''));
 
 // ─── Asset schemas ────────────────────────────────────────────────────────────
 const createAsset = z.object({
   type_id:           z.string().min(1, 'type_id is required'),
-  serial_number:     optionalString,
-  name:              optionalString,
-  model:             optionalString,
-  description:       optionalString,
-  location:          optionalString,
-  notes:             optionalString,
-  other_id:          optionalString,
+  serial_number:     optionalString.pipe(z.string().max(LIMITS.SERIAL).nullable().optional()),
+  name:              optionalString.pipe(z.string().max(LIMITS.DESCRIPTION).nullable().optional()),
+  model:             optionalString.pipe(z.string().max(LIMITS.MODEL).nullable().optional()),
+  description:       optionalString.pipe(z.string().max(LIMITS.DESCRIPTION).nullable().optional()),
+  location:          optionalString.pipe(z.string().max(LIMITS.LOCATION).nullable().optional()),
+  notes:             optionalString.pipe(z.string().max(LIMITS.NOTES).nullable().optional()),
+  other_id:          optionalString.pipe(z.string().max(LIMITS.SERIAL).nullable().optional()),
   status:            z.enum(ALL_STATUSES, { errorMap: () => ({ message: `status must be one of: ${ALL_STATUSES.join(', ')}` }) }).optional(),
   next_service_date: optionalISODate,
   date_purchased:    optionalISODate,
@@ -63,19 +79,19 @@ const createAsset = z.object({
 }).passthrough(); // allow file fields added by multer
 
 const updateAsset = z.object({
-  serial_number:     optionalString,
-  name:              optionalString,
-  model:             optionalString,
-  description:       optionalString,
-  location:          optionalString,
-  notes:             optionalString,
-  other_id:          optionalString,
+  serial_number:     optionalString.pipe(z.string().max(LIMITS.SERIAL).nullable().optional()),
+  name:              optionalString.pipe(z.string().max(LIMITS.DESCRIPTION).nullable().optional()),
+  model:             optionalString.pipe(z.string().max(LIMITS.MODEL).nullable().optional()),
+  description:       optionalString.pipe(z.string().max(LIMITS.DESCRIPTION).nullable().optional()),
+  location:          optionalString.pipe(z.string().max(LIMITS.LOCATION).nullable().optional()),
+  notes:             optionalString.pipe(z.string().max(LIMITS.NOTES).nullable().optional()),
+  other_id:          optionalString.pipe(z.string().max(LIMITS.SERIAL).nullable().optional()),
   status:            z.enum(ALL_STATUSES, { errorMap: () => ({ message: `status must be one of: ${ALL_STATUSES.join(', ')}` }) }).optional(),
   next_service_date: optionalISODate,
   date_purchased:    optionalISODate,
   assigned_to_id:    optionalString,
   assign_to_admin:   z.boolean().optional(),
-  action_note:       optionalString,
+  action_note:       optionalString.pipe(z.string().max(LIMITS.NOTES).nullable().optional()),
   // Accept either a JSON string (multipart) or a plain object (JSON body)
   fields:            z.union([z.string(), z.record(z.unknown())]).optional(),
 }).passthrough();
@@ -90,7 +106,7 @@ const createAction = z.object({
   type: z.enum(ALL_ACTION_TYPES, {
     errorMap: () => ({ message: `type must be one of: ${ALL_ACTION_TYPES.join(', ')}` }),
   }),
-  note:         optionalString,
+  note:         optionalString.pipe(z.string().max(LIMITS.NOTES).nullable().optional()),
   data:         z.record(z.unknown()).optional(),
   performed_by: optionalString,
   from_user_id: optionalString,
@@ -102,32 +118,33 @@ const createAction = z.object({
 // ─── User schemas ─────────────────────────────────────────────────────────────
 const createUser = z.object({
   id:         z.string().min(1, 'id is required'),
-  name:       z.string().min(1, 'name is required').trim(),
+  name:       z.string().min(1, 'name is required').max(LIMITS.NAME).trim(),
   useremail:  optionalEmail,
   role:       z.enum(['USER', 'ADMIN']).optional(),
   userassets: z.array(z.string()).optional(),
 });
 
 const updateUser = z.object({
-  name:       z.string().min(1).trim().optional(),
+  name:       z.string().min(1).max(LIMITS.NAME).trim().optional(),
   useremail:  optionalEmail,
   role:       z.enum(['USER', 'ADMIN']).optional(),
   userassets: z.array(z.string()).optional(),
-  push_token: optionalString,
+  push_token: optionalString.pipe(z.string().max(LIMITS.PUSH_TOKEN).nullable().optional()),
 }).passthrough();
 
 // ─── Asset type schemas ───────────────────────────────────────────────────────
 const createAssetType = z.object({
-  name: z.string().min(1, 'name is required').trim(),
+  name: z.string().min(1, 'name is required').max(LIMITS.NAME).trim(),
 }).passthrough(); // image handled by multer
 
 const updateAssetType = z.object({
-  name: z.string().min(1).trim().optional(),
+  name: z.string().min(1).max(LIMITS.NAME).trim().optional(),
 }).passthrough();
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 module.exports = {
   validate,
+  STRING_LIMITS,
   schemas: {
     createAsset,
     updateAsset,

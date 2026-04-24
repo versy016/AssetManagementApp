@@ -9,6 +9,9 @@ import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { fetchFields } from '../../hooks/useAssetTypeFields';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
+import { getAuthHeaders, setXHRAuthHeaders } from '../../utils/authHeaders';
 import { formatDisplayDate } from '../../utils/date';
 import { auth } from '../../firebaseConfig';
 import * as DocumentPicker from 'expo-document-picker';
@@ -132,14 +135,13 @@ export default function EditAsset() {
   (async () => {
     if (!typeId) { setFieldsSchema([]); return; }
     try {
-      const res = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-      const json = await res.json();
+      const json = await fetchFields(typeId);
       if (ignore) return;
 
-      setFieldsSchema(json || []);
+      setFieldsSchema(json);
       setFieldValues(prev => {
         const seed = { ...prev };
-        (json || []).forEach(f => {
+        json.forEach(f => {
           const slug = f.slug || normSlug(f.name);
           if (seed[slug] === undefined || seed[slug] === null) {
             const t = (f.field_type?.code || f.field_type?.slug || f.field_type?.name || '').toLowerCase();
@@ -190,7 +192,7 @@ export default function EditAsset() {
     try {
       const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -222,6 +224,7 @@ export default function EditAsset() {
           }
           const xhr = new XMLHttpRequest();
           xhr.open('PUT', `${API_BASE_URL}/assets/${assetId}/files`);
+          await setXHRAuthHeaders(xhr);
           setFilesProgress(0);
           setFilesStartTs(Date.now());
           xhr.upload.onprogress = (e) => {
@@ -336,6 +339,7 @@ export default function EditAsset() {
                 value={String(fieldValues[slug] ?? '')}
                 onChangeText={(t) => updateField(slug, t)}
                 multiline={typeCode === 'textarea'}
+                maxLength={typeCode === 'textarea' ? FIELD_LIMITS.NOTES : FIELD_LIMITS.FIELD_VALUE}
               />
             ) : null}
             {typeCode === 'url' && (
@@ -363,9 +367,10 @@ export default function EditAsset() {
                         fd.append('document', { uri: sel.uri, name: sel.name || 'document.pdf', type: sel.mimeType || 'application/pdf' });
                       }
                       await new Promise((r) => setTimeout(r, 0));
-                      await new Promise((resolve, reject) => {
+                      await new Promise(async (resolve, reject) => {
                         const xhr = new XMLHttpRequest();
                         xhr.open('PUT', `${API_BASE_URL}/assets/${assetId}/files`);
+                        await setXHRAuthHeaders(xhr);
                         setFilesProgress(0); setFilesStartTs(Date.now()); setSaving(true);
                         xhr.upload.onprogress = (e) => { if (e && e.lengthComputable) setFilesProgress(Math.round((e.loaded/e.total)*100)); };
                         xhr.onload = () => { (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(xhr.responseText || 'Upload failed')); };
@@ -487,8 +492,7 @@ export default function EditAsset() {
                             onPress={async () => {
                               try {
                                 if (best?.id) {
-                                  const uid = auth?.currentUser?.uid;
-                                  const headers = uid ? { 'X-User-Id': uid } : {};
+                                  const headers = { ...(await getAuthHeaders()) };
                                   if (auth?.currentUser?.displayName) headers['X-User-Name'] = auth.currentUser.displayName;
                                   if (auth?.currentUser?.email) headers['X-User-Email'] = auth.currentUser.email;
                                   await fetch(`${API_BASE_URL}/assets/${assetId}/documents/${best.id}`, { method: 'DELETE', headers });
@@ -626,6 +630,7 @@ export default function EditAsset() {
               placeholder={`Enter ${f.label || f.name}`}
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
+              maxLength={FIELD_LIMITS.FIELD_VALUE}
             />
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </View>
@@ -696,17 +701,17 @@ export default function EditAsset() {
         {/* Static */}
         <View onLayout={onLayoutFor('location')}>
           <Text style={styles.label}>Location</Text>
-          <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="Location" />
+          <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="Location" maxLength={FIELD_LIMITS.LOCATION} />
         </View>
 
         <View onLayout={onLayoutFor('model')}>
           <Text style={styles.label}>Model</Text>
-          <TextInput style={styles.input} value={model} onChangeText={setModel} placeholder="Model" />
+          <TextInput style={styles.input} value={model} onChangeText={setModel} placeholder="Model" maxLength={FIELD_LIMITS.MODEL} />
         </View>
 
         <View onLayout={onLayoutFor('description')}>
           <Text style={styles.label}>Description</Text>
-          <TextInput style={[styles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Description" multiline />
+          <TextInput style={[styles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Description" multiline maxLength={FIELD_LIMITS.DESCRIPTION} />
         </View>
 
         <View onLayout={onLayoutFor('next_service_date')}>
@@ -725,7 +730,7 @@ export default function EditAsset() {
 
         <View onLayout={onLayoutFor('notes')}>
           <Text style={styles.label}>Notes</Text>
-          <TextInput style={[styles.input, { height: 80 }]} value={notes} onChangeText={setNotes} placeholder="Notes" multiline />
+          <TextInput style={[styles.input, { height: 80 }]} value={notes} onChangeText={setNotes} placeholder="Notes" multiline maxLength={FIELD_LIMITS.NOTES} />
         </View>
 
         <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>

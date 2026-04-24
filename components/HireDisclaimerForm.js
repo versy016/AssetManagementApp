@@ -134,8 +134,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         if (!res.ok) return;
         const j = await res.json();
         if (!cancelled && j.enabled) setDocusignEnabled(true);
-      } catch {
-        /* ignore */
+      } catch (e) {
+        logger.warn('HireDisclaimerForm: DocuSign status check failed', e?.message || e);
       }
     })();
     return () => {
@@ -387,7 +387,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         }
         const json = await res.json();
         setAddressSuggestions(Array.isArray(json.predictions) ? json.predictions : []);
-      } catch {
+      } catch (e) {
+        logger.warn('HireDisclaimerForm: address autocomplete failed', e?.message || e);
         setAddressSuggestions([]);
       } finally {
         setAddressLoading(false);
@@ -415,8 +416,9 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           status: a.status || '',
         }));
         setAssetsLoaded(true);
-      } catch {
-        // ignore – asset search just won't be available
+      } catch (e) {
+        logger.warn('HireDisclaimerForm: assets list fetch failed', e?.message || e);
+        // asset search will not be available
       }
     })();
     return () => { ignore = true; };
@@ -472,8 +474,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       setAddressQuery(addr);
       suppressNextSuggestions.current = true;
       setAddressSuggestions([]);
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.warn('HireDisclaimerForm: place details fetch failed', e?.message || e);
     }
   }, []);
 

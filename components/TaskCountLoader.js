@@ -49,7 +49,8 @@ async function loadCount(setTaskCount, mounted) {
     const canAdmin = String(data?.role || '').toUpperCase() === 'ADMIN';
     const count = await fetchTaskCount(user.uid, canAdmin);
     if (mounted.current) setTaskCount(count);
-  } catch {
+  } catch (e) {
+    logger.error('TaskCountLoader: task count fetch failed', e?.message || e);
     if (mounted.current) setTaskCount(0);
   }
 }

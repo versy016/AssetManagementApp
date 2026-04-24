@@ -15,9 +15,9 @@ export const SHORTCUT_TYPES = {
     },
     QUICK_TRANSFER_IN: {
         id: 'quick_transfer_in',
-        label: 'Transfer In',
+        label: 'Transfer to office',
         icon: 'login',
-        description: 'Scan asset to transfer into admin inventory',
+        description: 'Scan asset to transfer to office inventory',
         requiresAdmin: false,
         color: '#0D9488',   // teal
         bgColor: '#F0FDFA',
@@ -25,9 +25,9 @@ export const SHORTCUT_TYPES = {
     },
     QUICK_TRANSFER_OUT: {
         id: 'quick_transfer_out',
-        label: 'Transfer Out',
+        label: 'Transfer to me',
         icon: 'logout',
-        description: 'Scan asset to transfer out to yourself',
+        description: 'Scan asset to assign to yourself',
         requiresAdmin: false,
         color: '#EA580C',   // orange
         bgColor: '#FFF7ED',

@@ -1,6 +1,7 @@
 // components/CertsView.js (restored with fixes)
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import logger from '../utils/logger';
+import { fetchFields } from '../hooks/useAssetTypeFields';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Alert, Modal, Linking, useWindowDimensions, InteractionManager } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 // import { DatePickerModal } from 'react-native-paper-dates';
@@ -325,11 +326,7 @@ export default function CertsView({ visible: initialVisible }) {
         let fields = [];
 
         if (typeId) {
-          const fieldsRes = await fetch(`${API_BASE_URL}/assets/asset-types/${encodeURIComponent(typeId)}/fields`);
-          if (fieldsRes.ok) {
-            const raw = await fieldsRes.json();
-            fields = Array.isArray(raw) ? raw : [];
-          }
+          fields = await fetchFields(typeId).catch(() => []);
           if (cancelled) return;
 
           if (fields.length === 0) {
@@ -382,16 +379,17 @@ export default function CertsView({ visible: initialVisible }) {
       const map = {};
       for (const typeId of typeIds) {
         try {
-          const r = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-          if (!r.ok || cancelled) continue;
-          const arr = Array.isArray(await r.json()) ? await r.json() : [];
+          if (cancelled) break;
+          const arr = await fetchFields(typeId);
           for (const f of arr) {
             const slug = String(f?.field_type?.slug || '').toLowerCase();
             const name = String(f?.field_type?.name || '').toLowerCase();
             const isDoc = slug === 'url' || name === 'url' || slug === 'document' || name === 'document' || name === 'documentation' || slug === 'documentation';
             if (isDoc && f.id) map[f.id] = f.name || f.slug || 'Document';
           }
-        } catch { }
+        } catch (e) {
+          logger.warn('CertsView: field label fetch failed', { typeId, message: e?.message || e });
+        }
       }
       if (!cancelled) setFieldIdToLabel(map);
     })();
@@ -715,20 +713,20 @@ export default function CertsView({ visible: initialVisible }) {
     const typeId = assetMap[editRow.assetId]?.type_id || assetMap[editRow.assetId]?.asset_types?.id;
     if (!typeId) { setEditTypeFields([]); return; }
     let cancelled = false;
-    fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`)
-      .then((r) => r.json())
+    fetchFields(typeId)
       .then((arr) => {
         if (cancelled) return;
-        const fields = Array.isArray(arr) ? arr : [];
         const isDoc = (f) => {
           const s = String(f?.field_type?.slug || '').toLowerCase();
           const n = String(f?.field_type?.name || '').toLowerCase();
           return s === 'url' || n === 'url' || s === 'document' || n === 'document' || n === 'documentation' || s === 'documentation';
         };
-        const urlFields = fields.filter(isDoc);
-        setEditTypeFields(urlFields);
+        setEditTypeFields(arr.filter(isDoc));
       })
-      .catch(() => { if (!cancelled) setEditTypeFields([]); });
+      .catch((e) => {
+        logger.warn('CertsView: edit type fields fetch failed', e?.message || e);
+        if (!cancelled) setEditTypeFields([]);
+      });
     return () => { cancelled = true; };
   }, [editOpen, editRow, assetMap]);
 
@@ -842,12 +840,13 @@ export default function CertsView({ visible: initialVisible }) {
                         try {
                           const typeId = assetMap[assetId]?.type_id || assetMap[assetId]?.asset_types?.id;
                           if (typeId) {
-                            const r = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-                            const defs = await r.json();
-                            const def = (Array.isArray(defs) ? defs : []).find(d => String(d.id) === String(fieldId));
+                            const defs = await fetchFields(typeId);
+                            const def = defs.find(d => String(d.id) === String(fieldId));
                             setDocOptional(def ? !def.is_required : null);
                           }
-                        } catch { }
+                        } catch (e) {
+                          logger.warn('CertsView: docOptional field lookup failed', e?.message || e);
+                        }
                       }
 
                       if (!editFile && prevHadFile && (docOptional === true)) {

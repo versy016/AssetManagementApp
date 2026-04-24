@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge from '../../components/ui/StatusBadge';
+import ScreenState from '../../components/ui/ScreenState';
 import { Row, DetailsGrid } from '../../components/asset/AssetRows';
 import AssetQRModal from '../../components/asset/AssetQRModal';
 import AssetActionBar from '../../components/asset/AssetActionBar';
@@ -136,50 +137,33 @@ export default function AssetDetailPage() {
     formatFieldLabel,
   } = detail;
 
-  // Loading state
+  // Loading / error / empty guard
   if (loading) {
-    return (
-      <SafeAreaView style={styles.centerWrap}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={{ marginTop: 12, color: Colors.sub }}>Loading asset…</Text>
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={styles.centerWrap}><ScreenState loading label="Loading asset…" /></SafeAreaView>;
   }
-
-  // Imported ID error
   if (err && isImportedId) {
     return (
       <SafeAreaView style={styles.centerWrap}>
         <Ionicons name="qr-code-outline" size={36} color={Colors.accent} />
         <Text style={{ marginTop: 12, color: Colors.text, fontWeight: '700' }}>Awaiting QR Assignment</Text>
         <Text style={{ marginTop: 8, color: Colors.sub, paddingHorizontal: 24, textAlign: 'center' }}>{err}</Text>
-        <TouchableOpacity
-          style={{ marginTop: 18 }}
-          onPress={handleBack}
-        >
+        <TouchableOpacity style={{ marginTop: 18 }} onPress={handleBack}>
           <Text style={{ color: Colors.accent, fontWeight: '700' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
-
-  // General error
   if (err) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <Text style={{ color: Colors.dangerFg, marginBottom: 12 }}>{err}</Text>
-        <TouchableOpacity onPress={load} style={[styles.actionBtn, styles.actionBtnPrimary, { paddingHorizontal: 22 }]}>
-          <Text style={styles.actionText}>Retry</Text>
-        </TouchableOpacity>
+        <ScreenState error={err} onRetry={load} />
       </SafeAreaView>
     );
   }
-
-  // No asset found
   if (!asset) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <Text>No asset found.</Text>
+        <ScreenState empty icon="inventory" title="Asset not found" subtitle="This asset may have been deleted." />
       </SafeAreaView>
     );
   }
@@ -409,7 +393,7 @@ export default function AssetDetailPage() {
                 ) : (
                   <View style={{ gap: 10 }}>
                     {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
-                      const meta = typeMeta(n.type);
+                      const meta = typeMeta(n.type, { transferToMe: n.transferToMe });
                       const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
                       return (
                         <View key={n.id} style={styles.noteCard}>

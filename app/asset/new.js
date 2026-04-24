@@ -15,8 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { LogBox } from 'react-native';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { fetchFields } from '../../hooks/useAssetTypeFields';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 import { formatDisplayDate } from '../../utils/date';
 import logger from '../../utils/logger';
+import { getAuthHeaders, setXHRAuthHeaders } from '../../utils/authHeaders';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import FormButton from '../../components/ui/FormButton';
 import { useTasksCount } from '../../contexts/TasksCountContext';
@@ -330,13 +333,12 @@ export default function NewAsset() {
     async function load() {
       if (!typeId) { setFieldsSchema([]); setFieldValues({}); return; }
       try {
-        const res = await fetch(`${API_BASE_URL}/assets/asset-types/${typeId}/fields`);
-        const json = await res.json();
+        const json = await fetchFields(typeId);
         if (ignore) return;
 
-        setFieldsSchema(json || []);
+        setFieldsSchema(json);
         const seed = { ...fieldValues };
-        (json || []).forEach(f => {
+        json.forEach(f => {
           const slug = f.slug || normSlug(f.name);
           if (seed[slug] === undefined || seed[slug] === null) {
             const t = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
@@ -709,11 +711,10 @@ export default function NewAsset() {
     try {
       // Use XHR on all platforms to surface progress
       let createdAsset = null;
-      await new Promise((resolve, reject) => {
+      await new Promise(async (resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `${API_BASE_URL}/assets`);
-        const uid = auth.currentUser?.uid;
-        if (uid) xhr.setRequestHeader('X-User-Id', uid);
+        await setXHRAuthHeaders(xhr);
         xhr.upload.onprogress = (e) => {
           if (e && e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
@@ -793,7 +794,11 @@ export default function NewAsset() {
               fd.append('kind', niceName);
               if (meta.dateLabel) fd.append('related_date_label', String(meta.dateLabel));
               if (meta.dateValue) fd.append('related_date', String(meta.dateValue));
-              const resp = await fetch(`${API_BASE_URL}/assets/${createdAsset.id}/documents/upload`, { method: 'POST', body: fd });
+              const resp = await fetch(`${API_BASE_URL}/assets/${createdAsset.id}/documents/upload`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: fd,
+              });
               if (!resp.ok) {
                 // swallow to avoid blocking creation; user can reattach later
                 continue;
@@ -988,6 +993,7 @@ export default function NewAsset() {
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
               multiline={typeCode === 'textarea'}
+              maxLength={typeCode === 'textarea' ? FIELD_LIMITS.NOTES : FIELD_LIMITS.FIELD_VALUE}
             />
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </View>
@@ -1148,6 +1154,7 @@ export default function NewAsset() {
               placeholder={`Enter ${f.label || f.name}`}
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
+              maxLength={FIELD_LIMITS.FIELD_VALUE}
             />
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </View>
@@ -1375,7 +1382,8 @@ export default function NewAsset() {
                 setSerialNumber(t);
                 setErrors(prev => ({ ...prev, serial_number: undefined }));
               }}
-              autoCapitalize="characters" // or "none" if you prefer
+              autoCapitalize="characters"
+              maxLength={FIELD_LIMITS.SERIAL}
             />
             {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
           </View>
@@ -1392,6 +1400,7 @@ export default function NewAsset() {
                 setErrors(prev => ({ ...prev, other_id: undefined }));
               }}
               autoCapitalize="none"
+              maxLength={FIELD_LIMITS.SERIAL}
             />
             {!!errors.other_id && <Text style={styles.errorBelow}>{errors.other_id}</Text>}
           </View>
@@ -1404,6 +1413,7 @@ export default function NewAsset() {
               placeholder="Model"
               value={model}
               onChangeText={(t) => { setModel(t); setErrors(prev => ({ ...prev, model: undefined })); }}
+              maxLength={FIELD_LIMITS.MODEL}
             />
             {!!errors.model && <Text style={styles.errorBelow}>{errors.model}</Text>}
           </View>
@@ -1417,6 +1427,7 @@ export default function NewAsset() {
               value={description}
               onChangeText={(t) => { setDescription(t); setErrors(prev => ({ ...prev, description: undefined })); }}
               multiline
+              maxLength={FIELD_LIMITS.DESCRIPTION}
             />
             {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
           </View>

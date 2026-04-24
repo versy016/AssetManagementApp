@@ -62,7 +62,8 @@ export function TourProvider({ children }) {
         } else {
           setIsAdmin(false);
         }
-      } catch {
+      } catch (e) {
+        logger.warn('TourGuide: admin role fetch failed', e?.message || e);
         setIsAdmin(false);
       }
     });
@@ -413,7 +414,7 @@ export function TourProvider({ children }) {
           id: 'web-activity-overview',
           route: '/activity',
           title: 'Activity Feed',
-          description: 'This is the Activity feed showing all asset actions, notes, and changes in chronological order. You can see transfers, check-ins, status changes, and more.',
+          description: 'This is the Activity feed showing all asset actions, notes, and changes in chronological order. You can see transfers, transfer to office, transfer out of office, status changes, and more.',
           targetId: 'web-activity-feed',
           interaction: false,
         },
@@ -421,7 +422,7 @@ export function TourProvider({ children }) {
           id: 'web-activity-filters',
           route: '/activity',
           title: 'Filters & Sort',
-          description: 'Use the Filters button to filter activities by type (Transfer, Check-in, etc.), asset type, status, or date range. Use Sort to change the order of activities.',
+          description: 'Use the Filters button to filter activities by type (Transfer, transfer to office, etc.), asset type, status, or date range. Use Sort to change the order of activities.',
           targetId: 'web-activity-filters',
           interaction: true,
           action: () => router.push('/certs'),

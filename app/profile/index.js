@@ -13,6 +13,7 @@ import PageHeader from '../../components/ui/PageHeader';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { TourContext, resetTour } from '../../components/TourGuide';
 import logger from '../../utils/logger';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -149,6 +150,7 @@ export default function ProfileScreen() {
           onChangeText={setName}
           placeholder="Your full name"
           style={styles.input}
+          maxLength={FIELD_LIMITS.NAME}
         />
       </View>
 

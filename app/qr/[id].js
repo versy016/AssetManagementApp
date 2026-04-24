@@ -7,6 +7,7 @@ import { View, Text, Button, StyleSheet, ActivityIndicator, Alert } from 'react-
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import StatusBadge from '../../components/ui/StatusBadge';
 // Avoid static import to prevent SSR/import loops on web; require dynamically when needed.
 
 // Main component for handling QR actions
@@ -170,16 +171,16 @@ export default function QRActionScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{asset.model}</Text>
-      <Text style={styles.subtitle}>Status: {asset.status}</Text>
+      <StatusBadge status={asset.status} style={{ marginBottom: 8 }} />
       <Text style={styles.subtitle}>Location: {asset.location}</Text>
       <Text style={styles.subtitle}>ID: {asset.id}</Text>
 
       {isAssignedToUser && (
-        <Button title="Transfer In" onPress={handleCheckIn} disabled={updating} />
+        <Button title="Transfer to office" onPress={handleCheckIn} disabled={updating} />
       )}
 
       {isUnassigned && (
-        <Button title="Transfer Out" onPress={handleCheckOut} disabled={updating} />
+        <Button title="Transfer to me" onPress={handleCheckOut} disabled={updating} />
       )}
 
       {!isAssignedToUser && !isUnassigned && (

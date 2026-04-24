@@ -5,7 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { auth } from '../../firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
+import { formatActivityListTitle } from '../../utils/activityLabels';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import ScreenState from '../../components/ui/ScreenState';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 
@@ -16,7 +20,7 @@ export default function ActivityScreen() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [filters, setFilters] = useState({
-    types: [], // e.g. ['TRANSFER','CHECK_IN'] (no CHECK_OUT/STATUS_CHANGE here)
+    types: [], // e.g. ['TRANSFER','CHECK_IN','CHECK_OUT']
     assetTypes: [], // e.g. ['Laptop','Camera']
     status: null, // 'in_service'|'repair'|'maintenance'|'end_of_life'
     user: null, // null = any; string = filter by actor/from/to
@@ -26,7 +30,13 @@ export default function ActivityScreen() {
   });
   const [assetTypeOptions, setAssetTypeOptions] = useState([]); // [{id,name}]
   const [sort, setSort] = useState({ field: 'when', dir: 'desc' });
+  const [firebaseUser, setFirebaseUser] = useState(() => auth.currentUser);
   const router = useRouter();
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -328,7 +338,13 @@ export default function ActivityScreen() {
     if (t === 'SERVICE_COMPLETE') return 'SERVICE COMPLETE';
     if (t === 'ASSET_EDIT') return 'EDIT';
     if (t === 'NEW_ASSET') return 'NEW ASSET';
-    if (t === 'CHECK_IN') return 'TRANSFER TO OFFICE';
+    if (item.kind === 'ASSET_ACTION' && (t === 'CHECK_IN' || t === 'CHECK_OUT' || t === 'TRANSFER')) {
+      return formatActivityListTitle(t, {
+        firebaseUser,
+        toUser: item.to_user,
+        toLabel: item.to,
+      });
+    }
     return t.replace(/_/g, ' ');
   })();
 
@@ -443,13 +459,14 @@ export default function ActivityScreen() {
       </View>
       </TourTarget>
       {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
+        <ScreenState loading label="Loading activity…" />
       ) : (
         <TourTarget id="web-activity-feed">
         <FlatList
           data={items}
           keyExtractor={(it) => String(it.id) + String(it.when)}
           renderItem={renderItem}
+          ListEmptyComponent={<ScreenState empty icon="history" title="No activity yet" subtitle="Actions on assets will appear here." />}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
         />
@@ -548,7 +565,8 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
     { label: 'Document deleted', value: 'DOCUMENT_DELETED' },
     { label: 'Edit', value: 'ASSET_EDIT' },
     { label: 'Transfer', value: 'TRANSFER' },
-    { label: 'Transfer In', value: 'CHECK_IN' }, // mapped from CHECK_IN events
+    { label: 'Transfer to office', value: 'CHECK_IN' },
+    { label: 'Transfer out of office', value: 'CHECK_OUT' },
     { label: 'Repair', value: 'REPAIR' },
     { label: 'Service / Maintenance', value: 'MAINTENANCE' },
     { label: 'Hire', value: 'HIRE' },

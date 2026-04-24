@@ -28,6 +28,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as LinkingExpo from 'expo-linking';
 
 import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 import logger from '../../utils/logger';
 import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
 
@@ -1203,6 +1204,7 @@ export default function CheckInScreen() {
                 style={[styles.input, { minHeight: 80 }]}
                 placeholderTextColor={Colors.subtle}
                 multiline
+                maxLength={FIELD_LIMITS.NOTES}
                 editable={!createNoteSubmitting}
               />
               <TouchableOpacity

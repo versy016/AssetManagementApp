@@ -24,7 +24,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
             }
           >
             <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-            <Text style={styles.actionText}>Transfer Out</Text>
+            <Text style={styles.actionText}>Transfer to me</Text>
           </TouchableOpacity>
         ) : status === 'rented' ? (
           <TouchableOpacity
@@ -32,7 +32,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
             onPress={() => router.push(`/check-in/${asset.id}`)}
           >
             <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-            <Text style={styles.actionText}>Transfer In</Text>
+            <Text style={styles.actionText}>Transfer to office</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -49,7 +49,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
           }
         >
           <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-          <Text style={styles.actionText}>Transfer Out</Text>
+          <Text style={styles.actionText}>Transfer to me</Text>
         </TouchableOpacity>
       ) : status === 'rented' ? (
         <TouchableOpacity
@@ -57,7 +57,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
           onPress={() => router.push(`/check-in/${asset.id}`)}
         >
           <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-          <Text style={styles.actionText}>Transfer In</Text>
+          <Text style={styles.actionText}>Transfer to office</Text>
         </TouchableOpacity>
       ) : isAdmin ? (
         <TouchableOpacity

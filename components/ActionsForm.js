@@ -23,6 +23,8 @@ import { fetchTaskCount } from '../utils/fetchTaskCount';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import logger from '../utils/logger';
+import { fetchFields } from '../hooks/useAssetTypeFields';
+import { FIELD_LIMITS } from '../constants/fieldLimits';
 
 const ACTIONS = [
   'Repair',
@@ -108,7 +110,8 @@ export default function ActionsForm({
       try {
         const hits = await algoliaSearch(ALGOLIA_INDEX_PROJECTS, q);
         setProjectHits(hits);
-      } catch {
+      } catch (e) {
+        logger.warn('ActionsForm: Algolia project search failed', e?.message || e);
         setProjectHits([]);
       } finally {
         setSearching(false);
@@ -126,7 +129,8 @@ export default function ActionsForm({
       try {
         const hits = await algoliaSearch(ALGOLIA_INDEX_CLIENTS, q);
         setClientHits(hits);
-      } catch {
+      } catch (e) {
+        logger.warn('ActionsForm: Algolia client search failed', e?.message || e);
         setClientHits([]);
       } finally {
         setSearching(false);
@@ -181,12 +185,10 @@ export default function ActionsForm({
     if (!visible) return;
     try {
       const typeId = asset?.asset_types?.id || asset?.type_id;
-      if (!apiBaseUrl || !typeId) { setHasDynamicNextService(false); setNextServiceRequired(false); return; }
+      if (!typeId) { setHasDynamicNextService(false); setNextServiceRequired(false); return; }
       (async () => {
         try {
-          const res = await fetch(`${apiBaseUrl}/assets/asset-types/${typeId}/fields`);
-          const j = await res.json();
-          const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : (Array.isArray(j?.items) ? j.items : []));
+          const arr = await fetchFields(typeId);
           const match = (arr || []).find(d => {
             const slug = String(d?.slug || '').toLowerCase();
             const name = String(d?.name || '').toLowerCase();
@@ -199,15 +201,17 @@ export default function ActionsForm({
             setHasDynamicNextService(has);
             setNextServiceRequired(req);
           }
-        } catch {
+        } catch (e) {
+          logger.warn('ActionsForm: next service field fetch failed', e?.message || e);
           if (!cancel) { setHasDynamicNextService(false); setNextServiceRequired(false); }
         }
       })();
-    } catch {
+    } catch (e) {
+      logger.warn('ActionsForm: next service field setup failed', e?.message || e);
       setHasDynamicNextService(false); setNextServiceRequired(false);
     }
     return () => { cancel = true; };
-  }, [visible, apiBaseUrl, asset?.asset_types?.id, asset?.type_id]);
+  }, [visible, asset?.asset_types?.id, asset?.type_id]);
 
   const actionLabel =
     action === 'Repair'
@@ -527,6 +531,7 @@ export default function ActionsForm({
                     placeholderTextColor={Colors.muted}
                     value={summary}
                     onChangeText={setSummary}
+                    maxLength={FIELD_LIMITS.DESCRIPTION}
                   />
                 </LabeledInput>
 
@@ -894,6 +899,7 @@ export default function ActionsForm({
                   placeholderTextColor={Colors.muted}
                   value={where}
                   onChangeText={setWhere}
+                  maxLength={FIELD_LIMITS.LOCATION}
                 />
               </LabeledInput>
             )}
@@ -907,6 +913,7 @@ export default function ActionsForm({
                     placeholderTextColor={Colors.muted}
                     value={where}
                     onChangeText={setWhere}
+                    maxLength={FIELD_LIMITS.LOCATION}
                   />
                 </LabeledInput>
                 <LabeledInput label="Police Report # (optional)">
@@ -916,6 +923,7 @@ export default function ActionsForm({
                     placeholderTextColor={Colors.muted}
                     value={policeReport}
                     onChangeText={setPoliceReport}
+                    maxLength={FIELD_LIMITS.SERIAL}
                   />
                 </LabeledInput>
               </>
@@ -930,6 +938,7 @@ export default function ActionsForm({
                 value={notes}
                 onChangeText={setNotes}
                 multiline
+                maxLength={FIELD_LIMITS.NOTES}
                 onFocus={() => {
                   setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
                 }}

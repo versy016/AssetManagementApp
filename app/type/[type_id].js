@@ -21,6 +21,7 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import logger from '../../utils/logger';
+import { getAuthHeaders } from '../../utils/authHeaders';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge, {
   STATUS_CONFIG,
@@ -105,7 +106,7 @@ export default function AssetsType() {
     if (!ok) return;
 
     try {
-      const headers = auth.currentUser?.uid ? { 'X-User-Id': auth.currentUser.uid } : {};
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/asset-types/${type_id}`, { method: 'DELETE', headers });
       const responseText = await res.text();
       let body = {};

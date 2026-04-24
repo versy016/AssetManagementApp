@@ -28,6 +28,7 @@ import { useTheme } from 'react-native-paper';
 import AppTextInput from '../ui/AppTextInput';
 import { prettyDate } from '../../hooks/useTasks';
 import { showError } from '../../utils/showError';
+import { FIELD_LIMITS } from '../../constants/fieldLimits';
 
 /**
  * All props come straight from useTasks() return value.
@@ -267,6 +268,7 @@ export default function TaskActionModal({
                           placeholderTextColor="#9CA3AF"
                           value={relevantDocName}
                           onChangeText={setRelevantDocName}
+                          maxLength={FIELD_LIMITS.DESCRIPTION}
                           style={{
                             height: 36,
                             fontSize: sf(14),

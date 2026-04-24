@@ -54,6 +54,12 @@ router.get('/', async (req, res) => {
         actor: a.performer ? (a.performer.name || a.performer.useremail || a.performer.id) : null,
         from: a.from_user ? (a.from_user.name || a.from_user.useremail || a.from_user.id) : null,
         to:   a.to_user ? (a.to_user.name || a.to_user.useremail || a.to_user.id) : null,
+        from_user: a.from_user
+          ? { id: a.from_user.id, name: a.from_user.name, useremail: a.from_user.useremail }
+          : null,
+        to_user: a.to_user
+          ? { id: a.to_user.id, name: a.to_user.name, useremail: a.to_user.useremail }
+          : null,
         asset: a.asset ? {
           id: a.asset.id,
           name: a.asset.model || a.asset.asset_types?.name || a.asset.id,

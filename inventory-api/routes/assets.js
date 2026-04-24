@@ -144,6 +144,13 @@ const ACTION_TYPES = new Set([
   'REPAIR', 'MAINTENANCE', 'HIRE', 'END_OF_LIFE', 'LOST', 'STOLEN', 'CHECK_IN', 'CHECK_OUT', 'TRANSFER', 'STATUS_CHANGE'
 ]);
 
+/**
+ * Strip HTML tags from a string to prevent stored XSS.
+ * Applied to all free-text custom field values before persistence.
+ * Boolean / number / date / multiselect types are not text and are handled by their own branches.
+ */
+const stripHtml = (str) => String(str).replace(/<[^>]*>/g, '').trim();
+
 // Encode/Decode dynamic values to/from DB text
 const encodeValue = (codeOrSlug, val) => {
   const t = (codeOrSlug || '').toLowerCase();
@@ -154,7 +161,7 @@ const encodeValue = (codeOrSlug, val) => {
     case 'currency': return String(val);
     case 'date': return String(val); // expect "YYYY-MM-DD"
     case 'multiselect': return JSON.stringify(Array.isArray(val) ? val : []);
-    default: return String(val);
+    default: return stripHtml(val); // sanitise free-text to prevent stored XSS
   }
 };
 
@@ -242,7 +249,7 @@ async function recordAction(reqId, assetId, type, { note, data, from_user_id, to
       data: {
         asset_id: assetId,
         type,
-        note: note || null,
+        note: note ? stripHtml(note) : null,
         data: data || undefined,
         from_user_id: from_user_id || null,
         to_user_id: to_user_id || null,
@@ -675,8 +682,107 @@ router.get('/tasks/count', authRequired, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// GET /assets/stats
+// Returns a lightweight summary used by the dashboard:
+//   - total: total asset count
+//   - counts_by_status: { [status]: number }
+//   - recent_activity: last 10 actions across all assets with
+//     embedded asset name/id/status — replaces the 26-request
+//     waterfall (GET /assets + 25× GET /assets/:id/actions).
+// ---------------------------------------------------------------
+router.get('/stats', async (req, res) => {
+  const reqId = rid();
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
+
+    const [statusGroups, recentActions, total] = await Promise.all([
+      // Count assets grouped by status
+      prisma.assets.groupBy({
+        by: ['status'],
+        _count: { status: true },
+      }),
+
+      // Last N actions with just enough asset info to render a feed item
+      prisma.asset_actions.findMany({
+        orderBy: { occurred_at: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          type: true,
+          note: true,
+          occurred_at: true,
+          performed_by: true,
+          asset: {
+            select: {
+              id: true,
+              description: true,
+              model: true,
+              serial_number: true,
+              other_id: true,
+              status: true,
+              image_url: true,
+              asset_types: { select: { id: true, name: true } },
+            },
+          },
+          performer: { select: { id: true, name: true, useremail: true } },
+          from_user: { select: { id: true, name: true, useremail: true } },
+          to_user: { select: { id: true, name: true, useremail: true } },
+        },
+      }),
+
+      // Total asset count
+      prisma.assets.count(),
+    ]);
+
+    const counts_by_status = Object.fromEntries(
+      statusGroups.map((g) => [g.status, g._count.status])
+    );
+
+    const recent_activity = recentActions.map((a) => ({
+      id: a.id,
+      type: a.type,
+      note: a.note,
+      occurred_at: a.occurred_at,
+      performed_by: a.performer
+        ? { id: a.performer.id, name: a.performer.name, email: a.performer.useremail }
+        : a.performed_by
+          ? { id: a.performed_by }
+          : null,
+      from: a.from_user
+        ? (a.from_user.name || a.from_user.useremail || a.from_user.id)
+        : null,
+      to: a.to_user ? (a.to_user.name || a.to_user.useremail || a.to_user.id) : null,
+      from_user: a.from_user
+        ? { id: a.from_user.id, name: a.from_user.name, useremail: a.from_user.useremail }
+        : null,
+      to_user: a.to_user
+        ? { id: a.to_user.id, name: a.to_user.name, useremail: a.to_user.useremail }
+        : null,
+      asset: a.asset
+        ? {
+            id: a.asset.id,
+            description: a.asset.description || null,
+            model: a.asset.model || null,
+            serial_number: a.asset.serial_number || null,
+            other_id: a.asset.other_id || null,
+            status: a.asset.status,
+            image_url: a.asset.image_url || null,
+            type: a.asset.asset_types ? { id: a.asset.asset_types.id, name: a.asset.asset_types.name } : null,
+          }
+        : null,
+    }));
+
+    log(reqId, 'INFO', 'assets-stats-ok', { total, actions: recent_activity.length });
+    res.json({ total, counts_by_status, recent_activity });
+  } catch (error) {
+    log(reqId, 'ERROR', 'assets-stats-failed', { message: error.message });
+    errJson(res, 500, 'Failed to fetch asset stats', { message: error.message });
+  }
+});
+
 // -------------------------------------------------
-// GET /assets/asset-options â€" dropdown + placeholders
+// GET /assets/asset-options — dropdown + placeholders
 // -------------------------------------------------
 router.get('/asset-options', async (req, res) => {
   const reqId = rid();
@@ -942,16 +1048,16 @@ router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset),
       where: { id: targetId },
       data: {
         type_id: data.type_id,
-        serial_number: data.serial_number || null,
-        model: data.model || null,
-        description: data.description || null,
-        other_id: data.other_id || null,
-        location: data.location || null,
+        serial_number: data.serial_number ? stripHtml(data.serial_number) : null,
+        model: data.model ? stripHtml(data.model) : null,
+        description: data.description ? stripHtml(data.description) : null,
+        other_id: data.other_id ? stripHtml(data.other_id) : null,
+        location: data.location ? stripHtml(data.location) : null,
         status: data.status || ASSET_STATUS.AVAILABLE,
         // If the type defines a dynamic next_service_date, do not write the top-level column
         next_service_date: hasCustomNextService ? null : (data.next_service_date ? new Date(data.next_service_date) : null),
         date_purchased: data.date_purchased ? new Date(data.date_purchased) : null,
-        notes: data.notes || null,
+        notes: data.notes ? stripHtml(data.notes) : null,
 
         assigned_to_id: data.assigned_to_id || null,
         documentation_url: docUpload?.Location || null,
