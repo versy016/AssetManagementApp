@@ -30,19 +30,22 @@ function errJson(res, status, message, extra = {}) {
 }
 
 // ---------------------------------
-// AWS S3 (guard: required env vars)
+// AWS S3 — credentials are optional when running on EC2 with an IAM role.
+// The SDK resolves credentials via the instance metadata service automatically.
+// Only S3_BUCKET and AWS_REGION are required.
 // ---------------------------------
-['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'S3_BUCKET'].forEach((k) => {
+['AWS_REGION', 'S3_BUCKET'].forEach((k) => {
   if (!process.env[k]) {
-    console.warn(`[WARN] ${k} missing in env (S3 operations may fail).`);
+    console.warn(`[WARN] ${k} missing in env (S3 operations will fail).`);
   }
 });
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
+const _s3Config = { region: process.env.AWS_REGION };
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  _s3Config.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  _s3Config.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+}
+const s3 = new AWS.S3(_s3Config);
 
 const safeS3Key = (folder, original) => {
   const base = path.basename(original || 'file');

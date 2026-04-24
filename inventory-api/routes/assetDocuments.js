@@ -19,12 +19,14 @@ const uploadSingle = multer({
   },
 }).single('file');
 
-// AWS S3 client
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
+// AWS S3 client — credentials are optional; when not set the SDK falls back
+// to the EC2 instance IAM role via the instance metadata service (IMDS).
+const s3Config = { region: process.env.AWS_REGION };
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  s3Config.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  s3Config.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+}
+const s3 = new AWS.S3(s3Config);
 
 function safeKey(original) {
   const base = path.basename(original || 'file');
@@ -163,16 +165,13 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
       if (!req.file) return res.status(400).json({ error: 'No file provided (field name: file)' });
       const assetId = String(req.params.assetId);
 
-      // Fail fast with a clear message if S3 is not configured
-      const hasS3 = !!(
-        process.env.S3_BUCKET &&
-        process.env.AWS_ACCESS_KEY_ID &&
-        process.env.AWS_SECRET_ACCESS_KEY &&
-        process.env.AWS_REGION
-      );
+      // Fail fast with a clear message if S3 is not configured.
+      // AWS credentials are intentionally not required here — the EC2 instance
+      // IAM role provides them automatically via the instance metadata service.
+      const hasS3 = !!(process.env.S3_BUCKET && process.env.AWS_REGION);
       if (!hasS3) {
         return res.status(503).json({
-          error: 'File storage (S3) is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and S3_BUCKET in the server environment.',
+          error: 'File storage (S3) is not configured. Set S3_BUCKET and AWS_REGION in the server environment.',
         });
       }
 
