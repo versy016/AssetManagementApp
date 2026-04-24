@@ -238,9 +238,10 @@ export default function SearchScreen(props = {}) {
         const assetType = String(it?.asset_type ?? it?.type ?? it?.asset_types?.name ?? '').toLowerCase();
         const location = String(it?.location ?? it?.fields?.location ?? '').toLowerCase();
         const notes = String(it?.notes ?? it?.fields?.notes ?? '').toLowerCase();
+        const descriptionText = String(it?.description ?? it?.fields?.description ?? '').toLowerCase();
         const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email || '';
         const assignedStr = String(assigned || '').toLowerCase();
-        const haystack = `${name} ${id} ${serial} ${model} ${assetType} ${location} ${notes} ${assignedStr}`;
+        const haystack = `${name} ${id} ${serial} ${model} ${assetType} ${location} ${descriptionText} ${notes} ${assignedStr}`;
         return tokens.every(tok => haystack.includes(tok));
       })();
 
@@ -292,7 +293,7 @@ export default function SearchScreen(props = {}) {
         case 'id': return it?.id ?? it?.fields?.id ?? '';
         case 'serial_number': return it?.serial_number ?? it?.fields?.serial_number ?? '';
         case 'model': return it?.model ?? it?.fields?.model ?? '';
-        case 'description': return it?.notes ?? it?.description ?? it?.fields?.notes ?? it?.fields?.description ?? '';
+        case 'description': return it?.description ?? it?.fields?.description ?? '';
         case 'other_id': return it?.other_id ?? it?.asset_tag ?? it?.asset_name ?? it?.name ?? '';
         case 'date_purchased': return it?.date_purchased ?? it?.purchase_date ?? it?.fields?.date_purchased ?? it?.fields?.purchase_date ?? '';
         case 'updated_by': return it?.last_changed_by_name ?? it?.last_changed_by_email ?? '';
@@ -621,19 +622,19 @@ export default function SearchScreen(props = {}) {
   };
 
   const baseColumns = useMemo(() => ([
-    { key: 'qr', label: '', width: 52 },
-    { key: 'image', label: '', width: 80 },
-    { key: 'id', label: 'Asset Id', width: 120 },
-    { key: 'other_id', label: 'Other Id', width: 120 },
-    { key: 'type', label: 'Asset type', width: 135 },
-    { key: 'serial', label: 'Serial Number', width: 155 },
-    { key: 'description', label: 'Description', flex: 0.5, minWidth: 100 },
-    { key: 'model', label: 'Model', flex: 0.4, minWidth: 100 },
-    { key: 'assigned', label: 'Assigned To', flex: 0.35, minWidth: 100 },
-    { key: 'status', label: 'Status', width: 130 },
-    { key: 'purchased', label: 'Date Purchased', width: 135 },
-    { key: 'updated', label: 'Last Updated', width: 160 },
-    { key: 'updated_by', label: 'Last Updated By', width: 155 },
+    { key: 'qr',         label: '',               width: 44 },              // fixed – icon only
+    { key: 'image',      label: '',               width: 64 },              // fixed – image only
+    { key: 'id',         label: 'Asset Id',       minWidth: 88,  flex: 0.8 },
+    { key: 'other_id',   label: 'Other Id',       minWidth: 88,  flex: 0.8 },
+    { key: 'type',       label: 'Asset Type',     minWidth: 108, flex: 1   },
+    { key: 'serial',     label: 'Serial Number',  minWidth: 128, flex: 1.1 },
+    { key: 'description',label: 'Description',   minWidth: 180, flex: 2.5 },
+    { key: 'model',      label: 'Model',          minWidth: 88,  flex: 0.9 },
+    { key: 'assigned',   label: 'Assigned To',   minWidth: 116, flex: 1.1 },
+    { key: 'status',     label: 'Status',         minWidth: 100, flex: 0.9 },
+    { key: 'purchased',  label: 'Date Purchased', minWidth: 136, flex: 1.1 },
+    { key: 'updated',    label: 'Last Updated',   minWidth: 128, flex: 1.1 },
+    { key: 'updated_by', label: 'Last Updated By',minWidth: 144, flex: 1.2 },
   ]), []);
 
   const dynamicColumns = useMemo(() => {
@@ -641,7 +642,7 @@ export default function SearchScreen(props = {}) {
     return typeFieldDefs.map((def) => ({
       key: `dyn_${def.id || def.slug}`,
       label: def.name || formatFieldLabel(def.slug),
-      minWidth: 160,
+      minWidth: 124,
       flex: 1,
       isDynamic: true,
       field: def,
@@ -678,14 +679,14 @@ export default function SearchScreen(props = {}) {
   const columnStyle = useCallback((key) => {
     const col = columnMap[key];
     if (!col) return {};
-    const size = col.width ? { width: col.width } : { flex: col.flex || 1, minWidth: col.minWidth || 120 };
+    const size = col.width ? { width: col.width } : { flex: col.flex || 1, minWidth: col.minWidth || 92 };
     return size;
   }, [columnMap, lastColumnKey]);
 
   const tableMinWidth = useMemo(() => {
     return columns.reduce((sum, col) => {
       if (col.width) return sum + col.width;
-      return sum + (col.minWidth || 140);
+      return sum + (col.minWidth || 108);
     }, 0);
   }, [columns]);
 
@@ -804,7 +805,7 @@ export default function SearchScreen(props = {}) {
 
   return (
     <Container style={embed ? styles.embedContainer : styles.container}>
-      {!hideHeader && (
+      {!hideHeader && presetKey !== 'mine' && (
         <ScreenHeader
           title={presetKey === 'office' ? 'Office Gear' : presetKey === 'mine' ? 'My Assets' : 'Search'}
           backLabel="Dashboard"
@@ -838,7 +839,7 @@ export default function SearchScreen(props = {}) {
               <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
             </View>
           )}
-          {presetKey === 'office' && <View />}
+          {(presetKey === 'office' || presetKey === 'mine') && <View />}
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {/* Sort button: only in grid view; list view uses column header arrows */}
@@ -941,7 +942,7 @@ export default function SearchScreen(props = {}) {
             <View style={styles.gridContainer}>
             {paginatedItems.map((item) => {
               const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
-              const desc = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
+              const desc = item?.description ?? item?.fields?.description ?? '';
               const model = item?.model ?? item?.fields?.model;
               const serial = item?.serial_number ?? item?.fields?.serial_number;
               const assetType = item?.asset_type ?? item?.type ?? item?.asset_types?.name ?? 'Unknown Type';
@@ -963,8 +964,15 @@ export default function SearchScreen(props = {}) {
                           <Ionicons name="image-outline" size={20} color={Colors.sub2} />
                         </View>
                       )}
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.mobileCardTitle} numberOfLines={1}>{item?.id} · {assetType}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={styles.mobileTitleRow}>
+                          <Text style={styles.mobileAssetId} numberOfLines={1} ellipsizeMode="tail">
+                            {item?.id}
+                          </Text>
+                          <Text style={styles.mobileCardTitleSuffix} numberOfLines={1}>
+                            {' · '}{assetType}
+                          </Text>
+                        </View>
                         <Text style={styles.mobileCardSubtitle} numberOfLines={1}>
                           SN: {serial || 'N/A'}
                         </Text>
@@ -975,7 +983,7 @@ export default function SearchScreen(props = {}) {
 
                   <View style={styles.mobileCardDetails}>
                     {model ? (
-                      <View style={styles.mobileDetailRow}>
+                      <View style={[styles.mobileDetailRow, assignedTo && styles.mobileModelAssignedTight]}>
                         <Feather name="cpu" size={14} color={Colors.sub} />
                         <Text style={styles.mobileDetailLabel}>Model:</Text>
                         <Text style={styles.mobileDetailValue} numberOfLines={1}>{model}</Text>
@@ -1055,9 +1063,9 @@ export default function SearchScreen(props = {}) {
             <ScrollView
               horizontal
                 showsHorizontalScrollIndicator
-                contentContainerStyle={{ flexGrow: 1 }}
+                contentContainerStyle={styles.tableScrollContent}
             >
-                <View style={[styles.tableContent, { minWidth: Math.max(tableMinWidth, (windowWidth || tableMinWidth) - 48) }]}>
+                <View style={[styles.tableContent, { minWidth: tableMinWidth }]}>
                 <View style={styles.tableHeader}>
                   {columns.map((c) => {
                     const sortField = columnKeyToSortField[c.key];
@@ -1074,7 +1082,7 @@ export default function SearchScreen(props = {}) {
                     };
                     const content = (
                       <>
-                        <Text style={[styles.thText, isActive && { color: Colors.accent }]} numberOfLines={1} ellipsizeMode="tail">{c.label}</Text>
+                        <Text style={[styles.thText, isActive && { color: Colors.accent }]} numberOfLines={2}>{c.label}</Text>
                         {isSortable && (
                           <View style={{ marginLeft: 4 }}>
                             {isActive ? (
@@ -1091,9 +1099,18 @@ export default function SearchScreen(props = {}) {
                       </>
                     );
                     return (
-                      <View key={c.key} style={[styles.th, columnStyle(c.key)]}>
+                      <View
+                        key={c.key}
+                        style={[
+                          styles.th,
+                          (c.key === 'qr' || c.key === 'image' || c.key === 'status') && styles.thCellIcon,
+                          columnStyle(c.key),
+                          c.key === 'model' && styles.thModelAssignedTightRight,
+                          c.key === 'assigned' && styles.thModelAssignedTightLeft,
+                        ]}
+                      >
                         {isSortable ? (
-                          <TouchableOpacity onPress={handleSort} style={styles.thSortTouch} activeOpacity={0.7}>
+                          <TouchableOpacity onPress={handleSort} style={[styles.thSortTouch, c.key === 'status' && { justifyContent: 'center' }]} activeOpacity={0.7}>
                             {content}
                           </TouchableOpacity>
                         ) : (
@@ -1108,7 +1125,7 @@ export default function SearchScreen(props = {}) {
                     const assignedTo = item?.assigned_to ?? item?.users?.name ?? item?.users?.useremail ?? item?.users?.email;
                     const model = item?.model ?? item?.fields?.model;
                     const serial = item?.serial_number ?? item?.fields?.serial_number;
-                    const description = item?.notes ?? item?.description ?? item?.fields?.description ?? item?.fields?.notes;
+                    const description = item?.description ?? item?.fields?.description ?? '';
                     const purchased = item?.date_purchased ?? item?.purchase_date ?? item?.fields?.date_purchased ?? item?.fields?.purchase_date;
                     const updated = item?.last_updated ?? item?.updated_at;
                     const updatedBy = item?.last_changed_by_name ?? item?.last_changed_by_email ?? '--';
@@ -1127,18 +1144,18 @@ export default function SearchScreen(props = {}) {
                         onMouseLeave={() => setHoverRowId(null)}
                       >
                         {/* QR Code */}
-                    <View style={[styles.td, columnStyle('qr')]}>
-                          <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 4 }}>
-                            <MaterialCommunityIcons name="qrcode-scan" size={20} color={Colors.primary} />
+                    <View style={[styles.td, styles.tdCellIcon, columnStyle('qr')]}>
+                          <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 2 }}>
+                            <MaterialCommunityIcons name="qrcode-scan" size={18} color={Colors.primary} />
                           </TouchableOpacity>
                         </View>
                     {/* Image */}
-                    <View style={[styles.td, columnStyle('image')]}>
+                    <View style={[styles.td, styles.tdCellIcon, columnStyle('image')]}>
                       {imageUrl ? (
                         <Image source={{ uri: imageUrl }} style={styles.tableThumb} resizeMode="cover" />
                       ) : (
                         <View style={[styles.tableThumb, styles.tableThumbPlaceholder]}>
-                          <Ionicons name="image-outline" size={18} color={Colors.sub2} />
+                          <Ionicons name="image-outline" size={16} color={Colors.sub2} />
                         </View>
                       )}
                     </View>
@@ -1146,14 +1163,20 @@ export default function SearchScreen(props = {}) {
                     <View style={[styles.td, columnStyle('id')]}>
                       {isUUID(String(item.id || '')) ? (
                         <View style={styles.awaitingIdWrap}>
-                          <Text style={[styles.tdText, styles.awaitingIdLabel]} numberOfLines={1}>
+                          <Text style={styles.tdText} numberOfLines={1}>
                             {(otherId && otherId !== '--') ? otherId : 'QR awaiting'}
                           </Text>
                           <Text style={styles.awaitingIdSub}>Awaiting QR</Text>
                         </View>
                       ) : (
-                        <TouchableOpacity onPress={() => goToAsset(item.id)} activeOpacity={0.7} style={styles.assetLink}>
-                          <Text style={[styles.tdText, styles.linkText]} numberOfLines={1} selectable={false}>{item.id}</Text>
+                        <TouchableOpacity
+                          onPress={() => goToAsset(item.id)}
+                          activeOpacity={0.7}
+                          style={[styles.assetLink, styles.tdTapStretch]}
+                        >
+                          <Text style={[styles.tdText, styles.assetIdLink]} numberOfLines={1} selectable={false}>
+                            {item.id}
+                          </Text>
                         </TouchableOpacity>
                       )}
                         </View>
@@ -1171,21 +1194,21 @@ export default function SearchScreen(props = {}) {
                         </View>
                         {/* Description */}
                     <View style={[styles.td, styles.tdTall, columnStyle('description')]}>
-                      <Text style={[styles.tdText, styles.tdTextSmall]} numberOfLines={3}>
+                      <Text style={[styles.tdText, styles.tdTextSmall, styles.tdTextLeading]} numberOfLines={3}>
                         {description || '--'}
                       </Text>
                         </View>
                         {/* Model */}
-                    <View style={[styles.td, styles.tdTall, columnStyle('model')]}>
-                      <Text style={styles.tdText} numberOfLines={2}>{model || '--'}</Text>
+                    <View style={[styles.td, styles.tdTall, columnStyle('model'), styles.tdModelAssignedTightRight]}>
+                      <Text style={[styles.tdText, styles.tdTextLeading]} numberOfLines={2}>{model || '--'}</Text>
                         </View>
                         {/* Assigned To */}
-                    <View style={[styles.td, columnStyle('assigned')]}>
-                          <Text style={styles.tdText} numberOfLines={1}>{assignedTo || '--'}</Text>
+                    <View style={[styles.td, columnStyle('assigned'), styles.tdModelAssignedTightLeft]}>
+                          <Text style={[styles.tdText, styles.tdTextLeading]} numberOfLines={1}>{assignedTo || '--'}</Text>
                         </View>
                         {/* Status */}
-                    <View style={[styles.td, columnStyle('status')]}>
-                          <StatusBadge status={item?.status} size="sm" />
+                    <View style={[styles.td, styles.tdCellIcon, columnStyle('status')]}>
+                          <StatusBadge status={item?.status} size="sm" style={{ alignSelf: 'center' }} />
                         </View>
                         {/* Date Purchased */}
                     <View style={[styles.td, columnStyle('purchased')]}>
@@ -1518,7 +1541,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: sf(12), color: Colors.sub, fontWeight: '700', marginHorizontal: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.3 },
 
   // Table Styles (Desktop)
-  tableContainer: { flex: 1, position: 'relative', marginHorizontal: 12 },
+  tableContainer: { flex: 1, position: 'relative', marginHorizontal: 8 },
   tableWrap: {
     flex: 1,
     alignSelf: 'stretch',
@@ -1528,27 +1551,44 @@ const styles = StyleSheet.create({
     ...Shadows.md,
   },
   tableScrollWrapper: { flex: 1 },
+  tableScrollContent: { flexGrow: 1 },
   tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, alignItems: 'stretch' },
+  /** flex: 1 so flex columns fill available viewport width; minWidth (applied inline) sets the horizontal-scroll floor. */
   tableContent: { flex: 1 },
-  th: { paddingVertical: 13, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  th: { paddingVertical: 13, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'stretch', borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
+  thCellIcon: { alignItems: 'center' },
+  /** Tighten gutter between Model and Assigned To (inner padding well below default 8+8). */
+  thModelAssignedTightRight: { paddingRight: 2 },
+  thModelAssignedTightLeft: { paddingLeft: 2 },
   thSortTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
-  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, textAlign: 'center' },
+  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' },
   tableBodyScroll: { flex: 1 },
   tableBodyContent: { paddingRight: 0 },
   tr: { flexDirection: 'row', backgroundColor: '#FFFFFF', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.line },
-  rowAlt: { backgroundColor: '#F8F7F5' },
+  rowAlt: { backgroundColor: '#F8FAFC' },
   rowHover: { backgroundColor: Colors.accentLight },
-  td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
-  tdText: { fontSize: sf(14), color: Colors.text, fontWeight: '500', textAlign: 'center' },
-  tdTextSmall: { fontSize: sf(12), lineHeight: 17 },
-  tdTall: { minHeight: 72, justifyContent: 'center' },
+  td: { paddingVertical: 8, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'stretch' },
+  tdCellIcon: { alignItems: 'center' },
+  tdTapStretch: { alignSelf: 'stretch' },
+  tdModelAssignedTightRight: { paddingRight: 2 },
+  tdModelAssignedTightLeft: { paddingLeft: 2 },
+  tdText: { fontSize: sf(13), color: Colors.text, fontWeight: '500', textAlign: 'center' },
+  /** Left-align long / short text in wide columns (stretch parent makes this use full width). */
+  tdTextLeading: { textAlign: 'center' },
+  tdTextSmall: { fontSize: sf(11), lineHeight: 15 },
+  tdTall: { minHeight: 56, justifyContent: 'center' },
   assetLink: { paddingVertical: 4, paddingHorizontal: 4 },
-  linkText: { fontSize: sf(15), color: Colors.primary, fontWeight: '700' },
+  assetIdLink: {
+    fontSize: sf(13),
+    color: Colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    textDecorationColor: Colors.primary,
+  },
   serialText: { fontSize: sf(13), color: Colors.warningFg, fontWeight: '700', letterSpacing: 0.5 },
-  tableThumb: { width: 48, height: 48, borderRadius: Radius.md, backgroundColor: Colors.chip, overflow: 'hidden', borderWidth: 1.5, borderColor: Colors.line },
+  tableThumb: { width: 40, height: 40, borderRadius: Radius.sm, backgroundColor: Colors.chip, overflow: 'hidden', borderWidth: 1.5, borderColor: Colors.line },
   tableThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  awaitingIdWrap: { alignItems: 'center', justifyContent: 'center' },
-  awaitingIdLabel: { color: Colors.text, fontWeight: '700' },
+  awaitingIdWrap: { alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   awaitingIdSub: { fontSize: sf(11), color: Colors.sub2, fontWeight: '600', marginTop: 2 },
 
   // Mobile Card Styles
@@ -1574,12 +1614,25 @@ const styles = StyleSheet.create({
   mobileCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, gap: 8 },
   mobileThumb: { width: 48, height: 48, borderRadius: Radius.md, backgroundColor: Colors.chip, borderWidth: 1.5, borderColor: Colors.line },
   mobileThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  mobileTitleRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'nowrap', marginBottom: 2, flex: 1, minWidth: 0 },
+  mobileAssetId: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textDecorationLine: 'underline',
+    textDecorationColor: Colors.primary,
+  },
+  mobileCardTitleSuffix: { fontSize: sf(15), fontWeight: '800', color: Colors.text, flexShrink: 0 },
   mobileCardTitle: { fontSize: sf(15), fontWeight: '800', color: Colors.text, marginBottom: 2 },
   mobileCardSubtitle: { fontSize: sf(12), color: Colors.sub, fontWeight: '700' },
   mobileStatusBadge: { paddingHorizontal: 11, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1.5, alignSelf: 'flex-start' },
   mobileStatusText: { fontSize: sf(11), fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
   mobileCardDetails: { gap: 7, marginBottom: 12, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line },
   mobileDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  /** Pull Assigned row closer to Model when both show (40% of card details `gap: 7`). */
+  mobileModelAssignedTight: { marginBottom: -2.8 },
   mobileDetailLabel: { fontSize: sf(12), color: Colors.sub, fontWeight: '700', minWidth: 68 },
   mobileDetailValue: { fontSize: sf(13), color: Colors.text, fontWeight: '600', flex: 1 },
   mobileCardActions: { flexDirection: 'row', gap: 8, paddingTop: 10, borderTopWidth: 2, borderTopColor: Colors.line },

@@ -8,8 +8,8 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { formatActivityListTitle } from '../../utils/activityLabels';
-import ScreenHeader from '../../components/ui/ScreenHeader';
 import ScreenState from '../../components/ui/ScreenState';
+import SearchInput from '../../components/ui/SearchInput';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 
@@ -30,6 +30,7 @@ export default function ActivityScreen() {
   });
   const [assetTypeOptions, setAssetTypeOptions] = useState([]); // [{id,name}]
   const [sort, setSort] = useState({ field: 'when', dir: 'desc' });
+  const [query, setQuery] = useState('');
   const [firebaseUser, setFirebaseUser] = useState(() => auth.currentUser);
   const router = useRouter();
 
@@ -177,8 +178,16 @@ export default function ActivityScreen() {
   const applyFilterSort = useMemo(() => {
     const typeSet = new Set((filters.types || []).map(String).map((v) => v.toUpperCase()));
     const assetTypeSet = new Set((filters.assetTypes || []).map((v) => String(v).toLowerCase()));
+    const q = query.trim().toLowerCase();
     return (list) => {
       let out = list.filter((it) => {
+        // text search across key fields
+        if (q) {
+          const hit = [it.actor, it.from, it.to, it?.asset?.id, it?.asset?.type, it.note, it.type]
+            .some((v) => v && String(v).toLowerCase().includes(q));
+          if (!hit) return false;
+        }
+
         // type filter (applies to action entries only)
         if (typeSet.size > 0) {
           const t = String(it.type || '').toUpperCase();
@@ -239,7 +248,7 @@ export default function ActivityScreen() {
       out.sort(cmp);
       return out;
     };
-  }, [filters, sort]);
+  }, [filters, sort, query]);
 
   useEffect(() => {
     setItems(applyFilterSort(rawItems));
@@ -250,6 +259,7 @@ export default function ActivityScreen() {
     switch (String(type || '').toUpperCase()) {
       case 'ASSET_DELETED': return 'delete';
       case 'DOCUMENT_DELETED': return 'description';
+      case 'DOCUMENT_CREATED': return 'cloud-upload';
       case 'ASSET_EDIT': return 'edit';
       case 'NEW_ASSET': return 'add-circle-outline';
       case 'TRANSFER': return 'swap-horiz';
@@ -272,6 +282,7 @@ export default function ActivityScreen() {
     switch (String(type || '').toUpperCase()) {
       case 'ASSET_DELETED': return '#DC2626';
       case 'DOCUMENT_DELETED': return '#B45309';
+      case 'DOCUMENT_CREATED': return '#15803D';
       case 'ASSET_EDIT': return '#0EA5E9';
       case 'NEW_ASSET': return '#10B981';
       case 'TRANSFER': return Colors.primary;
@@ -335,6 +346,7 @@ export default function ActivityScreen() {
     if (item.kind === 'ASSET_TYPE_CREATED') return 'NEW ASSET TYPE';
     if (t === 'ASSET_DELETED') return 'DELETED';
     if (t === 'DOCUMENT_DELETED') return 'DOCUMENT DELETED';
+    if (t === 'DOCUMENT_CREATED') return 'DOCUMENT ADDED';
     if (t === 'SERVICE_COMPLETE') return 'SERVICE COMPLETE';
     if (t === 'ASSET_EDIT') return 'EDIT';
     if (t === 'NEW_ASSET') return 'NEW ASSET';
@@ -428,34 +440,31 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScreenHeader
-        title="Activity"
-        backLabel="Dashboard"
-        onBack={Platform.OS === 'web' ? undefined : () => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace('/(tabs)/dashboard');
-          }
-        }}
-      />
-      <View style={styles.hero}>
-        <Text style={styles.heroSub}>All asset actions, notes and changes</Text>
-      </View>
-      {/* Filters & sort bar */}
+
+      {/* Search + filter toolbar */}
       <TourTarget id="web-activity-filters">
-      <View style={styles.filterBar}>
-        <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersOpen(true)}>
-          <MaterialIcons name="tune" size={16} color={Colors.primary} />
-          <Text style={styles.filterBtnText}>Filters</Text>
-          {activeFilterCount > 0 ? (
-            <View style={styles.badge}><Text style={styles.badgeText}>{activeFilterCount}</Text></View>
-          ) : null}
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.filterBtn} onPress={() => setSortOpen(true)}>
-          <MaterialIcons name="sort" size={16} color={Colors.primary} />
-          <Text style={styles.filterBtnText}>Sort</Text>
-        </TouchableOpacity>
+      <View style={styles.toolbar}>
+        <SearchInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by asset, user, action…"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.searchBox}
+        />
+        <View style={styles.filterBtnRow}>
+          <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersOpen(true)}>
+            <MaterialIcons name="tune" size={16} color={Colors.primary} />
+            <Text style={styles.filterBtnText}>Filters</Text>
+            {activeFilterCount > 0 ? (
+              <View style={styles.badge}><Text style={styles.badgeText}>{activeFilterCount}</Text></View>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.filterBtn} onPress={() => setSortOpen(true)}>
+            <MaterialIcons name="sort" size={16} color={Colors.primary} />
+            <Text style={styles.filterBtnText}>Sort</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       </TourTarget>
       {loading ? (
@@ -496,9 +505,9 @@ export default function ActivityScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
-  hero: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 8, backgroundColor: Colors.card, borderBottomColor: Colors.line, borderBottomWidth: 2 },
-  heroSub: { color: Colors.sub },
-  filterBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.card, borderBottomColor: Colors.line, borderBottomWidth: 2 },
+  toolbar: { backgroundColor: Colors.card, borderBottomColor: Colors.line, borderBottomWidth: 2, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, gap: 8 },
+  searchBox: { marginBottom: 0 },
+  filterBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.sm },
   filterBtnText: { color: Colors.primary, fontWeight: '800' },
   badge: { marginLeft: 4, backgroundColor: Colors.accent, borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
@@ -563,6 +572,7 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
   const TYPE_OPTIONS = [
     { label: 'Deleted', value: 'ASSET_DELETED' },
     { label: 'Document deleted', value: 'DOCUMENT_DELETED' },
+    { label: 'Document added', value: 'DOCUMENT_CREATED' },
     { label: 'Edit', value: 'ASSET_EDIT' },
     { label: 'Transfer', value: 'TRANSFER' },
     { label: 'Transfer to office', value: 'CHECK_IN' },

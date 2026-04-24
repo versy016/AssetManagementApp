@@ -43,6 +43,7 @@ router.get('/', async (req, res) => {
         if (a.data.event === 'ASSET_CREATED') type = 'NEW_ASSET';
         else if (a.data.event === 'ASSET_EDIT') type = 'ASSET_EDIT';
         else if (a.data.event === 'DOCUMENT_DELETED') type = 'DOCUMENT_DELETED';
+        else if (a.data.event === 'DOCUMENT_CREATED') type = 'DOCUMENT_CREATED';
       }
       return ({
         kind: 'ASSET_ACTION',

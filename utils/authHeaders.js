@@ -24,7 +24,9 @@ import { getAuth } from 'firebase/auth';
  *
  * @returns {Promise<Record<string, string>>}
  *   `{ Authorization: 'Bearer <token>' }` when an ID token is available,
- *   `{ 'X-User-Id': uid }` as a dev-only fallback,
+ *   plus `X-User-Id` in __DEV__ (inventory-api accepts it before Bearer when
+ *   NODE_ENV !== 'production' — fixes 401 on device/LAN when Admin SDK is not configured),
+ *   `{ 'X-User-Id': uid }` only when no token,
  *   or `{}` when no user is signed in.
  */
 export async function getAuthHeaders() {
@@ -34,7 +36,12 @@ export async function getAuthHeaders() {
     if (!user) return {};
 
     const token = await user.getIdToken();
-    if (token) return { Authorization: `Bearer ${token}` };
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && user.uid) {
+      headers['X-User-Id'] = user.uid;
+    }
+    if (Object.keys(headers).length) return headers;
 
     // Dev fallback — accepted by the backend only outside production
     if (user.uid) return { 'X-User-Id': user.uid };

@@ -17,8 +17,16 @@ export async function fetchTaskCount(_userId, _canAdmin) {
     if (!user) return 0;
 
     const token = await user.getIdToken();
+
+    const headers = { Authorization: `Bearer ${token}` };
+    // inventory-api auth.js: in non-production, X-User-Id is accepted before Bearer verify.
+    // __DEV__ on device/LAN often has no Admin SDK → Bearer-only can 401 without this.
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && user.uid) {
+      headers['X-User-Id'] = user.uid;
+    }
+
     const res = await fetch(`${API_BASE_URL}/assets/tasks/count`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
 
     if (!res.ok) return 0;

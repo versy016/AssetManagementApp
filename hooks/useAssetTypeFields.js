@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import logger from '../utils/logger';
+import { getAuthHeaders } from '../utils/authHeaders';
 
 // ─── Module-level cache ───────────────────────────────────────────────────────
 // Map<typeId: string, { fields: FieldDef[], ts: number }>
@@ -48,7 +49,10 @@ export async function fetchFields(typeId) {
 
   const promise = (async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/assets/asset-types/${encodeURIComponent(typeId)}/fields`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/assets/asset-types/${encodeURIComponent(typeId)}/fields`, {
+        headers,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const fields = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);

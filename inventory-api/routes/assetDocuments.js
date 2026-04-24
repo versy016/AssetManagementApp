@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
 const prisma = require('../lib/prisma');
+const { attachUserFromBearerIfPresent } = require('../middleware/auth');
 const multer = require('multer');
 const AWS = require('aws-sdk');
 const path = require('path');
@@ -50,6 +51,39 @@ async function uploadBufferToS3(file) {
 }
 
 // Sync document related_date to the asset's date field value so the date shows everywhere (certs list, asset detail, tasks).
+async function recordDocumentCreatedAction(assetId, req, doc) {
+  try {
+    const userId = (
+      (req.user && req.user.uid) ||
+      req.headers['x-user-id'] ||
+      req.headers['X-User-Id'] ||
+      ''
+    ).toString().trim() || null;
+    let performedBy = null;
+    if (userId) {
+      const user = await prisma.users.findUnique({ where: { id: userId }, select: { id: true } });
+      if (user) performedBy = user.id;
+    }
+    const documentLabel = doc.title || doc.kind || 'Document';
+    await prisma.asset_actions.create({
+      data: {
+        asset_id: String(assetId),
+        type: 'STATUS_CHANGE',
+        note: `Document added: ${documentLabel}`,
+        data: {
+          event: 'DOCUMENT_CREATED',
+          document_id: doc.id,
+          document_title: doc.title || null,
+          document_kind: doc.kind || null,
+        },
+        performed_by: performedBy,
+      },
+    });
+  } catch (e) {
+    console.error('[assetDocuments] Failed to record document-create action:', e?.message || e);
+  }
+}
+
 async function syncDocumentDateToAssetField(assetId, asset_type_field_id, related_date, related_date_label) {
   if (!assetId || !related_date) return;
   const dateVal = related_date instanceof Date ? related_date : new Date(related_date);
@@ -122,7 +156,7 @@ router.get('/:assetId/documents', async (req, res) => {
 });
 
 // Upload a new document (multipart) and create record
-router.post('/:assetId/documents/upload', (req, res) => {
+router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, res) => {
   uploadSingle(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message || 'Upload failed' });
     try {
@@ -183,6 +217,7 @@ router.post('/:assetId/documents/upload', (req, res) => {
           // non-fatal: document is saved, only sync to asset field failed
         }
       }
+      await recordDocumentCreatedAction(assetId, req, doc);
       res.status(201).json({ document: doc });
     } catch (e) {
       console.error('[assetDocuments] Document upload error:', e.message || e);
@@ -192,7 +227,7 @@ router.post('/:assetId/documents/upload', (req, res) => {
 });
 
 // Add a document record for an already uploaded URL (e.g., external or presigned workflow)
-router.post('/:assetId/documents', async (req, res) => {
+router.post('/:assetId/documents', attachUserFromBearerIfPresent, async (req, res) => {
   try {
     const assetId = String(req.params.assetId);
     const { url, s3_key, title, kind, related_date_label, related_date, content_type, size_bytes, asset_type_field_id } = req.body || {};
@@ -214,6 +249,7 @@ router.post('/:assetId/documents', async (req, res) => {
         asset_type_field_id: asset_type_field_id || null,
       },
     });
+    await recordDocumentCreatedAction(assetId, req, doc);
     res.status(201).json({ document: doc });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Failed to create document' });

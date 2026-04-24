@@ -1,7 +1,7 @@
 // app/(tabs)/tasks.js
 // Thin orchestrator — all logic lives in hooks/useTasks.js.
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import EmptyState from '../../components/ui/EmptyState';
+import SearchInput from '../../components/ui/SearchInput';
 
 import { useTasks } from '../../hooks/useTasks';
 import TaskCard from '../../components/tasks/TaskCard';
@@ -66,6 +67,17 @@ export default function TasksScreen() {
     setRelevantDocName,
     handleSubmitTaskAction,
   } = useTasks();
+
+  const [query, setQuery] = useState('');
+
+  const searchedTaskItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return filteredTaskItems;
+    return filteredTaskItems.filter((item) =>
+      [item.assetId, item.model, item.assetTypeName, item.serialNumber, item.title]
+        .some((v) => v && String(v).toLowerCase().includes(q))
+    );
+  }, [filteredTaskItems, query]);
 
   if (loading) {
     return (
@@ -142,7 +154,7 @@ export default function TasksScreen() {
       {/* ── Tasks list (always on web; tab-gated on native) ── */}
       {(Platform.OS === 'web' || activeTab === 'tasks') && (
         <FlatList
-          data={tasks.loading ? [] : filteredTaskItems}
+          data={tasks.loading ? [] : searchedTaskItems}
           keyExtractor={(t, idx) => {
             if (t.key) return String(t.key);
             if (t.actionId) return `action-${t.actionId}`;
@@ -155,14 +167,28 @@ export default function TasksScreen() {
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListHeaderComponent={() => (
-            <View style={styles.tasksHeaderRow}>
-              <Text style={styles.sectionTitle}>Tasks</Text>
-              {totalTasks > 0 && (
-                <View style={styles.tasksHeaderChip}>
-                  <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
-                  <Text style={styles.tasksHeaderChipText}>{totalTasks} open</Text>
-                </View>
-              )}
+            <View style={styles.tasksHeader}>
+              <SearchInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search by asset, ID, serial, type…"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.taskSearch}
+              />
+              <View style={styles.tasksHeaderRow}>
+                <Text style={styles.sectionTitle}>Tasks</Text>
+                {totalTasks > 0 && (
+                  <View style={styles.tasksHeaderChip}>
+                    <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
+                    <Text style={styles.tasksHeaderChipText}>
+                      {searchedTaskItems.length !== totalTasks
+                        ? `${searchedTaskItems.length} of ${totalTasks}`
+                        : `${totalTasks} open`}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
           ListEmptyComponent={() =>
@@ -241,6 +267,8 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', paddingVertical: 40 },
 
   // ── Header ──────────────────────────────────────────────────────────────
+  tasksHeader: { marginBottom: 4 },
+  taskSearch: { marginBottom: 10 },
   tasksHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

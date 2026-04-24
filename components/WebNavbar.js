@@ -379,7 +379,7 @@ const s = StyleSheet.create({
   },
   navItemActive: { backgroundColor: C.accent },
   navText: {
-    fontSize: sf(11),
+    fontSize: sf(12),
     fontWeight: '700',
     color: 'rgba(255,255,255,0.85)',
     textTransform: 'uppercase',

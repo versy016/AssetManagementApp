@@ -4,14 +4,20 @@ import logger from '../utils/logger';
 import { fetchFields } from '../hooks/useAssetTypeFields';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Alert, Modal, Linking, useWindowDimensions, InteractionManager } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-// import { DatePickerModal } from 'react-native-paper-dates';
-// import { en, registerTranslation } from 'react-native-paper-dates';
+import { DatePickerModal } from 'react-native-paper-dates';
+import { en, registerTranslation } from 'react-native-paper-dates';
+
+try {
+  registerTranslation('en', en);
+} catch {
+  /* already registered */
+}
 import PropTypes from 'prop-types';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { API_BASE_URL } from '../inventory-api/apiBase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatDisplayDate, formatDisplayDateLong } from '../utils/date';
+import { formatDisplayDate, formatValidUntilDisplay } from '../utils/date';
 import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
@@ -40,13 +46,6 @@ const openDocumentLink = (url) => {
     logger.error('Error opening document link:', error);
   }
 };
-
-// Ensure date translations are registered once at module load
-// try {
-//   registerTranslation('en', en);
-// } catch (error) {
-//   logger.warn('Failed to register date translation:', error);
-// }
 
 export default function CertsView({ visible: initialVisible }) {
   // All hooks must be called unconditionally at the top level
@@ -93,6 +92,7 @@ export default function CertsView({ visible: initialVisible }) {
   const [createFile, setCreateFile] = useState(null);
   const [createDate, setCreateDate] = useState('');
   const [createDateLabel, setCreateDateLabel] = useState('');
+  const [createDatePickerOpen, setCreateDatePickerOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [editDocFieldId, setEditDocFieldId] = useState(null);
   const [editTypeFields, setEditTypeFields] = useState([]);
@@ -776,12 +776,15 @@ export default function CertsView({ visible: initialVisible }) {
 
                 <Text style={[styles.modalLabel, { marginTop: 12 }]}>Valid Until</Text>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 }}>
-                  <TextInput
-                    style={[styles.inputLike, { flex: 1 }]}
-                    placeholder="Select date"
-                    value={editDate ? formatDisplayDateLong(editDate) : ''}
-                    editable={false}
-                  />
+                  <TouchableOpacity
+                    style={[styles.inputLike, { flex: 1, justifyContent: 'center', minHeight: 44 }]}
+                    onPress={() => setEditDateOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: editDate ? Colors.text : Colors.sub }}>
+                      {editDate ? formatValidUntilDisplay(editDate) : 'Tap to choose date'}
+                    </Text>
+                  </TouchableOpacity>
                   {!!editDate && (
                     <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={() => setEditDate('')}>
                       <Text style={{ color: Colors.dangerFg, fontWeight: '700' }}>Clear</Text>
@@ -1070,7 +1073,7 @@ export default function CertsView({ visible: initialVisible }) {
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontWeight: '600', color: '#0F172A', fontSize: sf(13) }}>{link.dateField.name}</Text>
                               <Text style={{ fontSize: sf(12), color: '#64748B', marginTop: 2 }}>
-                                {link.dateValue ? formatDisplayDate(link.dateValue) : 'No date set'} → {link.linkedDocField.name}
+                                {link.dateValue ? formatValidUntilDisplay(link.dateValue) : 'No date set'} → {link.linkedDocField.name}
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -1103,12 +1106,25 @@ export default function CertsView({ visible: initialVisible }) {
                     ) : null}
                   </View>
                   <Text style={[styles.modalLabel, { marginTop: 12 }]}>Valid Until (optional)</Text>
-                  <TextInput
-                    style={[styles.inputLike, { marginTop: 6 }]}
-                    placeholder="YYYY-MM-DD"
-                    value={createDate}
-                    onChangeText={setCreateDate}
-                  />
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={[styles.inputLike, { flex: 1, justifyContent: 'center', minHeight: 44 }]}
+                      onPress={() => setCreateDatePickerOpen(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: createDate ? Colors.text : Colors.sub }}>
+                        {createDate ? formatValidUntilDisplay(createDate) : 'Tap to choose date'}
+                      </Text>
+                    </TouchableOpacity>
+                    {!!createDate && (
+                      <TouchableOpacity
+                        style={[styles.btn, { backgroundColor: Colors.dangerBg }]}
+                        onPress={() => { setCreateDate(''); setCreateDateLabel(''); }}
+                      >
+                        <Text style={{ color: Colors.dangerFg, fontWeight: '700' }}>Clear</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
                     <TouchableOpacity style={[styles.btn, styles.btnGhost, { flex: 1 }]} onPress={() => setCreateStep(1)}>
                       <Text>Back</Text>
@@ -1184,7 +1200,7 @@ export default function CertsView({ visible: initialVisible }) {
     { key: 'model', label: 'Model', flex: 1, minWidth: 100 },
     { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 100 },
     { key: 'documentType', label: 'Document Type', flex: 1, minWidth: 100 },
-    { key: 'attachment', label: 'Document / Attachment', flex: 1, minWidth: 100 },
+    { key: 'attachment', label: 'Document', flex: 1, minWidth: 100 },
     { key: 'date', label: 'Valid Until', flex: 1.4, minWidth: 180 },
     { key: 'updated', label: 'Last Updated', flex: 1, minWidth: 100 },
     { key: 'actions', label: 'Actions', flex: 1, minWidth: 100 },
@@ -1307,6 +1323,7 @@ export default function CertsView({ visible: initialVisible }) {
               setCreateFile(null);
               setCreateDate('');
               setCreateDateLabel('');
+              setCreateDatePickerOpen(false);
             }}
           >
             <MaterialIcons name="add" size={20} color="#fff" />
@@ -1317,13 +1334,28 @@ export default function CertsView({ visible: initialVisible }) {
       </View>
       {renderEditModal()}
       {renderCreateModal()}
-      {/* <DatePickerModal
-        locale="en"
+      <DatePickerModal
+        locale="en-GB"
         mode="single"
         visible={editDateOpen}
         onDismiss={() => setEditDateOpen(false)}
-        onConfirm={({ date }) => { if (date) setEditDate(toISO(date)); setEditDateOpen(false); }}
-      /> */}
+        date={editDate ? new Date(`${editDate}T12:00:00`) : new Date()}
+        onConfirm={({ date }) => {
+          setEditDateOpen(false);
+          if (date) setEditDate(toISO(date));
+        }}
+      />
+      <DatePickerModal
+        locale="en-GB"
+        mode="single"
+        visible={createDatePickerOpen}
+        onDismiss={() => setCreateDatePickerOpen(false)}
+        date={createDate ? new Date(`${createDate}T12:00:00`) : new Date()}
+        onConfirm={({ date }) => {
+          setCreateDatePickerOpen(false);
+          if (date) setCreateDate(toISO(date));
+        }}
+      />
       {/* Filters bottom sheet */}
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -1388,21 +1420,28 @@ export default function CertsView({ visible: initialVisible }) {
           </View>
         </View>
       </Modal>
-      {/* Filter date pickers */}
-      {/* <DatePickerModal
-        locale="en"
+      <DatePickerModal
+        locale="en-GB"
         mode="single"
         visible={filterStartOpen}
         onDismiss={() => setFilterStartOpen(false)}
-        onConfirm={({ date }) => { if (date) setFilterRange((r) => ({ ...r, start: toISO(date) })); setFilterStartOpen(false); }}
+        date={filterRange.start ? new Date(`${filterRange.start}T12:00:00`) : new Date()}
+        onConfirm={({ date }) => {
+          setFilterStartOpen(false);
+          if (date) setFilterRange((r) => ({ ...r, start: toISO(date) }));
+        }}
       />
       <DatePickerModal
-        locale="en"
+        locale="en-GB"
         mode="single"
         visible={filterEndOpen}
         onDismiss={() => setFilterEndOpen(false)}
-        onConfirm={({ date }) => { if (date) setFilterRange((r) => ({ ...r, end: toISO(date) })); setFilterEndOpen(false); }}
-      /> */}
+        date={filterRange.end ? new Date(`${filterRange.end}T12:00:00`) : new Date()}
+        onConfirm={({ date }) => {
+          setFilterEndOpen(false);
+          if (date) setFilterRange((r) => ({ ...r, end: toISO(date) }));
+        }}
+      />
       <Text style={[styles.metaText, { marginHorizontal: 16, marginBottom: (Platform.OS !== 'web' || isCompact) ? 12 : 6 }]}>
         {safeFilteredRows.length} document{safeFilteredRows.length === 1 ? '' : 's'}
       </Text>
@@ -1432,7 +1471,7 @@ export default function CertsView({ visible: initialVisible }) {
                 let dateDisplay = '—';
                 let updatedDisplay = '—';
                 try {
-                  dateDisplay = r.dateValue ? formatDisplayDate(r.dateValue) : '—';
+                  dateDisplay = r.dateValue ? formatValidUntilDisplay(r.dateValue) : '—';
                   updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
                 } catch (error) {
                   logger.warn('Error formatting dates:', error);
@@ -1628,7 +1667,7 @@ export default function CertsView({ visible: initialVisible }) {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.thSortableInner, Platform.OS === 'web' && { direction: 'ltr' }]}>
-                      <Text style={[styles.thText, isActive && { color: Colors.accent }]} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
+                      <Text style={[styles.thText, isActive && { color: Colors.accent }]} numberOfLines={2}>{label}</Text>
                       {isActive ? (
                         <Feather
                           name={sort.dir === 'asc' ? 'chevron-up' : 'chevron-down'}
@@ -1646,7 +1685,7 @@ export default function CertsView({ visible: initialVisible }) {
             </View>
             <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
                 {paginatedRows.map((r, idx) => {
-                const dateDisplay = r.dateValue ? formatDisplayDate(r.dateValue) : '—';
+                const dateDisplay = r.dateValue ? formatValidUntilDisplay(r.dateValue) : '—';
                 const updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
                 const now = new Date(); now.setHours(0, 0, 0, 0);
                 const status = (() => {
@@ -1804,23 +1843,37 @@ const styles = StyleSheet.create({
   countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.dangerFg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   countDotText: { color: '#fff', fontSize: sf(10), fontWeight: '700' },
   tableWrap: { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, overflow: 'hidden', ...Shadows.card },
-  tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0 },
-  th: { paddingVertical: 13, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 },
-  thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', minWidth: 0 },
-  thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'flex-start' },
-  thSortIcon: { marginLeft: 6, flexShrink: 0 },
-  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.8, flexShrink: 1, minWidth: 0 },
-  tableBodyScroll: { flex: 1 },
-  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.line, backgroundColor: '#FFFFFF' },
-  rowAlt: { backgroundColor: '#F8F7F5' },
+  tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0, alignItems: 'stretch' },
+  th: { paddingVertical: 13, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center', minWidth: 0, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
+  thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 0 },
+  thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'center' },
+  thSortIcon: { marginLeft: 4, flexShrink: 0 },
+  thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 1, minWidth: 0, textAlign: 'center' },
+  tableBodyScroll: {
+    flex: 1,
+    ...Platform.select({
+      web: { backgroundColor: Colors.bg },
+      default: {},
+    }),
+  },
+  tr: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    backgroundColor: Platform.OS === 'web' ? Colors.card : '#FFFFFF',
+    alignItems: 'center',
+  },
+  rowAlt: {
+    backgroundColor: Platform.OS === 'web' ? Colors.bg : '#F8FAFC',
+  },
   rowHover: { backgroundColor: Colors.accentLight },
-  td: { paddingVertical: 14, paddingHorizontal: 12, justifyContent: 'center' },
-  tdActions: { alignItems: 'flex-start' },
-  tdText: { fontSize: sf(14), color: Colors.text, fontWeight: '500' },
+  td: { paddingVertical: 8, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
+  tdActions: { alignItems: 'center' },
+  tdText: { fontSize: sf(13), color: Colors.text, fontWeight: '500', textAlign: 'center' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkText: { fontSize: sf(14), color: Colors.primary, fontWeight: '700' },
+  linkText: { fontSize: sf(13), color: Colors.primary, fontWeight: '700' },
   dateLabel: { fontSize: sf(12), color: Colors.sub, marginBottom: 2, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.3 },
-  dateValue: { fontSize: sf(14), color: Colors.text, fontWeight: '600' },
+  dateValue: { fontSize: sf(13), color: Colors.text, fontWeight: '600', textAlign: 'center' },
   dateValueSoon: { color: Colors.warningFg },
   dateValueExpired: { color: Colors.dangerFg },
   errorText: { color: Colors.dangerFg, fontWeight: '700', marginVertical: 10 },

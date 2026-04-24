@@ -159,11 +159,11 @@ describe('PUT /assets/:id — update', () => {
     assetIds.push(asset.id);
   });
 
-  test('updates the serial number', async () => {
+  test('updates the serial number (admin only)', async () => {
     const serial = `SN-${uid()}`;
     const res = await request(app)
       .put(`/assets/${asset.id}`)
-      .set(authHeader())
+      .set(adminHeader())
       .send({ serial_number: serial });
 
     expect([200, 201]).toContain(res.status);
@@ -171,6 +171,15 @@ describe('PUT /assets/:id — update', () => {
     const getRes = await request(app).get(`/assets/${asset.id}`);
     const body = getRes.body?.data || getRes.body;
     expect(body.serial_number).toBe(serial);
+  });
+
+  test('rejects serial number change from non-admin', async () => {
+    const res = await request(app)
+      .put(`/assets/${asset.id}`)
+      .set(authHeader())
+      .send({ serial_number: `SN-FORBIDDEN-${uid()}` });
+
+    expect(res.status).toBe(403);
   });
 
   test('can change status to a valid value', async () => {

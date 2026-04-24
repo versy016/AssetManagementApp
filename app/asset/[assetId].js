@@ -1,4 +1,5 @@
 // app/asset/[assetId].js
+import React, { useMemo } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import {
@@ -137,6 +138,21 @@ export default function AssetDetailPage() {
     formatFieldLabel,
   } = detail;
 
+  const displaySerial = useMemo(() => {
+    if (!asset) return '';
+    const fromCol = asset.serial_number != null ? String(asset.serial_number).trim() : '';
+    if (fromCol) return fromCol;
+    const f = asset.fields && typeof asset.fields === 'object' ? asset.fields : null;
+    if (!f) return '';
+    const fromSlug = f.serial_number != null ? String(f.serial_number).trim() : '';
+    if (fromSlug) return fromSlug;
+    for (const [k, v] of Object.entries(f)) {
+      const key = String(k || '').toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+      if (key === 'serial_number' && v != null && String(v).trim() !== '') return String(v).trim();
+    }
+    return '';
+  }, [asset]);
+
   // Loading / error / empty guard
   if (loading) {
     return <SafeAreaView style={styles.centerWrap}><ScreenState loading label="Loading asset…" /></SafeAreaView>;
@@ -190,16 +206,22 @@ export default function AssetDetailPage() {
           <View style={styles.detailCard}>
             {/* Title Row */}
             <View style={styles.titleRow}>
-              <Text style={styles.assetName}>
-                {asset.asset_types?.name || 'Asset'} · SN: {asset.serial_number || 'N/A'}
-              </Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.assetName}>{asset.asset_types?.name || 'Asset'}</Text>
+                <Text style={styles.assetSerialLine} numberOfLines={2}>
+                  Serial number: {displaySerial || 'N/A'}
+                </Text>
+              </View>
             </View>
 
             {/* Meta chips */}
             <View style={styles.metaRow}>
               <TouchableOpacity onPress={copyId} style={styles.metaChip}>
                 <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
-                <Text style={styles.metaChipText}>ID: {asset.id}</Text>
+                <Text style={styles.metaChipText}>
+                  ID:{' '}
+                  <Text style={styles.metaChipIdValue}>{asset.id}</Text>
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
                 <MaterialIcons name="link" size={16} color={Colors.accent} />
@@ -218,6 +240,7 @@ export default function AssetDetailPage() {
             {(() => {
               const coreRows = [
                 { label: 'Status', value: <StatusBadge status={asset.status} /> },
+                { label: 'Serial number', value: displaySerial || 'N/A' },
                 { label: 'Assigned To', value: asset.users?.name || 'N/A' },
                 { label: 'Last Scanned Location', value: displayLocation },
                 { label: 'Model', value: asset.model || 'N/A' },
@@ -667,11 +690,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   assetName: {
-    flex: 1,
     fontSize: sf(18),
     fontWeight: 'bold',
     color: Colors.text,
     marginRight: 8,
+  },
+  assetSerialLine: {
+    marginTop: 4,
+    fontSize: sf(14),
+    fontWeight: '700',
+    color: Colors.sub,
   },
   metaRow: {
     flexDirection: 'row',
@@ -688,7 +716,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chip,
     borderRadius: Radius.lg,
   },
-  metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(12) },
+  metaChipText: { color: Colors.accent, fontWeight: '600', fontSize: sf(11) },
+  metaChipIdValue: {
+    fontSize: sf(10),
+    fontWeight: '700',
+    color: Colors.accent,
+    textDecorationLine: 'underline',
+    textDecorationColor: Colors.accent,
+  },
   sectionH: {
     fontSize: sf(16),
     fontWeight: '800',

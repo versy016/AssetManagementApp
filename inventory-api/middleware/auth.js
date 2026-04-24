@@ -95,5 +95,27 @@ async function adminOnly(req, res, next) {
   }
 }
 
-module.exports = { authRequired, adminOnly, ensureAdminInit };
+/**
+ * When a valid Bearer token is present, sets req.user.uid (same shape as authRequired).
+ * Never sends 401 — used for routes that must stay public but should still record actor on writes.
+ */
+async function attachUserFromBearerIfPresent(req, _res, next) {
+  if (req.user?.uid) return next();
+  ensureAdminInit();
+  if (admin && adminInitialized) {
+    try {
+      const header = req.headers.authorization || '';
+      const [, token] = header.split(' ');
+      if (token) {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.user = { uid: decoded.uid };
+      }
+    } catch (_) {
+      // ignore invalid/expired token; route proceeds unauthenticated
+    }
+  }
+  return next();
+}
+
+module.exports = { authRequired, adminOnly, ensureAdminInit, attachUserFromBearerIfPresent };
 

@@ -14,6 +14,7 @@ import { FIELD_LIMITS } from '../../constants/fieldLimits';
 import { getAuthHeaders, setXHRAuthHeaders } from '../../utils/authHeaders';
 import { formatDisplayDate } from '../../utils/date';
 import { auth } from '../../firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 import * as DocumentPicker from 'expo-document-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -34,6 +35,7 @@ export default function EditAsset() {
   const [typeOpen, setTypeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [fieldsSchema, setFieldsSchema] = useState([]);
   const [fieldValues, setFieldValues] = useState({});
@@ -43,6 +45,7 @@ export default function EditAsset() {
   const [status, setStatus] = useState('');
   const [location, setLocation] = useState('');
   const [model, setModel] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
   const [description, setDescription] = useState('');
   const [nextServiceDate, setNextServiceDate] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
@@ -97,6 +100,7 @@ export default function EditAsset() {
         setStatus(a.status || '');
         setLocation(a.location || '');
         setModel(a.model || '');
+        setSerialNumber(a.serial_number != null ? String(a.serial_number) : '');
         setDescription(a.description || '');
         setCurrentImageUrl(a.image_url || '');
         setNextServiceDate(a.next_service_date ? String(a.next_service_date).split('T')[0] : '');
@@ -112,6 +116,24 @@ export default function EditAsset() {
     })();
     return () => { cancelled = true; };
   }, [assetId]);
+
+  // DB role: admins can edit assignment, status, and serial on this screen
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u) {
+          setIsAdmin(false);
+          return;
+        }
+        const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
+        const dbUser = res.ok ? await res.json() : null;
+        setIsAdmin(String(dbUser?.role || '').toUpperCase() === 'ADMIN');
+      } catch {
+        setIsAdmin(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   // Load DB-backed documents for this asset (asset_documents)
   useEffect(() => {
@@ -187,6 +209,10 @@ export default function EditAsset() {
       notes: notes || null,
       fields: fieldValues,
     };
+    if (isAdmin) {
+      const s = String(serialNumber || '').trim();
+      payload.serial_number = s || null;
+    }
 
     setSaving(true);
     try {
@@ -254,7 +280,19 @@ export default function EditAsset() {
         }
       }
       showToast('Asset saved');
-      setTimeout(() => router.replace({ pathname: `/asset/${assetId}` }), 1000);
+      setTimeout(() => {
+        if (typeId) {
+          router.replace({
+            pathname: '/type/[type_id]',
+            params: {
+              type_id: String(typeId),
+              returnTo: `/asset/${assetId}`,
+            },
+          });
+        } else {
+          router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
+        }
+      }, 1000);
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update');
     } finally {
@@ -695,8 +733,34 @@ export default function EditAsset() {
           {!!errors.typeId && <Text style={styles.errorBelow}>{errors.typeId}</Text>}
         </View>
 
-        {/* Dynamic */}
-        {!!typeId && fieldsSchema.map(renderDynamic)}
+        {/* Serial number (column on assets row; admins can edit) */}
+        <View onLayout={onLayoutFor('serial_number')}>
+          <Text style={styles.label}>Serial number</Text>
+          <TextInput
+            style={[styles.input, !isAdmin && styles.disabledField]}
+            value={serialNumber}
+            onChangeText={(t) => {
+              if (!isAdmin) return;
+              setSerialNumber(t);
+            }}
+            placeholder="Serial number"
+            editable={isAdmin}
+            autoCapitalize="characters"
+            maxLength={FIELD_LIMITS.SERIAL}
+          />
+          {!isAdmin ? (
+            <View style={styles.lockRow}>
+              <MaterialIcons name="lock" size={14} color="#9CA3AF" />
+              <Text style={styles.lockText}>Admins can edit serial, assignment, and status</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Dynamic (exclude slug serial_number — shown above as the asset column) */}
+        {!!typeId &&
+          fieldsSchema
+            .filter((f) => String(f.slug || normSlug(f.name)).toLowerCase() !== 'serial_number')
+            .map(renderDynamic)}
 
         {/* Static */}
         <View onLayout={onLayoutFor('location')}>
@@ -734,23 +798,25 @@ export default function EditAsset() {
         </View>
 
         <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
-          <Text style={styles.label}>User Assigned</Text>
+          <Text style={styles.label}>User assigned</Text>
           <DropDownPicker
             open={userOpen}
             setOpen={setUserOpen}
             value={assignedToId}
             setValue={(fn) => setAssignedToId(fn())}
-            items={(options.users || []).map(u => ({ label: u.name, value: u.id }))}
-            placeholder="Select User"
-            style={[styles.dropdown, styles.disabledField]}
-            dropDownContainerStyle={[styles.dropdownContainer, styles.disabledField]}
+            items={(options.users || []).map(u => ({ label: u.name || u.useremail || u.id, value: u.id }))}
+            placeholder="Select user"
+            style={[styles.dropdown, !isAdmin && styles.disabledField]}
+            dropDownContainerStyle={[styles.dropdownContainer, !isAdmin && styles.disabledField]}
             nestedScrollEnabled
-            disabled
+            disabled={!isAdmin}
           />
-          <View style={styles.lockRow}>
-            <MaterialIcons name="lock" size={14} color="#9CA3AF" />
-            <Text style={styles.lockText}>Locked on edit</Text>
-          </View>
+          {!isAdmin ? (
+            <View style={styles.lockRow}>
+              <MaterialIcons name="lock" size={14} color="#9CA3AF" />
+              <Text style={styles.lockText}>Admins only</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
@@ -761,16 +827,18 @@ export default function EditAsset() {
             value={status}
             setValue={(fn) => setStatus(fn())}
             items={(options.statuses || []).map(s => ({ label: s, value: s }))}
-            placeholder="Select Status"
-            style={[styles.dropdown, styles.disabledField]}
-            dropDownContainerStyle={[styles.dropdownContainer, styles.disabledField]}
+            placeholder="Select status"
+            style={[styles.dropdown, !isAdmin && styles.disabledField]}
+            dropDownContainerStyle={[styles.dropdownContainer, !isAdmin && styles.disabledField]}
             nestedScrollEnabled
-            disabled
+            disabled={!isAdmin}
           />
-          <View style={styles.lockRow}>
-            <MaterialIcons name="lock" size={14} color="#9CA3AF" />
-            <Text style={styles.lockText}>Locked on edit</Text>
-          </View>
+          {!isAdmin ? (
+            <View style={styles.lockRow}>
+              <MaterialIcons name="lock" size={14} color="#9CA3AF" />
+              <Text style={styles.lockText}>Admins only</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Optional image/document updates */}

@@ -42,7 +42,6 @@ const PRESET_LIBRARY = [
   // Yours
   { key: 'asset_life_years', label: 'Asset life (years)', fieldTypeSlug: 'number' },
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
-  { key: 'last_serviced', label: 'Last serviced', fieldTypeSlug: 'date' },
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
   // Moved common fields (now optional)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },

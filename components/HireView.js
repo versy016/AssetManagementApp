@@ -3,8 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import HireDashboard from './HireDashboard';
 import HireDisclaimerForm from './HireDisclaimerForm';
-import ScreenHeader from './ui/ScreenHeader';
-import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
+import { Colors, Radius, sf } from '../constants/uiTheme';
 
 export default function HireView() {
   const [showForm, setShowForm] = useState(false);
@@ -27,24 +26,19 @@ export default function HireView() {
     if (hireId) setHighlightedHireId(hireId);
   };
 
-  const actionButton = (
-    <TouchableOpacity
-      style={styles.topButton}
-      onPress={() => (showForm ? backToList() : openNewForm())}
-      activeOpacity={0.8}
-    >
-      <Text style={styles.topButtonText}>
-        {showForm ? 'Back to list' : 'New hire'}
-      </Text>
-    </TouchableOpacity>
-  );
-
   return (
     <View style={styles.container}>
-      <ScreenHeader
-        title={showForm ? (hireFormMode === 'edit' ? 'Edit Hire' : 'New Hire') : 'Hire'}
-        right={actionButton}
-      />
+      {showForm ? (
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => backToList()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.backButtonText}>Back to list</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <View style={styles.content}>
         {showForm ? (
           <HireDisclaimerForm
@@ -76,16 +70,28 @@ export default function HireView() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 0 },
-  topButton: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.accent,
+  actionBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
   },
-  topButtonText: {
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentMuted,
+    borderWidth: 2,
+    borderColor: Colors.line,
+  },
+  backButtonText: {
     fontSize: sf(13),
     fontWeight: '700',
-    color: '#FFF',
+    color: Colors.accent,
     textTransform: 'uppercase',
   },
   content: { flex: 1, minHeight: 0 },

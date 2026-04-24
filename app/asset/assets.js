@@ -59,11 +59,7 @@ export default function MyAssets() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScreenHeader
-        title="My Assets"
-        backLabel="Dashboard"
-        onBack={goBack}
-      />
+
       <ScrollView contentContainerStyle={styles.container}>
         {/* Content */}
         {loading ? (

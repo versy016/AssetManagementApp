@@ -122,7 +122,7 @@ const uploadActionImages = multer({
 }).array('images', 10);
 
 // Auth middleware (DB role)
-const { authRequired, adminOnly } = require('../middleware/auth');
+const { authRequired, adminOnly, attachUserFromBearerIfPresent } = require('../middleware/auth');
 
 // -----------------------------
 // Helpers & validation guards
@@ -178,6 +178,60 @@ const decodeValue = (codeOrSlug, raw) => {
     default: return String(raw);
   }
 };
+
+// Compare values for activity / edit detection (Prisma Date vs ISO string, decimals, dynamic fields)
+function activityComparableScalar(v) {
+  if (v === undefined) return '__UNDEF__';
+  if (v === null || v === '') return null;
+  if (v instanceof Date) {
+    const t = v.getTime();
+    return Number.isNaN(t) ? null : v.toISOString().slice(0, 10);
+  }
+  if (typeof v === 'object' && v !== null && typeof v.toDate === 'function') {
+    const d = v.toDate();
+    const t = d.getTime();
+    return Number.isNaN(t) ? null : d.toISOString().slice(0, 10);
+  }
+  if (typeof v === 'object' && v !== null && typeof v.toNumber === 'function') {
+    try {
+      return String(v.toNumber());
+    } catch {
+      return String(v);
+    }
+  }
+  if (typeof v === 'object' && v !== null && typeof v.toFixed === 'function') {
+    return v.toString();
+  }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    return s;
+  }
+  return v;
+}
+
+function activityScalarEqual(a, b) {
+  return activityComparableScalar(a) === activityComparableScalar(b);
+}
+
+function activityFieldValuesEqual(code, a, b) {
+  const c = String(code || '').toLowerCase();
+  if (c === 'multiselect') {
+    const norm = (x) => JSON.stringify((Array.isArray(x) ? x.map(String) : []).slice().sort());
+    return norm(a) === norm(b);
+  }
+  if (c === 'boolean') return !!a === !!b;
+  if (c === 'number' || c === 'currency') {
+    const na = a === null || a === undefined || a === '' ? NaN : Number(a);
+    const nb = b === null || b === undefined || b === '' ? NaN : Number(b);
+    if (!Number.isFinite(na) && !Number.isFinite(nb)) return true;
+    return na === nb;
+  }
+  if (c === 'date') return activityScalarEqual(a, b);
+  const sa = a === null || a === undefined ? '' : String(a).trim();
+  const sb = b === null || b === undefined ? '' : String(b).trim();
+  return sa === sb;
+}
 
 // --------------------------------------------------
 // Action helpers
@@ -1385,7 +1439,7 @@ router.post('/:id/files', multerSingle.single('document'), async (req, res) => {
 // -------------------------------------------------
 // PUT /assets/:id â€" update (incl. dynamic fields)
 // -------------------------------------------------
-router.put('/:id', validate(schemas.updateAsset), async (req, res) => {
+router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset), async (req, res) => {
   const reqId = rid();
   const assetId = req.params.id;
   const { assigned_to_id, assign_to_admin = false, action_note, ...assetData } = req.body;
@@ -1480,11 +1534,29 @@ router.put('/:id', validate(schemas.updateAsset), async (req, res) => {
     if ('next_service_date' in patch) patch.next_service_date = toDateOrNull(patch.next_service_date);
     if ('date_purchased' in patch) patch.date_purchased = toDateOrNull(patch.date_purchased);
 
+    // Serial number is sensitive; only DB admins may change it (status/assignment stay open for workflows).
+    const actorForPriv = getActorInfo(req).id || null;
+    let callerIsAdmin = false;
+    if (actorForPriv) {
+      try {
+        const dbCaller = await prisma.users.findUnique({ where: { id: actorForPriv }, select: { role: true } });
+        callerIsAdmin = String(dbCaller?.role || '').toUpperCase() === 'ADMIN';
+      } catch { /* non-fatal */ }
+    }
+    const serialChanging =
+      Object.prototype.hasOwnProperty.call(patch, 'serial_number') &&
+      !activityScalarEqual(patch.serial_number, existingAsset.serial_number);
+    if (serialChanging && !callerIsAdmin) {
+      return errJson(res, 403, 'Only admins can change the asset serial number');
+    }
+
     // âœ… Validate dynamic fields against the effective type
     const effectiveTypeId = patch.type_id || existingAsset.type_id;
 
     // Canonicalize dynamic field keys to match defined slugs (accept labels as keys)
     let canonicalFields = null;
+    /** Slugs whose decoded values actually differ from the merged request (for activity feed). */
+    let changedDynamicFieldSlugs = [];
     if (effectiveTypeId) {
       const defsBySlug = await getTypeFieldDefsBySlug(effectiveTypeId);
       const slugifyLocal = (s) => String(s || '').toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -1529,6 +1601,16 @@ router.put('/:id', validate(schemas.updateAsset), async (req, res) => {
         }
         canonicalFields = null;
       }
+
+      if (canonicalFields && typeof canonicalFields === 'object') {
+        for (const [slug, val] of Object.entries(canonicalFields)) {
+          const def = defsBySlug[slug];
+          if (!def) continue;
+          const code = def.field_type?.slug || def.field_type?.name;
+          const prev = existingFields[slug];
+          if (!activityFieldValuesEqual(code, val, prev)) changedDynamicFieldSlugs.push(slug);
+        }
+      }
     }
 
     // Write top-level columns + audit
@@ -1562,13 +1644,10 @@ router.put('/:id', validate(schemas.updateAsset), async (req, res) => {
     // Generic edit activity (exclude pure assignment/status-only changes)
     try {
       const IGNORE = new Set(['assigned_to_id', 'status', 'last_updated', 'last_changed_by']);
-      const same = (a, b) => {
-        const toT = (v) => (v instanceof Date ? v.getTime() : (v && typeof v.toDate === 'function' ? v.toDate().getTime() : v));
-        const av = toT(a), bv = toT(b);
-        return av === bv;
-      };
-      const changedCols = Object.keys(patch || {}).filter((k) => !IGNORE.has(k) && !same(patch[k], existingAsset[k]));
-      const changedFieldSlugs = (fieldsPatch && typeof fieldsPatch === 'object') ? Object.keys(fieldsPatch) : [];
+      const changedCols = Object.keys(patch || {}).filter(
+        (k) => !IGNORE.has(k) && !activityScalarEqual(patch[k], existingAsset[k])
+      );
+      const changedFieldSlugs = changedDynamicFieldSlugs;
       if ((changedCols && changedCols.length) || (changedFieldSlugs && changedFieldSlugs.length)) {
         postOps.push(
           recordAction(reqId, assetId, 'STATUS_CHANGE', {

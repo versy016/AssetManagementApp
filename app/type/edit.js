@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -16,7 +17,7 @@ import {
   KeyboardAvoidingView,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -32,7 +33,6 @@ import ScreenHeader from '../../components/ui/ScreenHeader';
 const PRESET_LIBRARY = [
   { key: 'asset_life_years', label: 'Asset life (years)', fieldTypeSlug: 'number' },
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
-  { key: 'last_serviced', label: 'Last serviced', fieldTypeSlug: 'date' },
   // Common fields moved to library (optional per type)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
   { key: 'documentation_url', label: 'Document', fieldTypeSlug: 'url' },
@@ -59,6 +59,7 @@ export default function EditAssetType() {
   const { id, returnTo } = useLocalSearchParams();
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -791,7 +792,7 @@ export default function EditAssetType() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top', 'left', 'right']}>
       {toast.visible && (
         <View style={[s.toast, s.toastSuccess]}>
           <MaterialIcons name="check-circle" size={20} color="#047857" />
@@ -808,10 +809,22 @@ export default function EditAssetType() {
           }
           router.replace('/Inventory?tab=types');
         }}
+        right={
+          <TouchableOpacity
+            onPress={() => setShowSummary(true)}
+            disabled={saving}
+            style={[s.headerSaveBtn, saving && { opacity: 0.6 }]}
+            accessibilityRole="button"
+          >
+            <MaterialIcons name="save" size={16} color="#fff" style={{ marginRight: 5 }} />
+            <Text style={s.headerSaveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+          </TouchableOpacity>
+        }
       />
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
           {/* Type core */}
           <Text style={s.label}>Name *</Text>
           <TextInput style={s.input} placeholder="Type name" value={name} onChangeText={setName} />
@@ -1197,34 +1210,34 @@ export default function EditAssetType() {
             ))}
           </View>
 
-          <View style={{ height: 80 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
-      {/* Bottom actions */}
-      <View style={s.bottomBar}>
-        <TouchableOpacity
-          onPress={() => {
-            if (normalizedReturnTo) router.replace(normalizedReturnTo);
-            else router.replace('/Inventory?tab=types');
-          }}
-          style={[s.actionBtn, s.backBtn]}
-          accessibilityRole="button"
-        >
-          <MaterialIcons name="arrow-back" size={18} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={s.actionText}>Go back</Text>
-        </TouchableOpacity>
+        {/* Bottom actions — flex footer (absolute was off-screen when content grew, esp. web) */}
+        <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }, Platform.OS === 'web' && { position: 'sticky', bottom: 0, zIndex: 10 }]}>
+          <Pressable
+            onPress={() => {
+              if (normalizedReturnTo) router.replace(normalizedReturnTo);
+              else router.replace('/Inventory?tab=types');
+            }}
+            style={({ pressed }) => [s.actionBtn, { backgroundColor: Colors.sub }, pressed && { opacity: 0.75 }]}
+            accessibilityRole="button"
+          >
+            <MaterialIcons name="arrow-back" size={18} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={s.actionText}>Go back</Text>
+          </Pressable>
 
-        <TouchableOpacity
-          onPress={() => setShowSummary(true)}
-          disabled={saving}
-          style={[s.actionBtn, s.saveBtn, saving && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: saving, busy: saving }}
-        >
-          <MaterialIcons name="save" size={18} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={s.actionText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
-        </TouchableOpacity>
+          <Pressable
+            onPress={() => setShowSummary(true)}
+            disabled={saving}
+            style={({ pressed }) => [s.actionBtn, { backgroundColor: Colors.primary }, (pressed || saving) && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving, busy: saving }}
+          >
+            <MaterialIcons name="save" size={18} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={s.actionText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Conflict modal (409 - field in use) */}
@@ -1386,7 +1399,7 @@ const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 
 
 const s = StyleSheet.create({
   // container + basics
-  container: { padding: 20, paddingBottom: 120, backgroundColor: Colors.bg },
+  container: { padding: 20, paddingBottom: 28, backgroundColor: Colors.bg },
   label: { fontWeight: '700', marginTop: 10, color: Colors.text },
   input: {
     borderWidth: 2,
@@ -1442,15 +1455,13 @@ const s = StyleSheet.create({
   dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },
   dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
 
-  // bottom bar
+  // bottom bar (flex footer — do not use position absolute; breaks on tall scroll / web)
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     gap: 10,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     borderTopWidth: 2,
     borderTopColor: Colors.line,
     backgroundColor: Colors.card,
@@ -1463,10 +1474,18 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: Radius.lg,
-    ...CardShadow,
   },
   saveBtn: { backgroundColor: Colors.primary },
   backBtn: { backgroundColor: Colors.sub },
+  headerSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: Radius.md,
+  },
+  headerSaveBtnText: { color: '#fff', fontWeight: '800', fontSize: sf(13) },
   deleteBtn: { backgroundColor: Colors.dangerFg },
   actionText: { color: Colors.card, fontWeight: '800' },
 

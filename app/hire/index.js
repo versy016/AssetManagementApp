@@ -87,11 +87,6 @@ export default function HireRoute() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader
-        title="Equipment Hire"
-        backLabel="Back"
-        onBack={handleBack}
-      />
 
       {loading ? (
         <View style={styles.center}>

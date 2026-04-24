@@ -18,6 +18,7 @@ import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import ConfirmModal from './ui/ConfirmModal';
 import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
+import SearchInput from './ui/SearchInput';
 
 // Column flex so table fills full width (keeps CertsView look)
 const COL_FLEX = {
@@ -77,6 +78,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
   /** Delete flow: confirm → loading → result (replaces window.confirm / window.alert on web). */
   const [deleteUi, setDeleteUi] = useState(null);
 
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -131,15 +133,28 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     }
   };
 
+  const filteredHires = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return hires;
+    return hires.filter((h) =>
+      [h.assetId, h.serial, h.assetType, h.contactName, h.phone, h.email, h.signatureStatusLabel]
+        .some((v) => v && String(v).toLowerCase().includes(q))
+    );
+  }, [hires, query]);
+
   const paginatedHires = useMemo(() => {
-    if (pageSize === 'All') return hires;
+    if (pageSize === 'All') return filteredHires;
     const start = (page - 1) * pageSize;
-    return hires.slice(start, start + pageSize);
-  }, [hires, page, pageSize]);
+    return filteredHires.slice(start, start + pageSize);
+  }, [filteredHires, page, pageSize]);
 
   useEffect(() => {
     fetchHires();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
 
   // Listen for postMessage from the DocuSign signing tab (sent by the /docusign/return page)
   useEffect(() => {
@@ -320,6 +335,34 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     );
   }
 
+  const hireToolbar = (
+    <View style={styles.toolbarSurface}>
+      <View style={styles.toolbarRow}>
+        <SearchInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by asset, contact, email, serial…"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{ flex: 1 }}
+          inputStyle={{ fontSize: sf(16) }}
+        />
+      </View>
+      {onViewForm ? (
+        <View style={[styles.quickRow, { marginTop: 8, justifyContent: 'flex-end' }]}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+            onPress={onViewForm}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700' }}>New hire</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       {hires.length === 0 ? (
@@ -329,32 +372,29 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
           }
         >
+          {hireToolbar}
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No hires yet</Text>
             <Text style={styles.emptySub}>
               Create a hire from an asset action (Hire) or use the form to generate a lease document.
             </Text>
-            {onViewForm && (
-              <TouchableOpacity style={styles.emptyCta} onPress={onViewForm}>
-                <Text style={styles.emptyCtaText}>View hire form</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </ScrollView>
       ) : (
         <View style={styles.tableOuter}>
+          {hireToolbar}
           <View style={styles.tableWrap}>
             <View style={styles.tableHeader}>
-              <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={1}>Asset ID</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.serial }]}><Text style={styles.thText} numberOfLines={1}>Serial</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.type }]}><Text style={styles.thText} numberOfLines={1}>Asset type</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.contact }]}><Text style={styles.thText} numberOfLines={1}>Contact name</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.phone }]}><Text style={styles.thText} numberOfLines={1}>Phone</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.email }]}><Text style={styles.thText} numberOfLines={1}>Email</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.from }]}><Text style={styles.thText} numberOfLines={1}>From</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.to }]}><Text style={styles.thText} numberOfLines={1}>To</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={2}>Asset ID</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.serial }]}><Text style={styles.thText} numberOfLines={2}>Serial</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.type }]}><Text style={styles.thText} numberOfLines={2}>Asset type</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.contact }]}><Text style={styles.thText} numberOfLines={2}>Contact name</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.phone }]}><Text style={styles.thText} numberOfLines={2}>Phone</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.email }]}><Text style={styles.thText} numberOfLines={2}>Email</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.from }]}><Text style={styles.thText} numberOfLines={2}>From</Text></View>
+              <View style={[styles.th, { flex: COL_FLEX.to }]}><Text style={styles.thText} numberOfLines={2}>To</Text></View>
               <View style={[styles.th, { flex: COL_FLEX.status }]}><Text style={styles.thText} numberOfLines={2}>Status</Text></View>
-              <View style={[styles.th, styles.tdActions, { flex: COL_FLEX.action }]}><Text style={styles.thText} numberOfLines={1}>Actions</Text></View>
+              <View style={[styles.th, styles.tdActions, { flex: COL_FLEX.action }]}><Text style={styles.thText} numberOfLines={2}>Actions</Text></View>
             </View>
             <ScrollView
               showsVerticalScrollIndicator
@@ -368,7 +408,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                 const rowBg = isHighlighted
                   ? flashAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: ['#ffffff', '#DCFCE7'],
+                      outputRange: [Platform.OS === 'web' ? Colors.card : '#ffffff', '#DCFCE7'],
                     })
                   : undefined;
                 return (
@@ -383,11 +423,11 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                       onMouseEnter={() => setHoverRowId(h.id)}
                       onMouseLeave={() => setHoverRowId(null)}
                     >
-                      <View style={[styles.td, { flex: COL_FLEX.assetId }]}><Text style={styles.tdText} numberOfLines={1}>{h.assetId || '—'}</Text></View>
-                      <View style={[styles.td, { flex: COL_FLEX.serial }]}><Text style={styles.tdText} numberOfLines={1}>{h.serial || '—'}</Text></View>
-                      <View style={[styles.td, { flex: COL_FLEX.type }]}><Text style={styles.tdText} numberOfLines={1}>{h.assetType || '—'}</Text></View>
-                      <View style={[styles.td, { flex: COL_FLEX.contact }]}><Text style={styles.tdText} numberOfLines={1}>{h.contactName || '—'}</Text></View>
-                      <View style={[styles.td, { flex: COL_FLEX.phone }]}><Text style={styles.tdText} numberOfLines={1}>{h.phone || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.assetId }]}><Text style={styles.tdText} numberOfLines={2}>{h.assetId || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.serial }]}><Text style={styles.tdText} numberOfLines={2}>{h.serial || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.type }]}><Text style={styles.tdText} numberOfLines={2}>{h.assetType || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.contact }]}><Text style={styles.tdText} numberOfLines={2}>{h.contactName || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.phone }]}><Text style={styles.tdText} numberOfLines={2}>{h.phone || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.email }]}><Text style={styles.tdText} numberOfLines={2}>{h.email || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.from }]}><Text style={styles.tdText}>{formatDate(h.fromDate) || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.to }]}><Text style={styles.tdText}>{formatDate(h.toDate) || '—'}</Text></View>
@@ -456,7 +496,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
           <TablePagination
             page={page}
             pageSize={pageSize}
-            total={hires.length}
+            total={filteredHires.length}
             onPageChange={setPage}
             onPageSizeChange={(sz) => { setPageSize(sz); setPage(1); }}
           />
@@ -483,7 +523,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
   center: {
     flex: 1,
     justifyContent: 'center',
@@ -498,8 +538,19 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8 },
   emptySub: { fontSize: sf(14), color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
-  emptyCta: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: Radius.md, backgroundColor: Colors.accent },
-  emptyCtaText: { fontSize: sf(14), fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
+  toolbarSurface: { marginBottom: 8 },
+  toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentMuted,
+  },
+  btnPrimary: { backgroundColor: Colors.accent },
   tableOuter: {
     flex: 1,
     width: '100%',
@@ -521,43 +572,52 @@ const styles = StyleSheet.create({
   },
   th: {
     paddingVertical: 13,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     justifyContent: 'center',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     minWidth: 0,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.1)',
   },
   thText: {
     fontSize: sf(12),
     fontWeight: '800',
     color: '#FFFFFF',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     flexShrink: 1,
     minWidth: 0,
+    textAlign: 'center',
   },
   tableBody: { flex: 1 },
+  tableBodyWeb: { backgroundColor: Colors.bg },
   tr: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Platform.OS === 'web' ? Colors.card : '#FFFFFF',
+    alignItems: 'center',
   },
-  rowAlt: { backgroundColor: '#F8F7F5' },
+  rowAlt: {
+    backgroundColor: Platform.OS === 'web' ? Colors.bg : '#F8FAFC',
+  },
   rowHover: { backgroundColor: Colors.accentLight },
   td: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     justifyContent: 'center',
+    alignItems: 'center',
     minWidth: 0,
   },
-  tdActions: { alignItems: 'flex-start' },
+  tdActions: { alignItems: 'center' },
   tdText: {
-    fontSize: sf(14),
+    fontSize: sf(13),
     color: Colors.text,
     fontWeight: '500',
+    textAlign: 'center',
   },
   statusPill: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radius.sm,

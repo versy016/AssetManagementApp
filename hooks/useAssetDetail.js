@@ -1,6 +1,6 @@
 // hooks/useAssetDetail.js
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Platform, View, Text, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
@@ -14,6 +14,8 @@ import logger from '../utils/logger';
 import { showError, showSuccess, confirm } from '../utils/showError';
 import { normalizeStatus } from '../components/ui/StatusBadge';
 import { transferRecipientMatchesFirebaseUser } from '../utils/activityLabels';
+import { getAuthHeaders } from '../utils/authHeaders';
+import { Colors } from '../constants/uiTheme';
 
 // Helper: format dates like "10 Oct 2025"
 function prettyDate(d) {
@@ -236,7 +238,8 @@ export function useAssetDetail({ assetId, returnTo }) {
   // Derived: custom field entries
   const customFieldEntries = useMemo(() => {
     if (!asset?.fields || typeof asset.fields !== 'object') return [];
-    return Object.entries(asset.fields);
+    const normKey = (k) => String(k || '').toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+    return Object.entries(asset.fields).filter(([k]) => normKey(k) !== 'serial_number');
   }, [asset]);
 
   // Derived: linked asset IDs
@@ -341,6 +344,7 @@ export function useAssetDetail({ assetId, returnTo }) {
 
       const upload = await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, {
         method: 'POST',
+        headers: await getAuthHeaders(),
         body: fd,
       });
       if (!upload.ok) {
@@ -355,11 +359,50 @@ export function useAssetDetail({ assetId, returnTo }) {
     }
   }, [assetId, typeFields, load]);
 
-  // Render field value (used in templates)
-  const renderFieldValue = useCallback((slug, value) => renderValue(slug, value, {
-    onAttachReport: handleAttachReport,
-    attachBusySlug,
-  }), [handleAttachReport, attachBusySlug]);
+  // Render field value (used in templates) — must return React nodes, not renderValue() descriptor objects
+  const renderFieldValue = useCallback((slug, value) => {
+    const out = renderValue(slug, value, {
+      onAttachReport: handleAttachReport,
+      attachBusySlug,
+    });
+    if (React.isValidElement(out)) return out;
+    if (out && typeof out === 'object' && out.isLink && out.url) {
+      const href = String(out.url);
+      const tail = (() => {
+        try {
+          const u = href.split('?')[0];
+          return decodeURIComponent(u.split('/').pop() || '') || 'Open link';
+        } catch {
+          return 'Open link';
+        }
+      })();
+      return (
+        <TouchableOpacity onPress={() => Linking.openURL(href)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={{ color: Colors.primary, fontWeight: '700', textDecorationLine: 'underline' }} numberOfLines={2}>
+            {tail}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    if (out && typeof out === 'object' && out.isReport && out.slug) {
+      const repSlug = out.slug;
+      const busy = attachBusySlug === repSlug;
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <TouchableOpacity
+            onPress={() => handleAttachReport({ slug: repSlug, label: formatFieldLabel(repSlug) })}
+            disabled={busy}
+            style={{ opacity: busy ? 0.6 : 1 }}
+          >
+            <Text style={{ color: Colors.accent, fontWeight: '700' }}>{busy ? 'Uploading…' : 'Attach report'}</Text>
+          </TouchableOpacity>
+          {busy ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        </View>
+      );
+    }
+    if (typeof out === 'boolean') return out ? 'Yes' : 'No';
+    return out;
+  }, [handleAttachReport, attachBusySlug]);
 
   // Handle back navigation
   const handleBack = () => {

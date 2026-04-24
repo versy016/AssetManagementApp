@@ -48,6 +48,27 @@ export function formatDisplayDateLong(d, fallback = '') {
   }
 }
 
+/** e.g. "30 APR 2026" — numeric day, uppercase short month, year (Certs valid-until). */
+export function formatValidUntilDisplay(d, fallback = '') {
+  const dt = coerceDate(d);
+  if (!dt) return fallback;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).formatToParts(dt);
+    const by = {};
+    for (const p of parts) {
+      if (p.type !== 'literal') by[p.type] = p.value;
+    }
+    const mon = String(by.month || '').replace(/\./g, '').toUpperCase();
+    return `${by.day} ${mon} ${by.year}`.trim();
+  } catch {
+    return fallback;
+  }
+}
+
 export function formatDisplayDateTime(d, fallback = '') {
   const dt = coerceDate(d);
   if (!dt) return fallback;
