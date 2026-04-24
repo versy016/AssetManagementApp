@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 
@@ -71,22 +72,24 @@ export default function ConfirmModal({
       transparent
       animationType="fade"
       onRequestClose={handleBackdrop}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
     >
       <View style={styles.backdrop}>
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={styles.backdropPressable}
           onPress={handleBackdrop}
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
         />
-        <View style={styles.card}>
+        <View style={styles.card} accessibilityViewIsModal>
           {phase === 'confirm' && (
             <>
               {!!title && <Text style={styles.title}>{title}</Text>}
               {!!message && <Text style={styles.body}>{message}</Text>}
               <View style={styles.actions}>
                 <TouchableOpacity
-                  style={[styles.btn, styles.btnGhost]}
+                  style={[styles.btn, styles.btnGhost, styles.btnGhostSpaced]}
                   onPress={onCancel}
                   accessibilityRole="button"
                 >
@@ -119,11 +122,11 @@ export default function ConfirmModal({
               )}
               {!!message && <Text style={styles.body}>{message}</Text>}
               <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary, { alignSelf: 'stretch' }]}
+                style={[styles.btn, styles.btnResultDismiss, styles.btnResultOk]}
                 onPress={handleDismissResult}
                 accessibilityRole="button"
               >
-                <Text style={styles.btnPrimaryText}>OK</Text>
+                <Text style={styles.btnResultDismissText}>OK</Text>
               </TouchableOpacity>
             </>
           )}
@@ -142,17 +145,25 @@ const styles = StyleSheet.create({
     padding: 20,
     position: 'relative',
   },
+  /** Sit behind the card so taps hit dialog actions on web (stacking order). */
+  backdropPressable: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
   card: {
+    position: 'relative',
     backgroundColor: Colors.card,
     borderRadius: Radius.lg,
     padding: 24,
     width: '100%',
     maxWidth: 420,
+    borderWidth: Platform.OS === 'web' ? 2 : 0,
+    borderColor: Colors.line,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 20,
-    elevation: 10,
-    zIndex: 1,
+    elevation: 24,
+    zIndex: 10,
   },
   title: {
     fontSize: sf(20),
@@ -169,9 +180,27 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
     justifyContent: 'flex-end',
     flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  btnGhostSpaced: {
+    marginRight: 12,
+  },
+  btnResultOk: {
+    alignSelf: 'stretch',
+    marginTop: 4,
+  },
+  /** Result "OK" — outlined + dark text so label stays visible when web omits TouchableOpacity fill. */
+  btnResultDismiss: {
+    backgroundColor: Colors.chip,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  btnResultDismissText: {
+    fontSize: sf(15),
+    fontWeight: '800',
+    color: Colors.text,
   },
   btn: {
     paddingVertical: 12,
@@ -185,11 +214,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.line,
   },
-  btnGhostText: { fontSize: sf(15), fontWeight: '800', color: Colors.sub },
-  btnPrimary: { backgroundColor: Colors.primary },
-  btnPrimaryText: { fontSize: sf(15), fontWeight: '800', color: '#FFF' },
-  btnDanger: { backgroundColor: Colors.dangerFg },
-  btnDangerText: { fontSize: sf(15), fontWeight: '800', color: '#FFF' },
+  btnGhostText: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  btnPrimary: {
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.primaryDark,
+  },
+  btnPrimaryText: { fontSize: sf(15), fontWeight: '800', color: '#FFFFFF' },
+  /** Outlined danger so label stays readable on web (solid red + white text was rendering as white-on-white for some users). */
+  btnDanger: {
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.dangerFg,
+  },
+  btnDangerText: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
   loadingWrap: {
     alignItems: 'center',
     paddingVertical: 16,

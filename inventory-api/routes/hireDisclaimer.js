@@ -1,6 +1,6 @@
 // routes/hireDisclaimer.js – Generate Equipment Hire Lease Disclaimer .docx
-// Uses template assets/Sheets/Equipment hire lease disclaimer.docx if present (populate placeholders);
-// otherwise builds a .docx from scratch.
+// Uses template assets/Sheets/Equipment hire lease disclaimer.docx (repo root, sibling of inventory-api/)
+// or HIRE_LEASE_TEMPLATE_PATH if set; otherwise builds a .docx from scratch.
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -129,6 +129,10 @@ function toDateOrNull(iso) {
 }
 
 function findTemplatePath() {
+  const envPath = String(process.env.HIRE_LEASE_TEMPLATE_PATH || '').trim();
+  if (envPath && fs.existsSync(envPath)) return path.resolve(envPath);
+
+  // Monorepo layout: repoRoot/assets/Sheets/<name>.docx (sibling of inventory-api/)
   const base = path.join(__dirname, '..', '..', 'assets', 'Sheets');
   const alt = path.join(__dirname, '..', '..', 'assets');
   for (const dir of [base, alt]) {

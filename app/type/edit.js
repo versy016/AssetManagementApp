@@ -55,6 +55,31 @@ function Square({ checked }) {
   );
 }
 
+/** Stable slug fragment from a date field label (for examples / placeholder). */
+function slugCoreFromDateLabel(dateLabel) {
+  const raw = String(dateLabel || 'service_date')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return raw || 'service_date';
+}
+
+/** Short placeholder for the document-link field. */
+function documentLinkPlaceholder(dateLabel) {
+  const core = slugCoreFromDateLabel(dateLabel);
+  return `${core}_certificate`;
+}
+
+/** Help line with concrete slug examples (field slug, not a URL). */
+function documentLinkExamplesLine(dateLabel) {
+  const c = slugCoreFromDateLabel(dateLabel);
+  const e1 = `${c}_document`;
+  const e2 = `${c}_certificate`;
+  const e3 = `${c}_report`;
+  return `Examples: ${e1}, ${e2}, ${e3}. Enter the slug of the Document field on this type that should store the file for this date (not a website address).`;
+}
+
 export default function EditAssetType() {
   const { id, returnTo } = useLocalSearchParams();
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
@@ -146,6 +171,24 @@ export default function EditAssetType() {
     const res = await getImageFileFromPicker();
     if (res) setPickedImage(res);
   };
+
+  const removeTypeImage = () => {
+    setPickedImage(null);
+    setImageUrl('');
+  };
+
+  const typeImagePreviewUri = useMemo(() => {
+    if (pickedImage?.uri) return pickedImage.uri;
+    const t = (imageUrl || '').trim();
+    return t || null;
+  }, [pickedImage?.uri, imageUrl]);
+
+  const hasTypeImageActions = useMemo(() => {
+    if (pickedImage?.file || pickedImage?.uri) return true;
+    if ((imageUrl || '').trim()) return true;
+    if (origImageUrl === 'changed') return true;
+    return false;
+  }, [pickedImage, imageUrl, origImageUrl]);
 
   // Decide if a field from the server matches any preset
   // Priority 1: slug === preset.key
@@ -478,26 +521,28 @@ export default function EditAssetType() {
   // ------ Preset toggles ------
   const togglePresetSelected = (key) =>
     setPresetState((p) => {
-      const nextSel = !p[key]?.selected;
+      const prev = p[key] || {};
+      const nextSel = !prev.selected;
       return {
         ...p,
         [key]: {
+          ...prev,
           selected: nextSel,
-          required: nextSel ? !!p[key]?.required : false,
-          requiresDocSlug: p[key]?.requiresDocSlug || '',
+          required: nextSel ? !!prev.required : false,
         },
       };
     });
 
   const togglePresetRequired = (key) =>
     setPresetState((p) => {
-      const nextReq = !p[key]?.required;
+      const prev = p[key] || {};
+      const nextReq = !prev.required;
       return {
         ...p,
         [key]: {
-          selected: nextReq ? true : !!p[key]?.selected,
+          ...prev,
+          selected: nextReq ? true : !!prev.selected,
           required: nextReq,
-          requiresDocSlug: p[key]?.requiresDocSlug || '',
         },
       };
     });
@@ -515,9 +560,12 @@ export default function EditAssetType() {
       const pickingNew = !!pickedImage?.file;
       const urlTrim = (imageUrl || '').trim();
       const nameChanged = trimmedName !== (origName || '');
-      const imageRemoved = !pickingNew && !urlTrim && !!origImageUrl;
-      const imageUrlChanged = !pickingNew && !!urlTrim && urlTrim !== (origImageUrl || '');
-      const needCore = nameChanged || pickingNew || imageRemoved || imageUrlChanged;
+      /** After multipart upload we store the sentinel `'changed'` until the type is reloaded. */
+      const hadImageOnServer =
+        !!origImageUrl &&
+        (origImageUrl === 'changed' || String(origImageUrl).trim().length > 0);
+      const imageRemoved = !pickingNew && hadImageOnServer && !urlTrim;
+      const needCore = nameChanged || pickingNew || imageRemoved;
 
       const coreMsgs = [];
       if (needCore) {
@@ -534,7 +582,6 @@ export default function EditAssetType() {
         } else {
           const payload = { name: trimmedName };
           if (imageRemoved) payload.image_url = null;
-          else if (imageUrlChanged) payload.image_url = urlTrim;
 
           resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
             method: 'PUT',
@@ -548,8 +595,6 @@ export default function EditAssetType() {
         if (pickingNew && origImageUrl) coreMsgs.push('Image changed');
         else if (pickingNew && !origImageUrl) coreMsgs.push('Image added');
         else if (imageRemoved) coreMsgs.push('Image removed');
-        else if (imageUrlChanged && origImageUrl) coreMsgs.push('Image changed');
-        else if (imageUrlChanged && !origImageUrl) coreMsgs.push('Image added');
         if (nameChanged) coreMsgs.push('Name updated');
 
         // Update originals for subsequent saves
@@ -560,8 +605,6 @@ export default function EditAssetType() {
           setPickedImage(null);
         } else if (imageRemoved) {
           setOrigImageUrl('');
-        } else if (imageUrlChanged) {
-          setOrigImageUrl(urlTrim);
         }
       }
 
@@ -824,25 +867,45 @@ export default function EditAssetType() {
 
       <View style={{ flex: 1, minHeight: 0 }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[s.container, { flexGrow: 1 }]}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
           {/* Type core */}
           <Text style={s.label}>Name *</Text>
           <TextInput style={s.input} placeholder="Type name" value={name} onChangeText={setName} />
 
-          <Text style={s.label}>Image URL</Text>
-          <TextInput
-            style={s.input}
-            placeholder="https://..."
-            value={imageUrl}
-            onChangeText={setImageUrl}
-            autoCapitalize="none"
-          />
-
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity style={[s.btn]} onPress={pickImage}>
-              <Text>{pickedImage ? 'Change Image (local)' : 'Pick Image (optional)'}</Text>
-            </TouchableOpacity>
-            {pickedImage?.uri ? <Image source={{ uri: pickedImage.uri }} style={s.previewThumb} /> : null}
+          <Text style={s.label}>Type image (optional)</Text>
+          <View style={s.imagePreviewBox}>
+            {typeImagePreviewUri ? (
+              <Image source={{ uri: typeImagePreviewUri }} style={s.imagePreview} resizeMode="contain" />
+            ) : (
+              <Text style={s.imagePreviewPlaceholder}>
+                {origImageUrl === 'changed'
+                  ? 'Image is set on this type. Use Replace or Remove, then save.'
+                  : 'No type image yet.'}
+              </Text>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+            {hasTypeImageActions ? (
+              <>
+                <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120 }]} onPress={pickImage}>
+                  <Text>Replace image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120 }]}
+                  onPress={removeTypeImage}
+                >
+                  <Text style={s.btnDangerOutlineText}>Remove image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140 }]} onPress={pickImage}>
+                <Text>Pick image</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Presets grid */}
@@ -895,17 +958,20 @@ export default function EditAssetType() {
                     </View>
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
-                        <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
+                        <Text style={s.subLabel}>
+                          Link a document with {p.label} (optional)
+                        </Text>
+                        <Text style={s.helpMuted}>{documentLinkExamplesLine(p.label)}</Text>
                         <TextInput
                           style={s.input}
                           value={presetState[p.key]?.requiresDocSlug || ''}
                           onChangeText={(t) =>
                             setPresetState((prev) => ({
                               ...prev,
-                              [p.key]: { ...prev[p.key], requiresDocSlug: t },
+                              [p.key]: { ...(prev[p.key] || {}), requiresDocSlug: t },
                             }))
                           }
-                          placeholder="e.g. documentation_url"
+                          placeholder={documentLinkPlaceholder(p.label)}
                           autoCapitalize="none"
                         />
                         <View style={s.switchRow}>
@@ -915,7 +981,7 @@ export default function EditAssetType() {
                             onValueChange={(v) =>
                               setPresetState((prev) => ({
                                 ...prev,
-                                [p.key]: { ...prev[p.key], documentRequired: v },
+                                [p.key]: { ...(prev[p.key] || {}), documentRequired: v },
                               }))
                             }
                           />
@@ -925,7 +991,12 @@ export default function EditAssetType() {
                           {[7,14,30].map((d) => (
                             <TouchableOpacity
                               key={`lead-${d}`}
-                              onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
+                              onPress={() =>
+                                setPresetState((prev) => ({
+                                  ...prev,
+                                  [p.key]: { ...(prev[p.key] || {}), reminderLeadDays: d },
+                                }))
+                              }
                               style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? Colors.primaryLight : Colors.chip }]}
                             >
                               <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
@@ -937,7 +1008,10 @@ export default function EditAssetType() {
                           value={(Number(presetState[p.key]?.reminderLeadDays)||0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
                           onChangeText={(t) => {
                             const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
-                            setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
+                            setPresetState((prev) => ({
+                              ...prev,
+                              [p.key]: { ...(prev[p.key] || {}), reminderLeadDays: n },
+                            }));
                           }}
                           placeholder="No Reminder"
                           keyboardType="numeric"
@@ -1000,12 +1074,15 @@ export default function EditAssetType() {
 
                   {isDate && (
                     <>
-                      <Text style={s.subLabel}>Requires document field name (optional)</Text>
+                      <Text style={s.subLabel}>
+                        Link a document with {row.name?.trim() ? `"${row.name.trim()}"` : 'this date'} (optional)
+                      </Text>
+                      <Text style={s.helpMuted}>{documentLinkExamplesLine(row.name)}</Text>
                       <TextInput
                         style={s.input}
                         value={row.requiresDocSlug || ''}
                         onChangeText={(t) => updateCustomRow(row.id, { requiresDocSlug: t })}
-                        placeholder="e.g. documentation_url"
+                        placeholder={documentLinkPlaceholder(row.name)}
                         autoCapitalize="none"
                       />
                       <View style={s.switchRow}>
@@ -1116,12 +1193,16 @@ export default function EditAssetType() {
                   if (!isDate) return null;
                   return (
                     <>
-                      <Text style={s.subLabel}>Requires document field slug (optional)</Text>
+                      <Text style={s.subLabel}>
+                        Link a document with{' '}
+                        {addModel.name?.trim() ? `"${addModel.name.trim()}"` : 'this date'} (optional)
+                      </Text>
+                      <Text style={s.helpMuted}>{documentLinkExamplesLine(addModel.name)}</Text>
                       <TextInput
                         style={s.input}
                         value={addModel.requiresDocSlug || ''}
                         onChangeText={(t) => setAddModel((m) => ({ ...m, requiresDocSlug: t }))}
-                        placeholder="e.g. documentation_url"
+                        placeholder={documentLinkPlaceholder(addModel.name)}
                         autoCapitalize="none"
                       />
                       <Text style={s.subLabel}>Reminder lead time (days, optional)</Text>
@@ -1414,6 +1495,29 @@ const s = StyleSheet.create({
   submit: { backgroundColor: Colors.primary },
   previewThumb: { width: 44, height: 44, borderRadius: Radius.sm, alignSelf: 'center', borderWidth: 2, borderColor: Colors.line },
 
+  btnDangerOutline: {
+    backgroundColor: Colors.card,
+    borderColor: Colors.dangerFg,
+    borderWidth: 2,
+  },
+  btnDangerOutlineText: { color: Colors.dangerFg, fontWeight: '800' },
+
+  imagePreviewBox: {
+    marginTop: 10,
+    minHeight: 140,
+    maxHeight: 200,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreview: { width: '100%', height: 180 },
+  imagePreviewPlaceholder: { padding: 16, textAlign: 'center', color: Colors.sub, fontSize: sf(13), fontWeight: '600' },
+  helpMuted: { fontSize: sf(12), color: Colors.sub, marginTop: 2, marginBottom: 2, fontWeight: '500' },
+
   sectionTitle: { fontSize: sf(18), fontWeight: '900', borderBottomWidth: 2, borderBottomColor: Colors.line, paddingBottom: 6, marginBottom: 14, color: Colors.text },
 
   // grid for presets
@@ -1431,9 +1535,9 @@ const s = StyleSheet.create({
     ...CardShadow,
   },
   gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
-  gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  gridBox: { width: 22, height: 22, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
-  gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
+  gridBoxUnchecked: { borderColor: '#64748B', backgroundColor: '#F1F5F9' },
   gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
   reqWrap: { marginLeft: 'auto', alignItems: 'center' },
   reqLabel: { fontSize: sf(11), color: Colors.sub, marginBottom: 4, fontWeight: '700' },

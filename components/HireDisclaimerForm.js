@@ -441,22 +441,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     const all = assetsCacheRef.current || [];
     const matches = all
       .filter((a) => {
-        const status = String(a.status || '').toLowerCase();
-        const desc = `${a.description || ''} ${a.model || ''}`.toLowerCase();
-        // Exclude any assets clearly marked as QR-reserved/awaiting in status or text
-        const looksQrReserved =
-          (status.includes('qr') && status.includes('reserv')) ||
-          status.includes('qr reserved') ||
-          status.includes('qr_reserved') ||
-          (desc.includes('qr') && desc.includes('reserv'));
-        const looksQrAwaiting =
-          (status.includes('qr') && status.includes('await')) ||
-          status.includes('qr awaiting') ||
-          status.includes('qr_awaiting') ||
-          (desc.includes('qr') && desc.includes('await'));
-        if (looksQrReserved || looksQrAwaiting) {
-          return false;
-        }
+        // Exclude QR placeholder assets that haven't been configured yet
+        if (String(a.description || '').toLowerCase() === 'qr reserved asset') return false;
         const hay = `${a.id} ${a.serial} ${a.model} ${a.description}`.toLowerCase();
         return hay.includes(q);
       })

@@ -150,7 +150,7 @@ export default function AssetDetailPage() {
       const key = String(k || '').toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
       if (key === 'serial_number' && v != null && String(v).trim() !== '') return String(v).trim();
     }
-    return '';
+        return '';
   }, [asset]);
 
   // Loading / error / empty guard
@@ -193,64 +193,64 @@ export default function AssetDetailPage() {
       />
 
       <View style={styles.mainContentWrap}>
-        <ScrollView
+      <ScrollView
           style={styles.detailScrollView}
           contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
-        >
+      >
           {/* Hero image */}
-          <Image
-            source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
-            style={styles.heroImage}
-          />
+        <Image
+          source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
+          style={styles.heroImage}
+        />
 
-          <View style={styles.detailCard}>
+        <View style={styles.detailCard}>
             {/* Title Row */}
-            <View style={styles.titleRow}>
+          <View style={styles.titleRow}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.assetName}>{asset.asset_types?.name || 'Asset'}</Text>
                 <Text style={styles.assetSerialLine} numberOfLines={2}>
                   Serial number: {displaySerial || 'N/A'}
-                </Text>
+            </Text>
               </View>
-            </View>
+          </View>
 
-            {/* Meta chips */}
-            <View style={styles.metaRow}>
-              <TouchableOpacity onPress={copyId} style={styles.metaChip}>
+          {/* Meta chips */}
+          <View style={styles.metaRow}>
+            <TouchableOpacity onPress={copyId} style={styles.metaChip}>
                 <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
                 <Text style={styles.metaChipText}>
                   ID:{' '}
                   <Text style={styles.metaChipIdValue}>{asset.id}</Text>
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
                 <MaterialIcons name="link" size={16} color={Colors.accent} />
-                <Text style={styles.metaChipText}>Copy Link</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
+              <Text style={styles.metaChipText}>Copy Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
                 <MaterialIcons name="place" size={16} color={Colors.accent} />
-                <Text style={styles.metaChipText}>Maps</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
+              <Text style={styles.metaChipText}>Maps</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
                 <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
+          </View>
 
-            {/* Core fields */}
-            {(() => {
-              const coreRows = [
-                { label: 'Status', value: <StatusBadge status={asset.status} /> },
+          {/* Core fields */}
+          {(() => {
+            const coreRows = [
+              { label: 'Status', value: <StatusBadge status={asset.status} /> },
                 { label: 'Serial number', value: displaySerial || 'N/A' },
-                { label: 'Assigned To', value: asset.users?.name || 'N/A' },
-                { label: 'Last Scanned Location', value: displayLocation },
-                { label: 'Model', value: asset.model || 'N/A' },
-                { label: 'Other ID', value: asset.other_id || 'N/A' },
-                { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : 'N/A' },
-                { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
-                { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
-                { label: 'Description', value: asset.description || 'No description' },
+              { label: 'Assigned To', value: asset.users?.name || 'N/A' },
+              { label: 'Last Scanned Location', value: displayLocation },
+              { label: 'Model', value: asset.model || 'N/A' },
+              { label: 'Other ID', value: asset.other_id || 'N/A' },
+              { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : 'N/A' },
+              { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
+              { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
+              { label: 'Description', value: asset.description || 'No description' },
               ];
-              if (isWebWide) {
+            if (isWebWide) {
                 return (
                   <>
                     <Text style={styles.sectionH}>Overview</Text>
@@ -271,23 +271,23 @@ export default function AssetDetailPage() {
                   ))}
                 </>
               );
-            })()}
+          })()}
 
             {/* Current work details */}
-            {currentDetails && (
-              <>
-                <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
-                {isWebWide ? (
-                  (() => {
-                    const rows = [];
-                    if (currentDetails.date) rows.push({ label: 'Date', value: prettyDate(currentDetails.date) });
-                    if (currentDetails.summary) rows.push({ label: 'Summary', value: currentDetails.summary });
-                    if (currentDetails.priority) rows.push({ label: 'Priority', value: String(currentDetails.priority) });
-                    if (typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null) {
-                      rows.push({ label: 'Estimated Cost', value: `$${Number(currentDetails.estimated_cost).toFixed(2)}` });
-                    }
-                    if (currentDetails.eol_reason) rows.push({ label: 'Reason', value: currentDetails.eol_reason });
-                    if (currentDetails.notes) rows.push({ label: 'Notes', value: currentDetails.notes });
+          {currentDetails && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
+              {isWebWide ? (
+                (() => {
+                  const rows = [];
+                  if (currentDetails.date) rows.push({ label: 'Date', value: prettyDate(currentDetails.date) });
+                  if (currentDetails.summary) rows.push({ label: 'Summary', value: currentDetails.summary });
+                  if (currentDetails.priority) rows.push({ label: 'Priority', value: String(currentDetails.priority) });
+                  if (typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null) {
+                    rows.push({ label: 'Estimated Cost', value: `$${Number(currentDetails.estimated_cost).toFixed(2)}` });
+                  }
+                  if (currentDetails.eol_reason) rows.push({ label: 'Reason', value: currentDetails.eol_reason });
+                  if (currentDetails.notes) rows.push({ label: 'Notes', value: currentDetails.notes });
                     if (currentActionImages.length > 0) {
                       rows.push({
                         label: 'Work photo',
@@ -300,11 +300,11 @@ export default function AssetDetailPage() {
                         ),
                       });
                     }
-                    return <DetailsGrid rows={rows} />;
-                  })()
-                ) : (
+                  return <DetailsGrid rows={rows} />;
+                })()
+              ) : (
                   <View style={styles.currentWorkCard}>
-                    {currentDetails.summary && (
+                  {currentDetails.summary && (
                       <Text style={styles.currentWorkSummary}>{currentDetails.summary}</Text>
                     )}
                     <View style={styles.currentWorkMetaRow}>
@@ -314,15 +314,15 @@ export default function AssetDetailPage() {
                           <Text style={styles.currentWorkMetaLabel}>Date</Text>
                           <Text style={styles.currentWorkMetaValue}>{prettyDate(currentDetails.date)}</Text>
                         </View>
-                      )}
-                      {currentDetails.priority && (
+                  )}
+                  {currentDetails.priority && (
                         <View style={styles.currentWorkMetaItem}>
                           <MaterialIcons name="flag" size={14} color="#4B5563" />
                           <Text style={styles.currentWorkMetaLabel}>Priority</Text>
                           <Text style={styles.currentWorkMetaValue}>{String(currentDetails.priority)}</Text>
                         </View>
-                      )}
-                      {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
+                  )}
+                  {typeof currentDetails.estimated_cost !== 'undefined' && currentDetails.estimated_cost !== null && (
                         <View style={styles.currentWorkMetaItem}>
                           <MaterialIcons name="attach-money" size={14} color="#4B5563" />
                           <Text style={styles.currentWorkMetaLabel}>Est. Cost</Text>
@@ -330,12 +330,12 @@ export default function AssetDetailPage() {
                         </View>
                       )}
                     </View>
-                    {currentDetails.eol_reason && (
+                  {currentDetails.eol_reason && (
                       <Text style={styles.currentWorkNote}>
                         {currentDetails.eol_reason}
                       </Text>
-                    )}
-                    {currentDetails.notes && (
+                  )}
+                  {currentDetails.notes && (
                       <Text style={styles.currentWorkNote}>
                         {currentDetails.notes}
                       </Text>
@@ -346,33 +346,33 @@ export default function AssetDetailPage() {
                         showsHorizontalScrollIndicator={false}
                         style={{ marginTop: 8 }}
                       >
-                        {currentActionImages.map((url, idx) => (
+                    {currentActionImages.map((url, idx) => (
                           <Image
                             key={`curr-wp-${idx}`}
                             source={{ uri: url }}
                             style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }}
                           />
-                        ))}
-                      </ScrollView>
+                    ))}
+                  </ScrollView>
                     )}
                   </View>
-                )}
-              </>
-            )}
+              )}
+            </>
+          )}
 
             {/* Additional/Custom fields */}
-            {customFieldEntries.length > 0 && (
-              <>
-                <Text style={[styles.sectionH, { marginTop: 16 }]}>Additional Fields</Text>
-                {(() => {
-                  const { rows: dynRows } = buildDynamicData();
-                  if (isWebWide) return <DetailsGrid rows={dynRows} />;
-                  return dynRows.map((r, idx) => (
-                    <Row key={`dyn-${idx}`} label={r.label} value={r.value} />
-                  ));
-                })()}
-              </>
-            )}
+          {customFieldEntries.length > 0 && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 16 }]}>Additional Fields</Text>
+              {(() => {
+                const { rows: dynRows } = buildDynamicData();
+                if (isWebWide) return <DetailsGrid rows={dynRows} />;
+                return dynRows.map((r, idx) => (
+                  <Row key={`dyn-${idx}`} label={r.label} value={r.value} />
+                ));
+              })()}
+            </>
+          )}
 
             {/* Tab bar */}
             <View style={styles.tabBar}>
@@ -398,72 +398,72 @@ export default function AssetDetailPage() {
                         <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
                           {tab.count}
                         </Text>
-                      </View>
-                    )}
+                </View>
+              )}
                   </TouchableOpacity>
                 );
               })}
-            </View>
+                    </View>
 
             {/* Tab: History */}
             {activeTab === 'history' && (
               <View style={styles.tabPanel}>
-                {noteItems.length === 0 ? (
+          {noteItems.length === 0 ? (
                   <View style={styles.tabEmpty}>
                     <MaterialIcons name="history" size={32} color={Colors.line} />
                     <Text style={styles.tabEmptyText}>No history yet.</Text>
                   </View>
-                ) : (
-                  <View style={{ gap: 10 }}>
+          ) : (
+              <View style={{ gap: 10 }}>
                     {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
                       const meta = typeMeta(n.type, { transferToMe: n.transferToMe });
                       const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
-                      return (
-                        <View key={n.id} style={styles.noteCard}>
-                          <View style={styles.noteHead}>
-                            <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
-                            <View style={{ flex: 1, paddingRight: 8 }}>
+                  return (
+                    <View key={n.id} style={styles.noteCard}>
+                      <View style={styles.noteHead}>
+                        <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
                               <Text style={[styles.noteWho, { textTransform: 'capitalize' }]} numberOfLines={1}>
                                 {activityDescription}
                               </Text>
-                              <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                          <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
                               <Text style={[styles.noteWhen, { fontSize: sf(12), color: '#6B7280', marginTop: 2 }]} numberOfLines={1}>
                                 {n.who || 'System'}
                               </Text>
-                            </View>
-                            {!!n.type && (
-                              <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
-                                <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.noteText}>{n.note}</Text>
-                          {!!(n.images && n.images.length) && (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                              {n.images.map((url, idx) => (
-                                <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
-                              ))}
-                            </ScrollView>
-                          )}
                         </View>
-                      );
-                    })}
+                        {!!n.type && (
+                          <View style={[styles.noteBadge, { backgroundColor: meta.bg, borderColor: meta.bd }]}>
+                            <Text style={[styles.noteBadgeText, { color: meta.fg }]}>{meta.label}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.noteText}>{n.note}</Text>
+                      {!!(n.images && n.images.length) && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                          {n.images.map((url, idx) => (
+                            <Image key={`${n.id}-img-${idx}`} source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8, borderWidth: 1, borderColor: '#eee' }} />
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  );
+                })}
                     {noteItems.length > 5 && (
-                      <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
+                  <TouchableOpacity onPress={() => setNotesExpanded((v) => !v)} style={styles.noteToggle}>
                         <Text style={styles.noteToggleText}>{notesExpanded ? 'Show less' : `Show all ${noteItems.length}`}</Text>
-                      </TouchableOpacity>
+                  </TouchableOpacity>
                     )}
-                  </View>
-                )}
+                </View>
+              )}
               </View>
-            )}
+          )}
 
             {/* Tab: Documents */}
             {activeTab === 'documents' && (
               <View style={styles.tabPanel}>
-                {(() => {
-                  try {
-                    const { history } = buildDynamicData();
+          {(() => {
+            try {
+              const { history } = buildDynamicData();
                     if (!history || !history.length) {
                       return (
                         <View style={styles.tabEmpty}>
@@ -472,8 +472,8 @@ export default function AssetDetailPage() {
                         </View>
                       );
                     }
-                    const rows = history.map((h) => ({
-                      label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
+              const rows = history.map((h) => ({
+                label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
                       value: (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           {renderFieldValue('documentation_url', h.url)}
@@ -487,11 +487,11 @@ export default function AssetDetailPage() {
                           </TouchableOpacity>
                         </View>
                       ),
-                      right: false,
-                    }));
+                right: false,
+              }));
                     const visible = docHistoryOpen ? rows : rows.slice(0, 3);
-                    return (
-                      <>
+              return (
+                <>
                         {isWebWide
                           ? <DetailsGrid rows={visible} />
                           : visible.map((r, i) => <Row key={`hist-${i}`} label={r.label} value={r.value} />)
@@ -499,7 +499,7 @@ export default function AssetDetailPage() {
                         {rows.length > 3 && (
                           <TouchableOpacity onPress={() => setDocHistoryOpen((v) => !v)} style={[styles.noteToggle, { marginTop: 8 }]}>
                             <Text style={styles.noteToggleText}>{docHistoryOpen ? 'Show less' : `Show all ${rows.length}`}</Text>
-                          </TouchableOpacity>
+                        </TouchableOpacity>
                         )}
                       </>
                     );
@@ -559,7 +559,7 @@ export default function AssetDetailPage() {
                     {workDetailHistory.length > 3 && (
                       <TouchableOpacity onPress={() => setMaintenanceExpanded((v) => !v)} style={[styles.noteToggle, { marginTop: 4 }]}>
                         <Text style={styles.noteToggleText}>{maintenanceExpanded ? 'Show less' : `Show all ${workDetailHistory.length}`}</Text>
-                      </TouchableOpacity>
+                        </TouchableOpacity>
                     )}
                   </View>
                 )}
@@ -596,34 +596,34 @@ export default function AssetDetailPage() {
                     {(assetNote ? 1 : 0) + typedNotes.length > 4 && (
                       <TouchableOpacity onPress={() => setNotesSectionExpanded((v) => !v)} style={styles.noteToggle}>
                         <Text style={styles.noteToggleText}>{notesSectionExpanded ? 'Show less' : 'Show more'}</Text>
-                      </TouchableOpacity>
+                        </TouchableOpacity>
                     )}
                   </View>
                 )}
               </View>
             )}
 
-            {/* Linked assets */}
-            {linkedAssetIds.length > 0 && (
-              <>
-                <Text style={[styles.sectionH, { marginTop: 18 }]}>Linked Assets</Text>
-                <View style={styles.linkedWrap}>
-                  {linkedAssetIds.map((id) => (
-                    <TouchableOpacity
-                      key={id}
-                      style={styles.linkedChip}
+          {/* Linked assets */}
+          {linkedAssetIds.length > 0 && (
+            <>
+              <Text style={[styles.sectionH, { marginTop: 18 }]}>Linked Assets</Text>
+              <View style={styles.linkedWrap}>
+                {linkedAssetIds.map((id) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.linkedChip}
                       onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: id } })}
-                    >
+                  >
                       <MaterialIcons name="link" size={16} color={Colors.accent} />
-                      <Text style={styles.linkedChipText}>{id}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
+                    <Text style={styles.linkedChipText}>{id}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
             {/* Map */}
-            <MapPreview location={displayLocation} />
+          <MapPreview location={displayLocation} />
           </View>
         </ScrollView>
 
@@ -634,7 +634,7 @@ export default function AssetDetailPage() {
           normalizedReturnTo={normalizedReturnTo}
           onDelete={handleDelete}
         />
-      </View>
+        </View>
 
       {/* QR modal */}
       <AssetQRModal

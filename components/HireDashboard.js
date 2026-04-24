@@ -31,8 +31,12 @@ const COL_FLEX = {
   from: 0.85,
   to: 0.85,
   status: 0.9,
-  action: 1.2,
+  /** Wide enough for view / download / edit / delete / copy / DocuSign icon row */
+  action: 1.35,
 };
+
+/** Ensures the grid is wide enough for all action icons; parent pane scrolls horizontally if needed. */
+const HIRE_TABLE_MIN_INNER_WIDTH = 1020;
 
 function formatDate(s) {
   if (!s || typeof s !== 'string') return '—';
@@ -384,25 +388,26 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
         <View style={styles.tableOuter}>
           {hireToolbar}
           <View style={styles.tableWrap}>
-            <View style={styles.tableHeader}>
-              <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={2}>Asset ID</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.serial }]}><Text style={styles.thText} numberOfLines={2}>Serial</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.type }]}><Text style={styles.thText} numberOfLines={2}>Asset type</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.contact }]}><Text style={styles.thText} numberOfLines={2}>Contact name</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.phone }]}><Text style={styles.thText} numberOfLines={2}>Phone</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.email }]}><Text style={styles.thText} numberOfLines={2}>Email</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.from }]}><Text style={styles.thText} numberOfLines={2}>From</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.to }]}><Text style={styles.thText} numberOfLines={2}>To</Text></View>
-              <View style={[styles.th, { flex: COL_FLEX.status }]}><Text style={styles.thText} numberOfLines={2}>Status</Text></View>
-              <View style={[styles.th, styles.tdActions, { flex: COL_FLEX.action }]}><Text style={styles.thText} numberOfLines={2}>Actions</Text></View>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator
-              style={styles.tableBody}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-              }
-            >
+            <View style={styles.tableInnerWide}>
+              <View style={styles.tableHeader}>
+                <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={2}>Asset ID</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.serial }]}><Text style={styles.thText} numberOfLines={2}>Serial</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.type }]}><Text style={styles.thText} numberOfLines={2}>Asset type</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.contact }]}><Text style={styles.thText} numberOfLines={2}>Contact name</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.phone }]}><Text style={styles.thText} numberOfLines={2}>Phone</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.email }]}><Text style={styles.thText} numberOfLines={2}>Email</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.from }]}><Text style={styles.thText} numberOfLines={2}>From</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.to }]}><Text style={styles.thText} numberOfLines={2}>To</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.status }]}><Text style={styles.thText} numberOfLines={2}>Status</Text></View>
+                <View style={[styles.th, styles.tdActions, { flex: COL_FLEX.action }]}><Text style={styles.thText} numberOfLines={2}>Actions</Text></View>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator
+                style={styles.tableBody}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+                }
+              >
               {paginatedHires.map((h, idx) => {
                 const isHighlighted = activeHighlightId === h.id;
                 const rowBg = isHighlighted
@@ -490,7 +495,8 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                   </View>
                 );
               })}
-            </ScrollView>
+              </ScrollView>
+            </View>
           </View>
           {/* Pagination */}
           <TablePagination
@@ -562,8 +568,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 2,
     borderColor: Colors.line,
-    overflow: 'hidden',
+    /* overflow:hidden clips the action column on narrow / zoomed web panes */
+    ...(Platform.OS === 'web' ? { overflow: 'visible' } : { overflow: 'hidden' }),
     ...Shadows.card,
+  },
+  tableInnerWide: {
+    minWidth: HIRE_TABLE_MIN_INNER_WIDTH,
+    flex: 1,
+    width: '100%',
   },
   tableHeader: {
     flexDirection: 'row',
@@ -609,7 +621,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 0,
   },
-  tdActions: { alignItems: 'center' },
+  tdActions: {
+    alignItems: 'center',
+    flexShrink: 0,
+    minWidth: 200,
+    paddingHorizontal: 4,
+  },
   tdText: {
     fontSize: sf(13),
     color: Colors.text,
@@ -639,8 +656,9 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
   },
   details: {
     padding: 12,

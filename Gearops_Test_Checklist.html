@@ -25,6 +25,8 @@
     --sub:        #475569;
     --white:      #FFFFFF;
     --radius:     10px;
+    --web-hdr:    #1a4731;
+    --mob-hdr:    #1e3a5f;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -97,6 +99,17 @@
   .btn-danger  { background: var(--fail-bg); color: var(--fail); border: 1.5px solid var(--fail-border); }
   .btn-danger:hover { background: #FEE2E2; }
 
+  .filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn {
+    padding: 5px 12px; border-radius: 999px; border: 1.5px solid var(--border);
+    font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: var(--sub);
+    transition: all 0.15s;
+  }
+  .filter-btn:hover, .filter-btn.active { background: var(--brand-light); border-color: var(--brand-mid); color: var(--brand); }
+  .filter-btn.f-web.active  { background: #ECFDF5; border-color: #059669; color: #065F46; }
+  .filter-btn.f-mob.active  { background: #EFF6FF; border-color: #2563EB; color: #1E40AF; }
+  .filter-btn.f-fail.active { background: var(--fail-bg); border-color: var(--fail); color: var(--fail); }
+
   .search-box {
     margin-left: auto;
     padding: 7px 12px; border-radius: 8px;
@@ -126,6 +139,11 @@
     transition: background 0.15s;
   }
   .section-header:hover { background: #1a3354; }
+  .section-header.hdr-web  { background: var(--web-hdr); }
+  .section-header.hdr-web:hover { background: #155724; }
+  .section-header.hdr-mob  { background: #1a3a6b; }
+  .section-header.hdr-mob:hover { background: #152f5c; }
+
   .section-title-wrap { display: flex; align-items: center; gap: 12px; }
   .section-num {
     font-size: 11px; font-weight: 800;
@@ -133,6 +151,14 @@
     color: white; padding: 2px 8px; border-radius: 999px;
   }
   .section-title { font-size: 15px; font-weight: 700; color: white; }
+  .section-tag {
+    font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .tag-web  { background: rgba(52,211,153,0.25); color: #6EE7B7; }
+  .tag-mob  { background: rgba(147,197,253,0.25); color: #BFDBFE; }
+  .tag-both { background: rgba(255,255,255,0.12); color: #CBD5E1; }
+
   .section-meta  { display: flex; align-items: center; gap: 10px; }
   .section-mini-pass  { font-size: 12px; color: #6EE7B7; font-weight: 700; }
   .section-mini-fail  { font-size: 12px; color: #FCA5A5; font-weight: 700; }
@@ -176,6 +202,14 @@
     font-size: 13px; font-weight: 700; color: var(--text);
     line-height: 1.4;
   }
+  .platform-tag {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 1px 7px; border-radius: 999px; margin-left: 5px;
+    vertical-align: middle;
+  }
+  .pt-web  { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+  .pt-mob  { background: #EFF6FF; color: #1E40AF; border: 1px solid #BFDBFE; }
+  .pt-new  { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
 
   .steps-list {
     list-style: none;
@@ -272,7 +306,6 @@
   }
   .toast.show { opacity: 1; transform: translateY(0); }
 
-  /* Expand all btn alignment */
   .spacer { flex: 1; }
 
   /* ── Tester info panel ── */
@@ -360,13 +393,8 @@
   }
   .report-header h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
   .report-meta { font-size: 12px; color: #94A3B8; margin-bottom: 14px; }
-  .report-stats {
-    display: flex; gap: 10px; flex-wrap: wrap;
-  }
-  .report-stat {
-    padding: 8px 16px; border-radius: 8px;
-    font-size: 13px; font-weight: 700;
-  }
+  .report-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+  .report-stat { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 700; }
   .rs-total  { background: rgba(255,255,255,0.12); color: #E2E8F0; }
   .rs-pass   { background: rgba(52,211,153,0.25); color: #6EE7B7; }
   .rs-fail   { background: rgba(248,113,113,0.25); color: #FCA5A5; }
@@ -404,6 +432,18 @@
   .rt-steps { color: var(--sub); margin-top: 4px; font-size: 11px; line-height: 1.6; }
 
   .report-divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+  /* ── Legend ── */
+  .legend-bar {
+    background: white; border-bottom: 1px solid var(--border);
+    padding: 8px 32px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sub); font-weight: 600; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .ld-web { background: #059669; }
+  .ld-mob { background: #2563EB; }
+  .ld-both { background: #64748B; }
+  .ld-new  { background: #D97706; }
 </style>
 </head>
 <body>
@@ -411,7 +451,7 @@
 <!-- ── Header ── -->
 <div class="app-header">
   <h1>GearOps — Test Checklist</h1>
-  <p id="gen-date">Version 2.0 &nbsp;·&nbsp; Open from the network drive — progress saves locally in your browser</p>
+  <p id="gen-date">Version 3.0 &nbsp;·&nbsp; Progress auto-saved locally in your browser &nbsp;·&nbsp; Use Save to File to keep a copy</p>
   <div class="header-meta">
     <div class="progress-wrap">
       <div class="progress-bar-bg">
@@ -438,7 +478,22 @@
   <button class="btn btn-email"  onclick="emailReport()">&#x2709; Email Report</button>
   <button class="btn btn-danger" onclick="clearAll()">&#x2715; Clear All</button>
   <div class="spacer"></div>
+  <div class="filter-btns">
+    <button class="filter-btn" onclick="filterByPlatform('all')" id="fb-all">All</button>
+    <button class="filter-btn f-web" onclick="filterByPlatform('web')" id="fb-web">🌐 Web Only</button>
+    <button class="filter-btn f-mob" onclick="filterByPlatform('mob')" id="fb-mob">📱 Mobile Only</button>
+    <button class="filter-btn f-fail" onclick="filterByPlatform('fail')" id="fb-fail">✘ Failed</button>
+  </div>
   <input class="search-box" type="text" placeholder="Search tests..." oninput="filterTests(this.value)" id="search-input">
+</div>
+
+<!-- ── Legend ── -->
+<div class="legend-bar">
+  <span style="font-size:11px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.5px;">Tags:</span>
+  <div class="legend-item"><div class="legend-dot ld-web"></div> Web only</div>
+  <div class="legend-item"><div class="legend-dot ld-mob"></div> Mobile only</div>
+  <div class="legend-item"><div class="legend-dot ld-both"></div> Both platforms</div>
+  <div class="legend-item"><div class="legend-dot ld-new"></div> Recently changed / new</div>
 </div>
 
 <!-- ── Tester info panel ── -->
@@ -455,7 +510,8 @@
       <option value="iOS (iPad)">iOS (iPad)</option>
       <option value="Android (Phone)">Android (Phone)</option>
       <option value="Android (Tablet)">Android (Tablet)</option>
-      <option value="Web (Desktop)">Web (Desktop)</option>
+      <option value="Web (Desktop Chrome)">Web (Desktop Chrome)</option>
+      <option value="Web (Desktop Safari)">Web (Desktop Safari)</option>
       <option value="Web (Mobile)">Web (Mobile)</option>
     </select>
   </div>
@@ -463,14 +519,13 @@
     <label for="tester-env">Environment</label>
     <select id="tester-env" onchange="saveTesterInfo()">
       <option value="">-- Select --</option>
-      <option value="Development">Development</option>
-      <option value="Staging">Staging</option>
-      <option value="Production">Production</option>
+      <option value="Development (localhost)">Development (localhost)</option>
+      <option value="Production (gearops.com.au)">Production (gearops.com.au)</option>
     </select>
   </div>
   <div class="tester-field">
-    <label for="tester-version">App Version</label>
-    <input type="text" id="tester-version" placeholder="e.g. 1.4.2" oninput="saveTesterInfo()">
+    <label for="tester-version">App Version / Build</label>
+    <input type="text" id="tester-version" placeholder="e.g. 3.1.0" oninput="saveTesterInfo()">
   </div>
   <div class="tester-field wide">
     <label for="tester-notes">General Notes</label>
@@ -489,8 +544,7 @@
       <h2>Test Report Preview</h2>
       <button class="modal-close" onclick="closeModal()" title="Close">&#x2715;</button>
     </div>
-    <div class="modal-body" id="modal-report-body">
-    </div>
+    <div class="modal-body" id="modal-report-body"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Close</button>
       <button class="btn btn-export" onclick="downloadReport()">&#x2B07; Download HTML Report</button>
@@ -506,352 +560,382 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── All test data ────────────────────────────────────────────────────────────
+// ─── Test Data ────────────────────────────────────────────────────────────────
+// platform: 'both' | 'web' | 'mob'
+// tags: array of extra display tags e.g. ['new'] for recently changed
 const SECTIONS = [
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '1', title: 'Authentication & User Management',
+    num: '1', title: 'Authentication & User Management', hdr: '',
     tests: [
-      { id: 'auth-1', feature: 'Login – Valid',
-        steps: ['Open app', 'Enter valid email/password', 'Tap Login', 'Verify redirect to dashboard'] },
-      { id: 'auth-2', feature: 'Login – Invalid Credentials',
-        steps: ['Enter wrong email/password', 'Verify error message appears', 'Verify no redirect occurs'] },
-      { id: 'auth-3', feature: 'Login – Empty Fields',
-        steps: ['Leave fields empty', 'Tap Login', 'Verify validation message'] },
-      { id: 'auth-4', feature: 'Registration',
-        steps: ['Navigate to Register', 'Fill all required fields', 'Submit', 'Verify account creation email'] },
-      { id: 'auth-5', feature: 'Forgot Password',
-        steps: ['Tap "Forgot Password"', 'Enter registered email', 'Verify reset email sent'] },
-      { id: 'auth-6', feature: 'Logout',
-        steps: ['Tap Logout', 'Verify redirect to login', 'Verify session is cleared'] },
-      { id: 'auth-7', feature: 'Session Persistence',
-        steps: ['Login', 'Close & reopen app', 'Verify still logged in'] },
-      { id: 'auth-8', feature: 'Auto-logout on Token Expiry',
-        steps: ['Login', 'Wait for token expiry', 'Perform action', 'Verify redirect to login'] },
+      { id: 'auth-1', platform: 'both', feature: 'Login – Valid Credentials',
+        steps: ['Open app / navigate to login URL', 'Enter valid email and password', 'Tap Login', 'Verify redirect to Dashboard'] },
+      { id: 'auth-2', platform: 'both', feature: 'Login – Invalid Credentials',
+        steps: ['Enter incorrect email or password', 'Tap Login', 'Verify error message shown', 'Verify no redirect occurs'] },
+      { id: 'auth-3', platform: 'both', feature: 'Login – Empty Fields',
+        steps: ['Leave fields blank', 'Tap Login', 'Verify validation message appears'] },
+      { id: 'auth-4', platform: 'both', feature: 'Forgot Password',
+        steps: ['Tap "Forgot Password"', 'Enter registered email', 'Submit', 'Verify reset email received', 'Follow link and set new password'] },
+      { id: 'auth-5', platform: 'both', feature: 'Logout',
+        steps: ['Tap Logout / Sign Out', 'Verify redirect to login screen', 'Verify session is cleared (no back-nav bypass)'] },
+      { id: 'auth-6', platform: 'both', feature: 'Session Persistence',
+        steps: ['Login successfully', 'Close and reopen app (or refresh browser)', 'Verify user is still logged in'] },
+      { id: 'auth-8', platform: 'both', feature: 'Role-Based Access',
+        steps: ['Login as standard user', 'Verify Admin features are hidden', 'Login as admin', 'Verify admin features visible'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '2', title: 'Dashboard',
+    num: '2', title: 'Dashboard', hdr: '',
     tests: [
-      { id: 'dash-1', feature: 'Dashboard Load',
-        steps: ['Login', 'Verify dashboard displays', 'All sections visible (Tasks, Recent, Shortcuts)'] },
-      { id: 'dash-2', feature: 'My Tasks Section',
-        steps: ['View tasks list', 'Scroll through items', 'Verify task details'] },
-      { id: 'dash-3', feature: 'Task Actions',
-        steps: ['Tap a task', 'Verify action modal opens', 'Complete task', 'Verify removed from list'] },
-      { id: 'dash-4', feature: 'Recent Assets',
-        steps: ['Check recent assets section', 'Verify asset cards', 'Tap asset → asset detail'] },
-      { id: 'dash-5', feature: 'Quick Actions – Search',
-        steps: ['Tap Search button', 'Verify navigation to search'] },
-      { id: 'dash-6', feature: 'Quick Actions – Certs',
-        steps: ['Tap Certs button', 'Verify navigation to certs screen'] },
-      { id: 'dash-7', feature: 'Quick Actions – Activity',
-        steps: ['Tap Activity button', 'Verify navigation to activity log'] },
-      { id: 'dash-8', feature: 'Shortcuts Section',
-        steps: ['View shortcuts grid', 'Verify custom shortcuts display', 'Tap shortcut → action executes'] },
-      { id: 'dash-9', feature: 'Add Shortcut',
-        steps: ['Tap "Add Shortcut"', 'Select shortcut type', 'Verify shortcut added to grid'] },
-      { id: 'dash-10', feature: 'Remove Shortcut',
-        steps: ['Tap "Manage Added"', 'Remove a shortcut', 'Verify removed'] },
-      { id: 'dash-11', feature: 'Hire Dashboard (Web)',
-        steps: ['Log in on web', 'Navigate to Dashboard → Hire tab', 'Verify hire table displays', 'Verify all columns visible', 'Verify pagination controls work'] },
-      { id: 'dash-12', feature: 'Dashboard Navigation (Web)',
-        steps: ['Click navbar links', 'Verify navigation', 'Verify active state highlighting'] },
+      { id: 'dash-1', platform: 'both', feature: 'Dashboard Load',
+        steps: ['Login', 'Verify dashboard loads without error', 'Verify stats section visible', 'Verify quick action buttons visible'] },
+      { id: 'dash-3', platform: 'both', feature: 'Quick Actions Navigation',
+        steps: ['Tap Search button → verify navigates to Inventory/Search', 'Tap Certs button → verify navigates to Certs', 'Tap Activity button → verify navigates to Activity Log', 'Tap Hire button → verify navigates to Hire'] },
+      { id: 'dash-4', platform: 'web', feature: 'Web Navbar – All Links',
+        steps: ['Verify navbar shows: Dashboard, Inventory, Search, Activity, Certs, Hire', 'Click each link', 'Verify correct screen loads', 'Verify active link is highlighted'] },
+      { id: 'dash-5', platform: 'web', feature: 'Hire Tab on Dashboard (Web)',
+        steps: ['Open Dashboard on web', 'Click Hire tab', 'Verify hire records table loads', 'Verify columns visible: Asset, Serial, Type, Contact, Dates, Status, Actions'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '3', title: 'Search & Inventory',
+    num: '3', title: 'Search & Inventory (Shared)', hdr: '',
     tests: [
-      { id: 'srch-1', feature: 'Search Input',
-        steps: ['Enter search query', 'Verify results filter in real-time', 'Clear → all results shown'] },
-      { id: 'srch-2', feature: 'Quick Filters – My Assets',
-        steps: ['Tap "My Assets"', 'Verify only user-assigned assets shown'] },
-      { id: 'srch-3', feature: 'Quick Filters – Needs Service',
-        steps: ['Tap "Needs Service"', 'Verify filtered results'] },
-      { id: 'srch-4', feature: 'Status Filter – On Hire',
-        steps: ['Open Filters', 'Select "On Hire" status chip', 'Verify only On Hire assets shown', 'Clear filter, verify all restored'] },
-      { id: 'srch-5', feature: 'Advanced Filters',
-        steps: ['Open Filters modal', 'Select asset types', 'Select status', 'Apply filters', 'Verify results'] },
-      { id: 'srch-6', feature: 'Clear Filters',
-        steps: ['Apply filters', 'Tap "Clear All"', 'Verify all filters reset'] },
-      { id: 'srch-7', feature: 'Sort Options',
-        steps: ['Select sort option', 'Verify results sorted', 'Change direction', 'Verify re-sorted'] },
-      { id: 'srch-8', feature: 'Grid / Table Toggle',
-        steps: ['Switch between Grid and Table views', 'Verify both layouts display correctly'] },
-      { id: 'srch-9', feature: 'Pagination',
-        steps: ['Navigate through pages', 'Change Rows per page (25/50/100/All)', 'Verify correct assets shown', 'Verify "1-25 of N" counter updates'] },
-      { id: 'srch-10', feature: 'Asset ID Click (Table)',
-        steps: ['Click Asset ID in table', 'Verify navigation to asset detail'] },
-      { id: 'srch-11', feature: 'Dynamic Columns',
-        steps: ['Filter by type with custom fields', 'Verify columns appear', 'Verify values correct'] },
+      { id: 'srch-1', platform: 'both', feature: 'Search Input – Real-time Filter',
+        steps: ['Type in search box', 'Verify results filter as you type', 'Clear input', 'Verify all assets restored'] },
+      { id: 'srch-2', platform: 'both', feature: 'Quick Filter – My Assets',
+        steps: ['Tap/click "My Assets" filter', 'Verify only assets assigned to current user shown', 'Verify no page heading displayed (removed)', 'Clear filter'] },
+      { id: 'srch-3', platform: 'both', feature: 'Quick Filter – Needs Service',
+        steps: ['Tap/click "Needs Service"', 'Verify results show only assets with upcoming/overdue service', 'Clear filter'] },
+      { id: 'srch-4', platform: 'both', feature: 'Status Filters',
+        steps: ['Select "On Hire" status chip', 'Verify only On Hire assets shown', 'Select "Repair"', 'Verify results update', 'Clear all', 'Verify full list restored'] },
+      { id: 'srch-5', platform: 'both', feature: 'Advanced Filters Modal',
+        steps: ['Open Filters modal', 'Select one or more asset types', 'Select one or more statuses', 'Apply', 'Verify results match criteria', 'Clear All → verify reset'] },
+      { id: 'srch-6', platform: 'both', feature: 'Sort Options',
+        steps: ['Change sort field (e.g. Date Purchased, Last Updated)', 'Verify results re-sort', 'Toggle direction', 'Verify reversed'] },
+      { id: 'srch-7', platform: 'both', feature: 'Pagination',
+        steps: ['Navigate through pages using Prev/Next', 'Change rows per page (25/50/100/All)', 'Verify "1–N of N" counter updates correctly'] },
+      { id: 'srch-8', platform: 'both', feature: 'Asset ID / Card – Navigate to Detail',
+        steps: ['Tap/click an asset card or Asset ID link', 'Verify navigation to Asset Detail screen', 'Use back button', 'Verify return to search at correct scroll position'] },
+      { id: 'srch-9', platform: 'both', feature: 'Dynamic Custom Field Columns',
+        steps: ['Filter by an asset type that has custom fields', 'Verify extra columns appear in table', 'Verify values are correct'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '4', title: 'Asset Management',
+    num: '4', title: 'Asset Management (Shared)', hdr: '',
     tests: [
-      { id: 'asset-1', feature: 'Asset Detail View',
-        steps: ['Navigate to asset', 'Verify all fields display', 'Verify images load', 'Verify document list'] },
-      { id: 'asset-2', feature: 'Edit Asset',
-        steps: ['Tap Edit', 'Modify fields', 'Save', 'Verify changes saved & in list'] },
-      { id: 'asset-3', feature: 'Create New Asset',
-        steps: ['Tap "Create New Asset"', 'Fill required fields', 'Submit', 'Verify asset created'] },
-      { id: 'asset-4', feature: 'Asset Status – On Hire',
-        steps: ['Create a hire record for an asset', 'Navigate to that asset', 'Verify status badge shows "On Hire" (green)', 'Delete hire record', 'Verify status reverts to "In Service"'] },
-      { id: 'asset-5', feature: 'Asset Status Change',
-        steps: ['Change asset status via dropdown', 'Verify status updates', 'Verify activity logged'] },
-      { id: 'asset-6', feature: 'Assign Asset',
-        steps: ['Assign asset to user', 'Verify assignment saved', 'Verify appears in user assets'] },
-      { id: 'asset-7', feature: 'Asset Images',
-        steps: ['Upload image', 'Verify displays', 'Verify thumbnail in list'] },
-      { id: 'asset-8', feature: 'Asset Documents',
-        steps: ['Upload document', 'Verify appears', 'Tap View → document opens'] },
-      { id: 'asset-9', feature: 'Additional / Custom Fields',
-        steps: ['View additional fields', 'Verify custom fields display', 'Edit values', 'Verify saved'] },
-      { id: 'asset-10', feature: 'Service/Repair Reports',
-        steps: ['Sign off service/repair', 'Attach report', 'Verify in certs', 'Missing = "Not provided"'] },
-      { id: 'asset-11', feature: 'Attach Report Later',
-        steps: ['View asset with missing report', 'Tap "Attach report"', 'Upload doc', 'Verify in certs'] },
-      { id: 'asset-12', feature: 'Back Navigation',
-        steps: ['Navigate to asset from search', 'Tap back', 'Verify returns to search'] },
+      { id: 'asset-1', platform: 'both', feature: 'Asset Detail View',
+        steps: ['Navigate to any asset', 'Verify all fields display correctly', 'Verify images load', 'Verify documents list shows', 'Verify status badge is correct'] },
+      { id: 'asset-2', platform: 'both', feature: 'Edit Asset',
+        steps: ['Tap/click Edit on an asset', 'Modify a field value', 'Save', 'Verify changes reflected in detail and list views'] },
+      { id: 'asset-3', platform: 'both', feature: 'Create New Asset',
+        steps: ['Tap "Create New Asset"', 'Fill all required fields', 'Select asset type', 'Submit', 'Verify asset appears in list', 'Verify activity log entry created'] },
+      { id: 'asset-4', platform: 'both', feature: 'Asset Status – On Hire',
+        steps: ['Create a hire record for an asset', 'Navigate to that asset', 'Verify status badge shows "On Hire"', 'Delete hire record', 'Verify status reverts'] },
+      { id: 'asset-5', platform: 'both', feature: 'Asset Status Change (Manual)',
+        steps: ['Open asset', 'Change status via dropdown (e.g. to Repair)', 'Save', 'Verify status badge updates', 'Verify activity log entry created'] },
+      { id: 'asset-6', platform: 'both', feature: 'Assign Asset to User',
+        steps: ['Open asset edit', 'Change assigned user', 'Save', 'Verify shows under that user\'s "My Assets"'] },
+      { id: 'asset-7', platform: 'both', feature: 'Asset Images',
+        steps: ['Upload an image to an asset', 'Verify preview displays', 'Verify thumbnail shows in list view'] },
+      { id: 'asset-8', platform: 'both', feature: 'Asset Documents',
+        steps: ['Upload a document to an asset', 'Verify it appears in document list', 'Tap View → verify document opens', 'Verify appears in Certs screen'] },
+      { id: 'asset-9', platform: 'both', feature: 'Custom Field Values',
+        steps: ['Open asset with custom fields defined', 'Verify custom field values display correctly', 'Edit a custom field value', 'Save and verify updated'] },
+      { id: 'asset-10', platform: 'both', feature: 'Service/Repair Reports',
+        steps: ['Sign off a service or repair task with a report attached', 'Navigate to Certs', 'Verify report appears', 'Verify "Not provided" shown for tasks without report'] },
+      { id: 'asset-11', platform: 'both', feature: 'Attach Report to Existing Record',
+        steps: ['Find a service/repair record with "Not provided" report', 'Tap "Attach report"', 'Upload document', 'Verify document now shows in Certs'] },
+      { id: 'asset-12', platform: 'both', feature: 'Back Navigation from Asset',
+        steps: ['Navigate to asset from search/inventory', 'Tap back button', 'Verify returns to previous screen with state preserved'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '5', title: 'Asset Types',
+    num: '5', title: 'Asset Types (Shared)', hdr: '',
     tests: [
-      { id: 'type-1', feature: 'Asset Type List',
-        steps: ['Navigate to Inventory', 'Tap Asset Types tab', 'Verify types listed with images'] },
-      { id: 'type-2', feature: 'Type Detail – Status Chips',
-        steps: ['Tap an asset type', 'Verify status chips: In Service, On Hire, Repair, Maintenance, End of Life, Total', 'Verify counts are correct'] },
-      { id: 'type-3', feature: 'Asset Type Detail',
-        steps: ['Tap asset type', 'Verify details display', 'Verify custom fields listed'] },
-      { id: 'type-4', feature: 'Create Asset Type',
-        steps: ['Tap "Create New Asset Type"', 'Fill form', 'Add custom fields', 'Submit', 'Verify created'] },
-      { id: 'type-5', feature: 'Edit Asset Type',
-        steps: ['Tap Edit', 'Modify fields', 'Add/remove custom fields', 'Save', 'Verify changes'] },
-      { id: 'type-6', feature: 'Custom Fields',
-        steps: ['Add custom field', 'Set field type', 'Set required/optional', 'Verify in asset forms'] },
-      { id: 'type-7', feature: 'Asset Type Image',
-        steps: ['Upload image', 'Verify in list', 'Verify in asset forms'] },
+      { id: 'type-1', platform: 'both', feature: 'Asset Type List',
+        steps: ['Navigate to Inventory → Asset Types tab', 'Verify all types listed with images and asset counts'] },
+      { id: 'type-2', platform: 'both', feature: 'Type Detail – Status Chips',
+        steps: ['Tap an asset type', 'Verify status chips: In Service, On Hire, Repair, Maintenance, End of Life, Total', 'Verify counts match actual assets'] },
+      { id: 'type-3', platform: 'both', feature: 'Asset Type Detail',
+        steps: ['Open an asset type', 'Verify name, image, maintenance interval display', 'Verify custom fields listed'] },
+      { id: 'type-4', platform: 'both', feature: 'Create Asset Type',
+        steps: ['Tap "Create New Asset Type"', 'Fill name and details', 'Add custom fields', 'Submit', 'Verify type created and visible in list'] },
+      { id: 'type-5', platform: 'both', feature: 'Edit Asset Type – Save Button', tags: ['new'],
+        steps: ['Open an existing asset type', 'Tap Edit', 'Scroll down the form (web: verify sticky Save bar stays visible at bottom)', 'Modify a field', 'Tap Save Changes', 'Verify confirmation modal appears', 'Confirm save', 'Verify changes persisted'] },
+      { id: 'type-6', platform: 'both', feature: 'Custom Field Management',
+        steps: ['Edit an asset type', 'Add a new custom field (text/number/date/select)', 'Set required/optional toggle', 'Save', 'Verify field appears in asset forms for this type'] },
+      { id: 'type-7', platform: 'both', feature: 'Delete Custom Field',
+        steps: ['Edit asset type', 'Remove an existing custom field', 'Save', 'Verify field removed from asset forms'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '6', title: 'Equipment Hire',
+    num: '6', title: 'Certificates / Documents (Shared)', hdr: '',
     tests: [
-      { id: 'hire-1', feature: 'Hire Dashboard – List (Web)',
-        steps: ['Open Dashboard → Hire tab on web', 'Verify hire records table loads', 'Verify columns: Asset, Serial, Type, Contact, Phone, Email, From, To, Status, Actions'] },
-      { id: 'hire-2', feature: 'Hire Dashboard – Pagination',
-        steps: ['If >25 records, verify pagination controls', 'Change rows per page (25/50/100/All)', 'Verify page navigation (prev/next) works', 'Verify "1-N of N" counter'] },
-      { id: 'hire-3', feature: 'Create New Hire (Web)',
-        steps: ['Tap "View hire form" on Hire dashboard', 'Fill: Hirer name, address, phone, email', 'Set hire start/end dates', 'Add equipment item (search or enter asset ID)', 'Submit', 'Verify new hire appears in list', 'Verify asset status changes to "On Hire"'] },
-      { id: 'hire-4', feature: 'Create Hire from QR Scan (Mobile)',
-        steps: ['Scan asset QR code on iOS/Android', 'Select "Hire" from action options', 'Verify form opens with asset ID & description pre-populated', 'Fill hirer details', 'Submit', 'Verify hire created', 'Verify asset status = On Hire'] },
-      { id: 'hire-5', feature: 'Generate PDF & Sign (DocuSign)',
-        steps: ['Open a hire record → Edit', 'Tap "Generate PDF & Sign"', 'Verify DocuSign signing tab opens in browser', 'Complete signature in DocuSign', 'Verify signing tab closes automatically', 'Verify hire list refreshes', 'Verify status changes to "Signed"', 'Verify signed PDF stored'] },
-      { id: 'hire-6', feature: 'Send Hire via Email (DocuSign)',
-        steps: ['Open a hire record → Edit', 'Tap "Send via Email"', 'Verify email sent to hirer', 'Hirer signs via email link', 'Verify webhook updates status to "Signed"'] },
-      { id: 'hire-7', feature: 'Hire Status – Signed Badge',
-        steps: ['After signing, verify hire row shows green "Signed" badge', 'Verify "Pending signature" shown for unsigned hires', 'Verify badge colour: green=Signed, amber=Pending'] },
-      { id: 'hire-8', feature: 'View Signed Document',
-        steps: ['On signed hire, tap View icon', 'Verify signed PDF opens in new tab (not Word doc)', 'Verify DocuSign signature appears in PDF'] },
-      { id: 'hire-9', feature: 'Download Document',
-        steps: ['Tap Download icon on a hire row', 'If signed: verify signed PDF downloaded', 'If not signed: verify Word docx downloaded'] },
-      { id: 'hire-10', feature: 'Tooltip on Action Icons',
-        steps: ['Hover over each action icon in hire table', 'Verify tooltip label appears near icon', 'Verify tooltip disappears on mouse out'] },
-      { id: 'hire-11', feature: 'Edit Hire Record',
-        steps: ['Tap Edit icon on a hire row', 'Verify form loads with existing data', 'Modify fields', 'Save', 'Verify changes saved in list'] },
-      { id: 'hire-12', feature: 'Copy Hire Record',
-        steps: ['Tap Copy icon on a hire row', 'Verify new form pre-filled with copied data', 'Submit', 'Verify new hire created'] },
-      { id: 'hire-13', feature: 'Delete Hire Record',
-        steps: ['Tap Delete icon on a hire row', 'Verify confirmation modal appears', 'Confirm delete', 'Verify hire removed from list', 'Verify asset status reverts to "In Service"'] },
-      { id: 'hire-14', feature: 'Post-Sign Redirect & Highlight',
-        steps: ['Submit hire form (Send or Sign)', 'Verify form closes and redirects to hire list', 'Verify newly created hire row is highlighted briefly'] },
-      { id: 'hire-15', feature: 'Hire Cards – Mobile (Other Tab)',
-        steps: ['Open app on iOS/Android', 'Tap "Other" tab', 'Tap "Hire" sub-tab', 'Verify hire records display as cards', 'Verify each card shows: equipment, contact, dates, status badge', 'Verify "Signed" = green, "Pending" = amber'] },
+      { id: 'cert-1', platform: 'both', feature: 'Certs List View',
+        steps: ['Navigate to Certs', 'Verify documents listed in table', 'Verify pagination bar visible at bottom', 'Verify no page heading displayed (removed)'] },
+      { id: 'cert-2', platform: 'both', feature: 'Certs Pagination',
+        steps: ['Change rows per page (25/50/100/All)', 'Navigate pages with Prev/Next', 'Verify "1–N of N / Page X of Y" counter correct'] },
+      { id: 'cert-3', platform: 'both', feature: 'Quick Filter – My Documents',
+        steps: ['Tap "My Documents"', 'Verify only documents for assets assigned to current user shown'] },
+      { id: 'cert-4', platform: 'both', feature: 'Quick Filter – Expiring Soon',
+        steps: ['Tap "Expiring Soon"', 'Verify filtered results', 'Verify expiry dates are in near-future range'] },
+      { id: 'cert-5', platform: 'both', feature: 'Quick Filter – Expired',
+        steps: ['Tap "Expired"', 'Verify only past-expiry documents shown', 'Verify red/warning styling on expired rows'] },
+      { id: 'cert-6', platform: 'both', feature: 'Table Column: Document (not "Document/Attachment")', tags: ['new'],
+        steps: ['Verify column header reads "Document" (not "Document / Attachment")', 'Verify document links are clickable and open correctly'] },
+      { id: 'cert-7', platform: 'both', feature: 'Sort Documents',
+        steps: ['Click a column header to sort', 'Verify results re-sort', 'Click again to reverse', 'Verify correct order'] },
+      { id: 'cert-8', platform: 'both', feature: 'Edit Document Record',
+        steps: ['Tap Edit on a document row', 'Modify expiry date or note', 'Save', 'Verify changes reflected in list'] },
+      { id: 'cert-9', platform: 'both', feature: 'Service/Repair Reports in Certs',
+        steps: ['Verify service/repair sign-offs appear as rows in Certs', '"Not provided" shown where no report attached', 'Verify "Attach report" link works'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '7', title: 'Certificates / Documents',
+    num: '7', title: 'Activity Log (Shared)', hdr: '',
     tests: [
-      { id: 'cert-1', feature: 'Certs List View',
-        steps: ['Navigate to Certs', 'Verify documents listed', 'Verify table layout with sticky pagination'] },
-      { id: 'cert-2', feature: 'Certs Pagination',
-        steps: ['Verify pagination bar sticks at bottom', 'Change rows per page', 'Navigate pages', 'Verify counts correct'] },
-      { id: 'cert-3', feature: 'Quick Filters – My Documents',
-        steps: ['Tap "My Documents"', 'Verify only user\'s assets shown'] },
-      { id: 'cert-4', feature: 'Quick Filters – Expiring Soon',
-        steps: ['Tap "Expiring Soon"', 'Verify filtered results', 'Verify dates correct'] },
-      { id: 'cert-5', feature: 'Quick Filters – Expired',
-        steps: ['Tap "Expired"', 'Verify expired docs shown'] },
-      { id: 'cert-6', feature: 'Open Document',
-        steps: ['Tap "Open" on doc', 'Verify opens', 'Verify correct file'] },
-      { id: 'cert-7', feature: 'Edit Document',
-        steps: ['Tap "Edit"', 'Modify details', 'Save', 'Verify changes'] },
-      { id: 'cert-8', feature: 'Document Sorting',
-        steps: ['Change sort option', 'Verify re-sorted'] },
-      { id: 'cert-9', feature: 'Service/Repair Reports',
-        steps: ['Verify reports appear in certs', 'Missing = "Not provided"'] },
+      { id: 'act-1', platform: 'both', feature: 'Activity List Load',
+        steps: ['Navigate to Activity', 'Verify no page heading displayed (removed)', 'Verify activities listed chronologically (newest first)', 'Verify actor name, asset info, action type, timestamp shown'] },
+      { id: 'act-2', platform: 'both', feature: 'Activity Search Bar', tags: ['new'],
+        steps: ['Type a keyword in the search bar (actor name, asset ID, type, note)', 'Verify list filters in real-time', 'Clear search', 'Verify all entries restored'] },
+      { id: 'act-3', platform: 'both', feature: 'Activity Type Filter',
+        steps: ['Select a filter (e.g. Status Change, Check-in, Hire)', 'Verify only matching activity types shown', 'Clear filter', 'Verify all restored'] },
+      { id: 'act-4', platform: 'both', feature: 'Combined Search + Filter',
+        steps: ['Apply a type filter AND enter a search keyword', 'Verify results match both criteria simultaneously'] },
+      { id: 'act-5', platform: 'both', feature: 'Activity → Asset Navigation',
+        steps: ['Tap/click an asset link in an activity entry', 'Verify navigates to correct asset detail', 'Back → verify returns to activity log'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '8', title: 'Activity Log',
+    num: '8', title: 'Tasks (Shared)', hdr: '',
     tests: [
-      { id: 'act-1', feature: 'Activity List',
-        steps: ['Navigate to Activity', 'Verify activities listed chronologically'] },
-      { id: 'act-2', feature: 'Activity Details',
-        steps: ['View activity entry', 'Verify user info, asset info, details shown'] },
-      { id: 'act-3', feature: 'Activity Filtering',
-        steps: ['Filter by type', 'Verify filtered', 'Filter by user', 'Verify'] },
-      { id: 'act-4', feature: 'Activity Navigation',
-        steps: ['Tap asset link', 'Verify navigates to asset', 'Back navigation works'] },
+      { id: 'task-1', platform: 'both', feature: 'Tasks List Load',
+        steps: ['Navigate to Tasks', 'Verify no page heading displayed (removed)', 'Verify open tasks listed', 'Verify count chip shows correct number'] },
+      { id: 'task-2', platform: 'both', feature: 'Tasks Search Bar', tags: ['new'],
+        steps: ['Type an asset ID, serial, type name or title in the search box', 'Verify list filters as you type', 'Verify chip shows "X of Y" when filtered', 'Clear search → verify all tasks restored'] },
+      { id: 'task-3', platform: 'both', feature: 'Overdue Task – Visual',
+        steps: ['Locate an overdue task (past due date)', 'Verify overdue indicator / red styling shown on card'] },
+      { id: 'task-4', platform: 'both', feature: 'Service Task – Action',
+        steps: ['Tap a service task', 'Verify action modal opens', 'Fill in service sign-off details', 'Set next service date', 'Submit', 'Verify task removed from list', 'Verify activity logged'] },
+      { id: 'task-5', platform: 'both', feature: 'Repair Task – Action',
+        steps: ['Tap a repair task', 'Verify action modal opens', 'Fill in repair details', 'Optionally attach photo', 'Submit', 'Verify task resolved', 'Verify asset status updated'] },
+      { id: 'task-6', platform: 'both', feature: 'Sign-off Task – Action',
+        steps: ['Tap a sign-off task', 'Verify signoff modal opens', 'Choose pass/fail', 'Attach report if required', 'Submit', 'Verify task cleared'] },
+      { id: 'task-7', platform: 'both', feature: 'Reminder Task – Dismiss',
+        steps: ['Tap a reminder task', 'Verify action modal', 'Dismiss or complete', 'Verify removed from list'] },
+      { id: 'task-8', platform: 'both', feature: 'Empty State – All Tasks Done',
+        steps: ['With no open tasks, verify empty state icon + "You\'re all caught up" message shown'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '9', title: 'QR Code Features',
+    num: '9', title: 'Equipment Hire (Shared)', hdr: '',
     tests: [
-      { id: 'qr-1', feature: 'QR Scanner',
-        steps: ['Open QR scanner', 'Grant camera permission', 'Scan QR code', 'Verify asset detected'] },
-      { id: 'qr-2', feature: 'QR Check-in',
-        steps: ['Scan QR code', 'Verify check-in page opens', 'Complete check-in', 'Verify activity logged'] },
-      { id: 'qr-3', feature: 'QR → Hire (Mobile)',
-        steps: ['Scan asset QR', 'Tap "Hire"', 'Verify hire form opens with asset pre-populated', 'Complete hire', 'Verify asset On Hire status'] },
-      { id: 'qr-4', feature: 'QR Code Display',
-        steps: ['View asset', 'Verify QR code displays', 'Verify correct data encoded'] },
-      { id: 'qr-5', feature: 'QR Sheet Generation',
-        steps: ['Admin: Generate QR sheet', 'Verify PDF generated', 'Verify QR codes correct'] },
-      { id: 'qr-6', feature: 'Location Capture',
-        steps: ['Scan QR with location permission', 'Verify location captured', 'Verify saved to asset'] },
+      { id: 'hire-1', platform: 'both', feature: 'Hire List Load',
+        steps: ['Navigate to Hire', 'Verify no page heading displayed (removed)', 'Verify hire records load', 'Verify columns: Asset, Serial, Type, Contact, Phone, Email, From, To, Status, Actions'] },
+      { id: 'hire-2', platform: 'both', feature: 'Hire Search Bar', tags: ['new'],
+        steps: ['Type a keyword (asset ID, serial, contact name, phone, email, status)', 'Verify list filters in real-time', 'Verify count updates', 'Clear search → all records restored'] },
+      { id: 'hire-3', platform: 'both', feature: 'Hire Pagination',
+        steps: ['With >25 records, verify pagination controls appear', 'Change rows per page (25/50/100/All)', 'Navigate pages with Prev/Next', 'Verify counter "1–N of N" is accurate'] },
+      { id: 'hire-4', platform: 'both', feature: 'Create New Hire',
+        steps: ['Tap "New hire"', 'Fill hirer name, address, phone, email', 'Set hire start and end dates', 'Add equipment (search or enter asset ID)', 'Submit', 'Verify new hire in list', 'Verify asset status changes to "On Hire"'] },
+      { id: 'hire-5', platform: 'both', feature: 'Generate PDF & Sign (DocuSign)',
+        steps: ['Open a hire record → Edit', 'Tap "Generate PDF & Sign"', 'Verify DocuSign signing tab opens', 'Complete signature', 'Verify signing tab closes automatically', 'Verify hire list refreshes', 'Verify status changes to "Signed"'] },
+      { id: 'hire-6', platform: 'both', feature: 'Send Hire via Email (DocuSign)',
+        steps: ['Open a hire record → Edit', 'Tap "Send via Email"', 'Verify email sent to hirer', 'Verify hire status shows "Pending"'] },
+      { id: 'hire-7', platform: 'both', feature: 'Hire Status Badges',
+        steps: ['Verify "Signed" rows show green badge', 'Verify "Pending" rows show amber badge', 'Verify correct status text shown'] },
+      { id: 'hire-8', platform: 'both', feature: 'View Signed Document',
+        steps: ['Tap View icon on a signed hire', 'Verify signed PDF opens in new tab', 'Verify DocuSign signature is present in document'] },
+      { id: 'hire-9', platform: 'both', feature: 'Download Document',
+        steps: ['Tap Download on a signed hire → verify signed PDF downloaded', 'Tap Download on unsigned hire → verify Word docx downloaded'] },
+      { id: 'hire-10', platform: 'both', feature: 'Edit Hire Record',
+        steps: ['Tap Edit icon on a hire row', 'Verify form loads with existing data pre-filled', 'Modify a field', 'Save', 'Verify changes reflected in list'] },
+      { id: 'hire-11', platform: 'both', feature: 'Copy Hire Record',
+        steps: ['Tap Copy icon on a hire row', 'Verify new form opens pre-filled with copied data', 'Submit', 'Verify new separate hire record created'] },
+      { id: 'hire-12', platform: 'both', feature: 'Delete Hire Record',
+        steps: ['Tap Delete icon', 'Verify confirmation modal appears (not browser alert)', 'Confirm delete', 'Verify hire removed', 'Verify asset status reverts to "In Service"'] },
+      { id: 'hire-13', platform: 'both', feature: 'Post-Submit Redirect & Highlight',
+        steps: ['Submit hire form (new or edit)', 'Verify form closes and redirects to hire list', 'Verify newly created/updated hire row is briefly highlighted'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '10', title: 'Quick Actions & Shortcuts',
+    num: '10', title: 'QR Code & Check-in (Shared)', hdr: '',
     tests: [
-      { id: 'qa-1', feature: 'Quick View',
-        steps: ['Select Quick View shortcut', 'Scan asset', 'Verify asset detail opens'] },
-      { id: 'qa-2', feature: 'Quick Transfer',
-        steps: ['Select Quick Transfer', 'Scan asset', 'Select recipient', 'Verify transfer completes', 'Verify location captured'] },
-      { id: 'qa-3', feature: 'Transfer-To Me',
-        steps: ['Select Transfer-To Me', 'Scan asset', 'Verify assigned to self'] },
-      { id: 'qa-4', feature: 'Quick Service',
-        steps: ['Select Quick Service', 'Scan asset', 'Fill form', 'Submit', 'Verify logged & status updated'] },
-      { id: 'qa-5', feature: 'Quick Repair',
-        steps: ['Select Quick Repair', 'Scan asset', 'Fill form', 'Submit', 'Verify logged & status updated'] },
-      { id: 'qa-6', feature: 'Service Sign-off',
-        steps: ['Open pending service task', 'Fill sign-off form', 'Attach report (optional)', 'Sign off', 'Verify status "In Service"'] },
-      { id: 'qa-7', feature: 'Repair Sign-off',
-        steps: ['Open pending repair task', 'Fill sign-off form', 'Sign off', 'Verify status "In Service"'] },
+      { id: 'qr-1', platform: 'mob', feature: 'QR Scanner – Open & Scan',
+        steps: ['Open QR scanner on iOS/Android', 'Grant camera permission if prompted', 'Scan a valid asset QR code', 'Verify asset detected and action menu appears'] },
+      { id: 'qr-2', platform: 'both', feature: 'QR Check-in',
+        steps: ['Scan or navigate to check-in for an asset', 'Complete check-in form', 'Submit', 'Verify activity log entry created', 'Verify location captured if permission granted'] },
+      { id: 'qr-3', platform: 'mob', feature: 'QR → Hire (Mobile)',
+        steps: ['Scan asset QR code', 'Select "Hire" from action options', 'Verify hire form opens with asset ID and description pre-populated', 'Complete and submit', 'Verify asset status = On Hire'] },
+      { id: 'qr-4', platform: 'both', feature: 'QR Code Display on Asset',
+        steps: ['Open an asset detail', 'Verify QR code displays', 'Verify QR encodes the correct asset URL/ID'] },
+      { id: 'qr-5', platform: 'both', feature: 'QR Sheet Generation (Admin)',
+        steps: ['Log in as admin', 'Tap "Generate QR Sheet"', 'Enter number of sheets', 'Generate', 'Verify PDF created and QR codes are scannable'] },
+      { id: 'qr-6', platform: 'mob', feature: 'Location Capture on Check-in',
+        steps: ['Enable location on device', 'Scan QR and complete check-in', 'Verify GPS coordinates captured', 'Verify location saved to asset record'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '11', title: 'Admin Features',
+    num: '11', title: 'Quick Actions & Sign-offs (Shared)', hdr: '',
     tests: [
-      { id: 'adm-1', feature: 'Admin Access',
-        steps: ['Login as admin', 'Verify admin features visible'] },
-      { id: 'adm-2', feature: 'Generate QR Sheet',
-        steps: ['Tap Generate QR Sheet', 'Enter number of sheets', 'Generate', 'Verify PDF created'] },
-      { id: 'adm-3', feature: 'User Management',
-        steps: ['Navigate to Admin', 'View users list', 'Verify user details & actions'] },
-      { id: 'adm-4', feature: 'Domain Management',
-        steps: ['Access domain management', 'Verify domains listed', 'Test domain operations'] },
-      { id: 'adm-5', feature: 'Reset Password',
-        steps: ['Select user', 'Reset password', 'Verify reset email sent'] },
+      { id: 'qa-1', platform: 'both', feature: 'Quick Transfer',
+        steps: ['Select Quick Transfer action', 'Choose/scan asset', 'Select recipient user', 'Confirm transfer', 'Verify assignment updated', 'Verify activity logged'] },
+      { id: 'qa-2', platform: 'both', feature: 'Transfer to Me',
+        steps: ['Select "Transfer to Me"', 'Choose/scan asset', 'Confirm', 'Verify asset assigned to current user'] },
+      { id: 'qa-3', platform: 'both', feature: 'Quick Service',
+        steps: ['Select Quick Service', 'Choose/scan asset', 'Fill service details and next date', 'Submit', 'Verify service task created', 'Verify activity logged'] },
+      { id: 'qa-4', platform: 'both', feature: 'Quick Repair',
+        steps: ['Select Quick Repair', 'Choose/scan asset', 'Fill repair details', 'Submit', 'Verify repair task created', 'Verify asset status updated to Repair'] },
+      { id: 'qa-5', platform: 'both', feature: 'Service Sign-off',
+        steps: ['Open a pending service task', 'Fill sign-off details', 'Set next service date', 'Optionally attach report', 'Sign off', 'Verify status returns to "In Service"', 'Verify report in Certs'] },
+      { id: 'qa-6', platform: 'both', feature: 'Repair Sign-off',
+        steps: ['Open a pending repair task', 'Fill sign-off details', 'Sign off', 'Verify status returns to "In Service"', 'Verify activity logged'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '12', title: '"Other" Tab',
+    num: '12', title: 'Admin Features (Shared)', hdr: '',
     tests: [
-      { id: 'oth-1', feature: '"Other" Tab',
-        steps: ['Open app on iOS/Android', 'Verify bottom tab now labelled "Other" (was "Tasks")', 'Tap "Other" tab', 'Verify sub-tabs "Tasks" and "Hire" are visible'] },
-      { id: 'oth-2', feature: 'Tasks Sub-tab',
-        steps: ['Tap "Tasks" sub-tab', 'Verify existing tasks display as before', 'Task count badge on tab icon visible'] },
-      { id: 'oth-3', feature: 'Hire Sub-tab – Card View',
-        steps: ['Tap "Hire" sub-tab', 'Verify hire records load as cards', 'Each card: equipment name/serial, contact, phone, email, date range, status badge', 'Signed = green, Pending = amber'] },
-      { id: 'oth-4', feature: 'Hire Sub-tab – Empty State',
-        steps: ['With no hires, open Hire sub-tab', 'Verify empty state message displayed'] },
-      { id: 'oth-5', feature: 'Task Count Badge',
-        steps: ['Verify "Other" tab shows badge count when tasks exist', 'Badge shows number or "99+" for large counts', 'Badge clears when tasks are completed'] },
+      { id: 'adm-1', platform: 'both', feature: 'Admin Access Control',
+        steps: ['Login as standard user', 'Verify admin menu/features are hidden', 'Login as admin', 'Verify admin features visible'] },
+      { id: 'adm-2', platform: 'both', feature: 'Generate QR Sheet',
+        steps: ['Tap Generate QR Sheet', 'Enter number of codes', 'Generate', 'Verify PDF opens', 'Verify QR codes correct'] },
+      { id: 'adm-3', platform: 'both', feature: 'User Management',
+        steps: ['Navigate to Admin → Users', 'Verify user list displays with name, email, role', 'Verify actions available (edit, reset password, deactivate)'] },
+      { id: 'adm-4', platform: 'both', feature: 'Reset User Password',
+        steps: ['Select a user', 'Trigger password reset', 'Verify reset email sent to that user\'s address'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '13', title: 'UI Components & Consistency',
+    num: '13', title: '🌐 Web-Only Features', hdr: 'hdr-web',
     tests: [
-      { id: 'ui-1', feature: 'Status Badge – On Hire',
-        steps: ['Find asset with "On Hire" status', 'Verify green teal badge with assignment icon', 'Verify consistent across Inventory, Search, Asset Detail, Type Detail'] },
-      { id: 'ui-2', feature: 'Status Badge – All Types',
-        steps: ['Verify In Service (blue), Repair (orange), Maintenance (yellow), End of Life (purple), On Hire (green)', 'Verify consistent across all screens'] },
-      { id: 'ui-3', feature: 'Table Icon Buttons',
-        steps: ['Verify action buttons use consistent coloured icons', 'View=purple, Download=blue, Edit=amber, Delete=red, Copy=teal, Send=sky blue', 'Verify hover tooltips appear on web'] },
-      { id: 'ui-4', feature: 'Confirm Delete Modal',
-        steps: ['Trigger delete on any record', 'Verify custom modal (not browser alert)', 'Verify Cancel and Confirm buttons styled correctly'] },
-      { id: 'ui-5', feature: 'Empty State Component',
-        steps: ['Navigate to a section with no data', 'Verify consistent empty state icon + message'] },
-      { id: 'ui-6', feature: 'Loading Spinner',
-        steps: ['Trigger data load', 'Verify consistent loading spinner across all screens'] },
-      { id: 'ui-7', feature: 'Form Buttons (Submit/Cancel)',
-        steps: ['Open any form', 'Verify Submit button is primary blue, Cancel is outlined', 'Verify consistent across all forms'] },
-      { id: 'ui-8', feature: 'TablePagination Component',
-        steps: ['Verify pagination bar in Hire, Certs, and Inventory', 'Rows per page: 25/50/100/All tabs', '"1-N of N / Page X of Y" display', 'Prev/Next navigation buttons', 'Sticks to bottom on all platforms'] },
+      { id: 'web-1', platform: 'web', feature: 'Web Navbar – Display & Active State',
+        steps: ['Open app on desktop browser', 'Verify navbar visible with all links: Dashboard, Inventory, Search, Activity, Certs, Hire', 'Navigate to each page', 'Verify active link highlighted correctly'] },
+      { id: 'web-2', platform: 'web', feature: 'Inventory Table – Dynamic Flex Columns', tags: ['new'],
+        steps: ['Open Inventory on web in table view', 'Verify all column headers fully visible (no truncation)', 'Resize browser width', 'Verify columns scale proportionally with flex sizing', 'Verify horizontal scroll appears only when table is too narrow'] },
+      { id: 'web-3', platform: 'web', feature: 'Inventory Table – Text Alignment', tags: ['new'],
+        steps: ['Verify all table cell data is centred horizontally', 'Verify status badge is centred in its cell (not left-aligned)', 'Verify header text is centred'] },
+      { id: 'web-4', platform: 'web', feature: 'Table Design Consistency', tags: ['new'],
+        steps: ['Open Inventory table, Certs table, and Hire table', 'Verify all three use identical: column padding, header height, alternating row colours (#F8FAFC), font sizes, text alignment, column separator lines'] },
+      { id: 'web-5', platform: 'web', feature: 'Grid / Table Toggle – My Assets', tags: ['new'],
+        steps: ['Navigate to My Assets (or Inventory preset=mine)', 'Verify Grid/Table toggle buttons are aligned to the RIGHT side of the toolbar', 'Switch between Grid and Table', 'Verify both views render correctly'] },
+      { id: 'web-6', platform: 'web', feature: 'Grid / Table Toggle – Search / Dashboard',
+        steps: ['Open Inventory/Search on web', 'Verify toggle is on the right side', 'Switch views', 'Verify consistent alignment with My Assets view'] },
+      { id: 'web-7', platform: 'web', feature: 'No Page Headings on Hire/Activity/My Assets/Tasks', tags: ['new'],
+        steps: ['Navigate to Hire → verify no "Hire" page heading above the table', 'Navigate to Activity → verify no heading', 'Navigate to My Assets → verify no heading', 'Navigate to Tasks → verify no heading'] },
+      { id: 'web-8', platform: 'web', feature: 'Hire – Search Bar', tags: ['new'],
+        steps: ['Open Hire on web', 'Verify search bar visible above the table', 'Type a contact name', 'Verify table filters', 'Type an asset ID', 'Verify table filters', 'Clear', 'Verify all records restored'] },
+      { id: 'web-9', platform: 'web', feature: 'Activity – Search Bar', tags: ['new'],
+        steps: ['Open Activity log on web', 'Verify search bar visible', 'Search by actor name', 'Verify filtered', 'Search by asset ID', 'Verify filtered', 'Combine with type filter', 'Verify both applied'] },
+      { id: 'web-10', platform: 'web', feature: 'Table Tooltip on Action Icons',
+        steps: ['Hover over each action icon in Hire, Certs, or Inventory table', 'Verify tooltip label appears near icon on hover', 'Verify tooltip disappears on mouse out', 'Verify tooltip does not overlap table header'] },
+      { id: 'web-11', platform: 'web', feature: 'Edit Asset Type – Sticky Save Bar', tags: ['new'],
+        steps: ['Open Edit Asset Type on web', 'Scroll down past half the form', 'Verify "Go Back" and "Save Changes" buttons remain visible at the bottom of the viewport (sticky bar)', 'Verify buttons have correct colours: Go Back=dark grey, Save Changes=navy', 'Tap Save Changes', 'Verify summary/confirmation modal appears'] },
+      { id: 'web-12', platform: 'web', feature: 'DocuSign Return Flow',
+        steps: ['Initiate sign-in-browser on a hire (Generate PDF & Sign)', 'Verify DocuSign opens in new tab', 'Complete signing', 'Verify signing tab closes automatically', 'Verify parent tab hire list refreshes', 'Verify signed row is briefly highlighted'] },
+      { id: 'web-13', platform: 'web', feature: 'Responsive Design – Window Resize',
+        steps: ['Resize browser from full-width down to ~1024px', 'Verify layout adapts without breakage', 'Verify no unexpected horizontal overflow at standard resolutions'] },
+      { id: 'web-14', platform: 'web', feature: 'Confirm Delete Modal (Web)',
+        steps: ['Trigger delete on any record (hire, document, etc.)', 'Verify custom confirmation modal appears (not browser native alert)', 'Verify Cancel and Confirm buttons styled correctly', 'Verify Cancel closes without deleting'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '14', title: 'Mobile-Specific Features',
+    num: '14', title: '📱 Mobile-Only Features', hdr: 'hdr-mob',
     tests: [
-      { id: 'mob-1', feature: 'Bottom Tab Navigation',
-        steps: ['Verify tabs: Dashboard, Inventory, Other', 'Switch between tabs', 'Verify navigation works'] },
-      { id: 'mob-2', feature: 'Mobile Layout – Search',
-        steps: ['Open search on mobile', 'Verify card layout', 'Verify responsive design', 'Verify filters accessible'] },
-      { id: 'mob-3', feature: 'Mobile Layout – Certs',
-        steps: ['Open certs on mobile', 'Verify card layout', 'Verify filters work'] },
-      { id: 'mob-4', feature: 'Hire Form – Mobile',
-        steps: ['Open hire form on mobile', 'Verify all fields accessible', 'Verify keyboard handling', 'Date pickers work', 'Signature pad works'] },
-      { id: 'mob-5', feature: 'Screen Header',
-        steps: ['Verify header displays', 'Verify back button works', 'Verify title centred', 'Verify navigation consistent'] },
-      { id: 'mob-6', feature: 'Touch Interactions',
-        steps: ['Test all touch targets', 'Verify adequate size', 'Verify feedback on tap'] },
-      { id: 'mob-7', feature: 'Camera Permissions',
-        steps: ['Request camera access', 'Verify permission prompt', 'Grant/deny', 'Verify behavior'] },
-      { id: 'mob-8', feature: 'Location Permissions',
-        steps: ['Request location access', 'Grant/deny', 'Verify behavior'] },
+      { id: 'mob-1', platform: 'mob', feature: 'Bottom Tab Navigation',
+        steps: ['Verify bottom tabs: Dashboard, Inventory, Other', 'Tap each tab', 'Verify correct screen loads', 'Verify active tab is highlighted'] },
+      { id: 'mob-2', platform: 'mob', feature: 'Other Tab – Sub-tabs (Tasks & Hire)',
+        steps: ['Tap "Other" bottom tab', 'Verify sub-tabs "Tasks" and "Hire" visible at top of screen', 'Tap Tasks sub-tab', 'Verify tasks list shows', 'Tap Hire sub-tab', 'Verify hire cards show'] },
+      { id: 'mob-3', platform: 'mob', feature: 'Tasks Sub-tab – Search Bar', tags: ['new'],
+        steps: ['Tap Other → Tasks', 'Verify search bar is visible above the tasks list', 'Type an asset ID or name', 'Verify tasks filter', 'Verify count chip shows "X of Y" when filtered'] },
+      { id: 'mob-4', platform: 'mob', feature: 'Hire Sub-tab – Card View',
+        steps: ['Tap Other → Hire', 'Verify hire records display as cards (not a table)', 'Verify each card shows: equipment, serial, contact, phone, date range, status badge', '"Signed" = green badge, "Pending" = amber badge'] },
+      { id: 'mob-5', platform: 'mob', feature: 'Hire Sub-tab – Empty State',
+        steps: ['With no hire records, open Hire sub-tab', 'Verify empty state icon and message displayed'] },
+      { id: 'mob-6', platform: 'mob', feature: 'Task Count Badge on Other Tab',
+        steps: ['Verify "Other" tab shows a badge count when tasks exist', 'Complete all tasks', 'Verify badge clears'] },
+      { id: 'mob-7', platform: 'mob', feature: 'Inventory – Mobile Card Layout',
+        steps: ['Open Inventory on mobile', 'Verify assets display as cards (not a full table)', 'Verify card shows asset name, type, status badge, image thumbnail', 'Verify filters accessible from card view'] },
+      { id: 'mob-8', platform: 'mob', feature: 'Hire Form on Mobile',
+        steps: ['Open new hire form on mobile (Other → Hire or scan QR → Hire)', 'Verify all fields accessible', 'Verify keyboard dismisses correctly', 'Verify date pickers work on iOS and Android', 'Submit form'] },
+      { id: 'mob-9', platform: 'mob', feature: 'Camera Permission – QR Scanner',
+        steps: ['First launch: tap QR scanner', 'Verify OS permission prompt appears', 'Grant permission → scanner opens', 'Deny → verify graceful fallback message shown'] },
+      { id: 'mob-10', platform: 'mob', feature: 'Location Permission',
+        steps: ['Trigger a check-in that requests location', 'Verify OS permission prompt appears', 'Grant → verify location captured', 'Deny → verify check-in still completes without crashing'] },
+      { id: 'mob-11', platform: 'mob', feature: 'Touch Targets & Feedback',
+        steps: ['Tap buttons across key screens', 'Verify all tap targets are comfortably sized', 'Verify visible press feedback on all interactive elements'] },
+      { id: 'mob-12', platform: 'mob', feature: 'Screen Header – Back Navigation',
+        steps: ['Navigate into a detail screen', 'Verify header shows back button and page title', 'Tap back', 'Verify correct navigation', 'Verify consistent header style across all screens'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '15', title: 'Web-Specific Features',
+    num: '15', title: 'UI Components & Consistency', hdr: '',
     tests: [
-      { id: 'web-1', feature: 'Web Navbar',
-        steps: ['Verify navbar displays', 'Verify all links: Dashboard, Inventory, Search, Activity, Certs, Hire', 'Verify active state highlighting'] },
-      { id: 'web-2', feature: 'Hire Table Layout',
-        steps: ['Verify hire table columns fit on screen', 'Verify column spacing (no excessive gaps)', 'Verify horizontal scroll only when needed'] },
-      { id: 'web-3', feature: 'Table Tooltip (Web)',
-        steps: ['Hover over action icons in any table', 'Verify tooltip appears near icon', 'Verify tooltip has correct label', 'Verify no overlap with table header'] },
-      { id: 'web-4', feature: 'Grid/Table Toggle',
-        steps: ['Switch between views', 'Verify both work', 'Verify state persists'] },
-      { id: 'web-5', feature: 'Responsive Design',
-        steps: ['Resize browser window', 'Verify layout adapts', 'Verify no unexpected scroll'] },
-      { id: 'web-6', feature: 'DocuSign Return Flow',
-        steps: ['Complete DocuSign signing in new tab', 'Verify signing tab closes automatically', 'Verify parent tab hire list refreshes', 'Verify signed row highlights briefly'] },
+      { id: 'ui-1', platform: 'both', feature: 'StatusBadge – All Statuses',
+        steps: ['Find assets with each status: In Service (blue), On Hire (green), Repair (orange), Maintenance (yellow), End of Life (purple)', 'Verify consistent badge colours and icons across: Inventory, Search, Asset Detail, Type Detail'] },
+      { id: 'ui-2', platform: 'both', feature: 'Empty State Component',
+        steps: ['Navigate to a section with no data (e.g. empty task list, no certs)', 'Verify consistent empty state: icon, title, subtitle displayed', 'Verify "You\'re all caught up" shown on Tasks'] },
+      { id: 'ui-3', platform: 'both', feature: 'Loading Spinner',
+        steps: ['Trigger a data load (navigate to new section)', 'Verify loading spinner shows while data loads', 'Verify spinner consistent across all screens'] },
+      { id: 'ui-4', platform: 'web', feature: 'Table Action Icon Colours (Web)',
+        steps: ['Check Hire, Certs, and Inventory tables on web', 'Verify consistent icon colours: View=purple, Download=blue, Edit=amber, Delete=red, Copy=teal, Send=sky blue'] },
+      { id: 'ui-5', platform: 'both', feature: 'Confirm Delete Modal',
+        steps: ['Delete any record', 'Verify custom modal (not browser native alert)', 'Verify message clearly describes what will be deleted', 'Verify Cancel and Confirm buttons present and correctly styled'] },
+      { id: 'ui-6', platform: 'both', feature: 'Pagination Component – Consistency',
+        steps: ['Verify pagination in Hire, Certs, and Inventory all use same component', 'Verify rows per page tabs: 25 / 50 / 100 / All', 'Verify Prev/Next buttons disable correctly at boundaries', 'Verify "Page X of Y" and "1–N of N" counters accurate'] },
+      { id: 'ui-7', platform: 'both', feature: 'Form Validation',
+        steps: ['Submit any form with required fields empty', 'Verify validation messages appear on relevant fields', 'Verify form does not submit', 'Verify helpful guidance shown'] },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
   {
-    num: '16', title: 'Performance & Error Handling',
+    num: '16', title: 'Performance & Error Handling', hdr: '',
     tests: [
-      { id: 'perf-1', feature: 'Loading States',
-        steps: ['Perform slow operations', 'Verify loading indicators', 'Verify user feedback'] },
-      { id: 'perf-2', feature: 'Error Messages',
-        steps: ['Trigger errors', 'Verify error messages display', 'Verify helpful messages', 'Verify recovery options'] },
-      { id: 'perf-3', feature: 'Network Errors',
-        steps: ['Disconnect network', 'Perform actions', 'Verify error handling', 'Verify retry options'] },
-      { id: 'perf-4', feature: 'Large Data Sets',
-        steps: ['Load large asset list', 'Verify performance', 'Verify pagination works', 'Verify no crashes'] },
-      { id: 'perf-5', feature: 'Form Validation',
-        steps: ['Submit invalid forms', 'Verify validation messages', 'Prevents submission', 'Helpful hints'] },
-      { id: 'perf-6', feature: 'DocuSign Error Handling',
-        steps: ['Simulate DocuSign unavailable', 'Verify informative error message', 'Verify no crash', 'Verify fallback (e.g. Word doc download still works)'] },
+      { id: 'perf-1', platform: 'both', feature: 'Loading States',
+        steps: ['Navigate between sections', 'Verify loading indicators appear while data fetches', 'Verify no blank/broken screens during load'] },
+      { id: 'perf-2', platform: 'both', feature: 'Network Error Handling',
+        steps: ['Disconnect network', 'Perform an action (save, navigate)', 'Verify a clear error message shown (not a blank screen)', 'Reconnect', 'Verify recovery or retry works'] },
+      { id: 'perf-3', platform: 'both', feature: 'Large Dataset Performance',
+        steps: ['Load inventory with 200+ assets', 'Verify list renders without freeze', 'Verify pagination works correctly', 'Verify search and filters respond quickly'] },
     ],
   },
+
 ];
 
 // ─── State ────────────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'gearops_checklist_v2';
-const TESTER_KEY  = 'gearops_tester_info_v2';
+const STORAGE_KEY = 'gearops_checklist_v3';
+const TESTER_KEY  = 'gearops_tester_info_v3';
 let state = {};
+let activePlatformFilter = 'all';
 
 function loadState() {
   try { state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
@@ -895,7 +979,7 @@ function loadTesterInfo() {
 // ─── Save to File (JSON) ──────────────────────────────────────────────────────
 function saveToDisk() {
   const snapshot = {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     testerInfo: getTesterInfo(),
     results: state,
@@ -929,9 +1013,10 @@ function loadFromDisk(event) {
           localStorage.setItem(TESTER_KEY, JSON.stringify(snapshot.testerInfo));
         }
         render();
+        applyPlatformFilter(activePlatformFilter);
         showToast('Results loaded from file');
       } else {
-        alert('This file does not appear to be a valid AMA test results file.');
+        alert('This file does not appear to be a valid GearOps test results file.');
       }
     } catch (_) {
       alert('Could not read file. Make sure it is a valid JSON results file.');
@@ -942,6 +1027,12 @@ function loadFromDisk(event) {
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
+function platformTag(p) {
+  if (p === 'web') return '<span class="platform-tag pt-web">Web</span>';
+  if (p === 'mob') return '<span class="platform-tag pt-mob">Mobile</span>';
+  return '';
+}
+
 function render() {
   const container = document.getElementById('main-content');
   container.innerHTML = '';
@@ -950,11 +1041,18 @@ function render() {
     card.className = 'section-card';
     card.id = 'section-' + section.num;
 
+    const hdrClass = 'section-header' + (section.hdr ? ' ' + section.hdr : '');
+    let sectionTagHtml = '';
+    if (section.hdr === 'hdr-web') sectionTagHtml = '<span class="section-tag tag-web">Web Only</span>';
+    else if (section.hdr === 'hdr-mob') sectionTagHtml = '<span class="section-tag tag-mob">Mobile Only</span>';
+    else sectionTagHtml = '<span class="section-tag tag-both">All Platforms</span>';
+
     card.innerHTML = `
-      <div class="section-header" onclick="toggleSection('${section.num}')">
+      <div class="${hdrClass}" onclick="toggleSection('${section.num}')">
         <div class="section-title-wrap">
           <span class="section-num">${section.num}</span>
           <span class="section-title">${section.title}</span>
+          ${sectionTagHtml}
         </div>
         <div class="section-meta">
           <span class="section-mini-pass" id="s-pass-${section.num}">✔ 0</span>
@@ -985,6 +1083,7 @@ function render() {
       const ts = getTestState(test.id);
       const tr = document.createElement('tr');
       tr.id = 'row-' + test.id;
+      tr.dataset.platform = test.platform || 'both';
       if (ts.result === 'pass') tr.className = 'row-pass';
       if (ts.result === 'fail') tr.className = 'row-fail';
 
@@ -992,10 +1091,16 @@ function render() {
         `<li><span class="step-num">${i + 1}</span><span>${s}</span></li>`
       ).join('');
 
+      const extraTags = (test.tags || []).map(t =>
+        t === 'new' ? '<span class="platform-tag pt-new">Updated</span>' : ''
+      ).join('');
+
       tr.innerHTML = `
         <td>
-          <div class="feature-name">${test.feature}</div>
-          ${ts.result !== 'pending' ? `<span class="row-status-badge badge-${ts.result}">${ts.result === 'pass' ? '✔ Passed' : '✘ Failed'}</span>` : `<span class="row-status-badge badge-pend">○ Untested</span>`}
+          <div class="feature-name">${test.feature}${platformTag(test.platform)}${extraTags}</div>
+          ${ts.result !== 'pending'
+            ? `<span class="row-status-badge badge-${ts.result}">${ts.result === 'pass' ? '✔ Passed' : '✘ Failed'}</span>`
+            : `<span class="row-status-badge badge-pend">○ Untested</span>`}
         </td>
         <td><ul class="steps-list">${stepItems}</ul></td>
         <td class="action-cell">
@@ -1024,7 +1129,6 @@ function render() {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 function setResult(testId, sectionNum, result) {
   const ts = getTestState(testId);
-  // Toggle off if already set
   const newResult = ts.result === result ? 'pending' : result;
   state[testId] = { ...ts, result: newResult };
   saveState();
@@ -1032,13 +1136,11 @@ function setResult(testId, sectionNum, result) {
   const row = document.getElementById('row-' + testId);
   row.className = newResult === 'pass' ? 'row-pass' : newResult === 'fail' ? 'row-fail' : '';
 
-  // Update badge in feature cell
   const badge = row.querySelector('.row-status-badge');
   if (newResult === 'pass') { badge.className = 'row-status-badge badge-pass'; badge.textContent = '✔ Passed'; }
   else if (newResult === 'fail') { badge.className = 'row-status-badge badge-fail'; badge.textContent = '✘ Failed'; }
   else { badge.className = 'row-status-badge badge-pend'; badge.textContent = '○ Untested'; }
 
-  // Update button active states
   row.querySelector('.pass-btn').classList.toggle('active', newResult === 'pass');
   row.querySelector('.fail-btn').classList.toggle('active', newResult === 'fail');
 
@@ -1090,10 +1192,11 @@ function collapseAll() { document.querySelectorAll('.section-card').forEach(c =>
 
 // ─── Clear all ────────────────────────────────────────────────────────────────
 function clearAll() {
-  if (!confirm('Clear all test results and comments? This cannot be undone.\n\nThis only clears your local browser copy.')) return;
+  if (!confirm('Clear all test results and comments? This cannot be undone.')) return;
   state = {};
   saveState();
   render();
+  applyPlatformFilter(activePlatformFilter);
   showToast('All results cleared');
 }
 
@@ -1105,20 +1208,48 @@ function filterTests(query) {
     section.tests.forEach(test => {
       const row = document.getElementById('row-' + test.id);
       if (!row) return;
+      // Respect platform filter
+      const pfOk = platformMatchesFilter(row.dataset.platform);
       const text = (test.feature + ' ' + test.steps.join(' ')).toLowerCase();
-      const match = !q || text.includes(q);
+      const textMatch = !q || text.includes(q);
+      const failMatch = activePlatformFilter === 'fail'
+        ? getTestState(test.id).result === 'fail'
+        : true;
+      const match = pfOk && textMatch && failMatch;
       row.style.display = match ? '' : 'none';
       if (match) sectionHasMatch = true;
     });
     const card = document.getElementById('section-' + section.num);
     if (card) {
-      card.style.display = (!q || sectionHasMatch) ? '' : 'none';
+      card.style.display = (!q && activePlatformFilter === 'all') || sectionHasMatch ? '' : 'none';
       if (q && sectionHasMatch) card.classList.remove('collapsed');
     }
   });
 }
 
-// ─── Export Report ───────────────────────────────────────────────────────────
+function platformMatchesFilter(rowPlatform) {
+  if (activePlatformFilter === 'all') return true;
+  if (activePlatformFilter === 'fail') return true; // handled separately
+  if (activePlatformFilter === 'web') return rowPlatform === 'web' || rowPlatform === 'both';
+  if (activePlatformFilter === 'mob') return rowPlatform === 'mob' || rowPlatform === 'both';
+  return true;
+}
+
+function filterByPlatform(type) {
+  activePlatformFilter = type;
+  ['all','web','mob','fail'].forEach(k => {
+    const btn = document.getElementById('fb-' + k);
+    if (btn) btn.classList.toggle('active', k === type);
+  });
+  // Re-apply with current search
+  filterTests(document.getElementById('search-input').value);
+}
+
+function applyPlatformFilter(type) {
+  filterByPlatform(type);
+}
+
+// ─── Export Report ────────────────────────────────────────────────────────────
 let _reportHtml = '';
 
 function buildReport() {
@@ -1129,8 +1260,6 @@ function buildReport() {
   });
 
   let totalPass = 0, totalFail = 0, totalPend = 0;
-
-  // Pre-count totals
   SECTIONS.forEach(section => {
     section.tests.forEach(t => {
       const r = getTestState(t.id).result;
@@ -1142,7 +1271,6 @@ function buildReport() {
   const totalAll = totalPass + totalFail + totalPend;
   const pct = totalAll > 0 ? Math.round(((totalPass + totalFail) / totalAll) * 100) : 0;
 
-  // Build section rows HTML
   let sectionsHtml = '';
   SECTIONS.forEach(section => {
     let sp = 0, sf = 0, su = 0;
@@ -1158,11 +1286,7 @@ function buildReport() {
       const cls   = r === 'pass' ? 'rpass' : r === 'fail' ? 'rfail' : 'rpend';
       const icls  = r === 'pass' ? 'rt-pass' : r === 'fail' ? 'rt-fail' : 'rt-pend';
       const label = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : 'SKIP';
-
-      const stepsHtml = t.steps.map((s, i) =>
-        (i + 1) + '. ' + s
-      ).join('  |  ');
-
+      const stepsHtml = t.steps.map((s, i) => (i + 1) + '. ' + s).join('  |  ');
       const noteHtml = ts.comment
         ? '<div class="rt-note">Note: ' + ts.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>'
         : '';
@@ -1193,7 +1317,6 @@ function buildReport() {
       </div>`;
   });
 
-  // Tester info rows
   const testerRows = [
     tester.name     ? '<tr><td style="width:120px;font-weight:600;color:#475569;padding:4px 8px;">Tester</td><td style="padding:4px 8px;">' + tester.name + '</td></tr>' : '',
     tester.platform ? '<tr><td style="font-weight:600;color:#475569;padding:4px 8px;">Platform</td><td style="padding:4px 8px;">' + tester.platform + '</td></tr>' : '',
@@ -1206,7 +1329,6 @@ function buildReport() {
     ? '<table style="border-collapse:collapse;font-size:12px;margin-top:10px;">' + testerRows + '</table>'
     : '<p style="font-size:12px;color:#94A3B8;margin-top:8px;">No tester info provided.</p>';
 
-  // Assemble full report HTML (self-contained, for download)
   _reportHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1235,13 +1357,9 @@ function buildReport() {
   .rpill-pend { background:#FEF3C7; color:#92400E; border:1px solid #FDE68A; }
   .report-test-row { display:flex; align-items:flex-start; gap:12px; padding:10px 16px; border:1px solid #CBD5E1; border-top:none; font-size:12px; }
   .report-test-row:last-child { border-radius:0 0 8px 8px; }
-  .rpass { background:#F0FDF4; }
-  .rfail { background:#FFF5F5; }
-  .rpend { background:#FFFBEB; }
+  .rpass { background:#F0FDF4; } .rfail { background:#FFF5F5; } .rpend { background:#FFFBEB; }
   .rt-status { flex-shrink:0; font-weight:800; font-size:14px; width:20px; margin-top:1px; }
-  .rt-pass { color:#065F46; }
-  .rt-fail { color:#991B1B; }
-  .rt-pend { color:#92400E; }
+  .rt-pass { color:#065F46; } .rt-fail { color:#991B1B; } .rt-pend { color:#92400E; }
   .rt-body { flex:1; min-width:0; }
   .rt-feature { font-weight:700; color:#0F172A; margin-bottom:2px; }
   .rt-note { color:#475569; font-style:italic; margin-top:4px; padding:4px 8px; background:rgba(0,0,0,.04); border-radius:5px; border-left:3px solid #2563EB; }
@@ -1269,7 +1387,6 @@ function buildReport() {
 </div>
 </body></html>`;
 
-  // Render preview in modal
   document.getElementById('modal-report-body').innerHTML = `
     <div class="report-header">
       <h1>GearOps — Test Report</h1>
@@ -1290,13 +1407,8 @@ function buildReport() {
   document.getElementById('export-modal').classList.add('open');
 }
 
-function exportSummary() {
-  buildReport();
-}
-
-function closeModal() {
-  document.getElementById('export-modal').classList.remove('open');
-}
+function exportSummary() { buildReport(); }
+function closeModal() { document.getElementById('export-modal').classList.remove('open'); }
 
 function downloadReport() {
   if (!_reportHtml) return;
@@ -1311,14 +1423,9 @@ function downloadReport() {
 
 // ─── Email Report ─────────────────────────────────────────────────────────────
 function emailReport() {
-  // Auto-generate the report if it hasn't been built yet
-  // (handles clicking Email Report directly from the toolbar — no modal opened)
   if (!_reportHtml) buildReport();
-
-  // Download the HTML report so the tester can attach it
   downloadReport();
 
-  // Build a plain-text summary for the email body
   const tester  = getTesterInfo();
   const dateStr = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
   const timeStr = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
@@ -1331,8 +1438,7 @@ function emailReport() {
   const totalAll = totalPass + totalFail + totalPend;
   const pct = totalAll > 0 ? Math.round(((totalPass + totalFail) / totalAll) * 100) : 0;
 
-  let body = 'GearOps Test Report\n';
-  body += '===================\n';
+  let body = 'GearOps Test Report\n===================\n';
   body += 'Date: ' + dateStr + ' at ' + timeStr + '\n';
   if (tester.name)     body += 'Tester: '      + tester.name     + '\n';
   if (tester.platform) body += 'Platform: '    + tester.platform + '\n';
@@ -1344,8 +1450,7 @@ function emailReport() {
   body += '  Passed:   ' + totalPass + '\n';
   body += '  Failed:   ' + totalFail + '\n';
   body += '  Untested: ' + totalPend + '\n';
-  body += '  Progress: ' + pct + '% tested\n';
-  body += '\nBY SECTION\n';
+  body += '  Progress: ' + pct + '% tested\n\nBY SECTION\n';
   SECTIONS.forEach(s => {
     let sp = 0, sf = 0, su = 0;
     s.tests.forEach(t => {
@@ -1363,20 +1468,14 @@ function emailReport() {
     }
   }));
   if (failures.length) {
-    body += '\nFAILED TESTS (' + failures.length + ')\n';
-    body += failures.join('\n') + '\n';
+    body += '\nFAILED TESTS (' + failures.length + ')\n' + failures.join('\n') + '\n';
   }
-
   body += '\n--\nFull HTML report has been downloaded to your machine.\nPlease attach it to this email before sending.';
 
   const subject = encodeURIComponent('GearOps Test Report — ' + dateStr + (tester.name ? ' (' + tester.name + ')' : ''));
-  const encodedBody = encodeURIComponent(body);
-  const mailto = 'mailto:sverma@engsurveys.com.au?subject=' + subject + '&body=' + encodedBody;
-
   const link = document.createElement('a');
-  link.href = mailto;
+  link.href = 'mailto:sverma@engsurveys.com.au?subject=' + subject + '&body=' + encodeURIComponent(body);
   link.click();
-
   showToast('Email opened — attach the downloaded HTML report');
 }
 
@@ -1394,10 +1493,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTesterInfo();
   render();
   document.getElementById('gen-date').textContent =
-    'GearOps Test Checklist  ·  ' + new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) +
-    '  ·  Progress auto-saved locally in your browser  ·  Use Save to File to keep your own copy';
+    'GearOps Test Checklist v3  ·  ' +
+    new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) +
+    '  ·  Progress auto-saved locally  ·  Use Save to File to keep a copy';
 
-  // Close modal on overlay click
+  document.getElementById('fb-all').classList.add('active');
+
   document.getElementById('export-modal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
   });

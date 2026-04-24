@@ -155,14 +155,14 @@ export default function TasksScreen() {
       {(Platform.OS === 'web' || activeTab === 'tasks') && (
         <FlatList
           data={tasks.loading ? [] : searchedTaskItems}
-          keyExtractor={(t, idx) => {
-            if (t.key) return String(t.key);
-            if (t.actionId) return `action-${t.actionId}`;
-            if (t.id) return `task-${t.id}`;
-            const aid = t.assetId || t.asset_id || 'asset';
-            const duePart = t.due ? +new Date(t.due) : 'nodue';
-            return `${aid}-${duePart}-${idx}`;
-          }}
+                  keyExtractor={(t, idx) => {
+                    if (t.key) return String(t.key);
+                    if (t.actionId) return `action-${t.actionId}`;
+                    if (t.id) return `task-${t.id}`;
+                    const aid = t.assetId || t.asset_id || 'asset';
+                    const duePart = t.due ? +new Date(t.due) : 'nodue';
+                    return `${aid}-${duePart}-${idx}`;
+                  }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
@@ -185,12 +185,12 @@ export default function TasksScreen() {
                       {searchedTaskItems.length !== totalTasks
                         ? `${searchedTaskItems.length} of ${totalTasks}`
                         : `${totalTasks} open`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                              </View>
+                            )}
           ListEmptyComponent={() =>
             tasks.loading ? (
               <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
@@ -204,7 +204,7 @@ export default function TasksScreen() {
                   subtitle={`No ${taskFilter === 'all' ? '' : `${taskFilter} `}tasks right now.`}
                   hint="Tip: Scan an asset to log new work."
                 />
-              </View>
+                                  </View>
             )
           }
           renderItem={({ item }) => {
@@ -214,7 +214,7 @@ export default function TasksScreen() {
             const isService   = isServiceTask(item) && !isRepair;
             const isSignoff   = item.kind === 'signoff';
 
-            return (
+                      return (
               <TaskCard
                 item={item}
                 isOverdue={isOverdue}
