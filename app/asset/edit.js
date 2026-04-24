@@ -204,7 +204,7 @@ export default function EditAsset() {
       if (image?.file || document) {
         // Allow overlay to render before starting upload
         await new Promise((r) => setTimeout(r, 0));
-        await new Promise((resolve, reject) => {
+        await new Promise(async (resolve, reject) => {
           const fd = new FormData();
           if (image?.file) fd.append('image', image.file, image.file.name || 'upload.jpg');
           if (document) {
