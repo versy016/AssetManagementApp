@@ -208,11 +208,13 @@ export default function AssetDetailPage() {
           style={styles.detailScrollView}
           contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
       >
-          {/* Hero image */}
-        <Image
-          source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
-          style={styles.heroImage}
-        />
+          {/* Hero image — contain keeps full photo visible, centered; no horizontal “slice” crop */}
+        <View style={styles.heroImageWrap}>
+          <Image
+            source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
+            style={styles.heroImage}
+          />
+        </View>
 
         <View style={styles.detailCard}>
             {/* Title Row */}
@@ -705,11 +707,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  heroImageWrap: {
+    width: '100%',
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.line,
+  },
   heroImage: {
     width: '100%',
-    height: 220,
-    resizeMode: 'cover',
-    backgroundColor: Colors.chip,
+    height: 300,
+    maxWidth: '100%',
+    resizeMode: 'contain',
   },
   detailCard: {
     backgroundColor: Colors.card,

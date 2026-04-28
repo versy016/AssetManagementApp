@@ -1195,15 +1195,15 @@ export default function CertsView({ visible: initialVisible }) {
   // Palette via centralized tokens
 
   const columns = [
-    { key: 'asset', label: 'Asset ID', flex: 1, minWidth: 100 },
-    { key: 'type', label: 'Asset Type', flex: 1, minWidth: 100 },
-    { key: 'model', label: 'Model', flex: 1, minWidth: 100 },
-    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 100 },
-    { key: 'documentType', label: 'Document Type', flex: 1, minWidth: 100 },
-    { key: 'attachment', label: 'Document', flex: 1, minWidth: 100 },
+    { key: 'asset', label: 'Asset ID', flex: 1, minWidth: 112 },
+    { key: 'type', label: 'Asset Type', flex: 1, minWidth: 132 },
+    { key: 'model', label: 'Model', flex: 1, minWidth: 120 },
+    { key: 'assigned', label: 'Assigned To', flex: 1, minWidth: 152 },
+    { key: 'documentType', label: 'Document Type', flex: 1.15, minWidth: 220 },
+    { key: 'attachment', label: 'Document', flex: 1.15, minWidth: 200 },
     { key: 'date', label: 'Valid Until', flex: 1.4, minWidth: 180 },
-    { key: 'updated', label: 'Last Updated', flex: 1, minWidth: 100 },
-    { key: 'actions', label: 'Actions', flex: 1, minWidth: 100 },
+    { key: 'updated', label: 'Last Updated', flex: 1, minWidth: 124 },
+    { key: 'actions', label: 'Actions', flex: 1, minWidth: 168 },
   ];
 
   const isPhotoDoc = (label) => /photo|image|picture|task photo/i.test(String(label || ''));
@@ -1225,6 +1225,11 @@ export default function CertsView({ visible: initialVisible }) {
     });
     return map;
   }, [columns, hViewportW]);
+
+  const tableContentMinWidth = useMemo(
+    () => columns.reduce((sum, c) => sum + (computedWidths[c.key] ?? c.minWidth ?? 120), 0),
+    [columns, computedWidths],
+  );
 
   // Early return if not visible
   if (!renderReady) {
@@ -1641,7 +1646,7 @@ export default function CertsView({ visible: initialVisible }) {
           onLayout={(e) => { const vw = e?.nativeEvent?.layout?.width || 0; setHViewportW(vw); }}
           onContentSizeChange={(w/*, h*/) => { setHContentW(w || 0); }}
         >
-          <View style={{ flex: 1, minWidth: hViewportW || '100%' }}>
+          <View style={{ minWidth: Math.max(hViewportW || 0, tableContentMinWidth) }}>
             <View style={styles.tableHeader}>
               {columns.map((c) => {
                 const isSortable = sortableColumnKeys.includes(c.key);
@@ -1843,10 +1848,10 @@ const styles = StyleSheet.create({
   countDot: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.dangerFg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   countDotText: { color: '#fff', fontSize: sf(10), fontWeight: '700' },
   tableWrap: { backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, overflow: 'hidden', ...Shadows.card },
-  tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0, alignItems: 'stretch' },
-  th: { paddingVertical: 13, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center', minWidth: 0, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
-  thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 0 },
-  thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, minWidth: 0, justifyContent: 'center' },
+  tableHeader: { flexDirection: 'row', backgroundColor: Colors.primary, borderBottomWidth: 0, alignItems: 'stretch', flexShrink: 0 },
+  th: { paddingVertical: 13, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center', flexShrink: 0, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
+  thSortable: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  thSortableInner: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', flex: 1, justifyContent: 'center' },
   thSortIcon: { marginLeft: 4, flexShrink: 0 },
   thText: { fontSize: sf(12), fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 1, minWidth: 0, textAlign: 'center' },
   tableBodyScroll: {
@@ -1862,12 +1867,13 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
     backgroundColor: Platform.OS === 'web' ? Colors.card : '#FFFFFF',
     alignItems: 'center',
+    flexShrink: 0,
   },
   rowAlt: {
     backgroundColor: Platform.OS === 'web' ? Colors.bg : '#F8FAFC',
   },
   rowHover: { backgroundColor: Colors.accentLight },
-  td: { paddingVertical: 8, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
+  td: { paddingVertical: 8, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center', flexShrink: 0, overflow: 'hidden' },
   tdActions: { alignItems: 'center' },
   tdText: { fontSize: sf(13), color: Colors.text, fontWeight: '500', textAlign: 'center' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 6 },
