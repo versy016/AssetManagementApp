@@ -1635,7 +1635,7 @@ export default function CertsView({ visible: initialVisible }) {
       <View style={[styles.tableWrap, { flex: 1 }]}>
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
+          showsHorizontalScrollIndicator
           style={{ flex: 1 }}
           ref={contentRef}
           onLayout={(e) => { const vw = e?.nativeEvent?.layout?.width || 0; setHViewportW(vw); }}

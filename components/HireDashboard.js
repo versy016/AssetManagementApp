@@ -388,6 +388,12 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
         <View style={styles.tableOuter}>
           {hireToolbar}
           <View style={styles.tableWrap}>
+            <View style={styles.tableScrollWrapper}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.tableScrollContent}
+            >
             <View style={styles.tableInnerWide}>
               <View style={styles.tableHeader}>
                 <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={2}>Asset ID</Text></View>
@@ -497,6 +503,8 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
               })}
               </ScrollView>
             </View>
+            </ScrollView>
+            </View>
           </View>
           {/* Pagination */}
           <TablePagination
@@ -568,14 +576,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 2,
     borderColor: Colors.line,
-    /* overflow:hidden clips the action column on narrow / zoomed web panes */
-    ...(Platform.OS === 'web' ? { overflow: 'visible' } : { overflow: 'hidden' }),
+    overflow: 'hidden',
     ...Shadows.card,
   },
+  tableScrollWrapper: { flex: 1 },
+  tableScrollContent: { flexGrow: 1 },
   tableInnerWide: {
     minWidth: HIRE_TABLE_MIN_INNER_WIDTH,
     flex: 1,
-    width: '100%',
   },
   tableHeader: {
     flexDirection: 'row',

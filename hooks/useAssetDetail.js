@@ -433,24 +433,31 @@ export function useAssetDetail({ assetId, returnTo }) {
     router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
   };
 
-  // Delete asset
-  const handleDelete = async () => {
-    const ok = await confirm('Delete this asset? This cannot be undone.');
-    if (!ok) return;
+  /**
+   * Execute the asset delete API call — no confirmation prompt.
+   * Call this from the page after the user confirms via ConfirmModal.
+   * Returns the error message string on failure, or null on success.
+   */
+  const executeDelete = useCallback(async () => {
     try {
       const uid = auth.currentUser?.uid;
-      const headers = uid ? { 'X-User-Id': uid } : {};
+      const authH = await getAuthHeaders();
+      const headers = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
       const res = await fetch(`${API_BASE_URL}/assets/${asset.id}`, { method: 'DELETE', headers });
       if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || 'Failed to delete');
+        const body = await res.text().catch(() => '');
+        throw new Error(body || `Delete failed (${res.status})`);
       }
-      if (Platform.OS !== 'web') showSuccess('Asset removed.');
       router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
+      return null;
     } catch (e) {
-      showError(e.message || 'Failed to delete asset');
+      return e?.message || 'Failed to delete asset';
     }
-  };
+  }, [asset?.id, router]);
+
+  // Legacy: kept so any callers outside [assetId].js don't break.
+  // [assetId].js uses executeDelete + ConfirmModal directly.
+  const handleDelete = executeDelete;
 
   // Delete document
   const handleDeleteDocument = useCallback(async (docId) => {
@@ -461,11 +468,12 @@ export function useAssetDetail({ assetId, returnTo }) {
     setDocDeletingId(docId);
     try {
       const uid = auth.currentUser?.uid;
-      const headers = { 'Content-Type': 'application/json', ...(uid ? { 'X-User-Id': uid } : {}) };
-      const res = await fetch(`${API_BASE_URL}/asset-documents/${aId}/documents/${docId}`, { method: 'DELETE', headers });
+      const authH = await getAuthHeaders();
+      const headers = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
+      const res = await fetch(`${API_BASE_URL}/assets/${aId}/documents/${docId}`, { method: 'DELETE', headers });
       if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || 'Failed to delete document');
+        const body = await res.text().catch(() => '');
+        throw new Error(body || `Failed to delete document (${res.status})`);
       }
       await load();
     } catch (e) {
@@ -1017,6 +1025,7 @@ export function useAssetDetail({ assetId, returnTo }) {
     formatFieldLabel,
     handleBack,
     handleDelete,
+    executeDelete,
     handleDeleteDocument,
     buildDynamicData,
     copyId,

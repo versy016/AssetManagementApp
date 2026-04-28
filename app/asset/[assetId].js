@@ -1,5 +1,5 @@
 // app/asset/[assetId].js
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import {
@@ -22,6 +22,7 @@ import ScreenState from '../../components/ui/ScreenState';
 import { Row, DetailsGrid } from '../../components/asset/AssetRows';
 import AssetQRModal from '../../components/asset/AssetQRModal';
 import AssetActionBar from '../../components/asset/AssetActionBar';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { useAssetDetail } from '../../hooks/useAssetDetail';
 import { isAssetIdAwaitingQr } from '../../utils/assetId';
@@ -89,6 +90,9 @@ export default function AssetDetailPage() {
   const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
   const router = useRouter();
 
+  // Delete modal state: null | { phase: 'confirm' | 'loading' | 'result', title?, message?, error? }
+  const [deleteUi, setDeleteUi] = useState(null);
+
   const detail = useAssetDetail({ assetId, returnTo });
   const {
     asset,
@@ -123,6 +127,7 @@ export default function AssetDetailPage() {
     docDeletingId,
     handleBack,
     handleDelete,
+    executeDelete,
     handleDeleteDocument,
     buildDynamicData,
     copyId,
@@ -652,9 +657,35 @@ export default function AssetDetailPage() {
           asset={asset}
           isAdmin={isAdmin}
           normalizedReturnTo={normalizedReturnTo}
-          onDelete={handleDelete}
+          onDelete={() => setDeleteUi({ phase: 'confirm' })}
         />
         </View>
+
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        visible={!!deleteUi}
+        phase={deleteUi?.phase || 'confirm'}
+        title={deleteUi?.phase === 'result' ? deleteUi.title : 'Delete asset?'}
+        message={
+          deleteUi?.phase === 'result'
+            ? deleteUi.message
+            : `Are you sure you want to delete asset ${asset?.id || ''}? This cannot be undone.`
+        }
+        loadingMessage="Deleting asset…"
+        confirmLabel="Delete"
+        confirmTone="danger"
+        resultError={!!deleteUi?.error}
+        onConfirm={async () => {
+          setDeleteUi({ phase: 'loading' });
+          const errMsg = await executeDelete();
+          if (errMsg) {
+            setDeleteUi({ phase: 'result', title: 'Delete failed', message: errMsg, error: true });
+          }
+          // On success executeDelete navigates away — modal closes automatically
+        }}
+        onCancel={() => setDeleteUi(null)}
+        onDismiss={() => setDeleteUi(null)}
+      />
 
       {/* QR modal */}
       <AssetQRModal
