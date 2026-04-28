@@ -91,6 +91,19 @@ app.use('/labels', apiLimiter);
 app.use('/hire-disclaimer', apiLimiter);
 app.use('/asset-documents', uploadLimiter);
 
+// Public endpoints — strict rate limit (5 requests per 15 min per IP).
+// These are intentionally very tight because they are unauthenticated and
+// update asset state (status → lost, creates action records, sends emails).
+const publicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many submissions. Please try again later.' },
+  skip: isNonProd,
+});
+app.use('/public', publicLimiter);
+
 // DocuSign Connect -- must use raw body for HMAC verification (before JSON parser)
 app.post(
   '/hire-disclaimer/docusign/webhook',
@@ -119,6 +132,7 @@ const activityRoutes = require('./routes/activity');
 const labelsRoutes = require('./routes/labels');
 const assetDocumentsRoutes = require('./routes/assetDocuments');
 const hireDisclaimerRoutes = require('./routes/hireDisclaimer');
+const publicAssetsRoutes   = require('./routes/publicAssets');
 
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
@@ -131,6 +145,7 @@ app.use('/labels', labelsRoutes);
 app.use('/assets', assetDocumentsRoutes);
 app.use('/asset-documents', assetDocumentsRoutes);
 app.use('/hire-disclaimer', hireDisclaimerRoutes);
+app.use('/public', publicAssetsRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)
@@ -202,7 +217,10 @@ app.get('/', (_req, res) => {
 
 app.get('/check-in/:id', (req, res) => {
   const id = req.params.id;
-  const targetBase = (process.env.CHECKIN_WEB_BASE_URL || process.env.CHECKIN_BASE_URL || '').trim();
+  let targetBase = (process.env.CHECKIN_WEB_BASE_URL || process.env.CHECKIN_BASE_URL || '').trim();
+  if (!targetBase && NODE_ENV === 'production') {
+    targetBase = 'https://gearops.com.au';
+  }
   const currentBase = `${req.protocol}://${req.get('host')}`;
   const normalize = (s) => String(s || '').replace(/\/+$/, '');
 

@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
-import { API_BASE_URL } from '../inventory-api/apiBase';
+import { API_BASE_URL, CHECKIN_WEB_BASE_URL } from '../inventory-api/apiBase';
 import { fetchFields } from './useAssetTypeFields';
 import logger from '../utils/logger';
 import { showError, showSuccess, confirm } from '../utils/showError';
@@ -368,16 +368,27 @@ export function useAssetDetail({ assetId, returnTo }) {
     if (React.isValidElement(out)) return out;
     if (out && typeof out === 'object' && out.isLink && out.url) {
       const href = String(out.url);
+      const isPdf = /\.pdf($|\?)/i.test(href.split('?')[0]);
       const tail = (() => {
         try {
           const u = href.split('?')[0];
-          return decodeURIComponent(u.split('/').pop() || '') || 'Open link';
+          return decodeURIComponent(u.split('/').pop() || '') || 'View document';
         } catch {
-          return 'Open link';
+          return 'View document';
         }
       })();
+      const openDoc = () => {
+        if (Platform.OS === 'web') {
+          // Open in a new tab so the browser renders/previews the document inline
+          if (typeof window !== 'undefined') {
+            window.open(href, '_blank', 'noopener,noreferrer');
+          }
+        } else {
+          Linking.openURL(href);
+        }
+      };
       return (
-        <TouchableOpacity onPress={() => Linking.openURL(href)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={openDoc} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={{ color: Colors.primary, fontWeight: '700', textDecorationLine: 'underline' }} numberOfLines={2}>
             {tail}
           </Text>
@@ -623,7 +634,8 @@ export function useAssetDetail({ assetId, returnTo }) {
           history.push({
             id: d.id,
             label: pretty,
-            date: d.related_date || d.created_at || null,
+            date: d.related_date || null,      // cert/document date (e.g. expiry)
+            uploadedAt: d.created_at || null,  // when the file was uploaded
             url: d.url,
           });
         }
@@ -638,14 +650,15 @@ export function useAssetDetail({ assetId, returnTo }) {
   // Copy helpers
   const copyId = () => copyText(asset?.id || assetId, 'Asset ID copied');
   const copyDeepLink = () => {
-    const web = `https://ec2-3-25-81-127.ap-southeast-2.compute.amazonaws.com/check-in/${asset?.id || assetId}`;
-    copyText(web, 'Shareable link copied');
+    const id = asset?.id || assetId;
+    const base = String(CHECKIN_WEB_BASE_URL || API_BASE_URL || '').replace(/\/+$/, '');
+    copyText(`${base}/check-in/${id}`, 'Shareable link copied');
   };
 
-  // QR payload
+  // QR payload (web app origin, not API — see inventory-api/apiBase CHECKIN_WEB_BASE_URL)
   const qrPayload = () => {
     const id = asset?.id || assetId;
-    const base = String(API_BASE_URL || '').replace(/\/+$/, '');
+    const base = String(CHECKIN_WEB_BASE_URL || API_BASE_URL || '').replace(/\/+$/, '');
     return `${base}/check-in/${id}`;
   };
 

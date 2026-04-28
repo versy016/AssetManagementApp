@@ -24,6 +24,7 @@ import AssetQRModal from '../../components/asset/AssetQRModal';
 import AssetActionBar from '../../components/asset/AssetActionBar';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { useAssetDetail } from '../../hooks/useAssetDetail';
+import { isAssetIdAwaitingQr } from '../../utils/assetId';
 
 const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
@@ -153,6 +154,11 @@ export default function AssetDetailPage() {
         return '';
   }, [asset]);
 
+  const awaitingQrPlaceholder = useMemo(
+    () => isAssetIdAwaitingQr(String(asset?.id || assetId || '')),
+    [asset?.id, assetId],
+  );
+
   // Loading / error / empty guard
   if (loading) {
     return <SafeAreaView style={styles.centerWrap}><ScreenState loading label="Loading asset…" /></SafeAreaView>;
@@ -160,7 +166,7 @@ export default function AssetDetailPage() {
   if (err && isImportedId) {
     return (
       <SafeAreaView style={styles.centerWrap}>
-        <Ionicons name="qr-code-outline" size={36} color={Colors.accent} />
+        <Ionicons name="hourglass-outline" size={36} color={Colors.accent} />
         <Text style={{ marginTop: 12, color: Colors.text, fontWeight: '700' }}>Awaiting QR Assignment</Text>
         <Text style={{ marginTop: 8, color: Colors.sub, paddingHorizontal: 24, textAlign: 'center' }}>{err}</Text>
         <TouchableOpacity style={{ marginTop: 18 }} onPress={handleBack}>
@@ -223,17 +229,21 @@ export default function AssetDetailPage() {
                   <Text style={styles.metaChipIdValue}>{asset.id}</Text>
                 </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
+            {!awaitingQrPlaceholder ? (
+              <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
                 <MaterialIcons name="link" size={16} color={Colors.accent} />
-              <Text style={styles.metaChipText}>Copy Link</Text>
-            </TouchableOpacity>
+                <Text style={styles.metaChipText}>Copy Link</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
                 <MaterialIcons name="place" size={16} color={Colors.accent} />
               <Text style={styles.metaChipText}>Maps</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
+            {!awaitingQrPlaceholder ? (
+              <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
                 <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
-            </TouchableOpacity>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           {/* Core fields */}
@@ -472,8 +482,18 @@ export default function AssetDetailPage() {
                         </View>
                       );
                     }
-              const rows = history.map((h) => ({
-                label: `${h.label}${h.date ? ' (' + prettyDate(h.date) + ')' : ''}`,
+              const rows = history.map((h) => {
+                // Build a two-line label: document name + upload date.
+                // If the doc has a related_date (cert expiry etc.) show that too.
+                const uploadLine = h.uploadedAt
+                  ? `Uploaded ${prettyDate(h.uploadedAt)}`
+                  : null;
+                const dateLine = h.date
+                  ? `Date: ${prettyDate(h.date)}`
+                  : null;
+                const sub = [dateLine, uploadLine].filter(Boolean).join(' · ');
+                return ({
+                label: sub ? `${h.label}\n${sub}` : h.label,
                       value: (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           {renderFieldValue('documentation_url', h.url)}
@@ -488,7 +508,7 @@ export default function AssetDetailPage() {
                         </View>
                       ),
                 right: false,
-              }));
+              });});
                     const visible = docHistoryOpen ? rows : rows.slice(0, 3);
               return (
                 <>
@@ -638,7 +658,7 @@ export default function AssetDetailPage() {
 
       {/* QR modal */}
       <AssetQRModal
-        visible={qrOpen}
+        visible={qrOpen && !awaitingQrPlaceholder}
         onClose={() => setQrOpen(false)}
         qrValue={qrPayload()}
         assetId={asset?.id || assetId}

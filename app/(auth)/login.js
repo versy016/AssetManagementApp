@@ -2,7 +2,7 @@ import { auth } from '../../firebaseConfig';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
 import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import AuthLayout from '../../components/ui/AuthLayout';
@@ -12,6 +12,8 @@ import ErrorMessage from '../../components/ui/ErrorMessage';
 
 export default function Login() {
   const router = useRouter();
+  // Support deep-link redirect: /login?redirect=/check-in/ABCD1234
+  const { redirect } = useLocalSearchParams();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +48,12 @@ export default function Login() {
         return;
       }
 
-      router.replace('/(tabs)/dashboard');
+      // If we arrived here from a deep link (e.g. QR scan), go back there; otherwise dashboard
+      if (redirect && typeof redirect === 'string' && redirect.startsWith('/')) {
+        router.replace(redirect);
+      } else {
+        router.replace('/(tabs)/dashboard');
+      }
     } catch (error) {
       let errorMsg = 'Login failed';
       switch (error.code) {

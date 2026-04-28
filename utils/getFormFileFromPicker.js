@@ -73,10 +73,19 @@ export async function getImageFileFromPicker() {
     fileName: asset.fileName,   // may be undefined
   });
 
+  // Reject known unsupported extensions regardless of reported MIME type.
+  // Browsers often report HEIC/HEIF with the wrong MIME (e.g. image/jpeg fallback),
+  // so we must also check the file extension explicitly.
+  const REJECTED_EXTS = new Set(['heic', 'heif', 'avif', 'tiff', 'tif', 'bmp', 'ico', 'raw', 'cr2', 'nef', 'arw', 'dng']);
+  const pickedExt = extOf(asset.fileName || asset.uri);
+  if (pickedExt && REJECTED_EXTS.has(pickedExt)) {
+    throw new Error('Unsupported file type. Please choose a PNG, JPG/JPEG, or WEBP image. HEIC/HEIF files are not supported.');
+  }
+
   // Validate allowed mimes
   const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
   if (!allowed.has(contentType)) {
-    throw new Error('Please choose a PNG, JPG/JPEG, or WEBP image.');
+    throw new Error('Unsupported file type. Please choose a PNG, JPG/JPEG, or WEBP image.');
   }
 
   // Choose a friendly filename

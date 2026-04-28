@@ -21,10 +21,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import QRCode from 'react-native-qrcode-svg';
 
-import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { API_BASE_URL, CHECKIN_WEB_BASE_URL } from '../../inventory-api/apiBase';
 import { fetchFields } from '../../hooks/useAssetTypeFields';
 import { auth } from '../../firebaseConfig';
 import logger from '../../utils/logger';
+import { isAssetIdAwaitingQr } from '../../utils/assetId';
 import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
 import SearchInput from '../../components/ui/SearchInput';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -65,8 +66,6 @@ const extractItems = (data) => {
   if (data && Array.isArray(data.data)) return { arr: data.data, total: data.total || data.data.length };
   return { arr: [], total: 0 };
 };
-
-const isUUID = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 export default function SearchScreen(props = {}) {
   const { embed } = props;
@@ -266,7 +265,7 @@ export default function SearchScreen(props = {}) {
       const reservedOk = !!filters.includeQRReserved || !isQRReserved;
       const unassignedOk = !(String(assigned).trim()) && !assignedUid;
 
-      const awaitingQR = isUUID(String(it.id || ''));
+      const awaitingQR = isAssetIdAwaitingQr(String(it.id || ''));
       const awaitingOk = filters.awaitingQROnly ? awaitingQR : !awaitingQR;
 
       const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
@@ -1143,11 +1142,15 @@ export default function SearchScreen(props = {}) {
                         onMouseEnter={() => setHoverRowId(item.id)}
                         onMouseLeave={() => setHoverRowId(null)}
                       >
-                        {/* QR Code */}
+                        {/* QR Code — hidden for UUID placeholder rows (no sticker id yet) */}
                     <View style={[styles.td, styles.tdCellIcon, columnStyle('qr')]}>
-                          <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 2 }}>
-                            <MaterialCommunityIcons name="qrcode-scan" size={18} color={Colors.primary} />
-                          </TouchableOpacity>
+                          {isAssetIdAwaitingQr(String(item.id || '')) ? (
+                            <Text style={{ color: Colors.sub2, fontSize: 14 }}>—</Text>
+                          ) : (
+                            <TouchableOpacity onPress={() => setQrModalItem(item)} style={{ padding: 2 }}>
+                              <MaterialCommunityIcons name="qrcode-scan" size={18} color={Colors.primary} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                     {/* Image */}
                     <View style={[styles.td, styles.tdCellIcon, columnStyle('image')]}>
@@ -1161,7 +1164,7 @@ export default function SearchScreen(props = {}) {
                     </View>
                         {/* Asset Id */}
                     <View style={[styles.td, columnStyle('id')]}>
-                      {isUUID(String(item.id || '')) ? (
+                      {isAssetIdAwaitingQr(String(item.id || '')) ? (
                         <View style={styles.awaitingIdWrap}>
                           <Text style={styles.tdText} numberOfLines={1}>
                             {(otherId && otherId !== '--') ? otherId : 'QR awaiting'}
@@ -1505,7 +1508,7 @@ export default function SearchScreen(props = {}) {
             <View style={{ padding: 16, backgroundColor: Colors.card, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line }}>
               {qrModalItem && (
                 <QRCode
-                  value={`${String(API_BASE_URL).replace(/\/+$/, '')}/check-in/${qrModalItem.id}`}
+                  value={`${String(CHECKIN_WEB_BASE_URL || API_BASE_URL).replace(/\/+$/, '')}/check-in/${qrModalItem.id}`}
                   size={220}
                 />
               )}

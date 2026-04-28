@@ -348,9 +348,16 @@ export default function CheckInScreen() {
         if (currentUser) {
           setUser(currentUser); // Set user state if logged in
         } else {
-          // For development: allow preview if not logged in
-          console.warn("⚠️ Not logged in - allowing preview for dev");
-          setUser({ uid: "guest" });
+          // Unauthenticated: redirect to public page on web, login on native
+          if (Platform.OS === 'web') {
+            // Public fallback page with Lost & Found / Transfer to Office forms
+            router.replace(`/check-in/public?id=${encodeURIComponent(id)}`);
+          } else {
+            // On native, send to login and carry the deep-link destination so the
+            // user lands back on this screen after signing in.
+            router.replace(`/login?redirect=${encodeURIComponent(`/check-in/${id}`)}`);
+          }
+          return; // stop loading — navigation is already happening
         }
 
         // Fetch asset details from backend

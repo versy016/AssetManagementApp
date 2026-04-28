@@ -15,9 +15,18 @@ function pickPythonBin() {
 
 function resolveCheckinBase(req) {
   const explicit = (process.env.CHECKIN_WEB_BASE_URL || process.env.CHECKIN_BASE_URL || '').trim();
-  const base = explicit || `${req.protocol}://${req.get('host')}`;
-  const cleaned = base.replace(/\/+$/, '');
-  return `${cleaned}/check-in`;
+  let base = explicit.replace(/\/+$/, '');
+  if (!base) {
+    const h = (req.get('X-External-Base-Url') || '').trim();
+    base = h.replace(/\/+$/, '') || '';
+  }
+  if (!base && process.env.NODE_ENV === 'production') {
+    base = 'https://gearops.com.au';
+  }
+  if (!base) {
+    base = `${req.protocol}://${req.get('host')}`.replace(/\/+$/, '');
+  }
+  return `${base}/check-in`;
 }
 
 async function uploadToS3(buffer, key) {

@@ -193,6 +193,20 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
         });
       }
 
+      // If a specific asset_type_field_id is provided, retire any existing document
+      // for that field so the Certs list shows only the current version.
+      // This prevents duplicate cert entries when a cert is renewed via Tasks.
+      if (asset_type_field_id) {
+        await prisma.asset_documents.updateMany({
+          where: {
+            asset_id: assetId,
+            asset_type_field_id: String(asset_type_field_id),
+            deleted_at: null,
+          },
+          data: { deleted_at: new Date() },
+        });
+      }
+
       const relatedDateParsed = related_date && String(related_date).trim() ? new Date(related_date) : null;
       const doc = await prisma.asset_documents.create({
         data: {

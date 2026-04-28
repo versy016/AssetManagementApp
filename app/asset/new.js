@@ -172,7 +172,9 @@ export default function NewAsset() {
   const [errors, setErrors] = useState({});       // { slugOrFieldName: "message" }
   const [formError, setFormError] = useState(''); // fallback for unknown errors
 
-  // Upload state
+  // Upload state — use a ref as a double-submit guard so rapid taps can't fire twice
+  // before the first setUploading(true) re-render lands.
+  const submittingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0); // 0..100
   const [uploadStartTs, setUploadStartTs] = useState(null); // Date.now()
@@ -630,8 +632,11 @@ export default function NewAsset() {
 
   // ---------- submit with progress ----------
   const submit = async () => {
-    if (uploading) return;
+    // Ref guard prevents double-fire when the button is tapped before the
+    // first setUploading(true) re-render has landed (race condition on fast taps).
+    if (submittingRef.current || uploading) return;
     if (!validate()) return;
+    submittingRef.current = true;
 
     const data = new FormData();
     data.append('id', id);
@@ -697,7 +702,20 @@ export default function NewAsset() {
           let parsed; try { parsed = JSON.parse(errLike); } catch { }
           const message = (parsed && (parsed.error || parsed.message)) || errLike || 'Failed to create asset';
           distributeServerErrors(message);
-          Alert.alert('Error', message);
+          // Give a helpful hint when the ID is already in use — the asset likely
+          // exists from a previous attempt; offer to open it rather than retry.
+          if (/already in use/i.test(message) && id) {
+            Alert.alert(
+              'Asset Already Exists',
+              `${message}\n\nThe asset was already created — would you like to open it?`,
+              [
+                { text: 'Open Asset', onPress: () => router.replace(`/asset/${id}`) },
+                { text: 'Dismiss', style: 'cancel' },
+              ],
+            );
+          } else {
+            Alert.alert('Error', message);
+          }
           return;
         }
         const message = errLike?.message || 'Failed to create asset';
@@ -835,6 +853,7 @@ export default function NewAsset() {
     } catch (_e) {
       // handled above
     } finally {
+      submittingRef.current = false;
       setUploading(false);
       setUploadProgress(0);
       setUploadStartTs(null);

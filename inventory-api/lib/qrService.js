@@ -36,11 +36,17 @@ function ensureQRDirs() {
 }
 
 /**
- * Generate a random 8-character asset ID using A–Z and 0–9.
+ * Generate a random 8-character asset ID.
+ * Uses an unambiguous alphabet that excludes visually similar characters:
+ *   - 0 (zero)  → looks like O
+ *   - 1 (one)   → looks like I / l
+ *   - I         → looks like 1 / l
+ *   - O         → looks like 0
+ * Remaining: A-H, J-N, P-Z (22 letters) + 2-9 (8 digits) = 30 characters.
  * @returns {string}
  */
 function makeId() {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let out = '';
   for (let i = 0; i < 8; i += 1) {
     out += alphabet[Math.floor(Math.random() * alphabet.length)];
@@ -48,17 +54,40 @@ function makeId() {
   return out;
 }
 
+/** Public web origin for check-in URLs when env is unset in production (not the API host). */
+const PRODUCTION_DEFAULT_CHECKIN_BASE = 'https://gearops.com.au';
+
+let warnedDefaultCheckinBase = false;
+
 /**
  * Resolve the base URL for check-in links from environment / request headers.
+ * Order: CHECKIN_WEB_BASE_URL, CHECKIN_BASE_URL, X-External-Base-Url, production default, then request host.
  * @param {import('express').Request} req
  * @returns {string}
  */
 function resolveBase(req) {
-  return (
+  const fromEnv = (
+    process.env.CHECKIN_WEB_BASE_URL ||
     process.env.CHECKIN_BASE_URL ||
-    req.get('X-External-Base-Url') ||
-    `${req.protocol}://${req.get('host')}`
-  );
+    ''
+  ).trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+
+  const header = (req.get('X-External-Base-Url') || '').trim();
+  if (header) return header.replace(/\/+$/, '');
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!warnedDefaultCheckinBase) {
+      warnedDefaultCheckinBase = true;
+      logger.warn(
+        '[qrService] CHECKIN_WEB_BASE_URL / CHECKIN_BASE_URL not set; using ' +
+          `${PRODUCTION_DEFAULT_CHECKIN_BASE} for QR check-in links. Set one of those env vars to override.`
+      );
+    }
+    return PRODUCTION_DEFAULT_CHECKIN_BASE;
+  }
+
+  return `${req.protocol}://${req.get('host')}`.replace(/\/+$/, '');
 }
 
 /**

@@ -584,6 +584,44 @@ async function persistHireRecord(p, existingActionId, opts) {
     return { hireId: null, reason: 'no_asset' };
   }
 
+  // ── Overlap / conflict check ────────────────────────────────────────────────
+  // Reject if any existing HIRE action for this asset has a date range that
+  // overlaps with the requested hire period.
+  const newStart = normalizeToIsoDate(p.hireStartDate);
+  const newEnd   = normalizeToIsoDate(p.hireEndDate);
+  if (newStart && newEnd) {
+    const existingHires = await prisma.asset_actions.findMany({
+      where: { asset_id: resolvedAssetId, type: 'HIRE' },
+      include: { details: true },
+    });
+    for (const h of existingHires) {
+      const d = h.details;
+      if (!d) continue;
+      const exStart = d.hire_start
+        ? normalizeToIsoDate(d.hire_start.toISOString())
+        : normalizeToIsoDate((h.data?.hireStartDate || '').toString());
+      const exEnd = d.hire_end
+        ? normalizeToIsoDate(d.hire_end.toISOString())
+        : normalizeToIsoDate((h.data?.hireEndDate || '').toString());
+      if (!exStart || !exEnd) continue;
+      // Overlap when newStart <= exEnd AND newEnd >= exStart
+      if (newStart <= exEnd && newEnd >= exStart) {
+        const who = h.data?.hirerName || d.hire_to || 'another hire';
+        return {
+          hireId: null,
+          reason: 'conflict',
+          conflict: {
+            actionId: h.id,
+            hirerName: who,
+            from: exStart,
+            to: exEnd,
+          },
+        };
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   const action = await prisma.asset_actions.create({
     data: {
       asset_id: resolvedAssetId,
@@ -692,6 +730,13 @@ router.post('/generate', async (req, res) => {
       if (persistResult.error === 'not_found') {
         return res.status(404).json({ error: 'Hire record not found' });
       }
+      if (persistResult.reason === 'conflict') {
+        const c = persistResult.conflict;
+        const msg = c
+          ? `This asset is already booked for ${c.from} – ${c.to} (hirer: ${c.hirerName}). Please choose different dates or a different asset.`
+          : 'This asset is already booked for an overlapping hire period.';
+        return res.status(409).json({ error: msg, conflict: persistResult.conflict });
+      }
       if (!persistResult.hireId) {
         return res.status(400).json({
           error:
@@ -712,6 +757,13 @@ router.post('/generate', async (req, res) => {
       const persistResult = await persistHireRecord(p, existingActionId, { allowPlaceholderForNew: false });
       if (persistResult.error === 'not_found') {
         return res.status(404).json({ error: 'Hire record not found' });
+      }
+      if (persistResult.reason === 'conflict') {
+        const c = persistResult.conflict;
+        const msg = c
+          ? `This asset is already booked for ${c.from} – ${c.to} (hirer: ${c.hirerName}). Please choose different dates or a different asset.`
+          : 'This asset is already booked for an overlapping hire period.';
+        return res.status(409).json({ error: msg, conflict: persistResult.conflict });
       }
       if (persistResult.reason === 'no_asset' && existingActionId) {
         /* unreachable: existingActionId handled above */

@@ -15,6 +15,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.gearops.com.au",
+        "EXPO_PUBLIC_CHECKIN_BASE_URL": "https://gearops.com.au",
         "NODE_ENV": "production"
       }
     },
@@ -26,6 +27,7 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api.gearops.com.au",
+        "EXPO_PUBLIC_CHECKIN_BASE_URL": "https://gearops.com.au",
         "NODE_ENV": "production"
       }
     }

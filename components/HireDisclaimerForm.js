@@ -408,13 +408,22 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         const json = await res.json();
         if (ignore) return;
         const list = Array.isArray(json) ? json : [];
-        assetsCacheRef.current = list.map((a) => ({
-          id: String(a.id),
-          serial: a.serial_number ? String(a.serial_number) : '',
-          description: a.description || '',
-          model: a.model || '',
-          status: a.status || '',
-        }));
+        // Deduplicate by ID in case the API returns the same asset more than once
+        const seen = new Set();
+        assetsCacheRef.current = list
+          .filter((a) => {
+            const id = String(a.id);
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          })
+          .map((a) => ({
+            id: String(a.id),
+            serial: a.serial_number ? String(a.serial_number) : '',
+            description: a.description || '',
+            model: a.model || '',
+            status: a.status || '',
+          }));
         setAssetsLoaded(true);
       } catch (e) {
         logger.warn('HireDisclaimerForm: assets list fetch failed', e?.message || e);

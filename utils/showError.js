@@ -18,7 +18,7 @@
  *   const ok = await confirm('Delete asset?', 'This cannot be undone.');
  */
 
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import logger from './logger';
 
 /**
@@ -71,6 +71,14 @@ export function showSuccess(message, title = 'Success', buttons) {
  * @param {boolean} [destructive]   - Style the confirm button as destructive.
  */
 export function confirm(title, message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', destructive = false) {
+  // On web, Alert.alert buttons don't fire onPress callbacks reliably —
+  // window.confirm() gives a synchronous native dialog that always resolves.
+  if (Platform.OS === 'web') {
+    const text = [title, message].filter(Boolean).join('\n\n');
+    return Promise.resolve(
+      typeof window !== 'undefined' ? window.confirm(text) : false
+    );
+  }
   return new Promise((resolve) =>
     Alert.alert(title, message, [
       { text: cancelLabel,  style: 'cancel',                           onPress: () => resolve(false) },

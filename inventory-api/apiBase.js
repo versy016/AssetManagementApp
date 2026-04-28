@@ -75,3 +75,19 @@ if (__DEV__) {
 }
 
 export const API_BASE_URL = apiBaseUrl;
+
+/**
+ * Origin for /check-in/{id} links in QR codes and shareable URLs.
+ * Must be the web app (universal links), not api.* — unless you explicitly use the API as the entry (unusual).
+ */
+function deriveCheckinWebBaseUrl() {
+  const explicit = (process.env.EXPO_PUBLIC_CHECKIN_BASE_URL || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const api = String(apiBaseUrl || '').trim().replace(/\/+$/, '');
+  if (/api\.gearops\.com\.au/i.test(api)) {
+    return 'https://gearops.com.au';
+  }
+  return api;
+}
+
+export const CHECKIN_WEB_BASE_URL = deriveCheckinWebBaseUrl();

@@ -168,8 +168,12 @@ export default function EditAssetType() {
   const slugHasOptions = (slug) => !!fieldTypes.find((ft) => ft.slug === slug)?.has_options;
 
   const pickImage = async () => {
-    const res = await getImageFileFromPicker();
-    if (res) setPickedImage(res);
+    try {
+      const res = await getImageFileFromPicker();
+      if (res) setPickedImage(res);
+    } catch (e) {
+      Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.');
+    }
   };
 
   const removeTypeImage = () => {
@@ -910,7 +914,7 @@ export default function EditAssetType() {
 
           {/* Presets grid */}
           <View style={{ marginTop: 24 }}>
-            <Text style={s.sectionTitle}>Add / remove preset fields</Text>
+            <Text style={s.sectionTitle}>Add Extra Fields</Text>
             <View style={s.grid}>
               {PRESET_LIBRARY.map((p) => {
                 const state = presetState[p.key] || { selected: false, required: false };
@@ -1373,7 +1377,16 @@ export default function EditAssetType() {
 
                 const news = newCustomQueue.map((q) => `${q.name}${q.is_required ? ' • Required' : ''}`);
 
-                const any = creates.length || updates.length || deletes.length || edits.length || news.length;
+                // Also detect core (name / image) changes so the summary reflects them
+                const coreChanges = [];
+                const _trimmedName = name.trim();
+                if (_trimmedName !== (origName || '')) coreChanges.push('Name updated');
+                if (pickedImage?.file) coreChanges.push(origImageUrl ? 'Image changed' : 'Image added');
+                else if (!pickedImage && !!origImageUrl && origImageUrl !== 'changed' && !(imageUrl || '').trim()) {
+                  coreChanges.push('Image removed');
+                }
+
+                const any = creates.length || updates.length || deletes.length || edits.length || news.length || coreChanges.length;
                 if (!any) return <Text style={{ color: '#666', marginTop: 8 }}>No changes detected.</Text>;
 
                 return (
@@ -1423,6 +1436,16 @@ export default function EditAssetType() {
                         <Text style={s.summaryH}>New custom</Text>
                         {news.map((t, i) => (
                           <Text key={`n-${i}`} style={s.summaryItem}>
+                            • {t}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                    {coreChanges.length ? (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={s.summaryH}>Type info</Text>
+                        {coreChanges.map((t, i) => (
+                          <Text key={`core-${i}`} style={s.summaryItem}>
                             • {t}
                           </Text>
                         ))}

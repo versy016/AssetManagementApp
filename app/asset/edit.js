@@ -46,6 +46,7 @@ export default function EditAsset() {
   const [location, setLocation] = useState('');
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
+  const [otherId, setOtherId] = useState('');
   const [description, setDescription] = useState('');
   const [nextServiceDate, setNextServiceDate] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
@@ -101,6 +102,7 @@ export default function EditAsset() {
         setLocation(a.location || '');
         setModel(a.model || '');
         setSerialNumber(a.serial_number != null ? String(a.serial_number) : '');
+        setOtherId(a.other_id != null ? String(a.other_id) : '');
         setDescription(a.description || '');
         setCurrentImageUrl(a.image_url || '');
         setNextServiceDate(a.next_service_date ? String(a.next_service_date).split('T')[0] : '');
@@ -203,6 +205,7 @@ export default function EditAsset() {
       status: status || undefined,
       location: location || null,
       model: model || null,
+      other_id: otherId.trim() || null,
       description: description || null,
       next_service_date: nextServiceDate || null,
       date_purchased: datePurchased || null,
@@ -773,6 +776,18 @@ export default function EditAsset() {
           <TextInput style={styles.input} value={model} onChangeText={setModel} placeholder="Model" maxLength={FIELD_LIMITS.MODEL} />
         </View>
 
+        <View onLayout={onLayoutFor('other_id')}>
+          <Text style={styles.label}>Other ID</Text>
+          <TextInput
+            style={styles.input}
+            value={otherId}
+            onChangeText={setOtherId}
+            placeholder="Other ID (e.g. barcode, internal code)"
+            maxLength={100}
+            autoCapitalize="none"
+          />
+        </View>
+
         <View onLayout={onLayoutFor('description')}>
           <Text style={styles.label}>Description</Text>
           <TextInput style={[styles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Description" multiline maxLength={FIELD_LIMITS.DESCRIPTION} />
@@ -859,7 +874,7 @@ export default function EditAsset() {
             </View>
           ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity style={styles.btn} onPress={async () => { const res = await getImageFileFromPicker(); if (res) setImage(res); }}>
+            <TouchableOpacity style={styles.btn} onPress={async () => { try { const res = await getImageFileFromPicker(); if (res) setImage(res); } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); } }}>
               <Text>{image?.uri ? 'Change Image' : 'Pick Image'}</Text>
             </TouchableOpacity>
           </View>

@@ -135,7 +135,7 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
       <PageHeader
-        title="My Profile"
+        style={{ borderBottomWidth: 0 }}
         left={Platform.OS !== 'web' ? (
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />

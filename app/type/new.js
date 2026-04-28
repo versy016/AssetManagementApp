@@ -276,8 +276,12 @@ export default function NewAssetType() {
   const selectedTypeRequiresOptions = !!selectedTypeMeta?.has_options;
 
   const pickImage = async () => {
-    const result = await getImageFileFromPicker();
-    if (result) setImage(result);
+    try {
+      const result = await getImageFileFromPicker();
+      if (result) setImage(result);
+    } catch (e) {
+      Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.');
+    }
   };
 
   // Preset grid toggles
