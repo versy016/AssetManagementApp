@@ -37,6 +37,7 @@ import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
 import StatusBadge from '../../components/ui/StatusBadge';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 
 const RECENT_KEY = 'search_recents_v2';
 const ASSET_TYPE_OPTIONS = [
@@ -134,6 +135,14 @@ export default function SearchScreen(props = {}) {
   // User
   const [me, setMe] = useState({ uid: null, email: null });
 
+  // Multi-select bulk actions (admin + web only)
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const [showBulkUserPicker, setShowBulkUserPicker] = useState(false);
+  const [bulkUserSearch, setBulkUserSearch] = useState('');
+  const [bulkResultUi, setBulkResultUi] = useState(null);
+
 
   // Load User
   useEffect(() => {
@@ -164,6 +173,46 @@ export default function SearchScreen(props = {}) {
     })();
     return () => { ignore = true; };
   }, []);
+
+  // Derive admin status and current user's DB id from the already-loaded filterUsers list
+  const isAdmin = useMemo(() => {
+    if (!me.email || !filterUsers.length) return false;
+    const u = filterUsers.find((x) => (x.useremail || '').toLowerCase() === me.email.toLowerCase());
+    return String(u?.role || '').toUpperCase() === 'ADMIN';
+  }, [me.email, filterUsers]);
+
+  const myDbUserId = useMemo(() => {
+    if (!me.email || !filterUsers.length) return null;
+    const u = filterUsers.find((x) => (x.useremail || '').toLowerCase() === me.email.toLowerCase());
+    return u?.id ?? null;
+  }, [me.email, filterUsers]);
+
+  // Build auth headers for bulk API calls
+  const buildAuthHeaders = useCallback(async () => {
+    const u = auth.currentUser;
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      if (u?.getIdToken) {
+        const token = await u.getIdToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+    } catch {}
+    if (u?.uid) headers['X-User-Id'] = u.uid;
+    if (u?.displayName) headers['X-User-Name'] = u.displayName;
+    if (u?.email) headers['X-User-Email'] = u.email;
+    return headers;
+  }, []);
+
+  // Multi-select toggle helpers
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const presetKey = Array.isArray(params?.preset) ? params.preset[0] : params?.preset;
 
@@ -631,8 +680,7 @@ export default function SearchScreen(props = {}) {
     { key: 'model',      label: 'Model',          minWidth: 88,  flex: 0.9 },
     { key: 'assigned',   label: 'Assigned To',   minWidth: 116, flex: 1.1 },
     { key: 'status',     label: 'Status',         minWidth: 100, flex: 0.9 },
-    { key: 'purchased',  label: 'Date Purchased', minWidth: 136, flex: 1.1 },
-    { key: 'updated',    label: 'Last Updated',   minWidth: 128, flex: 1.1 },
+    { key: 'updated',    label: 'Last Updated',   minWidth: 148, flex: 1.2 },
     { key: 'updated_by', label: 'Last Updated By',minWidth: 144, flex: 1.2 },
   ]), []);
 
@@ -795,6 +843,101 @@ export default function SearchScreen(props = {}) {
   }, [items, page, pageSize]);
 
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(Math.max(items.length, 1) / pageSize));
+
+  // Select/deselect all visible (current page) assets
+  const toggleSelectAll = useCallback(() => {
+    const visibleIds = paginatedItems.map((i) => i.id).filter(Boolean);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
+  }, [paginatedItems, selectedIds]);
+
+  // Bulk action executor — mirrors multi-scan/list.js logic
+  const performBulkAction = useCallback(async (actionType, selectedUser = null) => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setShowBulkUserPicker(false);
+    setBulkLoading(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    const headers = await buildAuthHeaders();
+    const failed = [];
+    const today = new Date().toISOString().slice(0, 10);
+
+    for (const assetId of ids) {
+      try {
+        if (actionType === 'transferToUser' && selectedUser) {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ assigned_to_id: selectedUser.id, status: 'In Service' }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'transferToOffice') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ assign_to_admin: true, status: 'In Service' }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'transferToMe') {
+          if (!myDbUserId) { failed.push(assetId); continue; }
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ assigned_to_id: myDbUserId }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'repair') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ status: 'Repair' }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'service') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ status: 'Maintenance' }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'eol') {
+          const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ status: 'End of Life' }),
+          });
+          if (!putRes.ok) { failed.push(assetId); continue; }
+          await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ type: 'END_OF_LIFE', note: 'Bulk: End of Life', details: {}, occurred_at: today }),
+          });
+        } else if (actionType === 'lost') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ type: 'LOST', note: 'Bulk: Report Lost', details: {}, occurred_at: today }),
+          });
+          if (!res.ok) failed.push(assetId);
+        } else if (actionType === 'stolen') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ type: 'STOLEN', note: 'Bulk: Report Stolen', details: {}, occurred_at: today }),
+          });
+          if (!res.ok) failed.push(assetId);
+        }
+      } catch {
+        failed.push(assetId);
+      }
+      setBulkProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+    }
+
+    setBulkLoading(false);
+    clearSelection();
+    const successCount = ids.length - failed.length;
+    const hasFailures = failed.length > 0;
+    setBulkResultUi({
+      phase: 'result',
+      title: hasFailures ? 'Partial success' : 'Done',
+      message: hasFailures
+        ? `${successCount} asset(s) updated. ${failed.length} failed: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}`
+        : `${successCount} asset(s) updated successfully.`,
+      error: hasFailures,
+    });
+    fetchAll();
+  }, [selectedIds, myDbUserId, buildAuthHeaders, clearSelection, fetchAll]);
   const pageRangeStart = pageSize === 'all'
     ? (items.length ? 1 : 0)
     : (items.length ? ((page - 1) * pageSize) + 1 : 0);
@@ -1066,6 +1209,32 @@ export default function SearchScreen(props = {}) {
             >
                 <View style={[styles.tableContent, { minWidth: tableMinWidth }]}>
                 <View style={styles.tableHeader}>
+                  {/* Checkbox column — admin web only */}
+                  {isAdmin && Platform.OS === 'web' && (
+                    <TouchableOpacity
+                      style={[styles.th, styles.thCellIcon, { width: 44 }]}
+                      onPress={toggleSelectAll}
+                      activeOpacity={0.7}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel="Select all"
+                    >
+                      <MaterialIcons
+                        name={
+                          paginatedItems.length > 0 && paginatedItems.every((i) => selectedIds.has(i.id))
+                            ? 'check-box'
+                            : selectedIds.size > 0
+                            ? 'indeterminate-check-box'
+                            : 'check-box-outline-blank'
+                        }
+                        size={20}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </TouchableOpacity>
+                  )}
+                  {/* Actions column header — admin web only, left side */}
+                  {isAdmin && Platform.OS === 'web' && (
+                    <View style={[styles.th, styles.thCellIcon, { width: 48 }]} />
+                  )}
                   {columns.map((c) => {
                     const sortField = columnKeyToSortField[c.key];
                     const isSortable = !!sortField;
@@ -1133,15 +1302,47 @@ export default function SearchScreen(props = {}) {
 
                     // Date formatters
                     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '--';
-                    const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short' }) : '--';
+                    const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short', year: 'numeric' }) : '--';
 
                     return (
                       <View
                         key={item.id}
-                        style={[styles.tr, idx % 2 === 1 && styles.rowAlt, (hoverRowId === item.id) && styles.rowHover]}
+                        style={[styles.tr, idx % 2 === 1 && styles.rowAlt, (hoverRowId === item.id) && styles.rowHover, isAdmin && Platform.OS === 'web' && selectedIds.has(item.id) && styles.rowSelected]}
                         onMouseEnter={() => setHoverRowId(item.id)}
                         onMouseLeave={() => setHoverRowId(null)}
                       >
+                        {/* Checkbox — admin web only */}
+                        {isAdmin && Platform.OS === 'web' && (
+                          <TouchableOpacity
+                            style={[styles.td, styles.tdCellIcon, { width: 44 }]}
+                            onPress={() => toggleSelect(item.id)}
+                            activeOpacity={0.7}
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={selectedIds.has(item.id) ? 'Deselect' : 'Select'}
+                          >
+                            <MaterialIcons
+                              name={selectedIds.has(item.id) ? 'check-box' : 'check-box-outline-blank'}
+                              size={20}
+                              color={selectedIds.has(item.id) ? Colors.accent : Colors.sub2}
+                            />
+                          </TouchableOpacity>
+                        )}
+                        {/* Per-row Actions icon — admin web only, left side */}
+                        {isAdmin && Platform.OS === 'web' && (
+                          <View style={[styles.td, styles.tdCellIcon, { width: 48 }]}>
+                            <TouchableOpacity
+                              style={styles.rowActionBtn}
+                              onPress={() => {
+                                const returnTo = computeReturnTarget();
+                                router.push({ pathname: '/check-in/[id]', params: { id: String(item.id), returnTo } });
+                              }}
+                              activeOpacity={0.75}
+                              accessibilityLabel="Open actions for this asset"
+                            >
+                              <MaterialIcons name="bolt" size={18} color={Colors.accent} />
+                            </TouchableOpacity>
+                          </View>
+                        )}
                         {/* QR Code — hidden for UUID placeholder rows (no sticker id yet) */}
                     <View style={[styles.td, styles.tdCellIcon, columnStyle('qr')]}>
                           {isAssetIdAwaitingQr(String(item.id || '')) ? (
@@ -1213,10 +1414,6 @@ export default function SearchScreen(props = {}) {
                     <View style={[styles.td, styles.tdCellIcon, columnStyle('status')]}>
                           <StatusBadge status={item?.status} size="sm" style={{ alignSelf: 'center' }} />
                         </View>
-                        {/* Date Purchased */}
-                    <View style={[styles.td, columnStyle('purchased')]}>
-                          <Text style={styles.tdText} numberOfLines={1}>{fmtDate(purchased)}</Text>
-                        </View>
                         {/* Last Updated */}
                     <View style={[styles.td, columnStyle('updated')]}>
                           <Text style={styles.tdText} numberOfLines={1}>{fmtDateTime(updated)}</Text>
@@ -1259,6 +1456,135 @@ export default function SearchScreen(props = {}) {
           </View>
         )
       )}
+
+      {/* ── Bulk-action floating bar (admin + web + selection active) ── */}
+      {isAdmin && Platform.OS === 'web' && selectedIds.size > 0 && !bulkLoading && (
+        <View style={styles.bulkBar}>
+          <Text style={styles.bulkBarCount}>{selectedIds.size} selected</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={styles.bulkBarScroll}>
+            <TouchableOpacity style={styles.bulkBtn} onPress={() => setShowBulkUserPicker(true)}>
+              <MaterialIcons name="person-add" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Transfer to User</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.bulkBtn} onPress={() => performBulkAction('transferToOffice')}>
+              <MaterialIcons name="business" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>To Office</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.bulkBtn} onPress={() => performBulkAction('transferToMe')}>
+              <MaterialIcons name="person" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>To Me</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('repair')}>
+              <MaterialIcons name="build" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Log Repair</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('service')}>
+              <MaterialIcons name="build-circle" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Log Service</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('eol')}>
+              <MaterialIcons name="remove-circle-outline" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>End of Life</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('lost')}>
+              <MaterialIcons name="lost-and-found" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Report Lost</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('stolen')}>
+              <MaterialIcons name="warning-amber" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Report Stolen</Text>
+            </TouchableOpacity>
+          </ScrollView>
+          <TouchableOpacity style={styles.bulkClearBtn} onPress={clearSelection}>
+            <MaterialIcons name="close" size={18} color={Colors.sub} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bulk progress overlay */}
+      {isAdmin && Platform.OS === 'web' && bulkLoading && (
+        <View style={styles.bulkProgressOverlay}>
+          <View style={styles.bulkProgressCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.bulkProgressText}>
+              Processing {bulkProgress.done} of {bulkProgress.total}…
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Bulk transfer-to-user picker modal */}
+      {isAdmin && Platform.OS === 'web' && (
+        <Modal
+          visible={showBulkUserPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowBulkUserPicker(false)}
+        >
+          <View style={styles.bulkPickerBackdrop}>
+            <View style={styles.bulkPickerCard}>
+              <View style={styles.bulkPickerHeader}>
+                <Text style={styles.bulkPickerTitle}>Transfer to User</Text>
+                <TouchableOpacity onPress={() => setShowBulkUserPicker(false)}>
+                  <MaterialIcons name="close" size={22} color={Colors.sub} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.bulkPickerSub}>{selectedIds.size} asset(s) will be transferred</Text>
+              <TextInput
+                style={styles.bulkPickerSearch}
+                placeholder="Search by name or email…"
+                placeholderTextColor={Colors.sub2}
+                value={bulkUserSearch}
+                onChangeText={setBulkUserSearch}
+                autoFocus
+              />
+              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                {filterUsers
+                  .filter((u) => {
+                    const q = bulkUserSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      (u.name || '').toLowerCase().includes(q) ||
+                      (u.useremail || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((u) => (
+                    <TouchableOpacity
+                      key={String(u.id)}
+                      style={styles.bulkPickerRow}
+                      onPress={() => {
+                        setBulkUserSearch('');
+                        performBulkAction('transferToUser', u);
+                      }}
+                    >
+                      <View style={styles.bulkPickerAvatar}>
+                        <Text style={styles.bulkPickerAvatarText}>
+                          {(u.name || u.useremail || '?').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.bulkPickerName}>{u.name || 'No Name'}</Text>
+                        <Text style={styles.bulkPickerEmail}>{u.useremail}</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={Colors.sub2} />
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Bulk result modal */}
+      <ConfirmModal
+        visible={!!bulkResultUi}
+        phase="result"
+        title={bulkResultUi?.title || ''}
+        message={bulkResultUi?.message || ''}
+        resultError={!!bulkResultUi?.error}
+        onDismiss={() => setBulkResultUi(null)}
+        onCancel={() => setBulkResultUi(null)}
+      />
 
       {/* Advanced Filter Modal */}
       <Modal visible={filterModalOpen} transparent animationType="fade" onRequestClose={closeFilterModal}>
@@ -1718,4 +2044,99 @@ const styles = StyleSheet.create({
   },
   presetBannerText: { flex: 1, fontSize: sf(13), color: '#1D4ED8', fontWeight: '700' },
   presetBannerClear: { padding: 2 },
+
+  // Selected row highlight
+  rowSelected: { backgroundColor: '#EFF6FF' },
+
+  // Per-row Actions button
+  rowActionBtn: {
+    width: 30, height: 30,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.accentLight,
+    borderWidth: 1.5, borderColor: Colors.accent,
+  },
+
+  // Bulk action bar (floating bottom bar)
+  bulkBar: {
+    position: 'fixed',
+    bottom: 16,
+    left: '50%',
+    transform: [{ translateX: '-50%' }],
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 10,
+    maxWidth: 1080,
+    width: '92%',
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  bulkBarCount: { fontSize: sf(13), fontWeight: '900', color: '#fff', minWidth: 72 },
+  bulkBarScroll: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingBottom: 4 },
+  bulkBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingVertical: 7, paddingHorizontal: 11,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  bulkBtnWarning: { backgroundColor: 'rgba(251,191,36,0.25)', borderColor: 'rgba(251,191,36,0.5)' },
+  bulkBtnDanger: { backgroundColor: 'rgba(220,38,38,0.25)', borderColor: 'rgba(220,38,38,0.5)' },
+  bulkBtnText: { fontSize: sf(12), fontWeight: '800', color: '#fff' },
+  bulkClearBtn: { padding: 4, marginLeft: 4 },
+
+  // Bulk progress overlay
+  bulkProgressOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 200,
+  },
+  bulkProgressCard: {
+    backgroundColor: Colors.card, borderRadius: Radius.lg,
+    padding: 32, alignItems: 'center', gap: 16,
+    minWidth: 220,
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 16,
+  },
+  bulkProgressText: { fontSize: sf(15), fontWeight: '700', color: Colors.text },
+
+  // Bulk user picker modal
+  bulkPickerBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center', padding: 20,
+  },
+  bulkPickerCard: {
+    backgroundColor: Colors.card, borderRadius: Radius.lg,
+    padding: 24, width: '100%', maxWidth: 440,
+    borderWidth: 2, borderColor: Colors.line,
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 24,
+  },
+  bulkPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  bulkPickerTitle: { fontSize: sf(18), fontWeight: '900', color: Colors.primary },
+  bulkPickerSub: { fontSize: sf(13), color: Colors.sub, marginBottom: 14 },
+  bulkPickerSearch: {
+    backgroundColor: Colors.bg, borderWidth: 2, borderColor: Colors.line,
+    borderRadius: Radius.md, paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: sf(14), color: Colors.text, marginBottom: 10,
+  },
+  bulkPickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: Colors.line,
+  },
+  bulkPickerAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.accentLight, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.accent,
+  },
+  bulkPickerAvatarText: { fontSize: sf(15), fontWeight: '800', color: Colors.accentDark },
+  bulkPickerName: { fontSize: sf(14), fontWeight: '700', color: Colors.text },
+  bulkPickerEmail: { fontSize: sf(12), color: Colors.sub },
 });

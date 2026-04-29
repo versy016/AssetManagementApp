@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import ActionsForm from '../../components/ActionsForm';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 // NOTE: Avoid static import of expo-location to prevent SSR/import loops on web.
 // We'll require it dynamically at runtime when needed.
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -92,6 +93,7 @@ export default function CheckInScreen() {
     const u = users.find(x => x.id === dbUserId);
     return (u?.name || u?.useremail || (dbUserId ? `User ${dbUserId}` : 'Unassigned'));
   };
+  const [postActionUi, setPostActionUi] = useState(null); // { title, message, onGo, onStay }
   const [showOtherModal, setShowOtherModal] = useState(false);
   const [actionsFormOpen, setActionsFormOpen] = useState(false);
   const [actionsFormType, setActionsFormType] = useState(null);
@@ -1022,8 +1024,8 @@ export default function CheckInScreen() {
   const markMaintenance = () => updateStatus('Maintenance');
 
 
-  // Reusable post-action alert (waits for UI to settle)
   // Reusable post-action alert (cross-platform)
+  // On web: uses ConfirmModal; on native: uses Alert.
   const postActionAlert = ({
     title = 'Success',
     message = 'Action completed.',
@@ -1034,25 +1036,22 @@ export default function CheckInScreen() {
   } = {}) => {
     const goToDashboard = () => router.replace('/dashboard');
 
-    // Ensure UI is idle before showing native alert (Android/iOS)
-    const showNativeAlert = () => {
+    if (Platform.OS === 'web') {
+      setPostActionUi({
+        title,
+        message,
+        goLabel,
+        stayLabel,
+        onGo: onGo || goToDashboard,
+        onStay: onStay || (() => {}),
+      });
+    } else {
       InteractionManager.runAfterInteractions(() => {
         Alert.alert(title, message, [
-          { text: stayLabel, style: 'default', onPress: onStay || (() => { }) },
+          { text: stayLabel, style: 'default', onPress: onStay || (() => {}) },
           { text: goLabel, style: 'default', onPress: onGo || goToDashboard },
         ]);
       });
-    };
-
-    if (Platform.OS === 'web') {
-      // Use a reliable browser confirm dialog on web
-      const go = window.confirm(
-        `${title}\n\n${message}\n\nPress "OK" to ${goLabel.toLowerCase()}, or "Cancel" to ${stayLabel.toLowerCase()}.`
-      );
-      if (go) (onGo || goToDashboard)();
-      else (onStay || (() => { }))();
-    } else {
-      showNativeAlert();
     }
   };
 
@@ -1314,6 +1313,395 @@ export default function CheckInScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <Animated.View style={{ flex: 1, opacity: fade }}>
+        {/* ─── WEB two-column layout ─── */}
+        {Platform.OS === 'web' && (
+          <ScrollView contentContainerStyle={styles.webContainer}>
+            {/* Page header */}
+            <View style={styles.webPageHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={styles.heroIconWrap}>
+                  <MaterialIcons name="inventory-2" size={26} color={Colors.text} />
+                </View>
+                <View>
+                  <Text style={styles.pageTitle}>Asset Actions</Text>
+                  <Text style={styles.pageSubtitle}>Quick actions for this asset</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {returnTo ? (
+                  <TouchableOpacity onPress={handleBackToScanned} style={styles.backToScanBtn}>
+                    <MaterialIcons name="qr-code-scanner" size={16} color={Colors.accent} />
+                    <Text style={styles.backToScanText} numberOfLines={1}>
+                      {`Scanned (${(multiScanCtx?.checked || []).length}/${(multiScanCtx?.items || []).length})`}
+                    </Text>
+                    <MaterialIcons name="arrow-forward-ios" size={12} color={Colors.accent} />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={styles.webNavBtn} onPress={() => router.replace('/(tabs)/dashboard')}>
+                  <MaterialIcons name="home" size={16} color={Colors.primary} />
+                  <Text style={styles.webNavBtnText}>Dashboard</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Two-column body */}
+            <View style={styles.webBody}>
+              {/* ── Left: Asset info panel ── */}
+              <View style={styles.webInfoPanel}>
+                <Text style={styles.webSectionLabel}>ASSET DETAILS</Text>
+                <View style={styles.webInfoCard}>
+                  <Text style={styles.webAssetType}>
+                    {asset.asset_types?.name || asset.asset_type || 'Asset'}
+                  </Text>
+                  <Text style={styles.webAssetId}>ID: {asset.id}</Text>
+                  {asset.serial_number ? (
+                    <Text style={styles.webAssetSerial}>Serial: {asset.serial_number}</Text>
+                  ) : null}
+
+                  <View style={styles.webInfoDivider} />
+
+                  <Text style={styles.webInfoLabel}>Assigned to</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                    <AvatarCircle name={asset.assigned_user_name} email={asset.assigned_user_email} />
+                    <Text style={styles.webInfoValue} numberOfLines={2}>
+                      {asset.assigned_user_name || 'Unassigned'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.webInfoDivider} />
+
+                  <Text style={styles.webInfoLabel}>Current Status</Text>
+                  <View style={{ marginTop: 8 }}>
+                    <Chip label={asset.status || 'N/A'} tone={badgeTone(asset.status)} />
+                  </View>
+                </View>
+              </View>
+
+              {/* ── Right: Actions panel ── */}
+              <View style={styles.webActionsPanel}>
+                {isEOL ? (
+                  <View style={styles.webActionGroup}>
+                    <Text style={styles.webSectionLabel}>STATUS</Text>
+                    <View style={styles.webInfoCard}>
+                      <Text style={styles.webEolNote}>
+                        This asset has been marked as End of Life and is no longer active.
+                      </Text>
+                    </View>
+                  </View>
+                ) : isQRReserved ? (
+                  <View style={styles.webActionGroup}>
+                    <Text style={styles.webSectionLabel}>QR MANAGEMENT</Text>
+                    <View style={styles.webActionCard}>
+                      {!!asset?.id && (
+                        <TouchableOpacity
+                          style={styles.webActionRow}
+                          onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
+                          disabled={loading}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.accentLight }]}>
+                            <MaterialIcons name="assignment" size={20} color={Colors.accent} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Assign Imported Asset</Text>
+                            <Text style={styles.webActionDesc}>Link an imported asset to this QR</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity style={styles.webActionRow} onPress={() => setSwapOpen(true)} disabled={loading}>
+                        <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                          <MaterialIcons name="swap-horiz" size={20} color={Colors.primary} />
+                        </View>
+                        <View style={styles.webActionInfo}>
+                          <Text style={styles.webActionLabel}>Swap QR</Text>
+                          <Text style={styles.webActionDesc}>Move asset data to a different QR</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                      </TouchableOpacity>
+                      {!!asset?.id && (
+                        <TouchableOpacity
+                          style={[styles.webActionRow, styles.webActionRowLast]}
+                          onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
+                          disabled={loading}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                            <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Create Asset</Text>
+                            <Text style={styles.webActionDesc}>Register a new asset on this QR</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ) : isPlaceholder ? (
+                  <>
+                    <View style={styles.webActionGroup}>
+                      <Text style={styles.webSectionLabel}>TRANSFERS</Text>
+                      <View style={styles.webActionCard}>
+                        {!isAssignedToOffice ? (
+                          <TouchableOpacity
+                            testID="transfer-to-office-button"
+                            style={styles.webActionRow}
+                            onPress={() => handleAction('checkin')}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="business" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Transfer to Office</Text>
+                              <Text style={styles.webActionDesc}>Check this asset back in to the office</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
+                          <TouchableOpacity
+                            testID="transfer-to-me-button"
+                            style={styles.webActionRow}
+                            onPress={() => handleAction('transferToMe')}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="person" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Transfer to Me</Text>
+                              <Text style={styles.webActionDesc}>Assign this asset to yourself</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        ) : null}
+                        <TouchableOpacity
+                          style={[styles.webActionRow, styles.webActionRowLast]}
+                          onPress={() => setSwapOpen(true)}
+                          disabled={loading}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                            <MaterialIcons name="swap-horiz" size={20} color={Colors.primary} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Swap QR</Text>
+                            <Text style={styles.webActionDesc}>Move asset data to a different QR</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {!!asset?.id && (
+                      <View style={styles.webActionGroup}>
+                        <Text style={styles.webSectionLabel}>ASSET MANAGEMENT</Text>
+                        <View style={styles.webActionCard}>
+                          <TouchableOpacity
+                            style={styles.webActionRow}
+                            onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.accentLight }]}>
+                              <MaterialIcons name="assignment" size={20} color={Colors.accent} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Assign Imported Asset</Text>
+                              <Text style={styles.webActionDesc}>Link an imported asset to this QR</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.webActionRow}
+                            onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Create Asset</Text>
+                              <Text style={styles.webActionDesc}>Register a new asset on this QR</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.webActionRow, styles.webActionRowLast]}
+                            onPress={() => setShowCreateNoteInput(true)}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="note-add" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Create Note</Text>
+                              <Text style={styles.webActionDesc}>Add a note to this asset's history</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Transfers */}
+                    <View style={styles.webActionGroup}>
+                      <Text style={styles.webSectionLabel}>TRANSFERS</Text>
+                      <View style={styles.webActionCard}>
+                        {!isAssignedToOffice ? (
+                          <TouchableOpacity
+                            testID="transfer-to-office-button"
+                            style={styles.webActionRow}
+                            onPress={() => handleAction('checkin')}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="business" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Transfer to Office</Text>
+                              <Text style={styles.webActionDesc}>Check this asset back in to the office</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
+                          <TouchableOpacity
+                            testID="transfer-to-me-button"
+                            style={styles.webActionRow}
+                            onPress={() => handleAction('transferToMe')}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="person" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Transfer to Me</Text>
+                              <Text style={styles.webActionDesc}>Assign this asset to yourself</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        ) : null}
+                        <TouchableOpacity
+                          style={styles.webActionRow}
+                          onPress={openTransferMenu}
+                          disabled={loading}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                            <MaterialIcons name="person-add" size={20} color={Colors.primary} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Transfer to User</Text>
+                            <Text style={styles.webActionDesc}>Assign this asset to a specific person</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                        {myUserId && String(asset.assigned_to_id) !== String(myUserId) && !isAssignedToOffice && (
+                          <TouchableOpacity
+                            style={[styles.webActionRow, styles.webActionRowLast]}
+                            onPress={() => handleAction('transferToMe')}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="person" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Transfer to Me</Text>
+                              <Text style={styles.webActionDesc}>Assign this asset to yourself</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Maintenance */}
+                    <View style={styles.webActionGroup}>
+                      <Text style={styles.webSectionLabel}>MAINTENANCE</Text>
+                      <View style={styles.webActionCard}>
+                        <TouchableOpacity
+                          style={styles.webActionRow}
+                          onPress={() => { setActionsFormType('Repair'); setActionsFormOpen(true); }}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.warningBg }]}>
+                            <MaterialIcons name="build" size={20} color={Colors.warningFg} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Repair Required</Text>
+                            <Text style={styles.webActionDesc}>Log that this asset needs repair</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.webActionRow, styles.webActionRowLast]}
+                          onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.infoBg }]}>
+                            <MaterialIcons name="build-circle" size={20} color={Colors.infoFg} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Log Service</Text>
+                            <Text style={styles.webActionDesc}>Record a maintenance / service event</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Other */}
+                    <View style={styles.webActionGroup}>
+                      <Text style={styles.webSectionLabel}>OTHER</Text>
+                      <View style={styles.webActionCard}>
+                        {!!asset?.id && (
+                          <TouchableOpacity
+                            style={styles.webActionRow}
+                            onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
+                            disabled={loading}
+                          >
+                            <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                              <MaterialIcons name="content-copy" size={20} color={Colors.primary} />
+                            </View>
+                            <View style={styles.webActionInfo}>
+                              <Text style={styles.webActionLabel}>Copy Asset</Text>
+                              <Text style={styles.webActionDesc}>Duplicate this asset's details to a new QR</Text>
+                            </View>
+                            <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.webActionRow}
+                          onPress={() => setShowCreateNoteInput(true)}
+                          disabled={loading}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                            <MaterialIcons name="note-add" size={20} color={Colors.primary} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={styles.webActionLabel}>Create Note</Text>
+                            <Text style={styles.webActionDesc}>Add a note to this asset's history</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.webActionRow, styles.webActionRowLast]}
+                          onPress={() => setShowOtherModal(true)}
+                        >
+                          <View style={[styles.webActionIcon, { backgroundColor: Colors.dangerBg }]}>
+                            <MaterialIcons name="more-horiz" size={20} color={Colors.dangerFg} />
+                          </View>
+                          <View style={styles.webActionInfo}>
+                            <Text style={[styles.webActionLabel, { color: Colors.dangerFg }]}>Other Actions</Text>
+                            <Text style={styles.webActionDesc}>Status changes: EOL, Lost, Stolen…</Text>
+                          </View>
+                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          </ScrollView>
+        )}
+        {/* ─── MOBILE layout ─── */}
+        {Platform.OS !== 'web' && (<>
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
           {/* Header Card */}
           <View style={styles.headerCard}>
@@ -1645,6 +2033,7 @@ export default function CheckInScreen() {
             </TouchableOpacity>
           </View>
         )}
+        </>)}
 
       </Animated.View>
       <ActionsForm
@@ -1666,6 +2055,19 @@ export default function CheckInScreen() {
       {renderUserModal()}
       {renderOtherActionsModal()}
       {renderCreateNoteModal()}
+
+      {/* Post-action success modal (web) */}
+      <ConfirmModal
+        visible={!!postActionUi}
+        phase="confirm"
+        title={postActionUi?.title || 'Success'}
+        message={postActionUi?.message || ''}
+        confirmLabel={postActionUi?.goLabel || 'Go to Dashboard'}
+        confirmTone="primary"
+        cancelLabel={postActionUi?.stayLabel || 'Stay here'}
+        onConfirm={() => { setPostActionUi(null); postActionUi?.onGo?.(); }}
+        onCancel={() => { setPostActionUi(null); postActionUi?.onStay?.(); }}
+      />
       {swapOpen && (
         <Modal transparent animationType="slide" visible={swapOpen} onRequestClose={() => setSwapOpen(false)}>
           <View style={styles.sheetBackdrop}>
@@ -2256,6 +2658,154 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontWeight: '700',
     fontSize: sf(16),
+  },
+
+  // ─── Web two-column layout ───
+  webContainer: {
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+    padding: 28,
+    paddingBottom: 48,
+    minHeight: '100%',
+  },
+  webPageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  webNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+  },
+  webNavBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: sf(14),
+  },
+  webBody: {
+    flexDirection: 'row',
+    gap: 20,
+    alignItems: 'flex-start',
+  },
+  webInfoPanel: {
+    width: 280,
+    flexShrink: 0,
+  },
+  webActionsPanel: {
+    flex: 1,
+    gap: 0,
+  },
+  webSectionLabel: {
+    color: Colors.subtle,
+    fontSize: sf(11),
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+  webInfoCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    padding: 18,
+    ...Shadows.card,
+  },
+  webAssetType: {
+    color: Colors.text,
+    fontSize: sf(18),
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  webAssetId: {
+    color: Colors.primary,
+    fontSize: sf(13),
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  webAssetSerial: {
+    color: Colors.subtle,
+    fontSize: sf(13),
+    fontWeight: '500',
+  },
+  webInfoDivider: {
+    height: 1,
+    backgroundColor: Colors.line,
+    marginVertical: 14,
+  },
+  webInfoLabel: {
+    color: Colors.subtle,
+    fontSize: sf(12),
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  webInfoValue: {
+    color: Colors.text,
+    fontSize: sf(15),
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  webEolNote: {
+    color: Colors.subtle,
+    fontSize: sf(14),
+    lineHeight: 20,
+  },
+  webActionGroup: {
+    marginBottom: 20,
+  },
+  webActionCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...Shadows.card,
+  },
+  webActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  webActionRowLast: {
+    borderBottomWidth: 0,
+  },
+  webActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  webActionInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  webActionLabel: {
+    color: Colors.text,
+    fontSize: sf(15),
+    fontWeight: '700',
+  },
+  webActionDesc: {
+    color: Colors.subtle,
+    fontSize: sf(12),
+    fontWeight: '400',
   },
 
 });
