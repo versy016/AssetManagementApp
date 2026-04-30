@@ -32,6 +32,17 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { FIELD_LIMITS } from '../../constants/fieldLimits';
 import logger from '../../utils/logger';
 import { pickOfficeInventoryAssignee } from '../../utils/ShortcutExecutor';
+import { isAssetIdAwaitingQr } from '../../utils/assetId';
+
+// True when an API row is an unused 8-char sticker (valid target for assigning an awaiting-QR import).
+function isBlankPhysicalQrSticker(a) {
+  if (!a) return false;
+  const id = String(a.id || '');
+  if (!/^[A-Z0-9]{8}$/i.test(id)) return false;
+  const hasDyn = a.fields && Object.keys(a.fields || {}).length > 0;
+  const status = String(a?.status || '').toLowerCase();
+  return !a.serial_number && !a.model && !a.assigned_to_id && !a.type_id && !a.documentation_url && !a.image_url && !a.other_id && !hasDyn && (status === 'available');
+}
 
 // ---------- Import Theme Constants ----------
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
@@ -117,6 +128,12 @@ export default function CheckInScreen() {
   const [assignSelected, setAssignSelected] = useState(null);
   // When true, immediately open user picker after assigning imported asset and prevent dismiss
   const [forceUserAssign, setForceUserAssign] = useState(false);
+  // Pick a blank physical QR (8-char id) to attach an imported "awaiting QR" asset (UUID id)
+  const [assignPhysicalOpen, setAssignPhysicalOpen] = useState(false);
+  const [assignPhysicalQuery, setAssignPhysicalQuery] = useState('');
+  const [assignPhysicalList, setAssignPhysicalList] = useState([]);
+  const [assignPhysicalSelected, setAssignPhysicalSelected] = useState(null);
+  const [assignPhysicalLoading, setAssignPhysicalLoading] = useState(false);
   // Free-form action note captured during check-in/transfer
   const [actionNote, setActionNote] = useState('');
   // Create note only (no transfer): show input and submit to POST /assets/:id/actions
@@ -613,6 +630,17 @@ export default function CheckInScreen() {
     return desc.includes('qr reserved');
   }, [asset]);
 
+  const isAwaitingQr = React.useMemo(
+    () => !!(asset && isAssetIdAwaitingQr(String(asset.id || ''))),
+    [asset]
+  );
+
+  const filteredAssignPhysicalList = React.useMemo(() => {
+    const q = (assignPhysicalQuery || '').toUpperCase().trim();
+    if (!q) return assignPhysicalList;
+    return assignPhysicalList.filter((a) => String(a.id || '').toUpperCase().includes(q));
+  }, [assignPhysicalQuery, assignPhysicalList]);
+
   // Helper: load imported assets (UUID ids, not placeholders)
   const loadImportedAssets = async () => {
     try {
@@ -629,6 +657,23 @@ export default function CheckInScreen() {
       Alert.alert('Error', e?.message || 'Failed to load imported assets');
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  const loadBlankPhysicalQrStickers = async () => {
+    try {
+      setAssignPhysicalLoading(true);
+      const res = await fetch(`${API_BASE_URL}/assets`);
+      if (!res.ok) throw new Error('Failed to fetch assets');
+      const list = await res.json();
+      const cleaned = (list || [])
+        .filter(isBlankPhysicalQrSticker)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      setAssignPhysicalList(cleaned);
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to load blank QR codes');
+    } finally {
+      setAssignPhysicalLoading(false);
     }
   };
 
@@ -695,6 +740,31 @@ export default function CheckInScreen() {
       Alert.alert('Error', e?.message || 'Failed to assign imported asset');
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  const handleAssignPhysicalToSticker = async (physicalId) => {
+    const raw = String(physicalId || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{8}$/.test(raw)) {
+      Alert.alert('Invalid QR', 'Choose an 8-character asset ID.');
+      return;
+    }
+    try {
+      setAssignPhysicalLoading(true);
+      await performSwap(asset?.id, raw);
+      setAssignPhysicalOpen(false);
+      setAssignPhysicalQuery('');
+      setAssignPhysicalSelected(null);
+      Alert.alert('Success', `Asset is now on QR ${raw}.`);
+      if (returnTo) {
+        try { router.replace(String(returnTo)); } catch { router.back(); }
+      } else {
+        router.replace(`/asset/${raw}`);
+      }
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to assign QR');
+    } finally {
+      setAssignPhysicalLoading(false);
     }
   };
 
@@ -1345,6 +1415,11 @@ export default function CheckInScreen() {
                     {asset.asset_types?.name || asset.asset_type || 'Asset'}
                   </Text>
                   <Text style={styles.webAssetId}>ID: {asset.id}</Text>
+                  {isAwaitingQr ? (
+                    <Text style={{ color: Colors.subtle, fontSize: sf(12), marginTop: 6, fontWeight: '600' }}>
+                      Awaiting physical QR
+                    </Text>
+                  ) : null}
                   {asset.serial_number ? (
                     <Text style={styles.webAssetSerial}>Serial: {asset.serial_number}</Text>
                   ) : null}
@@ -1377,6 +1452,49 @@ export default function CheckInScreen() {
                       <Text style={styles.webEolNote}>
                         This asset has been marked as End of Life and is no longer active.
                       </Text>
+                    </View>
+                  </View>
+                ) : isAwaitingQr ? (
+                  <View style={styles.webActionGroup}>
+                    <Text style={styles.webSectionLabel}>QR ASSIGNMENT</Text>
+                    <View style={styles.webInfoCard}>
+                      <Text style={{ color: Colors.subtle, lineHeight: 20 }}>
+                        This asset still uses a temporary id. Choose an unused 8-character QR sticker to move this record onto a physical label.
+                      </Text>
+                    </View>
+                    <View style={styles.webActionCard}>
+                      <TouchableOpacity
+                        style={styles.webActionRow}
+                        onPress={() => {
+                          setAssignPhysicalSelected(null);
+                          setAssignPhysicalQuery('');
+                          setAssignPhysicalOpen(true);
+                          if (!assignPhysicalList.length) loadBlankPhysicalQrStickers();
+                        }}
+                        disabled={loading || assignPhysicalLoading}
+                      >
+                        <View style={[styles.webActionIcon, { backgroundColor: Colors.accentLight }]}>
+                          <MaterialIcons name="qr-code-2" size={20} color={Colors.accent} />
+                        </View>
+                        <View style={styles.webActionInfo}>
+                          <Text style={styles.webActionLabel}>Assign physical QR</Text>
+                          <Text style={styles.webActionDesc}>Pick a blank sticker from the list</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.webActionRow, styles.webActionRowLast]}
+                        onPress={() => router.replace('/(tabs)/dashboard')}
+                      >
+                        <View style={[styles.webActionIcon, { backgroundColor: Colors.chip }]}>
+                          <MaterialIcons name="home" size={20} color={Colors.primary} />
+                        </View>
+                        <View style={styles.webActionInfo}>
+                          <Text style={styles.webActionLabel}>Dashboard</Text>
+                          <Text style={styles.webActionDesc}>Leave without assigning</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 ) : isQRReserved ? (
@@ -1771,6 +1889,35 @@ export default function CheckInScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+            ) : isAwaitingQr ? (
+              <View style={styles.quickActionBar}>
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
+                  onPress={() => router.push({
+                    pathname: '/qr-scanner',
+                    params: {
+                      intent: 'assign-awaiting-qr',
+                      awaitingAssetId: String(asset.id),
+                      returnTo: returnTo || '',
+                    },
+                  })}
+                  disabled={loading}
+                >
+                  <MaterialIcons name="qr-code-scanner" size={18} color="#fff" />
+                  <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                    Scan QR to assign
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                  onPress={() => router.replace('/(tabs)/dashboard')}
+                >
+                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
+                    Back to Dashboard
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : isQRReserved ? (
               <View style={styles.quickActionBar}>
                 {!!asset?.id && (
@@ -1991,7 +2138,7 @@ export default function CheckInScreen() {
         </ScrollView>
 
         {/* Sticky Footer Bar (hide for placeholders, QR Reserved, and EOL) */}
-        {!isPlaceholder && !isEOL && !isQRReserved && (
+        {!isPlaceholder && !isEOL && !isQRReserved && !isAwaitingQr && (
           <View style={styles.footerBar}>
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
@@ -2302,6 +2449,114 @@ export default function CheckInScreen() {
                     onPress={() => assignSelected && handleAssignToPlaceholder(assignSelected.id)}
                   >
                     <MaterialIcons name="qr-code" size={20} color="#FFFFFF" />
+                    <Text style={styles.footerBtnText}>Assign</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+      )}
+
+      {assignPhysicalOpen && (
+        <Modal transparent animationType="slide" visible={assignPhysicalOpen} onRequestClose={() => setAssignPhysicalOpen(false)}>
+          <View style={styles.sheetBackdrop}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} style={{ width: '100%' }}>
+              <View style={[styles.sheet, { maxHeight: '85%' }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Choose blank QR</Text>
+                  <TouchableOpacity onPress={() => setAssignPhysicalOpen(false)}>
+                    <MaterialIcons name="close" size={20} color={Colors.subtle} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, gap: 14 }}
+                  keyboardShouldPersistTaps="always"
+                  keyboardDismissMode="none"
+                >
+                  <View style={styles.optionCard}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="search" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Unused 8-character IDs</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>
+                      Only blank stickers (no model, type, or assignment yet) are listed. Select one to move this asset onto that QR.
+                    </Text>
+                    <TextInput
+                      placeholder="Filter by ID…"
+                      value={assignPhysicalQuery}
+                      onChangeText={setAssignPhysicalQuery}
+                      style={[styles.input, { borderColor: Colors.accent, borderWidth: 2, backgroundColor: Colors.accentLight }]}
+                      placeholderTextColor={Colors.subtle}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      autoFocus
+                    />
+                    <View style={{ marginTop: 8 }}>
+                      {assignPhysicalLoading ? (
+                        <ActivityIndicator />
+                      ) : (
+                        <FlatList
+                          data={filteredAssignPhysicalList}
+                          keyExtractor={(item) => String(item.id)}
+                          style={{ maxHeight: 500 }}
+                          contentContainerStyle={{ paddingBottom: 8 }}
+                          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                          scrollEnabled={filteredAssignPhysicalList.length > 5}
+                          keyboardShouldPersistTaps="always"
+                          keyboardDismissMode="none"
+                          renderItem={({ item }) => (
+                            <TouchableOpacity
+                              style={[
+                                styles.optionCard,
+                                { padding: 12, borderColor: assignPhysicalSelected?.id === item.id ? Colors.accent : Colors.border },
+                              ]}
+                              onPress={() => setAssignPhysicalSelected(item)}
+                              activeOpacity={0.7}
+                              delayPressIn={0}
+                            >
+                              <Text style={{ fontWeight: '800', color: Colors.text, fontSize: sf(16) }}>{item.id}</Text>
+                              <Text style={{ color: Colors.subtle, marginTop: 4 }}>Blank · Available</Text>
+                            </TouchableOpacity>
+                          )}
+                          ListEmptyComponent={() => (
+                            <Text style={{ color: Colors.muted, textAlign: 'center', paddingVertical: 16 }}>
+                              {assignPhysicalList.length === 0 && !assignPhysicalLoading
+                                ? 'No blank QR codes found. Generate stickers in admin, then refresh.'
+                                : 'No matches for this filter.'}
+                            </Text>
+                          )}
+                        />
+                      )}
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: Platform.OS === 'ios' ? 20 : 14,
+                  backgroundColor: Colors.card,
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.border,
+                }}>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, { backgroundColor: Colors.slate, flex: 1, opacity: assignPhysicalLoading ? 0.6 : 1 }]}
+                    disabled={assignPhysicalLoading}
+                    onPress={() => { setAssignPhysicalOpen(false); setAssignPhysicalSelected(null); }}
+                  >
+                    <MaterialIcons name="close" size={20} color="#FFFFFF" />
+                    <Text style={styles.footerBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, { backgroundColor: Colors.accent, flex: 1, opacity: (!assignPhysicalSelected || assignPhysicalLoading) ? 0.6 : 1 }]}
+                    disabled={!assignPhysicalSelected || assignPhysicalLoading}
+                    onPress={() => assignPhysicalSelected && handleAssignPhysicalToSticker(assignPhysicalSelected.id)}
+                  >
+                    <MaterialIcons name="qr-code-2" size={20} color="#FFFFFF" />
                     <Text style={styles.footerBtnText}>Assign</Text>
                   </TouchableOpacity>
                 </View>

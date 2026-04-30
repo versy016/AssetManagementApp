@@ -10,6 +10,7 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { getAuth } from 'firebase/auth';
 import { getShortcutType, SHORTCUT_TYPES } from '../../constants/ShortcutTypes';
 import { processScannedAsset } from '../../utils/ShortcutExecutor';
+import { isAssetIdAwaitingQr } from '../../utils/assetId';
 
 export default function QRScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -26,6 +27,7 @@ export default function QRScannerScreen() {
   const intent = params?.intent ? String(params.intent) : null;
   const returnTo = params?.returnTo ? String(params.returnTo) : null;
   const placeholderId = params?.placeholderId ? String(params.placeholderId) : null;
+  const awaitingAssetId = params?.awaitingAssetId ? String(params.awaitingAssetId) : null;
   const shortcutType = params?.shortcutType ? String(params.shortcutType) : null;
   const isQuickViewShortcut = shortcutType === SHORTCUT_TYPES.QUICK_VIEW.id;
   const isQuickTransferShortcut = shortcutType === SHORTCUT_TYPES.QUICK_TRANSFER.id;
@@ -188,6 +190,86 @@ export default function QRScannerScreen() {
           }
           // Return the scanned ID to the origin route (e.g., /asset/new)
           router.replace({ pathname: returnTo, params: { preselectId: assetId, ...extraParams } });
+        } else if (intent === 'assign-awaiting-qr' && awaitingAssetId) {
+          // Move imported asset (UUID id) onto a scanned blank 8-char QR sticker
+          try {
+            if (!isAssetIdAwaitingQr(awaitingAssetId)) {
+              Alert.alert('Error', 'Invalid assignment context.');
+              setIsProcessing(false);
+              return;
+            }
+            if (!/^[A-Z0-9]{8}$/i.test(assetId)) {
+              Alert.alert('Scan a QR sticker', 'Please scan an unused 8-character asset QR code.');
+              setIsProcessing(false);
+              return;
+            }
+            const auth = getAuth && getAuth();
+            const u = auth?.currentUser || null;
+            let headers = { 'Content-Type': 'application/json' };
+            try {
+              if (u && typeof u.getIdToken === 'function') {
+                const tk = await u.getIdToken();
+                if (tk) headers.Authorization = `Bearer ${tk}`;
+              }
+            } catch { }
+            if (u?.uid) headers['X-User-Id'] = u.uid;
+            if (u?.displayName) headers['X-User-Name'] = u.displayName;
+            if (u?.email) headers['X-User-Email'] = u.email;
+
+            const chk = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}`);
+            if (!chk.ok) {
+              Alert.alert('QR not found', 'This QR/ID does not exist.');
+              setIsProcessing(false);
+              return;
+            }
+            const tgt = await chk.json();
+            const hasDyn = tgt && tgt.fields && Object.keys(tgt.fields || {}).length > 0;
+            const status = String(tgt?.status || '').toLowerCase();
+            if (status === 'end of life') {
+              Alert.alert('Decommissioned QR', 'This QR cannot receive assets. Use a blank sticker.');
+              setIsProcessing(false);
+              return;
+            }
+            const toIsEmpty = !tgt?.serial_number && !tgt?.model && !tgt?.assigned_to_id && !tgt?.type_id && !tgt?.documentation_url && !tgt?.image_url && !tgt?.other_id && !hasDyn && (status === 'available');
+            if (!toIsEmpty) {
+              Alert.alert('QR not available', 'Scan an unused blank QR sticker (no asset data yet).');
+              setIsProcessing(false);
+              return;
+            }
+
+            const confirmed = await new Promise((resolve) => {
+              Alert.alert(
+                'Assign QR',
+                `Link this asset to physical QR ${assetId}?`,
+                [
+                  { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
+                ]
+              );
+            });
+            if (!confirmed) {
+              setIsProcessing(false);
+              return;
+            }
+
+            const resp = await fetch(`${API_BASE_URL}/assets/swap-qr`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ from_id: awaitingAssetId, to_id: assetId }),
+            });
+            const body = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(body?.error || 'Assignment failed');
+
+            if (returnTo) {
+              try { router.replace(String(returnTo)); } catch { router.back(); }
+            } else {
+              router.replace(`/asset/${assetId}`);
+            }
+          } catch (e) {
+            Alert.alert('Error', e?.message || 'Failed to assign QR');
+          } finally {
+            setIsProcessing(false);
+          }
         } else if (intent === 'swap-target' && placeholderId) {
           // Confirm and perform swap: move scanned asset onto placeholderId's QR
           try {
@@ -382,7 +464,7 @@ export default function QRScannerScreen() {
       // Fallback to native alert for unexpected errors
       Alert.alert('Error', msg, [{ text: 'OK', onPress: () => setIsProcessing(false) }]);
     }
-  }, [isScanning, isProcessing, scanMode, scannedItems, processScannedItem, returnTo, JSON.stringify(extraParams)]);
+  }, [isScanning, isProcessing, scanMode, scannedItems, processScannedItem, returnTo, intent, awaitingAssetId, placeholderId, JSON.stringify(extraParams)]);
 
   const removeItem = (itemToRemove) => {
     const id = typeof itemToRemove === 'object' && itemToRemove?.id != null ? itemToRemove.id : itemToRemove;

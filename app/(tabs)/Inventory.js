@@ -136,8 +136,11 @@ const AssetTypesTab = ({ query, filters }) => {
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       const acc = {};
+      const isUUID = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
       const isReserved = (a) => String(a?.description || '').toLowerCase() === 'qr reserved asset';
       for (const a of list) {
+        if (isReserved(a)) continue;                    // skip QR reserved placeholders
+        if (isUUID(String(a?.id || ''))) continue;      // skip QR awaiting imports
         const tid = String(a?.type_id ?? a?.asset_types?.id ?? a?.asset_type_id ?? a?.typeId ?? '');
         if (!tid) continue;
         const k = normalizeStatus(a?.status);

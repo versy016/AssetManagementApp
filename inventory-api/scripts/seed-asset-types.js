@@ -1,11 +1,12 @@
 /*
-  seed-asset-types.js — Create a set of asset types by name only.
-  Usage:
-    node scripts/seed-asset-types.js
+  seed-asset-types.js — Upsert the canonical set of asset types.
+  Usage:  node scripts/seed-asset-types.js
+          npm run seed:types
 
-  Notes:
-  - Creates a type only if a case-insensitive match by name does not already exist.
-  - Ignores extra fields; you can add custom fields later via the API/UI.
+  - Matching is case-insensitive (won't duplicate "GPS" and "gps").
+  - Safe to re-run at any time; existing types are left unchanged.
+  - TYPE_MAP in import-excel-assets.js maps any legacy GoCodes variant names
+    (e.g. "gps topcon", "LEICA TARGETS") to these canonical names at import time.
 */
 
 /* eslint-disable no-console */
@@ -14,35 +15,33 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
 
+// Canonical asset type names — one entry per physical equipment category.
+// Keep alphabetical order for readability.
 const TYPES = [
   'AED',
   'Controller',
-  'Desktop computer',
+  'Desktop Computer',
   'Diagonal Eyepiece',
   'Disto',
   'Dongle',
-  'Drill',
   'Drone',
   'Echosounder',
   'GPS',
-  'GPS 750 Base',
   'GPS Base',
   'GPS Radio',
   'GPS Receiver',
-  'GPS topcon',
+  'iPad',
   'Key',
-  'LEICA TARGETS',
   'Labeller',
   'Laptop',
   'Laser',
   'Level',
   'Lidar Scanner',
   'Magnetic Mount',
-  'Metal detector',
-  'Mobile phone',
+  'Metal Detector',
+  'Mobile Phone',
   'Mounting Bracket',
   'Office Equipment',
-  'Office equipment',
   'Plummet',
   'Power Tool',
   'Radio',
@@ -54,11 +53,8 @@ const TYPES = [
   'Target',
   'Torch',
   'Total Station',
-  'Two drill set',
   'UG Locating',
   'Vehicle',
-  'gps radio',
-  'iPad',
 ];
 
 async function main() {
@@ -74,23 +70,22 @@ async function main() {
         select: { id: true, name: true },
       });
       if (exists) {
-        skipped.push(name);
+        skipped.push(exists.name);
         continue;
       }
       const row = await prisma.asset_types.create({ data: { name } });
       created.push(row.name);
-      console.log('✓ Created asset type:', row.name);
+      console.log('✓ Created:', row.name);
     } catch (e) {
-      console.error('✗ Failed for', name, e?.message || e);
+      console.error('✗ Failed for', name, '—', e?.message || e);
     }
   }
 
-  console.log('\nSummary');
-  console.log('Created:', created.length);
-  console.log('Skipped (already existed):', skipped.length);
+  console.log('\n── Summary ───────────────────────────');
+  console.log('Created: ', created.length);
+  console.log('Skipped: ', skipped.length, '(already existed)');
 }
 
 main()
   .catch((e) => { console.error(e); process.exit(1); })
   .finally(async () => { try { await prisma.$disconnect(); } catch {} });
-

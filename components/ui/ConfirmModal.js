@@ -215,12 +215,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
   },
   btnGhostText: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  /** Outlined primary — on web, filled TouchableOpacity can render without fill so white label was invisible. */
   btnPrimary: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.chip,
     borderWidth: 2,
-    borderColor: Colors.primaryDark,
+    borderColor: Colors.primary,
   },
-  btnPrimaryText: { fontSize: sf(15), fontWeight: '800', color: '#FFFFFF' },
+  btnPrimaryText: { fontSize: sf(15), fontWeight: '800', color: Colors.primary },
   /** Outlined danger so label stays readable on web (solid red + white text was rendering as white-on-white for some users). */
   btnDanger: {
     backgroundColor: Colors.card,

@@ -4,14 +4,60 @@ import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { normalizeStatus } from '../ui/StatusBadge';
+import { isAssetIdAwaitingQr } from '../../utils/assetId';
 
 export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onDelete }) {
   const router = useRouter();
 
   if (!asset) return null;
 
+  const awaitingPhysicalQr = isAssetIdAwaitingQr(asset?.id);
   const isQRReserved = String(asset?.description || '').trim().toLowerCase() === 'qr reserved asset';
   const status = normalizeStatus(asset?.status);
+
+  if (awaitingPhysicalQr) {
+    return (
+      <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionBtnPrimary]}
+          onPress={() =>
+            router.push({
+              pathname: '/check-in/[id]',
+              params: {
+                id: String(asset.id),
+                ...(normalizedReturnTo ? { returnTo: normalizedReturnTo } : {}),
+              },
+            })
+          }
+        >
+          <MaterialIcons name="qr-code-2" size={18} color="#fff" />
+          <Text style={styles.actionText}>Assign QR</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionBtnSecondary]}
+          onPress={() => router.replace('/(tabs)/dashboard')}
+        >
+          <MaterialIcons name="home" size={18} color="#fff" />
+          <Text style={styles.actionText}>Dashboard</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionBtnSecondary]}
+          onPress={() =>
+            router.push({
+              pathname: '/asset/edit',
+              params: {
+                assetId: asset.id,
+                returnTo: `/asset/${asset.id}${normalizedReturnTo ? `?returnTo=${encodeURIComponent(normalizedReturnTo)}` : ''}`,
+              },
+            })
+          }
+        >
+          <MaterialIcons name="edit" size={18} color="#fff" />
+          <Text style={styles.actionText}>Edit</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (isQRReserved) {
     return (
