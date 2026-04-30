@@ -59,8 +59,8 @@ export default function MyAssets() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScreenHeader title="My assets" onBack={goBack} backLabel="Back" />
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
         {/* Content */}
         {loading ? (
           <View style={styles.center}>
@@ -117,6 +117,7 @@ const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flex: 1 },
   container: { padding: 16, backgroundColor: Colors.bg },
   center: { alignItems: 'center', paddingVertical: 24 },
   noAssets: { textAlign: 'center', color: Colors.sub, marginTop: 12, fontWeight: '600' },

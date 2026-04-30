@@ -27,6 +27,7 @@ import ScreenHeader from './ui/ScreenHeader';
 import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
 import { TourTarget } from './TourGuide';
+import { CERT_DOCUMENT_UPLOAD_HINT } from '../constants/uploadFormats';
 
 const openDocumentLink = (url) => {
   if (!url) return;
@@ -798,6 +799,7 @@ export default function CertsView({ visible: initialVisible }) {
                 </View>
 
                 <Text style={[styles.modalLabel, { marginTop: 12 }]}>Upload New Document (optional)</Text>
+                <Text style={{ fontSize: sf(11), color: Colors.sub, marginBottom: 8, lineHeight: 16 }}>{CERT_DOCUMENT_UPLOAD_HINT}</Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity
                     style={styles.btn}
@@ -1082,6 +1084,7 @@ export default function CertsView({ visible: initialVisible }) {
                     </View>
                   ) : null}
                   <Text style={[styles.modalLabel, { marginTop: 8 }]}>File (required)</Text>
+                  <Text style={{ fontSize: sf(11), color: Colors.sub, marginBottom: 4, lineHeight: 16 }}>{CERT_DOCUMENT_UPLOAD_HINT}</Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
                     <TouchableOpacity
                       style={styles.btn}

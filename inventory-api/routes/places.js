@@ -106,4 +106,31 @@ router.get('/reverse-geocode', async (req, res) => {
   }
 });
 
+// Forward geocode a free-text address to lat/lng (used by Maps screen; key stays on server)
+router.get('/geocode', async (req, res) => {
+  try {
+    if (!API_KEY) return res.status(400).json({ error: 'GOOGLE_PLACES_API_KEY missing on server' });
+    const address = String(req.query.address || '').trim();
+    if (!address || address.length > 500) {
+      return res.status(400).json({ error: 'address is required (max 500 chars)' });
+    }
+    const params = new URLSearchParams({ address, key: API_KEY });
+    if (COUNTRY) params.set('region', COUNTRY.toLowerCase());
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
+    const json = await getJSON(url);
+    const first = Array.isArray(json.results) ? json.results[0] : null;
+    const loc = first?.geometry?.location;
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') {
+      return res.status(404).json({ error: 'not_found', message: 'No coordinates for this address' });
+    }
+    res.json({
+      lat: loc.lat,
+      lng: loc.lng,
+      formatted_address: first.formatted_address || address,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'geocode-failed', message: err.message });
+  }
+});
+
 module.exports = router;

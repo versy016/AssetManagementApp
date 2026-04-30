@@ -25,15 +25,15 @@ import FormButton from '../../components/ui/FormButton';
 import { useTasksCount } from '../../contexts/TasksCountContext';
 import { fetchTaskCount } from '../../utils/fetchTaskCount';
 
-import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES } from '../../utils/getFormFileFromPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
 import { TourTarget, TourContext } from '../../components/TourGuide';
+import { IMAGE_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 
 registerTranslation('en', en);
 LogBox.ignoreLogs(['VirtualizedLists should never be nested']);
 
-const ALLOWED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/webp'];
 const ALLOWED_DOC_MIME = [
   'application/pdf',
   'application/msword',
@@ -453,10 +453,10 @@ export default function NewAsset() {
                 const asset = assets[0];
 
                 // Process the camera result similar to getImageFileFromPicker
-                const contentType = asset.mimeType || 'image/jpeg';
-                const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
+                const contentType = (asset.mimeType || 'image/jpeg').replace(/jpg/i, 'jpeg');
+                const allowed = new Set(ALLOWED_IMAGE_MIME_TYPES);
                 if (!allowed.has(contentType)) {
-                  const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+                  const msg = 'Unsupported image type for this upload.';
                   setFieldError('image', msg);
                   scrollToFirstError({ image: msg });
                   return;
@@ -479,9 +479,11 @@ export default function NewAsset() {
               onPress: async () => {
                 const result = await getImageFileFromPicker();
                 if (!result) return;
-                const t = (result.type || '').replace('jpg', 'jpeg');
-                if (!ALLOWED_IMAGE_MIME.includes(t)) {
-                  const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+                const t = String(result.type || '')
+                  .replace(/^image\/jpg$/i, 'image/jpeg')
+                  .toLowerCase();
+                if (!ALLOWED_IMAGE_MIME_TYPES.includes(t)) {
+                  const msg = 'Unsupported image type for this upload.';
                   setFieldError('image', msg);
                   scrollToFirstError({ image: msg });
                   return;
@@ -501,9 +503,11 @@ export default function NewAsset() {
         // Web: just use the library picker
         const result = await getImageFileFromPicker();
         if (!result) return;
-        const t = (result.type || '').replace('jpg', 'jpeg');
-        if (!ALLOWED_IMAGE_MIME.includes(t)) {
-          const msg = 'Allowed types: PNG, JPG/JPEG, WEBP';
+        const t = String(result.type || '')
+          .replace(/^image\/jpg$/i, 'image/jpeg')
+          .toLowerCase();
+        if (!ALLOWED_IMAGE_MIME_TYPES.includes(t)) {
+          const msg = 'Unsupported image type for this upload.';
           setFieldError('image', msg);
           scrollToFirstError({ image: msg });
           return;
@@ -945,6 +949,7 @@ export default function NewAsset() {
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
+            <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
             {(() => {
               const picked = urlDocMap[slug];
               const existing = fieldValues[slug];
@@ -1066,6 +1071,7 @@ export default function NewAsset() {
             {docSlug ? (
               <View style={{ marginTop: 8 }}>
                 <Text style={[styles.subtleLabel]}>Linked document category: {docLabel}</Text>
+                <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
                 {pickedDoc ? (
                   <Text style={{ marginTop: 6, fontStyle: 'italic', color: '#444' }}>Attached: {pickedDoc.name || 'document'}</Text>
                 ) : null}
@@ -1520,6 +1526,7 @@ export default function NewAsset() {
               </View>
             )}
             {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
+            <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
               <TouchableOpacity style={[styles.btn, styles.pickerBtn]} onPress={pickImage} disabled={uploading}>
                 <Text>{image?.uri ? 'Replace Image' : 'Pick Image'}</Text>
@@ -1533,6 +1540,7 @@ export default function NewAsset() {
             <Text style={{ marginTop: 10, fontStyle: 'italic' }}>Attached: {document.name}</Text>
           )}
           {!!errors.document && <Text style={styles.errorBelow}>{errors.document}</Text>}
+          <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
             <TouchableOpacity style={styles.btn} onPress={pickDocument} disabled={uploading}>
               <Text>{document ? 'Replace Document' : 'Attach Document'}</Text>
@@ -1719,6 +1727,7 @@ const styles = StyleSheet.create({
   // error styles
   errorTop: { marginTop: 8, color: Colors.dangerFg, textAlign: 'center', fontWeight: '700' },
   errorBelow: { marginTop: 4, color: Colors.dangerFg, fontWeight: '600' },
+  uploadHint: { marginTop: 4, marginBottom: 8, fontSize: 12, color: '#64748B', lineHeight: 18 },
 
   // overlay
   modalBackdrop: {

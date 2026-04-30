@@ -16,6 +16,8 @@ import { normalizeStatus } from '../components/ui/StatusBadge';
 import { transferRecipientMatchesFirebaseUser } from '../utils/activityLabels';
 import { getAuthHeaders } from '../utils/authHeaders';
 import { Colors } from '../constants/uiTheme';
+import { CERT_DOCUMENT_UPLOAD_HINT } from '../constants/uploadFormats';
+import humanizeStorageUploadFileName from '../utils/humanizeStorageUploadFileName';
 
 // Helper: format dates like "10 Oct 2025"
 function prettyDate(d) {
@@ -372,7 +374,8 @@ export function useAssetDetail({ assetId, returnTo }) {
       const tail = (() => {
         try {
           const u = href.split('?')[0];
-          return decodeURIComponent(u.split('/').pop() || '') || 'View document';
+          const raw = decodeURIComponent(u.split('/').pop() || '') || 'View document';
+          return humanizeStorageUploadFileName(raw);
         } catch {
           return 'View document';
         }
@@ -399,15 +402,18 @@ export function useAssetDetail({ assetId, returnTo }) {
       const repSlug = out.slug;
       const busy = attachBusySlug === repSlug;
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <TouchableOpacity
-            onPress={() => handleAttachReport({ slug: repSlug, label: formatFieldLabel(repSlug) })}
-            disabled={busy}
-            style={{ opacity: busy ? 0.6 : 1 }}
-          >
-            <Text style={{ color: Colors.accent, fontWeight: '700' }}>{busy ? 'Uploading…' : 'Attach report'}</Text>
-          </TouchableOpacity>
-          {busy ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: 11, color: Colors.sub, lineHeight: 16 }}>{CERT_DOCUMENT_UPLOAD_HINT}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <TouchableOpacity
+              onPress={() => handleAttachReport({ slug: repSlug, label: formatFieldLabel(repSlug) })}
+              disabled={busy}
+              style={{ opacity: busy ? 0.6 : 1 }}
+            >
+              <Text style={{ color: Colors.accent, fontWeight: '700' }}>{busy ? 'Uploading…' : 'Attach report'}</Text>
+            </TouchableOpacity>
+            {busy ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+          </View>
         </View>
       );
     }
@@ -469,8 +475,26 @@ export function useAssetDetail({ assetId, returnTo }) {
     try {
       const uid = auth.currentUser?.uid;
       const authH = await getAuthHeaders();
-      const headers = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
-      const res = await fetch(`${API_BASE_URL}/assets/${aId}/documents/${docId}`, { method: 'DELETE', headers });
+      const baseHeaders = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
+      // Primary doc from Edit → Document lives on assets.documentation_url only (not asset_documents).
+      if (docId === '__primary_documentation__') {
+        const res = await fetch(`${API_BASE_URL}/assets/${aId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Context': 'asset-edit',
+            ...baseHeaders,
+          },
+          body: JSON.stringify({ documentation_url: null }),
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new Error(body || `Failed to remove document (${res.status})`);
+        }
+        await load();
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/assets/${aId}/documents/${docId}`, { method: 'DELETE', headers: baseHeaders });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new Error(body || `Failed to delete document (${res.status})`);
@@ -652,6 +676,34 @@ export function useAssetDetail({ assetId, returnTo }) {
       logger.warn('useAssetDetail: leftover docs append failed', e?.message || e);
     }
 
+    // Edit Asset → "Document" uploads via PUT /assets/:id/files and only sets assets.documentation_url.
+    // That is not an asset_documents row, so include it here when it is not already listed.
+    try {
+      const primaryUrl = asset?.documentation_url && String(asset.documentation_url).trim();
+      if (primaryUrl && /^https?:\/\//i.test(primaryUrl)) {
+        const alreadyListed =
+          history.some((h) => h.url === primaryUrl) ||
+          (Array.isArray(assetDocs) && assetDocs.some((d) => d?.url === primaryUrl));
+        if (!alreadyListed) {
+          history.push({
+            id: '__primary_documentation__',
+            label: 'Document',
+            date: null,
+            uploadedAt: asset?.last_updated || null,
+            url: primaryUrl,
+          });
+        }
+      }
+    } catch (e) {
+      logger.warn('useAssetDetail: primary documentation_url in history failed', e?.message || e);
+    }
+
+    history.sort((a, b) => {
+      const ta = new Date(a.uploadedAt || a.date || 0).getTime() || 0;
+      const tb = new Date(b.uploadedAt || b.date || 0).getTime() || 0;
+      return tb - ta;
+    });
+
     return { rows, history };
   };
 
@@ -670,9 +722,30 @@ export function useAssetDetail({ assetId, returnTo }) {
     return `${base}/check-in/${id}`;
   };
 
-  // Display location
+  // Display location (office / asset record)
   const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
   const displayLocation = (asset?.location && String(asset.location).trim()) || DEFAULT_ADDRESS;
+
+  // Last check-in / transfer scan address (stored on action when client sent `location` on PUT)
+  const lastScannedLocationMeta = useMemo(() => {
+    const all = Array.isArray(actions) ? actions : [];
+    const interesting = all.filter((a) => {
+      const t = String(a?.type || '').toUpperCase();
+      return t === 'CHECK_IN' || t === 'TRANSFER' || t === 'CHECK_OUT';
+    });
+    interesting.sort((a, b) => new Date(b.occurred_at || 0) - new Date(a.occurred_at || 0));
+    for (const row of interesting) {
+      const d = row?.data || {};
+      const raw = d.scan_location != null ? d.scan_location : d.location;
+      const text = raw != null && String(raw).trim() ? String(raw).trim() : '';
+      if (text) {
+        return { text, at: row.occurred_at || null, actionType: String(row.type || '').toUpperCase() };
+      }
+    }
+    return null;
+  }, [actions]);
+
+  const mapEmbedLocation = lastScannedLocationMeta?.text || displayLocation;
 
   // Check if document URLs are in fields
   const hasDocUrlInFields = useMemo(() => {
@@ -703,6 +776,7 @@ export function useAssetDetail({ assetId, returnTo }) {
         const url = resolveDocUrl(docSlug);
         if (isHttpUrl(url)) return true;
       }
+      if (isHttpUrl(asset.documentation_url)) return true;
       if (Array.isArray(assetDocs) && assetDocs.length) return true;
       return false;
     } catch { return false; }
@@ -710,7 +784,7 @@ export function useAssetDetail({ assetId, returnTo }) {
 
   // Open maps
   const openMaps = () => {
-    const q = encodeURIComponent(displayLocation);
+    const q = encodeURIComponent(mapEmbedLocation);
     const url = Platform.select({
       ios: `http://maps.apple.com/?q=${q}`,
       android: `geo:0,0?q=${q}`,
@@ -1032,6 +1106,7 @@ export function useAssetDetail({ assetId, returnTo }) {
     copyDeepLink,
     qrPayload,
     displayLocation,
+    mapEmbedLocation,
     openMaps,
     // Helpers
     prettyDate: prettyDate,

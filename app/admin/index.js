@@ -1,59 +1,19 @@
-// app/admin/index.js
+// app/admin/index.js — entry opens User Management by default; QR tools live at /admin/qr
 import React, { useEffect, useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, FlatList, Linking, Platform, ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
-import { TourTarget } from '../../components/TourGuide';
-import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
+import { Colors, sf } from '../../constants/uiTheme';
 import logger from '../../utils/logger';
 
-export default function AdminConsole() {
+export default function AdminIndex() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
 
-  // UI state
-  const [tab, setTab] = useState('roles'); // 'roles' | 'qr'
-  const [targetEmail, setTargetEmail] = useState('');
-  const [working, setWorking] = useState(false);
-
-  // QR gen (Excel-based)
-  const [qrCount, setQrCount] = useState('100'); // Number of QR codes to generate
-  const MAX_QR_COUNT = 2000;
-  const [qrResults, setQrResults] = useState([]);
-  const [excelFile, setExcelFile] = useState(null);
-  const [allSheets, setAllSheets] = useState([]);
-  const authHeader = async () => {
-    const u = auth.currentUser;
-    if (!u) throw new Error('No current user');
-    const token = await u.getIdToken(true);
-    logger.log('[Admin] using idToken len=', token?.length);
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      // Help the dev server auth middleware when running locally
-      'X-User-Id': u.uid,
-    };
-  };
-
-  const resolveUserIdByEmail = async (email) => {
-    const headers = await authHeader();
-    const uidParam = currentUser?.uid ? `&uid=${encodeURIComponent(currentUser.uid)}` : '';
-    const url = `${API_BASE_URL}/users/lookup/by-email?email=${encodeURIComponent(email)}${uidParam}`;
-    const res = await fetch(url, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || 'Lookup failed');
-    return data.id; // Firebase UID stored as users.id
-  };
-
-  // Auth + admin check via DB role
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
@@ -61,138 +21,31 @@ export default function AdminConsole() {
           router.replace('/login');
           return;
         }
-        setCurrentUser(u);
         const res = await fetch(`${API_BASE_URL}/users/${u.uid}`);
         const dbUser = res.ok ? await res.json() : null;
-        setIsAdmin(dbUser?.role === 'ADMIN');
+        if (dbUser?.role === 'ADMIN') {
+          setIsAdmin(true);
+          setLoading(false);
+          router.replace('/admin/users');
+          return;
+        }
+        setIsAdmin(false);
       } catch (e) {
         logger.error(e);
         Alert.alert('Error', 'Failed to verify admin privileges.');
+        setIsAdmin(false);
       } finally {
         setLoading(false);
       }
     });
     return unsub;
-  }, []);
-
-  const promote = async () => {
-    if (!targetEmail.trim()) return Alert.alert('Validation', 'Enter an email');
-    setWorking(true);
-    try {
-      const uid = await resolveUserIdByEmail(targetEmail.trim().toLowerCase());
-      const headers = await authHeader();
-      const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
-      const res = await fetch(`${API_BASE_URL}/users/${uid}/promote${uidParam}`, { method: 'POST', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to promote');
-      Alert.alert('Success', 'User promoted to ADMIN.');
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const demote = async () => {
-    if (!targetEmail.trim()) return Alert.alert('Validation', 'Enter an email');
-    setWorking(true);
-    try {
-      const uid = await resolveUserIdByEmail(targetEmail.trim().toLowerCase());
-      const headers = await authHeader();
-      const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
-      const res = await fetch(`${API_BASE_URL}/users/${uid}/demote${uidParam}`, { method: 'POST', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to demote');
-      Alert.alert('Success', 'User demoted to USER.');
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  // 🎯 Generate Excel file with ID and QR Code columns
-  const generateQRCodes = async () => {
-    logger.log('[Admin] generateQRCodes → Function called');
-    const count = Number(qrCount);
-    logger.log('[Admin] generateQRCodes → Count:', count, 'qrCount:', qrCount);
-    if (!Number.isFinite(count) || count < 1 || count > MAX_QR_COUNT) {
-      logger.log('[Admin] generateQRCodes → Validation failed');
-      return Alert.alert('Validation', `Number of QR codes must be between 1 and ${MAX_QR_COUNT}.`);
-    }
-
-    logger.log('[Admin] generateQRCodes → Setting working to true');
-    setWorking(true);
-    try {
-      logger.log('[Admin] generateQRCodes → Starting, count:', count);
-      const headers = await authHeader();
-      logger.log('[Admin] generateQRCodes → Headers ready');
-
-      const url = `${API_BASE_URL}/users/qr/generate-excel`;
-      logger.log('[Admin] generateQRCodes → Fetching:', url);
-
-      // Generate Excel file with QR codes
-      const excelRes = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ count }),
-      });
-
-      logger.log('[Admin] generateQRCodes → Response status:', excelRes.status, excelRes.ok);
-
-      const excel = await excelRes.json();
-      logger.log('[Admin] generateQRCodes → Response data:', excel);
-
-      if (!excelRes.ok) {
-        throw new Error(excel?.error || 'Failed to generate Excel file');
-      }
-
-      // Update UI state
-      setExcelFile(excel?.file || null);
-      await refreshSheets();
-      Alert.alert('Success', `Generated ${count} QR codes in Excel file.`);
-    } catch (e) {
-      logger.error('[Admin] generateQRCodes → Error:', e);
-      Alert.alert('Error', e.message || 'Failed to generate Excel file');
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  // const refreshSheets = async () => {
-  // const headers = await authHeader();
-  // const uidParam = currentUser?.uid ? `?uid=${encodeURIComponent(currentUser.uid)}` : '';
-  // const url = `${API_BASE_URL}/users/qr/sheets${uidParam}`;
-  const refreshSheets = async () => {
-    const url = `${API_BASE_URL}/users/qr/sheets`;
-    const t0 = Date.now();
-    try {
-      logger.log('[Admin] refreshSheets →', url);
-      const res = await fetch(url); // public; no headers
-      const raw = await res.text();
-      logger.log('[Admin] refreshSheets status', res.status, res.ok, 'in', Date.now() - t0, 'ms');
-      logger.log('[Admin] refreshSheets body (first 500):', raw.slice(0, 500));
-      const data = JSON.parse(raw);
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      logger.log('[Admin] refreshSheets parsed sheets:', data?.sheets?.length ?? 0);
-      setAllSheets(data?.sheets || []);
-    } catch (e) {
-      logger.warn('[Admin] refreshSheets error:', e?.message || e);
-    }
-  };
-
-  useEffect(() => {
-    if (isAdmin && currentUser) {
-      refreshSheets();
-    }
-  }, [isAdmin, currentUser]);
-
+  }, [router]);
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator />
-        <Text style={{ marginTop: 8 }}>Checking admin access…</Text>
+        <Text style={{ marginTop: 8, color: Colors.sub }}>Opening admin…</Text>
       </View>
     );
   }
@@ -201,9 +54,7 @@ export default function AdminConsole() {
     return (
       <View style={styles.center}>
         <MaterialIcons name="lock" size={40} color={Colors.sub2} />
-        <Text style={{ marginTop: 10, fontSize: sf(16), color: Colors.text }}>
-          Admin access required.
-        </Text>
+        <Text style={{ marginTop: 10, fontSize: sf(16), color: Colors.text }}>Admin access required.</Text>
         <TouchableOpacity onPress={() => router.replace('/')} style={[styles.button, { marginTop: 16 }]}>
           <Text style={styles.buttonText}>Go Home</Text>
         </TouchableOpacity>
@@ -211,166 +62,16 @@ export default function AdminConsole() {
     );
   }
 
-  const qrCountNum = Number(qrCount) || 0;
-
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView
-        style={styles.wrapper}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.topbar}>
-          {Platform.OS !== 'web' && (
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <MaterialIcons name="arrow-back" size={24} color={Colors.primary} />
-            </TouchableOpacity>
-          )}
-          <Text style={styles.topbarTitle}>Admin Console</Text>
-          {Platform.OS !== 'web' && <View style={{ width: 24 }} />}
-        </View>
-        {/* Segmented tabs: flex on outer View so TouchableOpacity (styles.tab) controls sizing and touch area */}
-        <View style={styles.tabs}>
-          <View style={{ flex: 1 }}>
-            <TourTarget id="web-admin-roles-tab">
-              <TouchableOpacity
-                onPress={() => setTab('roles')}
-                style={[styles.tab, tab === 'roles' && styles.tabActive]}
-              >
-                <Text style={[styles.tabText, tab === 'roles' && styles.tabTextActive]}>Manage Roles</Text>
-              </TouchableOpacity>
-            </TourTarget>
-          </View>
-          <View style={{ flex: 1 }}>
-            <TourTarget id="web-admin-qr-tab">
-              <TouchableOpacity
-                onPress={() => setTab('qr')}
-                style={[styles.tab, tab === 'qr' && styles.tabActive]}
-              >
-                <Text style={[styles.tabText, tab === 'qr' && styles.tabTextActive]}>Generate QR</Text>
-              </TouchableOpacity>
-            </TourTarget>
-          </View>
-        </View>
-
-        {tab === 'roles' ? (
-          <View style={styles.card}>
-            <Text style={styles.label}>User Email</Text>
-            <TextInput
-              value={targetEmail}
-              onChangeText={setTargetEmail}
-              placeholder="Enter user email"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={styles.input}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-              <View style={{ flex: 1 }}>
-                <TourTarget id="web-admin-promote-btn">
-                  <TouchableOpacity onPress={promote} disabled={working} style={[styles.button, { flex: 1, opacity: working ? 0.7 : 1 }]}>
-                    <Text style={styles.buttonText}>Promote to Admin</Text>
-                  </TouchableOpacity>
-                </TourTarget>
-              </View>
-              <TouchableOpacity onPress={demote} disabled={working} style={[styles.buttonOutline, { flex: 1, opacity: working ? 0.7 : 1 }]}>
-                <Text style={styles.buttonOutlineText}>Demote to User</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.helpText}>
-              Tip: After changing a role, the user may need to sign out/in or refresh their token to see new access.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.label}>Number of QR Codes (1–{MAX_QR_COUNT})</Text>
-            <TextInput
-              value={qrCount}
-              onChangeText={setQrCount}
-              keyboardType={Platform.OS === 'web' ? 'numeric' : 'number-pad'}
-              placeholder="e.g. 100"
-              style={styles.input}
-              maxLength={4}
-            />
-
-            {/* Display count */}
-            <Text style={{ marginTop: 6, color: Colors.sub }}>
-              Will generate: <Text style={{ fontWeight: '700' }}>{qrCountNum || 0}</Text> QR codes
-            </Text>
-
-            <TourTarget id="web-admin-qr-generate-btn">
-              <TouchableOpacity onPress={generateQRCodes} disabled={working} style={[styles.button, { marginTop: 16, opacity: working ? 0.7 : 1 }]}>
-                <Text style={styles.buttonText}>{working ? 'Generating…' : 'Generate Excel'}</Text>
-              </TouchableOpacity>
-            </TourTarget>
-
-            {/* Excel file download */}
-            {excelFile && (
-              <View style={{ marginTop: 20 }}>
-                <Text style={styles.subTitle}>Generated Excel File</Text>
-                <TourTarget id="web-admin-qr-download-btn">
-                  <View style={styles.qrRow}>
-                    <Text style={{ fontSize: sf(14), color: Colors.text }}>{excelFile.name}</Text>
-                    <TouchableOpacity onPress={() => Linking.openURL(excelFile.url)}>
-                      <Text style={styles.link}>Download Excel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </TourTarget>
-              </View>
-            )}
-
-            {/* Persistent: All Sheets */}
-            <View style={{ marginTop: 24 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.subTitle}>All Generated Files ({allSheets.length})</Text>
-                <TouchableOpacity onPress={refreshSheets} disabled={working}>
-                  <Text style={styles.link}>Refresh</Text>
-                </TouchableOpacity>
-              </View>
-              {allSheets.length === 0 ? (
-                <Text style={{ color: Colors.sub }}>No files found yet.</Text>
-              ) : (
-                allSheets.map((s, idx) => (
-                  <View key={`${s.name}-${idx}`} style={styles.qrRow}>
-                    <Text style={{ fontSize: sf(14), color: Colors.text }}>{s.name}</Text>
-                    <TouchableOpacity onPress={() => Linking.openURL(s.url)}>
-                      <Text style={styles.link}>{s.name.endsWith('.xlsx') ? 'Download Excel' : 'Download'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+    <View style={styles.center}>
+      <ActivityIndicator />
+      <Text style={{ marginTop: 8, color: Colors.sub }}>Redirecting…</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: Colors.bg },
-  wrapper: { flex: 1, padding: 20, backgroundColor: Colors.bg },
-  title: { fontSize: sf(22), fontWeight: '900', textTransform: 'uppercase', marginBottom: 12 },
-  tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  tab: { flex: 1, paddingVertical: 10, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, alignItems: 'center' },
-  tabActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
-  tabText: { color: Colors.sub, fontWeight: '700' },
-  tabTextActive: { color: Colors.accent },
-  card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: 16, borderWidth: 2, borderColor: Colors.line, ...Shadows.card },
-  label: { fontSize: sf(13), color: Colors.text, fontWeight: '700', textTransform: 'uppercase', marginTop: 8, marginBottom: 6 },
-  input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, fontSize: sf(16), backgroundColor: Colors.card, color: Colors.text },
-  button: { backgroundColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
-  buttonText: { color: Colors.card, fontWeight: '700', fontSize: sf(16), textTransform: 'uppercase' },
-  buttonOutline: { borderWidth: 2, borderColor: Colors.primary, padding: 14, borderRadius: Radius.md, alignItems: 'center' },
-  buttonOutlineText: { color: Colors.primary, fontWeight: '700', fontSize: sf(16), textTransform: 'uppercase' },
-  helpText: { color: Colors.sub, marginTop: 10, fontSize: sf(12) },
-  subTitle: { fontSize: sf(16), fontWeight: '900', textTransform: 'uppercase', marginBottom: 8, color: Colors.text },
-  qrRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.line },
-  qrCode: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: sf(14), color: Colors.text },
-  link: { color: Colors.accent, fontWeight: '700' },
-  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  topbarTitle: { fontSize: sf(22), fontWeight: '900', textTransform: 'uppercase', color: Colors.text },
-  backBtn: { padding: 6, marginRight: 6 },
+  button: { backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: sf(15) },
 });

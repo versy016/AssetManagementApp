@@ -138,13 +138,6 @@ export default function WebNavbar() {
     return fromParams;
   }, [viewParam, pathname, searchVersion]);
 
-  const preset = useMemo(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      try { return new URLSearchParams(window.location.search).get('preset') || ''; } catch { /* ignore */ }
-    }
-    return '';
-  }, [pathname, searchVersion]);
-
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
     const onPop = () => setSearchVersion((v) => v + 1);
@@ -183,7 +176,7 @@ export default function WebNavbar() {
     certs:     onCertsPage || (onDashboard && view === 'certs'),
     hire:      onDashboard && view === 'hire',
     inventory: isPath('/inventory', '/Inventory', '/(tabs)/Inventory'),
-    myAssets:  isPath('/search') && preset === 'mine',
+    maps:      isPath('/maps', '/(tabs)/maps'),
     activity:  isPath('/activity'),
     admin:     isPath('/admin'),
     profile:   isPath('/profile'),
@@ -205,14 +198,14 @@ export default function WebNavbar() {
     { id: 'dashboard', href: '/(tabs)/dashboard',          label: 'Dashboard', icon: 'dashboard',            isActive: active.dashboard },
     { id: 'inventory', href: '/(tabs)/Inventory',          label: 'Inventory', icon: 'inventory-2',          isActive: active.inventory },
     { id: 'tasks',     href: '/(tabs)/dashboard?view=tasks', label: 'Tasks',   icon: 'assignment',           isActive: active.tasks,    badge: taskBadge },
-    { id: 'myAssets',  href: '/search?preset=mine',         label: 'My Assets',icon: 'inventory',            isActive: active.myAssets },
+    { id: 'maps',      href: '/(tabs)/maps',               label: 'Maps',    icon: 'map',                    isActive: active.maps },
     { id: 'activity',  href: '/activity',                   label: 'Activity', icon: 'history',              isActive: active.activity },
     { id: 'certs',     href: '/certs',                      label: 'Certs',    icon: 'verified',             isActive: active.certs },
     { id: 'hire',      href: '/(tabs)/dashboard?view=hire', label: 'Hire',     icon: 'local-shipping',       isActive: active.hire },
   ];
 
   const rightItems = [
-    ...(isAdmin ? [{ id: 'admin',   href: '/admin',   label: 'Admin',   icon: 'admin-panel-settings', isActive: active.admin }] : []),
+    ...(isAdmin ? [{ id: 'admin',   href: '/admin/users',   label: 'Admin',   icon: 'admin-panel-settings', isActive: active.admin }] : []),
     {             id: 'profile', href: '/profile', label: 'Profile', icon: 'person',               isActive: active.profile },
   ];
 

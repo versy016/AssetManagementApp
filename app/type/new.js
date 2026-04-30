@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import DropDownPicker from 'react-native-dropdown-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import FormButton from '../../components/ui/FormButton';
@@ -558,6 +559,7 @@ export default function NewAssetType() {
             <TouchableOpacity style={s.btn} onPress={pickImage}>
               <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
             </TouchableOpacity>
+            <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
               {image?.uri && <Image source={{ uri: image.uri }} style={s.preview} />}
             </View>
           </TourTarget>

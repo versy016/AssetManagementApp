@@ -2,19 +2,48 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
 const prisma = require('../lib/prisma');
+const { normalizeMulterImageForWeb } = require('../lib/normalizeHeicImageUpload');
 const { attachUserFromBearerIfPresent } = require('../middleware/auth');
 const multer = require('multer');
 const AWS = require('aws-sdk');
 const path = require('path');
+
+const CERT_FILE_MIME_RE =
+  /^(application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation))|image\/(png|jpe?g|webp|gif|bmp|tiff|heic|heif|avif))$/i;
+
+function certFileMimeFromUpload(file) {
+  const m = String(file.mimetype || '').trim().toLowerCase();
+  if (m && CERT_FILE_MIME_RE.test(m)) return m;
+  const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+  const map = {
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+    '.tif': 'image/tiff',
+    '.tiff': 'image/tiff',
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
+    '.avif': 'image/avif',
+  };
+  return map[ext] || '';
+}
 
 const storage = multer.memoryStorage();
 const uploadSingle = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => {
-    // allow common docs and images; you can tighten as needed
-    const ok = /^(application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation))|image\/(png|jpe?g|webp))$/i.test(file.mimetype || '');
-    if (ok) return cb(null, true);
+    const mt = certFileMimeFromUpload(file);
+    if (CERT_FILE_MIME_RE.test(mt)) return cb(null, true);
     return cb(new Error('Unsupported file type'), false);
   },
 }).single('file');
@@ -36,16 +65,17 @@ function safeKey(original) {
 
 async function uploadBufferToS3(file) {
   const Key = safeKey(file.originalname);
+  const ct = certFileMimeFromUpload(file) || file.mimetype || 'application/octet-stream';
   const params = {
     Bucket: process.env.S3_BUCKET,
     Key,
     Body: file.buffer,
-    ContentType: file.mimetype || 'application/octet-stream',
+    ContentType: ct,
   };
   if (String(process.env.S3_USE_ACL || '').toLowerCase() === 'true') {
     params.ACL = process.env.S3_ACL || 'private';
   }
-  if (/^application\/pdf$/i.test(file.mimetype || '')) {
+  if (/^application\/pdf$/i.test(ct)) {
     params.ContentDisposition = 'inline';
   }
   const res = await s3.upload(params).promise();
@@ -182,9 +212,15 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
       }
 
       const { title, kind, related_date_label, related_date, asset_type_field_id } = req.body || {};
+      let fileForS3 = req.file;
+      try {
+        fileForS3 = await normalizeMulterImageForWeb(req.file);
+      } catch (convErr) {
+        return res.status(400).json({ error: convErr.message || 'Image conversion failed' });
+      }
       let put;
       try {
-        put = await uploadBufferToS3(req.file);
+        put = await uploadBufferToS3(fileForS3);
       } catch (s3Err) {
         console.error('[assetDocuments] S3 upload failed:', s3Err.message || s3Err);
         return res.status(502).json({
@@ -217,8 +253,8 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
           related_date: (relatedDateParsed && !Number.isNaN(relatedDateParsed.getTime())) ? relatedDateParsed : null,
           s3_key: put.key,
           url: put.url,
-          content_type: req.file.mimetype || null,
-          size_bytes: req.file.size || null,
+          content_type: fileForS3.mimetype || null,
+          size_bytes: fileForS3.size || null,
           uploaded_by: (req.header('X-User-Id') || req.header('x-user-id') || null),
           asset_type_field_id: asset_type_field_id || null,
         },

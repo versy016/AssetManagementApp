@@ -2,52 +2,117 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
-// Map common extensions to mime
+/** MIME types accepted by API for image fields (keep in sync with inventory-api/routes/assets.js). */
+export const ALLOWED_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+  'image/tiff',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+];
+
 const EXT_TO_MIME = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  avif: 'image/avif',
 };
 
-// Extract extension from filename or path
+export const WEB_IMAGE_FILE_ACCEPT = [
+  'image/*',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.tif',
+  '.tiff',
+  '.heic',
+  '.heif',
+  '.avif',
+].join(',');
+
 function extOf(nameOrPath = '') {
   const m = String(nameOrPath).match(/\.([a-z0-9]+)$/i);
   return m ? m[1].toLowerCase() : '';
 }
 
-// Best-effort MIME derivation
-function deriveImageMime({ uri, base64, mimeType, fileName }) {
-  // 1) data URI (web)
-  if (typeof uri === 'string' && uri.startsWith('data:image/')) {
-    // e.g. data:image/png;base64,....
-    const m = uri.match(/^data:(image\/[a-z0-9+.-]+);base64,/i);
-    if (m) return m[1].replace('jpg', 'jpeg');
-  }
-  // 2) reported mimeType (some platforms)
-  if (mimeType && /^image\//i.test(mimeType)) return mimeType.replace('jpg', 'jpeg');
+/**
+ * Infer image MIME from File/Blob or filename (fixes empty `file.type` on some browsers / HEIC).
+ */
+export function inferImageMimeFromFile(file) {
+  const raw = (file && file.type) || '';
+  if (raw && /^image\//i.test(raw)) return raw.replace(/jpeg/i, 'jpeg').replace(/^image\/jpg$/i, 'image/jpeg');
+  const name = (file && file.name) || '';
+  const ext = extOf(name);
+  if (ext && EXT_TO_MIME[ext]) return EXT_TO_MIME[ext];
+  return 'image/jpeg';
+}
 
-  // 3) filename or uri extension
+function deriveImageMime({ uri, mimeType, fileName }) {
+  if (typeof uri === 'string' && uri.startsWith('data:image/')) {
+    const m = uri.match(/^data:(image\/[a-z0-9+.-]+);base64,/i);
+    if (m) return m[1].replace(/jpg/i, 'jpeg');
+  }
+  if (mimeType && /^image\//i.test(mimeType)) return String(mimeType).replace(/jpg/i, 'jpeg');
   const ext = extOf(fileName || uri);
   if (ext && EXT_TO_MIME[ext]) return EXT_TO_MIME[ext];
-
-  // 4) fallback
   return 'image/jpeg';
 }
 
 /**
- * Convert a data URI to Blob (web)
+ * Web: avoid expo-image-picker for library (it throws when `file.type` is empty — common for HEIC / some JPEGs).
  */
-function base64ToBlob(dataURI, contentType = 'image/jpeg') {
-  const base64 = dataURI.split(',')[1];
-  const byteChars = atob(base64);
-  const byteArrays = [];
-  for (let offset = 0; offset < byteChars.length; offset += 512) {
-    const slice = byteChars.slice(offset, offset + 512);
-    const byteNums = Array.from(slice, ch => ch.charCodeAt(0));
-    byteArrays.push(new Uint8Array(byteNums));
-  }
-  return new Blob(byteArrays, { type: contentType });
+function pickImageFileWeb() {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = WEB_IMAGE_FILE_ACCEPT;
+    input.style.display = 'none';
+    const cleanup = () => {
+      try {
+        if (input.parentNode) input.parentNode.removeChild(input);
+      } catch {
+        /* ignore */
+      }
+    };
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      cleanup();
+      if (!f) {
+        resolve(null);
+        return;
+      }
+      const contentType = inferImageMimeFromFile(f);
+      const allowed = new Set(ALLOWED_IMAGE_MIME_TYPES);
+      if (!allowed.has(contentType)) {
+        reject(new Error(`Unsupported file type. Please use: ${Object.keys(EXT_TO_MIME).join(', ')}`));
+        return;
+      }
+      const file = f.type === contentType ? f : new File([f], f.name || 'upload.jpg', { type: contentType });
+      const uri = URL.createObjectURL(file);
+      const name = file.name || `upload.${contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg')}`;
+      resolve({ uri, file, name, type: contentType });
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
 }
 
 /**
@@ -55,64 +120,51 @@ function base64ToBlob(dataURI, contentType = 'image/jpeg') {
  * Returns { uri, file, name, type } or null if cancelled
  */
 export async function getImageFileFromPicker() {
+  if (Platform.OS === 'web') {
+    return pickImageFileWeb();
+  }
+
   const { assets, canceled } = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
     allowsEditing: true,
     quality: 0.7,
-    base64: Platform.OS === 'web', // web only
+    base64: false,
   });
 
   if (canceled || !assets?.length) return null;
   const asset = assets[0];
 
-  // Derive a reliable MIME
   const contentType = deriveImageMime({
     uri: asset.uri,
-    base64: asset.base64,
-    mimeType: asset.mimeType,   // may be undefined
-    fileName: asset.fileName,   // may be undefined
+    mimeType: asset.mimeType,
+    fileName: asset.fileName,
   });
 
-  // Reject known unsupported extensions regardless of reported MIME type.
-  // Browsers often report HEIC/HEIF with the wrong MIME (e.g. image/jpeg fallback),
-  // so we must also check the file extension explicitly.
-  const REJECTED_EXTS = new Set(['heic', 'heif', 'avif', 'tiff', 'tif', 'bmp', 'ico', 'raw', 'cr2', 'nef', 'arw', 'dng']);
-  const pickedExt = extOf(asset.fileName || asset.uri);
-  if (pickedExt && REJECTED_EXTS.has(pickedExt)) {
-    throw new Error('Unsupported file type. Please choose a PNG, JPG/JPEG, or WEBP image. HEIC/HEIF files are not supported.');
-  }
-
-  // Validate allowed mimes
-  const allowed = new Set(['image/png', 'image/jpeg', 'image/webp']);
+  const allowed = new Set(ALLOWED_IMAGE_MIME_TYPES);
   if (!allowed.has(contentType)) {
-    throw new Error('Unsupported file type. Please choose a PNG, JPG/JPEG, or WEBP image.');
+    throw new Error(`Unsupported file type. Please choose: ${Object.keys(EXT_TO_MIME).join(', ')}`);
   }
 
-  // Choose a friendly filename
   const fallbackName = (() => {
     const ext = contentType.split('/')[1] || 'jpg';
     return `upload.${ext === 'jpeg' ? 'jpg' : ext}`;
   })();
   const name = asset.fileName || fallbackName;
 
-  if (Platform.OS === 'web') {
-    // Web provides a data URI; build a File so multer sees proper mimetype + filename
-    const blob =
-      typeof asset.uri === 'string' && asset.uri.startsWith('data:')
-        ? base64ToBlob(asset.uri, contentType)
-        : // (rare) if uri is blob:http, rebuild from base64 if present
-          (asset.base64 ? base64ToBlob(`data:${contentType};base64,${asset.base64}`, contentType)
-                        : new Blob([], { type: contentType }));
-
-    const file = new File([blob], name, { type: contentType });
-    return { uri: asset.uri, file, name: file.name, type: file.type };
-  }
-
-  // Native: send the {uri,name,type} shape
   return {
     uri: asset.uri,
     file: { uri: asset.uri, name, type: contentType },
     name,
     type: contentType,
   };
+}
+
+/**
+ * Normalize browser File objects so FormData gets a correct Content-Type when `type` was empty.
+ */
+export function normalizeWebImageFile(file) {
+  if (!file || typeof File === 'undefined' || !(file instanceof File)) return file;
+  const t = inferImageMimeFromFile(file);
+  if (!file.type && t) return new File([file], file.name || 'image.jpg', { type: t });
+  return file;
 }

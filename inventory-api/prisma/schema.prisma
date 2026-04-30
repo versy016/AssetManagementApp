@@ -156,16 +156,24 @@ model field_types {
 }
 
 model users {
-  id             String       @id @default(dbgenerated("uuid_generate_v4()"))
-  name           String
-  userassets     String[]
-  useremail      String?      @unique
-  role           UserRole     @default(USER)
+  id              String      @id @default(dbgenerated("uuid_generate_v4()"))
+  name            String
+  userassets      String[]
+  useremail       String?     @unique
+  role            UserRole    @default(USER)
+  status          UserStatus  @default(ACTIVE)  // Account lifecycle status
+  domain          String?     // Email domain, e.g. "engsurveys.com.au" — derived on write, used for scoped queries
+  invitedById     String?     // FK to the admin who created the invitation
   expo_push_token String?     // Expo push token for mobile task notifications
-  created_at     DateTime?    @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
-  asset_logs     asset_logs[]
-  assets         assets[]     @relation("AssetAssignment")
+  created_at      DateTime?   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?   @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Self-relation: who invited this user
+  invitedBy       users?      @relation("UserInvites", fields: [invitedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invitees        users[]     @relation("UserInvites")
+
+  asset_logs      asset_logs[]
+  assets          assets[]    @relation("AssetAssignment")
 
   // Backrefs for action relations
   performed_actions asset_actions[] @relation("ActionPerformer")
@@ -176,6 +184,12 @@ model users {
 enum UserRole {
   USER
   ADMIN
+}
+
+enum UserStatus {
+  ACTIVE   // Registered and active
+  INVITED  // Invited but not yet registered via Firebase
+  DISABLED // Soft-deleted / suspended
 }
 
 // Structured record of actions performed on an asset

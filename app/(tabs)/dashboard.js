@@ -178,14 +178,27 @@ const Dashboard = ({ isAdmin }) => {
   };
 
   // ─── Quick Actions ───
-  const quickActions = useMemo(() => [
-    { key: 'scan', label: 'Scan Asset', icon: 'qr-code-scanner', onPress: () => router.push('/qr-scanner') },
-    { key: 'multi', label: 'Multi-Scan', icon: 'sync-alt', onPress: () => router.push('/qr-scanner?mode=multi') },
-    { key: 'search', label: 'Search', icon: 'search', onPress: () => router.push('/search') },
-    { key: 'assets', label: 'My Assets', icon: 'inventory', onPress: () => router.push('/asset/assets') },
-    { key: 'activity', label: 'Activity', icon: 'history', onPress: () => router.push('/activity') },
-    { key: 'certs', label: 'Certs', icon: 'verified', onPress: () => router.push('/certs') },
-  ], [router]);
+  const quickActions = useMemo(() => {
+    const base = [
+      { key: 'scan', label: 'Scan Asset', icon: 'qr-code-scanner', onPress: () => router.push('/qr-scanner') },
+      { key: 'multi', label: 'Multi-Scan', icon: 'sync-alt', onPress: () => router.push('/qr-scanner?mode=multi') },
+      { key: 'search', label: 'Search', icon: 'search', onPress: () => router.push('/search') },
+      { key: 'activity', label: 'Activity', icon: 'history', onPress: () => router.push('/activity') },
+      { key: 'certs', label: 'Certs', icon: 'verified', onPress: () => router.push('/certs') },
+    ];
+    if (Platform.OS === 'web') {
+      return [
+        ...base.slice(0, 3),
+        { key: 'maps', label: 'Maps', icon: 'map', onPress: () => router.push('/(tabs)/maps') },
+        ...base.slice(3),
+      ];
+    }
+    return [
+      ...base.slice(0, 3),
+      { key: 'assets', label: 'My Assets', icon: 'inventory', onPress: () => router.push('/asset/assets') },
+      ...base.slice(3),
+    ];
+  }, [router]);
 
   const handleLogout = async () => {
     try { await signOut(auth); router.replace('/(auth)/login'); }
@@ -441,7 +454,7 @@ const Dashboard = ({ isAdmin }) => {
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowProfileMenu(false)} />
           <View style={s.profileMenu} onStartShouldSetResponder={() => true} pointerEvents="box-none">
             {canAdmin && (
-              <TouchableOpacity style={s.menuItem} onPress={() => { setShowProfileMenu(false); setTimeout(() => router.push('/admin'), 100); }}>
+              <TouchableOpacity style={s.menuItem} onPress={() => { setShowProfileMenu(false); setTimeout(() => router.push('/admin/users'), 100); }}>
                 <MaterialIcons name="admin-panel-settings" size={18} color={C.sub} />
                 <Text style={s.menuText}>Admin Console</Text>
               </TouchableOpacity>

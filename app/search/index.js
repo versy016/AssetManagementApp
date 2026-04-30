@@ -1033,9 +1033,6 @@ export default function SearchScreen(props = {}) {
         <View style={styles.presetBanner}>
           <MaterialIcons name="person" size={16} color="#1D4ED8" />
           <Text style={styles.presetBannerText}>Showing assets assigned to you</Text>
-          <TouchableOpacity onPress={() => setFilters((f) => ({ ...f, onlyMine: false }))} style={styles.presetBannerClear}>
-            <MaterialIcons name="close" size={14} color="#1D4ED8" />
-          </TouchableOpacity>
         </View>
       )}
 
@@ -2043,7 +2040,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: '#BFDBFE', borderRadius: Radius.md,
   },
   presetBannerText: { flex: 1, fontSize: sf(13), color: '#1D4ED8', fontWeight: '700' },
-  presetBannerClear: { padding: 2 },
 
   // Selected row highlight
   rowSelected: { backgroundColor: '#EFF6FF' },

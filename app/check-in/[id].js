@@ -1328,15 +1328,6 @@ export default function CheckInScreen() {
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                {returnTo ? (
-                  <TouchableOpacity onPress={handleBackToScanned} style={styles.backToScanBtn}>
-                    <MaterialIcons name="qr-code-scanner" size={16} color={Colors.accent} />
-                    <Text style={styles.backToScanText} numberOfLines={1}>
-                      {`Scanned (${(multiScanCtx?.checked || []).length}/${(multiScanCtx?.items || []).length})`}
-                    </Text>
-                    <MaterialIcons name="arrow-forward-ios" size={12} color={Colors.accent} />
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity style={styles.webNavBtn} onPress={() => router.replace('/(tabs)/dashboard')}>
                   <MaterialIcons name="home" size={16} color={Colors.primary} />
                   <Text style={styles.webNavBtnText}>Dashboard</Text>

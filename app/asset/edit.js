@@ -17,6 +17,7 @@ import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import * as DocumentPicker from 'expo-document-picker';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { IMAGE_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
 registerTranslation('en', en);
@@ -31,10 +32,9 @@ export default function EditAsset() {
   const scrollRef = useRef(null);
   const fieldYs = useRef({});
 
-  const [options, setOptions] = useState({ assetTypes: [], users: [], statuses: [] });
+  const [options, setOptions] = useState({ assetTypes: [], users: [] });
   const [typeOpen, setTypeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [fieldsSchema, setFieldsSchema] = useState([]);
@@ -55,7 +55,8 @@ export default function EditAsset() {
   const [assetDocs, setAssetDocs] = useState([]);     // DB-backed documents for this asset
   const [image, setImage] = useState(null);       // { uri, file }
   const [currentImageUrl, setCurrentImageUrl] = useState('');
-  const [document, setDocument] = useState(null); // { uri, name, mimeType }
+  /** Pending doc for main "Document" section (maps upload on save). { uri, name, mimeType, file? } */
+  const [document, setDocument] = useState(null);
 
   const [datePicker, setDatePicker] = useState({ open: false, slug: null });
   const [errors, setErrors] = useState({});
@@ -93,7 +94,6 @@ export default function EditAsset() {
         setOptions({
           assetTypes: opts.assetTypes || [],
           users: opts.users || [],
-          statuses: opts.statuses || ['In Service', 'On Hire', 'Maintenance', 'Repair', 'End of Life'],
         });
 
         setTypeId(a.type_id || '');
@@ -119,7 +119,7 @@ export default function EditAsset() {
     return () => { cancelled = true; };
   }, [assetId]);
 
-  // DB role: admins can edit assignment, status, and serial on this screen
+  // DB role: admins can edit assignment and serial on this screen (status is workflow-driven only)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
@@ -202,7 +202,6 @@ export default function EditAsset() {
     const payload = {
       type_id: typeId,
       assigned_to_id: assignedToId || null,
-      status: status || undefined,
       location: location || null,
       model: model || null,
       other_id: otherId.trim() || null,
@@ -221,7 +220,11 @@ export default function EditAsset() {
     try {
       const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Context': 'asset-edit',
+          ...(await getAuthHeaders()),
+        },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -231,45 +234,64 @@ export default function EditAsset() {
 
       // If files selected, upload them in a separate call (with progress)
       if (image?.file || document) {
-        // Allow overlay to render before starting upload
         await new Promise((r) => setTimeout(r, 0));
-        await new Promise(async (resolve, reject) => {
-          const fd = new FormData();
-          if (image?.file) fd.append('image', image.file, image.file.name || 'upload.jpg');
-          if (document) {
-            if (Platform.OS === 'web') {
-              fetch(document.uri)
-                .then((r) => r.blob())
-                .then((blob) => {
-                  const file = new File([blob], document.name || 'document.pdf', { type: document.mimeType || blob.type || 'application/pdf' });
-                  fd.append('document', file, file.name);
-                })
-                .catch(() => {
-                  fd.append('document', { uri: document.uri, name: document.name || 'document.pdf', type: document.mimeType || 'application/pdf' });
-                });
+        const fd = new FormData();
+        if (image?.file) {
+          fd.append('image', image.file, image.file.name || 'upload.jpg');
+        }
+        if (document) {
+          if (Platform.OS === 'web') {
+            if (document.file && document.file instanceof File) {
+              fd.append('document', document.file, document.file.name || document.name || 'document.pdf');
             } else {
-              fd.append('document', { uri: document.uri, name: document.name || 'document.pdf', type: document.mimeType || 'application/pdf' });
+              try {
+                const blobRes = await fetch(document.uri);
+                const blob = await blobRes.blob();
+                const file = new File(
+                  [blob],
+                  document.name || 'document.pdf',
+                  { type: document.mimeType || blob.type || 'application/pdf' },
+                );
+                fd.append('document', file, file.name);
+              } catch {
+                fd.append('document', {
+                  uri: document.uri,
+                  name: document.name || 'document.pdf',
+                  type: document.mimeType || 'application/pdf',
+                });
+              }
             }
+          } else {
+            fd.append('document', {
+              uri: document.uri,
+              name: document.name || 'document.pdf',
+              type: document.mimeType || 'application/pdf',
+            });
           }
+        }
+        await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('PUT', `${API_BASE_URL}/assets/${assetId}/files`);
-          await setXHRAuthHeaders(xhr);
-          setFilesProgress(0);
-          setFilesStartTs(Date.now());
-          xhr.upload.onprogress = (e) => {
-            if (e && e.lengthComputable) {
-              setFilesProgress(Math.round((e.loaded / e.total) * 100));
-            }
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve();
-            } else {
-              reject(new Error(xhr.responseText || 'Failed to upload files'));
-            }
-          };
-          xhr.onerror = () => reject(new Error('Network error'));
-          xhr.send(fd);
+          setXHRAuthHeaders(xhr)
+            .then(() => {
+              setFilesProgress(0);
+              setFilesStartTs(Date.now());
+              xhr.upload.onprogress = (e) => {
+                if (e && e.lengthComputable) {
+                  setFilesProgress(Math.round((e.loaded / e.total) * 100));
+                }
+              };
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  resolve();
+                } else {
+                  reject(new Error(xhr.responseText || 'Failed to upload files'));
+                }
+              };
+              xhr.onerror = () => reject(new Error('Network error'));
+              xhr.send(fd);
+            })
+            .catch(reject);
         });
         // clear selected after successful upload; then refresh doc URL for display
         if (image?.uri) { setImage(null); }
@@ -754,7 +776,7 @@ export default function EditAsset() {
           {!isAdmin ? (
             <View style={styles.lockRow}>
               <MaterialIcons name="lock" size={14} color="#9CA3AF" />
-              <Text style={styles.lockText}>Admins can edit serial, assignment, and status</Text>
+              <Text style={styles.lockText}>Admins can edit serial and assignment</Text>
             </View>
           ) : null}
         </View>
@@ -834,31 +856,21 @@ export default function EditAsset() {
           ) : null}
         </View>
 
-        <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
+        <View onLayout={onLayoutFor('status')}>
           <Text style={styles.label}>Status</Text>
-          <DropDownPicker
-            open={statusOpen}
-            setOpen={setStatusOpen}
-            value={status}
-            setValue={(fn) => setStatus(fn())}
-            items={(options.statuses || []).map(s => ({ label: s, value: s }))}
-            placeholder="Select status"
-            style={[styles.dropdown, !isAdmin && styles.disabledField]}
-            dropDownContainerStyle={[styles.dropdownContainer, !isAdmin && styles.disabledField]}
-            nestedScrollEnabled
-            disabled={!isAdmin}
-          />
-          {!isAdmin ? (
-            <View style={styles.lockRow}>
-              <MaterialIcons name="lock" size={14} color="#9CA3AF" />
-              <Text style={styles.lockText}>Admins only</Text>
-            </View>
-          ) : null}
+          <View style={[styles.input, styles.readOnlyBox]}>
+            <Text style={styles.readOnlyValue}>{status || '—'}</Text>
+          </View>
+          <View style={styles.lockRow}>
+            <MaterialIcons name="lock" size={14} color="#9CA3AF" />
+            <Text style={styles.lockText}>Status is set by workflows (check-in, hire, repairs, etc.), not on this screen.</Text>
+          </View>
         </View>
 
         {/* Optional image/document updates */}
         <View onLayout={onLayoutFor('image')}>
           <Text style={styles.label}>Image</Text>
+          <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
           {(image?.uri || currentImageUrl) ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Image source={{ uri: image?.uri || currentImageUrl }} style={{ width: 80, height: 80, borderRadius: 6, backgroundColor: '#eef' }} />
@@ -882,9 +894,28 @@ export default function EditAsset() {
 
         <View onLayout={onLayoutFor('document')}>
           <Text style={styles.label}>Document</Text>
+          <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
           <TouchableOpacity style={styles.btn} onPress={async () => {
-            const pick = await DocumentPicker.getDocumentAsync({ multiple: false });
-            if (pick.type === 'success') setDocument(pick);
+            try {
+              const pick = await DocumentPicker.getDocumentAsync({
+                multiple: false,
+                type: [
+                  'application/pdf',
+                  'application/msword',
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                ],
+              });
+              if (pick.canceled || !pick.assets?.length) return;
+              const a = pick.assets[0];
+              setDocument({
+                uri: a.uri,
+                name: a.name || 'document',
+                mimeType: a.mimeType || 'application/pdf',
+                file: a.file,
+              });
+            } catch (e) {
+              Alert.alert('Document', e?.message || 'Could not select a file.');
+            }
           }}>
             <Text>{document ? 'Change Document' : 'Attach Document'}</Text>
           </TouchableOpacity>
@@ -1006,6 +1037,7 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
+  uploadHint: { fontSize: 12, color: Colors.sub, lineHeight: 18, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: Colors.chip, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, justifyContent: 'center', borderWidth: 2, borderColor: Colors.line },
   btnLg: { minHeight: 48, borderRadius: Radius.lg, paddingVertical: 14 },
@@ -1018,6 +1050,8 @@ const styles = StyleSheet.create({
   errorBelow: { marginTop: 4, color: Colors.dangerFg, fontWeight: '600' },
   // Disabled visuals for locked fields
   disabledField: { backgroundColor: Colors.chip, borderColor: Colors.line, borderWidth: 2, borderRadius: Radius.sm, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : {}) },
+  readOnlyBox: { justifyContent: 'center', backgroundColor: Colors.chip },
+  readOnlyValue: { fontSize: sf(15), fontWeight: '700', color: Colors.text },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   lockText: { color: Colors.sub2, fontSize: sf(12), fontWeight: '700' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },

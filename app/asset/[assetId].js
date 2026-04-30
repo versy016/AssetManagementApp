@@ -134,6 +134,7 @@ export default function AssetDetailPage() {
     copyDeepLink,
     qrPayload,
     displayLocation,
+    mapEmbedLocation,
     openMaps,
     prettyDate,
     prettyDateTime,
@@ -649,8 +650,8 @@ export default function AssetDetailPage() {
             </>
           )}
 
-            {/* Map */}
-          <MapPreview location={displayLocation} />
+            <Text style={[styles.sectionH, { marginTop: 16 }]}>Map</Text>
+            <MapPreview location={mapEmbedLocation} />
           </View>
         </ScrollView>
 

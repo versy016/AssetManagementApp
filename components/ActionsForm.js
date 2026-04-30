@@ -25,6 +25,8 @@ import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import logger from '../utils/logger';
 import { fetchFields } from '../hooks/useAssetTypeFields';
 import { FIELD_LIMITS } from '../constants/fieldLimits';
+import { normalizeWebImageFile, WEB_IMAGE_FILE_ACCEPT } from '../utils/getFormFileFromPicker';
+import { IMAGE_UPLOAD_HINT } from '../constants/uploadFormats';
 
 const ACTIONS = [
   'Repair',
@@ -611,12 +613,13 @@ export default function ActionsForm({
                 {Platform.OS === 'web' && (
                   <LabeledInput label={action === 'Repair' ? 'Upload Repair Images (optional)' : 'Upload Service Images (optional)'}>
                     <View style={{ gap: 8 }}>
+                      <Text style={{ color: Colors.subtle, fontSize: sf(12), lineHeight: 18 }}>{IMAGE_UPLOAD_HINT}</Text>
                       <input
                         type="file"
                         multiple
-                        accept="image/*"
+                        accept={WEB_IMAGE_FILE_ACCEPT}
                         onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
+                          const files = Array.from(e.target.files || []).map((f) => normalizeWebImageFile(f));
                           setServiceImages(files);
                         }}
                         style={{
@@ -694,6 +697,7 @@ export default function ActionsForm({
                           <Text style={{ fontWeight: '700', color: Colors.blue }}>Choose from Library</Text>
                         </TouchableOpacity>
                       </View>
+                      <Text style={{ color: Colors.subtle, fontSize: sf(11), lineHeight: 16, marginTop: 4 }}>{IMAGE_UPLOAD_HINT}</Text>
                       {serviceImages.length > 0 && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <Text style={{ color: Colors.subtle, fontSize: sf(12) }}>{serviceImages.length} image(s) selected</Text>

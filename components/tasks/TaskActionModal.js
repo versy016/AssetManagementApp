@@ -23,12 +23,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { useTheme } from 'react-native-paper';
 import AppTextInput from '../ui/AppTextInput';
 import { prettyDate } from '../../hooks/useTasks';
 import { showError } from '../../utils/showError';
 import { FIELD_LIMITS } from '../../constants/fieldLimits';
+import { IMAGE_UPLOAD_HINT, TASK_REPORT_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 
 /**
  * All props come straight from useTasks() return value.
@@ -209,6 +211,7 @@ export default function TaskActionModal({
                           ? 'Upload Repair Report (optional)'
                           : 'Upload Service Report (optional)'}
                       </Text>
+                      <Text style={{ color: '#94A3B8', fontSize: sf(11), marginBottom: 6, lineHeight: 16 }}>{TASK_REPORT_UPLOAD_HINT}</Text>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <TouchableOpacity
                           style={[styles.btn, styles.btnGhost, { flex: 1 }]}
@@ -408,6 +411,7 @@ function DocUploadSection({ label, actionDocSlug, actionDocPicked, setActionDocP
   return (
     <View style={[{ marginTop: 0 }, containerStyle]}>
       <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>{label}</Text>
+      <Text style={{ color: '#94A3B8', fontSize: sf(11), marginBottom: 8, lineHeight: 16 }}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
       {actionDocPicked ? (
         <Text style={{ marginBottom: 6, fontStyle: 'italic', color: '#374151' }}>
           Attached: {actionDocPicked.name || 'document'}
@@ -455,6 +459,7 @@ function PhotoSection({ actionPhoto, setActionPhoto, containerStyle }) {
   return (
     <View style={[{ marginTop: 14 }, containerStyle]}>
       <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Photo (optional)</Text>
+      <Text style={{ color: '#94A3B8', fontSize: sf(11), marginBottom: 8, lineHeight: 16 }}>{IMAGE_UPLOAD_HINT}</Text>
       <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {Platform.OS !== 'web' && (
           <TouchableOpacity
@@ -484,6 +489,12 @@ function PhotoSection({ actionPhoto, setActionPhoto, containerStyle }) {
           style={[styles.btn, styles.btnGhost, { paddingVertical: 10 }]}
           onPress={async () => {
             try {
+              if (Platform.OS === 'web') {
+                const r = await getImageFileFromPicker();
+                if (!r) return;
+                setActionPhoto({ uri: r.uri, name: r.name, mimeType: r.type });
+                return;
+              }
               const res = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,

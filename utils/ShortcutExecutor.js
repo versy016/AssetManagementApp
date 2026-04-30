@@ -18,7 +18,7 @@ export const executeShortcut = (shortcutType, router, user, isAdmin = false) => 
     }
     // Special case: Generate QR Sheet doesn't need scanning
     if (shortcutType === SHORTCUT_TYPES.GENERATE_QR_SHEET.id) {
-        router.push('/admin?tab=qr');
+        router.push('/admin/qr');
         return;
     }
     // Hire disclaimer: go to form (no scan)

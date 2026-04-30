@@ -90,6 +90,7 @@ app.use('/activity', apiLimiter);
 app.use('/labels', apiLimiter);
 app.use('/hire-disclaimer', apiLimiter);
 app.use('/asset-documents', uploadLimiter);
+app.use('/admin', apiLimiter);
 
 // Public endpoints — strict rate limit (5 requests per 15 min per IP).
 // These are intentionally very tight because they are unauthenticated and
@@ -133,6 +134,7 @@ const labelsRoutes = require('./routes/labels');
 const assetDocumentsRoutes = require('./routes/assetDocuments');
 const hireDisclaimerRoutes = require('./routes/hireDisclaimer');
 const publicAssetsRoutes   = require('./routes/publicAssets');
+const adminUsersRoutes     = require('./routes/adminUsers');
 
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
@@ -146,6 +148,7 @@ app.use('/assets', assetDocumentsRoutes);
 app.use('/asset-documents', assetDocumentsRoutes);
 app.use('/hire-disclaimer', hireDisclaimerRoutes);
 app.use('/public', publicAssetsRoutes);
+app.use('/admin/users', adminUsersRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)

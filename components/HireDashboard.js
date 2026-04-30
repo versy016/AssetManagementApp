@@ -268,19 +268,24 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
 
   const handleDownload = async (hire) => {
     try {
-      const res = await fetch(docUrl(hire.id));
+      const url = `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hire.id)}/document?pdf=1`;
+      const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || res.statusText || 'Download failed');
       }
       const blob = await res.blob();
+      // Prefer server filename from Content-Disposition; fall back to pattern built from hire data.
       const disposition = res.headers.get('Content-Disposition');
       const match = disposition && disposition.match(/filename="?([^";]+)"?/);
-      const filename = match ? match[1] : `hire_${hire.id}.docx`;
+      const assetPart = (hire.serial || hire.assetId || 'asset').replace(/[^\w\-_.]/g, '_').replace(/\s+/g, '_');
+      const hirerPart = (hire.contactName || 'hire').replace(/[^\w\-_.]/g, '_').replace(/\s+/g, '_');
+      const fallbackName = `${assetPart}_${hirerPart}_hire.pdf`;
+      const filename = match ? match[1] : fallbackName;
       if (Platform.OS === 'web') {
         triggerBlobDownload(blob, filename);
       } else {
-        Alert.alert('Download', 'Open this screen on web to download the Word document, or use Share from your browser.');
+        Alert.alert('Download', 'Open this screen on web to download the document, or use Share from your browser.');
       }
     } catch (e) {
       Alert.alert('Download failed', e?.message || 'Could not download document.');

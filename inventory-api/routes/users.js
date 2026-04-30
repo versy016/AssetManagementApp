@@ -28,9 +28,22 @@ const {
 /*                                   Routes                                  */
 /* ------------------------------------------------------------------------- */
 
+/** Extract the domain portion from an email address. */
+function getDomain(email) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return null;
+  return email.split('@')[1].toLowerCase().trim();
+}
+
 /**
- * Create a user
+ * Create a user (or complete INVITED → ACTIVE transition)
  * POST /users
+ *
+ * Normal flow: called by Firebase on first sign-up.
+ *   Body: { id: firebaseUID, name: string, useremail: string }
+ *
+ * INVITED flow: if a pending INVITED record exists for the same email,
+ *   it is deleted in the same transaction and replaced with a new ACTIVE
+ *   record using the real Firebase UID, preserving role, domain, and invitedById.
  */
 router.post('/', validate(schemas.createUser), async (req, res) => {
   const { id, name, useremail } = req.body;
@@ -39,19 +52,56 @@ router.post('/', validate(schemas.createUser), async (req, res) => {
     return res.status(400).json({ error: 'Missing id or name' });
   }
 
+  const normalizedEmail = useremail ? String(useremail).toLowerCase().trim() : null;
+  const domain = getDomain(normalizedEmail);
+
   try {
-    const newUser = await prisma.users.create({
-      data: {
-        id,
-        name,
-        useremail: useremail ? String(useremail).toLowerCase() : null,
-        userassets: [],
-      },
-    });
+    // Check for an existing INVITED record with the same email
+    const invited = normalizedEmail
+      ? await prisma.users.findFirst({
+          where: { useremail: normalizedEmail, status: 'INVITED' },
+          select: { id: true, name: true, role: true, domain: true, invitedById: true },
+        })
+      : null;
+
+    let newUser;
+
+    if (invited) {
+      // INVITED → ACTIVE transition: swap temp UUID for real Firebase UID in a transaction
+      newUser = await prisma.$transaction(async (tx) => {
+        await tx.users.delete({ where: { id: invited.id } });
+        return tx.users.create({
+          data: {
+            id,                                           // real Firebase UID
+            name: name || invited.name,                   // prefer name from registration form
+            useremail: normalizedEmail,
+            domain: domain || invited.domain,
+            role: invited.role,                           // preserve admin/user role from invite
+            status: 'ACTIVE',
+            invitedById: invited.invitedById,             // preserve audit trail
+            userassets: [],
+          },
+        });
+      });
+
+      logger.log(`[users] INVITED→ACTIVE transition complete for ${normalizedEmail} (uid=${id})`);
+    } else {
+      // Normal fresh registration
+      newUser = await prisma.users.create({
+        data: {
+          id,
+          name,
+          useremail: normalizedEmail,
+          domain,
+          status: 'ACTIVE',
+          userassets: [],
+        },
+      });
+    }
 
     return res.status(201).json(newUser);
   } catch (err) {
-    console.error('Create user error:', err);
+    logger.error('[users] POST / create user error:', err);
     return res.status(500).json({ error: 'Failed to create user' });
   }
 });

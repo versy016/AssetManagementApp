@@ -5,6 +5,7 @@ const router = express.Router();
 const AWS = require('aws-sdk');
 const multer = require('multer');
 const prisma = require('../lib/prisma');
+const { normalizeMulterImageForWeb } = require('../lib/normalizeHeicImageUpload');
 
 const ctrl = require('../controllers/assetTypes.controller');
 const { validate, schemas } = require('../lib/validation');
@@ -51,7 +52,8 @@ router.put('/:id', authRequired, adminOnly, validate(schemas.updateAssetType), (
         let image_url;
         if (req.file) {
           try {
-            const result = await uploadToS3(req.file, 'asset-type-images');
+            const file = await normalizeMulterImageForWeb(req.file);
+            const result = await uploadToS3(file, 'asset-type-images');
             image_url = result?.Location;
           } catch (e) {
             console.error('[asset-types] S3 upload failed:', e?.message || e);
@@ -91,7 +93,8 @@ router.post('/', authRequired, adminOnly, validate(schemas.createAssetType), (re
         return ctrl.create(req, res, next);
       }
       try {
-        const result = await uploadToS3(req.file, 'asset-type-images');
+        const file = await normalizeMulterImageForWeb(req.file);
+        const result = await uploadToS3(file, 'asset-type-images');
         req.uploadResult = result; // pass URL to controller
         return ctrl.createWithImage(req, res, next);
       } catch (e) { return next(e); }

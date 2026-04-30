@@ -151,6 +151,93 @@ async function sendTransferToOfficeEmail({ assetId, assetName, submitterName, su
   console.log(`[emailService] Transfer-to-office email sent for asset ${assetId}`);
 }
 
+/**
+ * Send an invitation email to a new user who has been added to GearOps by an admin.
+ *
+ * @param {object} opts
+ * @param {string} opts.toEmail       — recipient email address
+ * @param {string} opts.toName        — recipient display name
+ * @param {string} opts.invitedByName — name (or email) of the admin who sent the invite
+ * @param {string} opts.domain        — email domain of the organisation
+ */
+async function sendInviteEmail({ toEmail, toName, invitedByName, domain }) {
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.warn('[emailService] SMTP not configured — skipping invite email');
+    return;
+  }
+
+  const appUrl = process.env.APP_WEB_URL || 'https://gearops.com.au';
+  const subject = `You've been invited to GearOps`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:#1D4ED8;padding:24px 32px;border-radius:8px 8px 0 0">
+        <h1 style="color:#ffffff;margin:0;font-size:24px">GearOps</h1>
+        <p style="color:#BFDBFE;margin:4px 0 0;font-size:14px">Asset Management</p>
+      </div>
+      <div style="background:#ffffff;padding:32px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px">
+        <h2 style="color:#1E293B;margin:0 0 16px">Hi ${esc(toName)},</h2>
+        <p style="color:#334155;line-height:1.6">
+          <strong>${esc(invitedByName)}</strong> has invited you to join <strong>GearOps</strong>
+          — your organisation's asset management platform for <strong>@${esc(domain)}</strong>.
+        </p>
+        <p style="color:#334155;line-height:1.6">
+          To get started, register using your work email address (<strong>${esc(toEmail)}</strong>).
+          You can sign up via the web app or download the GearOps mobile app.
+        </p>
+
+        <div style="text-align:center;margin:32px 0">
+          <a href="${appUrl}"
+             style="background:#1D4ED8;color:#ffffff;text-decoration:none;padding:14px 32px;
+                    border-radius:6px;font-size:16px;font-weight:bold;display:inline-block">
+            Register on GearOps
+          </a>
+        </div>
+
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:16px;margin:16px 0">
+          <p style="margin:0 0 8px;color:#64748B;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em">
+            How to register
+          </p>
+          <ol style="color:#334155;font-size:14px;line-height:1.8;margin:0;padding-left:20px">
+            <li>Go to <a href="${appUrl}" style="color:#1D4ED8">${appUrl}</a> or open the GearOps app</li>
+            <li>Tap <strong>Sign Up</strong> and enter your work email: <strong>${esc(toEmail)}</strong></li>
+            <li>Create a password and complete your profile</li>
+            <li>You're in — your access level has already been configured</li>
+          </ol>
+        </div>
+
+        <p style="color:#64748B;font-size:13px;line-height:1.6;margin-top:24px">
+          If you weren't expecting this invitation or have questions, contact
+          <strong>${esc(invitedByName)}</strong> at your organisation directly.
+        </p>
+      </div>
+      <p style="color:#94A3B8;font-size:12px;text-align:center;margin-top:16px">
+        Sent by GearOps &mdash; ${new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })} AEST
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Hi ${toName},`,
+    '',
+    `${invitedByName} has invited you to join GearOps, your organisation's asset management platform (@${domain}).`,
+    '',
+    `To register, visit ${appUrl} and sign up using your work email address: ${toEmail}`,
+    '',
+    'Steps:',
+    `1. Go to ${appUrl} or open the GearOps app`,
+    `2. Tap Sign Up and enter your work email: ${toEmail}`,
+    '3. Create a password and complete your profile',
+    "4. You're in — your access level has already been configured",
+    '',
+    `If you weren't expecting this, contact ${invitedByName} at your organisation.`,
+  ].join('\n');
+
+  await transporter.sendMail({ from: FROM_ADDRESS, to: toEmail, subject, html, text });
+  console.log(`[emailService] Invite email sent to ${toEmail}`);
+}
+
 // ---------- Internal helpers ------------------------------------------------
 
 /** Minimal HTML escaping to prevent XSS in email body */
@@ -163,4 +250,4 @@ function esc(str) {
     .replace(/'/g, '&#39;');
 }
 
-module.exports = { sendLostAndFoundEmail, sendTransferToOfficeEmail };
+module.exports = { sendLostAndFoundEmail, sendTransferToOfficeEmail, sendInviteEmail };

@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOp
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -12,6 +13,7 @@ import ScreenState from '../../components/ui/ScreenState';
 import SearchInput from '../../components/ui/SearchInput';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
+import ScreenHeader from '../../components/ui/ScreenHeader';
 
 export default function ActivityScreen() {
   const [rawItems, setRawItems] = useState([]);
@@ -33,6 +35,15 @@ export default function ActivityScreen() {
   const [query, setQuery] = useState('');
   const [firebaseUser, setFirebaseUser] = useState(() => auth.currentUser);
   const router = useRouter();
+  const navigation = useNavigation();
+
+  const goBack = () => {
+    if (navigation?.canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/dashboard');
+    }
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
@@ -440,6 +451,7 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenHeader title="Activity" onBack={goBack} backLabel="Back" />
 
       {/* Search + filter toolbar */}
       <TourTarget id="web-activity-filters">

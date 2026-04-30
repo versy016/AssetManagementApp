@@ -5,6 +5,7 @@ const prisma = require('../lib/prisma');
 const { sendExpoPush } = require('../utils/push');
 const { ASSET_STATUS, ACTION_DB_TYPE, ALLOWED_PATCH_STATUSES } = require('../lib/assetStatus');
 const { validate, schemas } = require('../lib/validation');
+const { normalizeMulterImageForWeb } = require('../lib/normalizeHeicImageUpload');
 
 const AWS = require('aws-sdk');
 const multer = require('multer');
@@ -53,13 +54,39 @@ const safeS3Key = (folder, original) => {
   return `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${clean}`;
 };
 
+const IMAGE_MIME_RE = /^image\/(png|jpe?g|webp|gif|bmp|tiff|heic|heif|avif)$/i;
+
+/** Infer image MIME when browser omits mimetype (HEIC / some exports). */
+function imageMimeFromFile(file) {
+  const raw = String(file.mimetype || '').trim().toLowerCase();
+  const m = raw.split(';')[0].trim(); // Safari/Chrome send e.g. image/heic; codecs="hvc1"
+  if (m && IMAGE_MIME_RE.test(m)) return m;
+  const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+  const map = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+    '.tif': 'image/tiff',
+    '.tiff': 'image/tiff',
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
+    '.avif': 'image/avif',
+  };
+  return map[ext] || '';
+}
+
 const uploadToS3 = (file, folder) => {
   const Key = safeS3Key(folder, file.originalname);
+  const contentType =
+    (file.mimetype && String(file.mimetype).trim()) || imageMimeFromFile(file) || 'application/octet-stream';
   const params = {
     Bucket: process.env.S3_BUCKET,
     Key,
     Body: file.buffer,
-    ContentType: file.mimetype || 'application/octet-stream',
+    ContentType: contentType,
   };
   // Some buckets have Object Ownership = Bucket owner enforced and disallow ACLs.
   // Make ACL usage optâ€'in via env to avoid AccessControlListNotSupported.
@@ -67,11 +94,50 @@ const uploadToS3 = (file, folder) => {
     params.ACL = process.env.S3_ACL || 'public-read';
   }
   // Prefer inline viewing for PDFs
-  if (folder === 'documents' && /^application\/pdf$/i.test(file.mimetype || '')) {
+  if (folder === 'documents' && /^application\/pdf$/i.test(contentType)) {
     params.ContentDisposition = 'inline';
   }
   return s3.upload(params).promise();
 };
+
+/** Best-effort S3 object key from a public object URL (for legacy rows). */
+function s3KeyFromPublicLocation(loc) {
+  try {
+    const u = new URL(loc);
+    return (u.pathname || '').replace(/^\/+/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** Same activity shape as assetDocuments.recordDocumentCreatedAction (avoid circular route imports). */
+async function recordDocumentCreatedActivity(assetId, req, docRow) {
+  try {
+    const userId = (req.headers['x-user-id'] || req.headers['X-User-Id'] || '').toString().trim() || null;
+    let performedBy = null;
+    if (userId) {
+      const user = await prisma.users.findUnique({ where: { id: userId }, select: { id: true } });
+      if (user) performedBy = user.id;
+    }
+    const documentLabel = docRow.title || docRow.kind || 'Document';
+    await prisma.asset_actions.create({
+      data: {
+        asset_id: String(assetId),
+        type: 'STATUS_CHANGE',
+        note: `Document added: ${documentLabel}`,
+        data: {
+          event: 'DOCUMENT_CREATED',
+          document_id: docRow.id,
+          document_title: docRow.title || null,
+          document_kind: docRow.kind || null,
+        },
+        performed_by: performedBy,
+      },
+    });
+  } catch (e) {
+    console.error('[assets/files] document activity log failed', e?.message || e);
+  }
+}
 
 // ------------------------------------------------------
 // Multer config with limits + field-aware file filtering
@@ -85,9 +151,9 @@ const fileFilter = (req, file, cb) => {
   const isDocField = file.fieldname === 'document';
 
   if (isImageField) {
-    // allow common web image types
-    if (/^image\/(png|jpe?g|webp)$/i.test(file.mimetype)) return cb(null, true);
-    return cb(new Error('Invalid image type. Allowed: png, jpg, jpeg, webp'), false);
+    const mt = imageMimeFromFile(file);
+    if (IMAGE_MIME_RE.test(mt)) return cb(null, true);
+    return cb(new Error('Invalid image type. Allowed: png, jpg, jpeg, webp, gif, bmp, tiff, heic, heif, avif'), false);
   }
   if (isDocField) {
     // allow common docs
@@ -119,8 +185,9 @@ const uploadActionImages = multer({
   storage,
   limits: { files: 10, fileSize: MAX_IMAGE_BYTES },
   fileFilter: (req, file, cb) => {
-    if (/^image\/(png|jpe?g|webp)$/i.test(file.mimetype || '')) return cb(null, true);
-    return cb(new Error('Invalid image type. Allowed: png, jpg, jpeg, webp'), false);
+    const mt = imageMimeFromFile(file);
+    if (IMAGE_MIME_RE.test(mt)) return cb(null, true);
+    return cb(new Error('Invalid image type. Allowed: png, jpg, jpeg, webp, gif, bmp, tiff, heic, heif, avif'), false);
   },
 }).array('images', 10);
 
@@ -611,8 +678,8 @@ router.get('/tasks/count', authRequired, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Date fields we treat as task triggers (mirrors TOP_DATE_LABELS in fetchTaskCount.js)
-    const DATE_FIELDS = [
+    // Slug names (and legacy top-level names) used when scanning custom date fields — not DB columns on `assets`.
+    const DATE_FIELD_SLUGS = [
       'next_service_date', 'service_due', 'service_date',
       'maintenance_due', 'maintenance_date',
       'repair_due', 'repair_date',
@@ -621,6 +688,7 @@ router.get('/tasks/count', authRequired, async (req, res) => {
       'inspection_due', 'inspection_date',
       'expiry', 'expires_at',
     ];
+    const dateSlugSet = new Set(DATE_FIELD_SLUGS.map((s) => s.toLowerCase()));
 
     // Build asset filter -- admins see all, normal users see their assigned assets
     const assetWhere = isAdmin
@@ -632,15 +700,20 @@ router.get('/tasks/count', authRequired, async (req, res) => {
           ],
         };
 
-    // Fetch all relevant assets in ONE query (no N+1)
+    // Fetch all relevant assets in ONE query (no N+1). Only `next_service_date` exists on `assets`; other dates live in asset_field_values.
     const assets = await prisma.assets.findMany({
       where: assetWhere,
       select: {
         id: true,
         type_id: true,
         description: true,
-        field_values: true,
-        ...Object.fromEntries(DATE_FIELDS.map((f) => [f, true])),
+        next_service_date: true,
+        field_values: {
+          select: {
+            value: true,
+            asset_type_field: { select: { slug: true } },
+          },
+        },
       },
     });
 
@@ -692,42 +765,54 @@ router.get('/tasks/count', authRequired, async (req, res) => {
       const tId = a.type_id || null;
       const leadDays = leadDaysMap[tId] || {};
 
-      // Top-level date columns
-      for (const k of DATE_FIELDS) {
-        const d = isDateLike(a[k]);
-        if (!d) continue;
-        if (d < today) seen.add(`${a.id}|top|${k}|${+d}`);
-      }
+      // Top-level date column on `assets` (schema has no service_due / *_date columns)
+      const topD = isDateLike(a.next_service_date);
+      if (topD && topD < today) seen.add(`${a.id}|top|next_service_date|${+topD}`);
 
-      // Custom field values stored in the JSON `field_values` column
-      const f = a.field_values && typeof a.field_values === 'object' ? a.field_values : null;
-      if (f) {
-        for (const [k, val] of Object.entries(f)) {
-          if (!DATE_FIELDS.includes(k) && !/date|due|expiry|expires/i.test(k)) continue;
-          const d = isDateLike(val);
-          if (!d) continue;
-          const daysLead = leadDays[String(k).toLowerCase()] || 0;
-          if (d < today) {
-            seen.add(`${a.id}|field|${k}|${+d}`);
-          } else if (daysLead > 0) {
-            const windowEnd = new Date(today.getTime() + daysLead * 24 * 60 * 60 * 1000);
-            if (d <= windowEnd) seen.add(`${a.id}|field|${k}|soon|${+d}`);
-          }
+      // Custom date values from asset_field_values rows
+      for (const row of a.field_values || []) {
+        const k = row.asset_type_field?.slug;
+        if (!k) continue;
+        const kLower = String(k).toLowerCase();
+        if (!dateSlugSet.has(kLower) && !/date|due|expiry|expires/i.test(k)) continue;
+        const d = isDateLike(row.value);
+        if (!d) continue;
+        const daysLead = leadDays[kLower] || 0;
+        if (d < today) {
+          seen.add(`${a.id}|field|${k}|${+d}`);
+        } else if (daysLead > 0) {
+          const windowEnd = new Date(today.getTime() + daysLead * 24 * 60 * 60 * 1000);
+          if (d <= windowEnd) seen.add(`${a.id}|field|${k}|soon|${+d}`);
         }
       }
     }
 
-    // Pending sign-off items
-    const signoffWhere = isAdmin
-      ? { status: 'pending' }
-      : {
-          status: 'pending',
-          OR: [{ assigned_to_id: uid }, { assigned_to_id: null }],
-        };
+    // Pending sign-off items (flags live in `data` JSON — same rules as GET /actions/pending-signoff)
+    const isPendingSignoffRow = (a) => {
+      const d = a?.data || {};
+      const need = d && (d.requires_signoff === true || d.requires_sign_off === true);
+      const done = d && (d.completed === true || d.signed_off === true);
+      return !!(need && !done);
+    };
 
     let signoffCount = 0;
     try {
-      signoffCount = await prisma.asset_actions.count({ where: signoffWhere });
+      const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const signoffRows = await prisma.asset_actions.findMany({
+        where: {
+          type: { in: ['REPAIR', 'MAINTENANCE', 'HIRE'] },
+          occurred_at: { gte: since },
+          ...(!isAdmin
+            ? {
+                asset: {
+                  OR: [{ assigned_to_id: uid }, { assigned_to_id: null }],
+                },
+              }
+            : {}),
+        },
+        select: { data: true },
+      });
+      signoffCount = signoffRows.filter(isPendingSignoffRow).length;
     } catch { /* table may not exist in all envs */ }
 
     const total = seen.size + signoffCount;
@@ -1081,9 +1166,17 @@ router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset),
       targetId = placeholder.id;
     }
 
-    // Upload files if any
+    // Upload files if any (HEIC/HEIF → JPEG so clients can show thumbnails)
+    let imgForS3 = img;
+    if (img) {
+      try {
+        imgForS3 = await normalizeMulterImageForWeb(img);
+      } catch (convErr) {
+        return errJson(res, 400, convErr.message || 'Image conversion failed');
+      }
+    }
     const [imageUpload, docUpload] = await Promise.all([
-      img ? uploadToS3(img, 'images') : null,
+      imgForS3 ? uploadToS3(imgForS3, 'images') : null,
       doc ? uploadToS3(doc, 'documents') : null,
     ]);
 
@@ -1447,6 +1540,11 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
   const assetId = req.params.id;
   const { assigned_to_id, assign_to_admin = false, action_note, ...assetData } = req.body;
 
+  // Mobile/web asset edit form: status must not be changed here (workflows use this route without this header).
+  if (String(req.headers['x-client-context'] || '').toLowerCase() === 'asset-edit') {
+    delete assetData.status;
+  }
+
   try {
     if (!isUUID(assetId) && !isQRId(assetId)) {
       return errJson(res, 400, 'Invalid asset id');
@@ -1667,6 +1765,10 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
 
     if (hasAssignedField && prevUserId !== newUserId) {
       const noteFromClient = typeof action_note === 'string' && action_note.trim() ? action_note.trim() : null;
+      const scanLocFromBody =
+        typeof assetData.location === 'string' && assetData.location.trim()
+          ? { scan_location: stripHtml(assetData.location) }
+          : {};
       let fromLabel = prevUserId || '';
       let toLabel = newUserId || '';
       try {
@@ -1687,7 +1789,7 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
             from_user_id: prevUserId,
             to_user_id: newUserId || null,
             note: noteFromClient || `Check-in ${assetId} from ${fromLabel}`,
-            data: { prevUserId, newUserId, user_note_text: noteFromClient || undefined },
+            data: { prevUserId, newUserId, user_note_text: noteFromClient || undefined, ...scanLocFromBody },
           })
         );
       } else if (prevUserId && newUserId && prevUserId !== newUserId) {
@@ -1697,7 +1799,7 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
             from_user_id: prevUserId,
             to_user_id: newUserId,
             note: noteFromClient || `Transfer ${assetId} from ${fromLabel} to ${toLabel}`,
-            data: { prevUserId, newUserId, user_note_text: noteFromClient || undefined },
+            data: { prevUserId, newUserId, user_note_text: noteFromClient || undefined, ...scanLocFromBody },
           })
         );
       } else if (prevUserId && !newUserId) {
@@ -1706,7 +1808,7 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
             performed_by: actor,
             from_user_id: prevUserId,
             note: noteFromClient || `Check-in ${assetId} from ${fromLabel}`,
-            data: { prevUserId, user_note_text: noteFromClient || undefined },
+            data: { prevUserId, user_note_text: noteFromClient || undefined, ...scanLocFromBody },
           })
         );
       } else if (!prevUserId && newUserId) {
@@ -1715,7 +1817,7 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
             performed_by: actor,
             to_user_id: newUserId,
             note: noteFromClient || `Check-out ${assetId} to ${toLabel}`,
-            data: { newUserId, user_note_text: noteFromClient || undefined },
+            data: { newUserId, user_note_text: noteFromClient || undefined, ...scanLocFromBody },
           })
         );
       }
@@ -1915,8 +2017,15 @@ router.post('/:id/actions/upload', (req, res) => {
       const files = Array.isArray(req.files) ? req.files : [];
       if (!files.length) return errJson(res, 400, 'No images uploaded');
 
+      let filesForS3 = files;
+      try {
+        filesForS3 = await Promise.all(files.map((f) => normalizeMulterImageForWeb(f)));
+      } catch (convErr) {
+        return errJson(res, 400, convErr.message || 'Image conversion failed');
+      }
+
       // Upload all images in parallel to S3
-      const uploads = await Promise.all(files.map((f) => uploadToS3(f, 'action-images')));
+      const uploads = await Promise.all(filesForS3.map((f) => uploadToS3(f, 'action-images')));
       const urls = uploads.filter(Boolean).map(u => u.Location).filter(Boolean);
 
       const actorInfo = getActorInfo(req);
@@ -2125,18 +2234,80 @@ router.put('/:id/files', (req, res) => {
     if (doc && doc.size > MAX_DOC_BYTES) return errJson(res, 400, 'Document too large (max 10MB)');
 
     try {
+      let imgForS3 = img;
+      if (img) {
+        try {
+          imgForS3 = await normalizeMulterImageForWeb(img);
+        } catch (convErr) {
+          return errJson(res, 400, convErr.message || 'Image conversion failed');
+        }
+      }
       const [imgUp, docUp] = await Promise.all([
-        img ? uploadToS3(img, 'images') : null,
+        imgForS3 ? uploadToS3(imgForS3, 'images') : null,
         doc ? uploadToS3(doc, 'documents') : null,
       ]);
+
+      const actorInfo = getActorInfo(req);
+      if (actorInfo.id) { try { await ensureUserKnown(actorInfo.id, actorInfo.name, actorInfo.email); } catch { } }
+      const actor = actorInfo.id || null;
+
+      // Edit-asset "Document" only updated documentation_url, so each new upload hid the previous file.
+      // Archive the old URL into asset_documents (if missing), add a row for the new file, then set documentation_url.
+      if (docUp) {
+        const priorRow = await prisma.assets.findUnique({
+          where: { id: assetId },
+          select: { documentation_url: true },
+        });
+        const prevUrl = priorRow?.documentation_url && String(priorRow.documentation_url).trim();
+        const newUrl = docUp.Location && String(docUp.Location).trim();
+        const isHttp = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+
+        if (prevUrl && isHttp(prevUrl) && newUrl && prevUrl !== newUrl) {
+          const prevExists = await prisma.asset_documents.findFirst({
+            where: { asset_id: assetId, url: prevUrl, deleted_at: null },
+          });
+          if (!prevExists) {
+            const archived = await prisma.asset_documents.create({
+              data: {
+                asset_id: assetId,
+                title: 'Document',
+                kind: 'Document',
+                s3_key: s3KeyFromPublicLocation(prevUrl) || `legacy/${assetId}/documentation-url`,
+                url: prevUrl,
+                uploaded_by: actor,
+              },
+            });
+            await recordDocumentCreatedActivity(assetId, req, archived);
+          }
+        }
+
+        if (newUrl && isHttp(newUrl)) {
+          const newExists = await prisma.asset_documents.findFirst({
+            where: { asset_id: assetId, url: newUrl, deleted_at: null },
+          });
+          if (!newExists) {
+            const key = docUp.Key != null ? String(docUp.Key) : s3KeyFromPublicLocation(newUrl);
+            const created = await prisma.asset_documents.create({
+              data: {
+                asset_id: assetId,
+                title: (doc && doc.originalname) || 'Document',
+                kind: 'Document',
+                s3_key: key || '',
+                url: newUrl,
+                content_type: doc?.mimetype || null,
+                size_bytes: doc?.size != null ? Number(doc.size) : null,
+                uploaded_by: actor,
+              },
+            });
+            await recordDocumentCreatedActivity(assetId, req, created);
+          }
+        }
+      }
 
       const patch = {};
       if (imgUp) patch.image_url = imgUp.Location;
       if (docUp) patch.documentation_url = docUp.Location;
 
-      const actorInfo = getActorInfo(req);
-      if (actorInfo.id) { try { await ensureUserKnown(actorInfo.id, actorInfo.name, actorInfo.email); } catch { } }
-      const actor = actorInfo.id || null;
       const updated = await prisma.assets.update({ where: { id: assetId }, data: { ...patch, last_changed_by: actor || undefined, last_updated: new Date() } });
       res.json({ success: true, asset: updated });
     } catch (e) {
@@ -2156,7 +2327,15 @@ router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'
     if (!name || !imageFile) return errJson(res, 400, 'Name and image are required');
     if (imageFile.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 5MB)');
 
-    const uploadResult = await uploadToS3(imageFile, 'asset-type-images');
+    let typeImage = imageFile;
+    try {
+      typeImage = await normalizeMulterImageForWeb(imageFile);
+    } catch (convErr) {
+      return errJson(res, 400, convErr.message || 'Image conversion failed');
+    }
+    if (typeImage.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large after conversion (max 5MB)');
+
+    const uploadResult = await uploadToS3(typeImage, 'asset-type-images');
 
     const newType = await prisma.asset_types.create({
       data: { name, image_url: uploadResult.Location },

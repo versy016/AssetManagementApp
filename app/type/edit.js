@@ -27,6 +27,7 @@ import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
 // ---- Presets (must match how you created them originally) ----
@@ -892,6 +893,7 @@ export default function EditAssetType() {
               </Text>
             )}
           </View>
+          <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
             {hasTypeImageActions ? (
               <>

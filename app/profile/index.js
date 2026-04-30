@@ -182,7 +182,7 @@ export default function ProfileScreen() {
       )}
 
       {role === 'ADMIN' && (
-        <TouchableOpacity onPress={() => router.push('/admin')} style={[styles.buttonGhost, { marginTop: 24 }]}>
+        <TouchableOpacity onPress={() => router.push('/admin/users')} style={[styles.buttonGhost, { marginTop: 24 }]}>
           <Text style={styles.buttonGhostText}>Admin Controls</Text>
         </TouchableOpacity>
       )}

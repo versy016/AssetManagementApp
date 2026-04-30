@@ -353,6 +353,8 @@ async function buildHireDisclaimerDocxFromParsed(p) {
       lessor: 'Engineering Surveys',
       lesseeName: signatureName ?? '',
       company: { entity: { person: hirerName ?? '' } },
+      // [duration] placeholder → human-readable rate period label
+      duration: ratePeriodNorm === 'week' ? 'Per Week' : ratePeriodNorm === 'month' ? 'Per Month' : 'Per Day',
     };
     try {
       doc.render(templateData);
@@ -831,7 +833,10 @@ router.get('/hires/:actionId/preview.pdf', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/hires/:actionId/document -- regenerate .docx from stored HIRE (attachment or inline for viewing)
+// GET /hire-disclaimer/hires/:actionId/document -- regenerate document from stored HIRE
+// Query params:
+//   ?view=1 / ?inline=1  -- serve inline (for viewing in browser)
+//   ?pdf=1               -- force PDF download (LibreOffice conversion; falls back to docx if unavailable)
 router.get('/hires/:actionId/document', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -843,6 +848,9 @@ router.get('/hires/:actionId/document', async (req, res) => {
       req.query.view === 'true' ||
       req.query.inline === '1' ||
       req.query.inline === 'true';
+    const forcePdf =
+      req.query.pdf === '1' || req.query.pdf === 'true';
+
     const action = await prisma.asset_actions.findFirst({
       where: { id: actionId, type: 'HIRE' },
       include: {
@@ -861,42 +869,65 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return res.status(404).json({ error: 'Hire not found' });
     }
 
-    // Always prefer the signed PDF when it exists -- serve inline or as attachment depending on the request.
     const data = action.data && typeof action.data === 'object' ? action.data : {};
+
+    /** Build a consistent download filename: {assetId}_{hirerName}_hire.pdf */
+    function hireDownloadFilename(p, ext) {
+      const assetPart = sanitizeFilenamePart(
+        (action.asset && (action.asset.serial_number || action.asset.id)) ||
+        p?.primaryAssetKey ||
+        p?.assetId ||
+        data.assetId ||
+        'asset'
+      );
+      const hirerPart = sanitizeFilenamePart(
+        p?.hirerName || p?.signatureName || data.hirerName || data.signatureName || 'hire'
+      );
+      return `${assetPart}_${hirerPart}_hire.${ext}`;
+    }
+
+    // Always prefer the signed PDF when it exists.
     const storedPath = data.signedDocPath && String(data.signedDocPath).trim();
     if (storedPath && fs.existsSync(storedPath)) {
-      const safeName = sanitizeFilenamePart(data.hirerName || data.signatureName || 'lease');
+      const body = hireActionToGenerateBody(action);
+      const p = parseHireDisclaimerBody(body);
       const pdfBuf = fs.readFileSync(storedPath);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader(
         'Content-Disposition',
-        `${inline ? 'inline' : 'attachment'}; filename="hire_signed_${safeName}.pdf"`,
+        `${inline ? 'inline' : 'attachment'}; filename="${hireDownloadFilename(p, 'pdf')}"`,
       );
       return res.send(pdfBuf);
     }
 
-    // No signed PDF yet -- for view requests try a LibreOffice PDF preview
-    if (inline) {
+    // PDF requested (download or inline) -- try LibreOffice conversion
+    if (forcePdf || inline) {
       try {
         const body = hireActionToGenerateBody(action);
         const p = parseHireDisclaimerBody(body);
         const pdfBuf = await buildHirePreviewPdfFromParsed(p);
-        const safeName = sanitizeFilenamePart(p.hirerName || p.signatureName || 'lease');
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="hire_preview_${safeName}.pdf"`);
+        res.setHeader(
+          'Content-Disposition',
+          `${inline && !forcePdf ? 'inline' : 'attachment'}; filename="${hireDownloadFilename(p, 'pdf')}"`,
+        );
         return res.send(pdfBuf);
       } catch {
-        // LibreOffice not available -- fall through to DOCX
+        // LibreOffice not available -- fall through to DOCX for inline; return error for explicit pdf request
+        if (forcePdf) {
+          return res.status(503).json({ error: 'PDF conversion is not available on this server. Please try again or contact your administrator.' });
+        }
       }
     }
 
+    // Fallback: serve the Word document
     const body = hireActionToGenerateBody(action);
     const p = parseHireDisclaimerBody(body);
-    const { buffer, filename } = await buildHireDisclaimerDocxFromParsed(p);
+    const { buffer } = await buildHireDisclaimerDocxFromParsed(p);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader(
       'Content-Disposition',
-      `${inline ? 'inline' : 'attachment'}; filename="${filename}"`
+      `${inline ? 'inline' : 'attachment'}; filename="${hireDownloadFilename(p, 'docx')}"`,
     );
     res.send(buffer);
   } catch (e) {

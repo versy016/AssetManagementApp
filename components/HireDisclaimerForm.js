@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Modal,
   Alert,
   ActivityIndicator,
   Platform,
@@ -123,6 +124,9 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
 
   // Validation errors (key -> message)
   const [errors, setErrors] = useState({});
+
+  // Hire conflict modal — populated when a 409 conflict is returned by the API
+  const [conflictInfo, setConflictInfo] = useState(null);
 
   const isEditingExisting = hireFormMode === 'edit' && !!initialHire?.id;
 
@@ -422,6 +426,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
             serial: a.serial_number ? String(a.serial_number) : '',
             description: a.description || '',
             model: a.model || '',
+            typeName: a.asset_types?.name || '',
             status: a.status || '',
           }));
         setAssetsLoaded(true);
@@ -447,12 +452,25 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       setAssetSuggestions([]);
       return;
     }
+
+    // UUID = placeholder "awaiting QR" asset — not yet configured for real use.
+    const isUUID = (s) =>
+      typeof s === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+
+    // Statuses that mean the asset is unavailable for a new hire.
+    const UNAVAILABLE = new Set(['On Hire', 'End of Life', 'Lost', 'Stolen']);
+
     const all = assetsCacheRef.current || [];
     const matches = all
       .filter((a) => {
-        // Exclude QR placeholder assets that haven't been configured yet
+        // Exclude QR placeholder assets (description sentinel)
         if (String(a.description || '').toLowerCase() === 'qr reserved asset') return false;
-        const hay = `${a.id} ${a.serial} ${a.model} ${a.description}`.toLowerCase();
+        // Exclude awaiting-QR assets (temp UUID id, not yet assigned a real QR code)
+        if (isUUID(String(a.id))) return false;
+        // Exclude assets that are already on hire, end-of-life, lost, or stolen
+        if (UNAVAILABLE.has(a.status)) return false;
+        const hay = `${a.id} ${a.serial} ${a.model} ${a.description} ${a.typeName}`.toLowerCase();
         return hay.includes(q);
       })
       .slice(0, 8);
@@ -577,6 +595,10 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       });
       const saveJson = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) {
+        if (saveRes.status === 409 && saveJson.conflict) {
+          setConflictInfo(saveJson.conflict);
+          return;
+        }
         throw new Error(saveJson.error || saveRes.statusText || 'Could not save hire');
       }
       const hireId = saveJson.hireId;
@@ -644,6 +666,10 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       });
       const saveJson = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) {
+        if (saveRes.status === 409 && saveJson.conflict) {
+          setConflictInfo(saveJson.conflict);
+          return;
+        }
         throw new Error(saveJson.error || saveRes.statusText || 'Could not save hire');
       }
       const hireId = saveJson.hireId;
@@ -1044,7 +1070,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
               style={styles.input}
               value={assetQuery}
               onChangeText={(v) => setAssetQuery(v)}
-              placeholder="Start typing asset or serial number"
+              placeholder="Search by ID, serial, type, model or description"
               placeholderTextColor={Colors.sub2}
             />
             {assetSuggestions.length > 0 && (
@@ -1058,9 +1084,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
                     >
                       <Text style={styles.assetSuggestMain}>
                         {a.serial || a.id}
+                        {a.typeName ? (
+                          <Text style={styles.assetSuggestType}>{' · '}{a.typeName}</Text>
+                        ) : null}
                       </Text>
                       <Text style={styles.assetSuggestSub}>
-                        {a.model || a.description || 'No description'}
+                        {[a.model, a.description].filter(Boolean).join(' — ') || 'No description'}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1117,21 +1146,49 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           <View style={styles.field}>
             <Text style={styles.label}>Rate<Text style={styles.requiredStar}> *</Text></Text>
             <Text style={styles.suggestHint}>Choose whether the amount is per day, week, or month.</Text>
-            <View style={[styles.ratePeriodRow, { marginTop: 8, marginBottom: 10 }]}>
-              {[
-                { key: 'day', label: 'Per day' },
-                { key: 'week', label: 'Per week' },
-                { key: 'month', label: 'Per month' },
-              ].map(({ key, label }) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.chip, form.ratePeriod === key && styles.chipActive]}
-                  onPress={() => update('ratePeriod', key)}
-                >
-                  <Text style={[styles.chipText, form.ratePeriod === key && styles.chipTextActive]}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {(() => {
+              // ── Smart rate-period enable/disable ────────────────────────────
+              // Compute inclusive day count from the selected dates.
+              const hireDays = (() => {
+                if (!form.hireStartDate || !form.hireEndDate) return 0;
+                const s = new Date(`${form.hireStartDate}T12:00:00Z`);
+                const e = new Date(`${form.hireEndDate}T12:00:00Z`);
+                if (isNaN(s) || isNaN(e)) return 0;
+                const diff = Math.round((e - s) / 86400000);
+                return diff < 0 ? 0 : diff + 1;
+              })();
+              const weekEnabled  = hireDays === 0 || hireDays >= 6;
+              const monthEnabled = hireDays === 0 || hireDays >= 30;
+
+              // Auto-reset to 'day' when the selected period becomes unavailable.
+              if (!weekEnabled  && form.ratePeriod === 'week')  update('ratePeriod', 'day');
+              if (!monthEnabled && form.ratePeriod === 'month') update('ratePeriod', 'day');
+
+              const chips = [
+                { key: 'day',   label: 'Per day',   enabled: true },
+                { key: 'week',  label: 'Per week',  enabled: weekEnabled },
+                { key: 'month', label: 'Per month', enabled: monthEnabled },
+              ];
+
+              return (
+                <View style={[styles.ratePeriodRow, { marginTop: 8, marginBottom: 10 }]}>
+                  {chips.map(({ key, label, enabled }) => (
+                    <TouchableOpacity
+                      key={key}
+                      disabled={!enabled}
+                      style={[
+                        styles.chip,
+                        form.ratePeriod === key && styles.chipActive,
+                        !enabled && { opacity: 0.35 },
+                      ]}
+                      onPress={() => enabled && update('ratePeriod', key)}
+                    >
+                      <Text style={[styles.chipText, form.ratePeriod === key && styles.chipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })()}
             <View style={styles.rateInputRow}>
               <Text style={styles.ratePrefix}>$</Text>
               <TextInput
@@ -1184,6 +1241,61 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           )}
         </TouchableOpacity>
       </View>
+
+      {/* ── Hire conflict modal ──────────────────────────────────────────── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={!!conflictInfo}
+        onRequestClose={() => setConflictInfo(null)}
+      >
+        <View style={styles.conflictOverlay}>
+          <View style={styles.conflictCard}>
+            {/* Icon + title */}
+            <View style={styles.conflictHeader}>
+              <View style={styles.conflictIconWrap}>
+                <MaterialIcons name="event-busy" size={28} color="#DC2626" />
+              </View>
+              <Text style={styles.conflictTitle}>Booking Conflict</Text>
+            </View>
+
+            {/* Body text */}
+            <Text style={styles.conflictBody}>
+              This asset is already booked during the selected dates and cannot be double-hired.
+            </Text>
+
+            {/* Conflict details pill */}
+            {conflictInfo && (
+              <View style={styles.conflictDetail}>
+                <View style={styles.conflictDetailRow}>
+                  <MaterialIcons name="person" size={15} color={Colors.sub} style={{ marginRight: 5 }} />
+                  <Text style={styles.conflictDetailLabel}>Hirer</Text>
+                  <Text style={styles.conflictDetailValue}>{conflictInfo.hirerName || '—'}</Text>
+                </View>
+                <View style={styles.conflictDetailRow}>
+                  <MaterialIcons name="date-range" size={15} color={Colors.sub} style={{ marginRight: 5 }} />
+                  <Text style={styles.conflictDetailLabel}>Booked</Text>
+                  <Text style={styles.conflictDetailValue}>
+                    {conflictInfo.from ? formatDisplayDateLong(conflictInfo.from, conflictInfo.from) : '?'} → {conflictInfo.to ? formatDisplayDateLong(conflictInfo.to, conflictInfo.to) : '?'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.conflictHint}>
+              Please choose different hire dates or select a different asset.
+            </Text>
+
+            {/* Dismiss */}
+            <TouchableOpacity
+              style={styles.conflictBtn}
+              onPress={() => setConflictInfo(null)}
+            >
+              <Text style={styles.conflictBtnText}>OK, Change Dates</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <DatePickerModal
         locale="en"
@@ -1428,6 +1540,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.line,
   },
   assetSuggestMain: { fontSize: sf(14), fontWeight: '600', color: Colors.text },
+  assetSuggestType: { fontSize: sf(13), fontWeight: '400', color: Colors.sub2 },
   assetSuggestSub: { fontSize: sf(12), color: Colors.sub },
   equipmentActionsRow: {
     marginTop: 8,
@@ -1511,4 +1624,89 @@ const styles = StyleSheet.create({
   sendBtnNote2: { fontSize: sf(11), color: Colors.sub, fontWeight: '600', marginTop: 2 },
   exportBtnDisabled: { opacity: 0.7 },
   exportBtnText: { fontSize: sf(16), fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
+
+  // ── Conflict modal ────────────────────────────────────────────────────────
+  conflictOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  conflictCard: {
+    backgroundColor: Colors.card || '#fff',
+    borderRadius: Radius.lg || 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    ...Shadows.card,
+  },
+  conflictHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 10,
+  },
+  conflictIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  conflictTitle: {
+    fontSize: sf(18),
+    fontWeight: '700',
+    color: Colors.text || '#111',
+  },
+  conflictBody: {
+    fontSize: sf(14),
+    color: Colors.sub || '#6B7280',
+    lineHeight: sf(20),
+    marginBottom: 16,
+  },
+  conflictDetail: {
+    backgroundColor: Colors.bg || '#F9FAFB',
+    borderRadius: Radius.md || 10,
+    borderWidth: 1,
+    borderColor: Colors.border || '#E5E7EB',
+    padding: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  conflictDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  conflictDetailLabel: {
+    fontSize: sf(13),
+    fontWeight: '600',
+    color: Colors.sub || '#6B7280',
+    width: 52,
+    marginRight: 6,
+  },
+  conflictDetailValue: {
+    fontSize: sf(13),
+    color: Colors.text || '#111',
+    fontWeight: '500',
+    flex: 1,
+  },
+  conflictHint: {
+    fontSize: sf(13),
+    color: Colors.sub || '#6B7280',
+    marginBottom: 20,
+    lineHeight: sf(18),
+  },
+  conflictBtn: {
+    backgroundColor: Colors.primary || '#2563EB',
+    borderRadius: Radius.md || 10,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  conflictBtnText: {
+    fontSize: sf(15),
+    fontWeight: '700',
+    color: '#FFF',
+  },
 });
