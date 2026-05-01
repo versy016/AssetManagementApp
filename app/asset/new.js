@@ -2,7 +2,7 @@ import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/assets/new.js
 import React, { useEffect, useState, useCallback, useRef, useContext } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, Switch, ActivityIndicator, Modal
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, Switch, ActivityIndicator, Modal, useWindowDimensions
 } from 'react-native';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
@@ -22,6 +22,7 @@ import logger from '../../utils/logger';
 import { getAuthHeaders, setXHRAuthHeaders } from '../../utils/authHeaders';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import FormButton from '../../components/ui/FormButton';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useTasksCount } from '../../contexts/TasksCountContext';
 import { fetchTaskCount } from '../../utils/fetchTaskCount';
 
@@ -58,6 +59,9 @@ export default function NewAsset() {
   const scrollRef = useRef(null);
   const fieldRefs = useRef({});     // focusable refs (TextInput)
   const fieldYs = useRef({});     // container Y positions (from onLayout)
+
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
 
   const setInputRef = (slug) => (ref) => { if (ref) fieldRefs.current[slug] = ref; };
   const onLayoutFor = (slug) => (e) => { fieldYs.current[slug] = e.nativeEvent.layout.y; };
@@ -1230,11 +1234,18 @@ export default function NewAsset() {
       />
       <KeyboardAwareScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={isWebWide ? [styles.container, whs.pageScroll] : styles.container}
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={80}
         enableOnAndroid
       >
+        {/* Web-only form header */}
+        {isWebWide && (
+          <WebNewAssetFormHeader
+            pickedImageUri={image?.uri}
+            assetTypeName={(options.assetTypes || []).find(t => t.id === typeId)?.name || ''}
+          />
+        )}
         {/* Header copy */}
         <View style={{ marginBottom: 20 }}>
           {!!formError && <Text style={styles.errorTop}>{formError}</Text>}
@@ -1368,6 +1379,7 @@ export default function NewAsset() {
         )}
 
         {/* Asset Type */}
+        {isWebWide && <Text style={whs.sectionHeader}>Asset Type</Text>}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={styles.label}>Asset Type *</Text>
           <TourTarget id="asset-type">
@@ -1392,6 +1404,7 @@ export default function NewAsset() {
         </View>
 
         {/* All Asset Details - Wrapped for Tour */}
+        {isWebWide && <Text style={whs.sectionHeader}>Asset Details</Text>}
         <TourTarget id="asset-details">
           {/* Dynamic Fields */}
           {!!typeId && fieldsSchema.map(renderField)}
@@ -1654,6 +1667,34 @@ export default function NewAsset() {
   );
 }
 
+function WebNewAssetFormHeader({ pickedImageUri, assetTypeName }) {
+  return (
+    <View style={whs.formHeader}>
+      <View style={whs.formHeaderImg}>
+        {pickedImageUri ? (
+          <Image source={{ uri: pickedImageUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        ) : (
+          <View style={whs.formHeaderImgPlaceholder}>
+            <MaterialIcons name="add-photo-alternate" size={40} color={Colors.sub2} />
+            <Text style={whs.formHeaderImgHint}>Image optional</Text>
+          </View>
+        )}
+      </View>
+      <View style={whs.formHeaderInfo}>
+        <Text style={whs.formHeaderLabel}>Asset Management</Text>
+        <Text style={whs.formHeaderTitle}>Create New Asset</Text>
+        {!!assetTypeName && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <MaterialIcons name="category" size={14} color={Colors.sub2} />
+            <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+          </View>
+        )}
+        <Text style={whs.formHeaderSub}>Select an Asset ID, choose a type, fill in the details below, and submit.</Text>
+      </View>
+    </View>
+  );
+}
+
 function WebOverlayPortal({ visible, children }) {
   const mountRef = React.useRef(null);
   React.useEffect(() => {
@@ -1766,6 +1807,92 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '700' },
+});
+
+// Web-only styles
+const whs = StyleSheet.create({
+  pageScroll: {
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  formHeaderImg: {
+    width: 240,
+    minHeight: 180,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
+  },
+  formHeaderImgFull: {
+    width: '100%',
+    height: '100%',
+  },
+  formHeaderImgPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  formHeaderImgHint: {
+    fontSize: sf(12),
+    fontWeight: '600',
+    color: Colors.sub2,
+  },
+  formHeaderInfo: {
+    flex: 1,
+    padding: 28,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  formHeaderLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  formHeaderTitle: {
+    fontSize: sf(28),
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  formHeaderMeta: {
+    fontSize: sf(13),
+    fontWeight: '600',
+    color: Colors.sub,
+  },
+  formHeaderSub: {
+    fontSize: sf(13),
+    fontWeight: '500',
+    color: Colors.sub2,
+    lineHeight: sf(20),
+    marginTop: 4,
+  },
+  sectionHeader: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginTop: 28,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+  },
 });
 
 

@@ -195,7 +195,7 @@ const Dashboard = ({ isAdmin }) => {
     }
     return [
       ...base.slice(0, 3),
-      { key: 'assets', label: 'My Assets', icon: 'inventory', onPress: () => router.push('/asset/assets') },
+      { key: 'assets', label: 'My Gear', icon: 'inventory', onPress: () => router.push('/asset/assets') },
       ...base.slice(3),
     ];
   }, [router]);

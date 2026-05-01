@@ -16,6 +16,7 @@ import {
   Switch,
   KeyboardAvoidingView,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -86,6 +87,8 @@ export default function EditAssetType() {
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -873,11 +876,15 @@ export default function EditAssetType() {
       <View style={{ flex: 1, minHeight: 0 }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView
-            contentContainerStyle={[s.container, { flexGrow: 1 }]}
+            contentContainerStyle={isWebWide ? [s.container, { flexGrow: 1 }, whs.pageScroll] : [s.container, { flexGrow: 1 }]}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
           >
+          {/* Web-only form header */}
+          {isWebWide && <WebEditTypeFormHeader typeImagePreviewUri={typeImagePreviewUri} name={name} />}
+
           {/* Type core */}
+          {isWebWide && <Text style={whs.sectionHeader}>Type Details</Text>}
           <Text style={s.label}>Name *</Text>
           <TextInput style={s.input} placeholder="Type name" value={name} onChangeText={setName} />
 
@@ -915,6 +922,7 @@ export default function EditAssetType() {
           </View>
 
           {/* Presets grid */}
+          {isWebWide && <Text style={whs.sectionHeader}>Add Extra Fields</Text>}
           <View style={{ marginTop: 24 }}>
             <Text style={s.sectionTitle}>Add Extra Fields</Text>
             <View style={s.grid}>
@@ -1036,6 +1044,7 @@ export default function EditAssetType() {
           </View>
           
           {/* Existing custom fields */}
+          {isWebWide && <Text style={whs.sectionHeader}>Existing Custom Fields</Text>}
           <View style={{ marginTop: 24 }}>
             <Text style={s.sectionTitle}>Existing custom fields</Text>
             {editableCustom.length === 0 ? (
@@ -1163,6 +1172,7 @@ export default function EditAssetType() {
           </View>
 
           {/* Add custom field */}
+          {isWebWide && <Text style={whs.sectionHeader}>Add Custom Field</Text>}
           <View style={{ marginTop: 24 }}>
             <Text style={s.sectionTitle}>Add custom field</Text>
             {addOpen ? (
@@ -1479,6 +1489,28 @@ export default function EditAssetType() {
   );
 }
 
+function WebEditTypeFormHeader({ typeImagePreviewUri, name }) {
+  return (
+    <View style={whs.formHeader}>
+      <View style={whs.formHeaderImg}>
+        {typeImagePreviewUri ? (
+          <Image source={{ uri: typeImagePreviewUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        ) : (
+          <View style={whs.formHeaderImgPlaceholder}>
+            <MaterialIcons name="category" size={44} color={Colors.sub2} />
+            <Text style={whs.formHeaderImgHint}>Type image</Text>
+          </View>
+        )}
+      </View>
+      <View style={whs.formHeaderInfo}>
+        <Text style={whs.formHeaderLabel}>Edit Asset Type</Text>
+        <Text style={whs.formHeaderTitle}>{name || 'Asset Type'}</Text>
+        <Text style={whs.formHeaderSub}>Update the type name, image, and field configuration below, then save.</Text>
+      </View>
+    </View>
+  );
+}
+
 const Colors = {
   primary: '#1E293B',
   primaryDark: '#0F172A',
@@ -1638,4 +1670,85 @@ const s = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '800', flex: 1 },
+});
+
+// Web-only styles
+const whs = StyleSheet.create({
+  pageScroll: {
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  formHeaderImg: {
+    width: 240,
+    minHeight: 180,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
+  },
+  formHeaderImgFull: {
+    width: '100%',
+    height: '100%',
+  },
+  formHeaderImgPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  formHeaderImgHint: {
+    fontSize: sf(12),
+    fontWeight: '600',
+    color: Colors.sub2,
+  },
+  formHeaderInfo: {
+    flex: 1,
+    padding: 28,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  formHeaderLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  formHeaderTitle: {
+    fontSize: sf(28),
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  formHeaderSub: {
+    fontSize: sf(13),
+    fontWeight: '500',
+    color: Colors.sub2,
+    lineHeight: sf(20),
+    marginTop: 4,
+  },
+  sectionHeader: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginTop: 28,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+  },
 });

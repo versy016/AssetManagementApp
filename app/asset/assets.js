@@ -59,7 +59,7 @@ export default function MyAssets() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScreenHeader title="My assets" onBack={goBack} backLabel="Back" />
+      <ScreenHeader title="My Gear" onBack={goBack} backLabel="Back" />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
         {/* Content */}
         {loading ? (

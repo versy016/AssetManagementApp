@@ -13,6 +13,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -32,6 +33,8 @@ import EmptyState from '../../components/ui/EmptyState';
 /* ---------------------------- main ---------------------------- */
 export default function AssetsType() {
   const { type_id, type_name, returnTo } = useLocalSearchParams();
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   const router = useRouter();
   const parseReturnTarget = (target) => {
@@ -280,6 +283,7 @@ export default function AssetsType() {
           )}
         </View>
         <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
+          <View style={isWebWide ? styles.btnInnerWeb : styles.btnInner}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accent }]} onPress={goEditType}>
             <Text style={styles.actionText}>✏️ Edit Type</Text>
           </TouchableOpacity>
@@ -288,7 +292,8 @@ export default function AssetsType() {
               <Text style={styles.actionText}>🗑 Delete Type</Text>
             </TouchableOpacity>
           )}
-        </View>
+          </View>{/* end btnInner */}
+        </View>{/* end actionsRow */}
       </View>
   );
 
@@ -390,7 +395,6 @@ const styles = StyleSheet.create({
 
   /* footer actions styled like asset page; sticky on web */
   actionsRow: {
-    flexDirection: 'row', justifyContent: 'space-between', gap: 8,
     padding: 16, borderTopColor: Colors.line, borderTopWidth: 2, backgroundColor: Colors.card,
   },
   actionsRowSticky: {
@@ -399,6 +403,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
+  },
+  btnInner: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  btnInnerWeb: {
+    flexDirection: 'row',
+    gap: 8,
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
   },
   actionBtn: {
     flex: 1, paddingVertical: 14, borderRadius: Radius.lg, alignItems: 'center', elevation: 2, ...CardShadow,

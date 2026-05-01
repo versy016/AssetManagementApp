@@ -38,6 +38,7 @@ import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
 import StatusBadge from '../../components/ui/StatusBadge';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import ActionsForm from '../../components/ActionsForm';
 
 const RECENT_KEY = 'search_recents_v2';
 const ASSET_TYPE_OPTIONS = [
@@ -165,6 +166,8 @@ export default function SearchScreen(props = {}) {
   const [showBulkUserPicker, setShowBulkUserPicker] = useState(false);
   const [bulkUserSearch, setBulkUserSearch] = useState('');
   const [bulkResultUi, setBulkResultUi] = useState(null);
+  const [bulkFormVisible, setBulkFormVisible] = useState(false);
+  const [bulkFormAction, setBulkFormAction] = useState('');
 
 
   // Load User
@@ -209,6 +212,41 @@ export default function SearchScreen(props = {}) {
     const u = filterUsers.find((x) => (x.useremail || '').toLowerCase() === me.email.toLowerCase());
     return u?.id ?? null;
   }, [me.email, filterUsers]);
+
+  const officeAssignee = useMemo(() => pickOfficeInventoryAssignee(filterUsers), [filterUsers]);
+
+  const officeGearActive = useMemo(() => {
+    const oid = officeAssignee?.id != null ? String(officeAssignee.id) : '';
+    if (!oid) return false;
+    const ids = filters.assignedToUserIds || [];
+    return ids.length === 1 && String(ids[0]) === oid && !filters.onlyMine;
+  }, [filters.assignedToUserIds, filters.onlyMine, officeAssignee]);
+
+  const toggleMyGear = useCallback(() => {
+    setFilters((f) => {
+      const nextMine = !f.onlyMine;
+      return {
+        ...f,
+        onlyMine: nextMine,
+        ...(nextMine ? { assignedToUserIds: [] } : {}),
+      };
+    });
+  }, []);
+
+  const toggleOfficeGear = useCallback(() => {
+    const oid = officeAssignee?.id != null ? String(officeAssignee.id) : '';
+    if (!oid) return;
+    setFilters((f) => {
+      const was =
+        f.assignedToUserIds?.length === 1 &&
+        String(f.assignedToUserIds[0]) === String(oid) &&
+        !f.onlyMine;
+      if (was) {
+        return { ...f, assignedToUserIds: [] };
+      }
+      return { ...f, onlyMine: false, assignedToUserIds: [String(oid)] };
+    });
+  }, [officeAssignee]);
 
   // Build auth headers for bulk API calls
   const buildAuthHeaders = useCallback(async () => {
@@ -538,16 +576,17 @@ export default function SearchScreen(props = {}) {
   const saveRecent = useCallback(async () => {
     const labelParts = [];
     if (debouncedQuery) labelParts.push(`"${debouncedQuery}"`);
-    if (filters.onlyMine) labelParts.push('My assets');
-    if (filters.status) labelParts.push(`Status:${filters.status}`);
-    if (filters.types && filters.types.length > 0) labelParts.push(`Type:${filters.types.join(', ')}`);
-    if (filters.assignedToUserIds?.length > 0) {
+    if (filters.onlyMine) labelParts.push('My Gear');
+    if (officeGearActive) labelParts.push('Office Gear');
+    else if (filters.assignedToUserIds?.length > 0) {
       const names = filters.assignedToUserIds.map((uid) => {
         const u = filterUsers.find((x) => String(x.id) === String(uid));
         return u ? (u.name || u.useremail || u.id) : uid;
       });
       labelParts.push(`User: ${names.join(', ')}`);
     }
+    if (filters.status) labelParts.push(`Status:${filters.status}`);
+    if (filters.types && filters.types.length > 0) labelParts.push(`Type:${filters.types.join(', ')}`);
     if (filters.dueSoon) labelParts.push('Due soon');
     if (filters.awaitingQROnly) labelParts.push('QR awaiting');
     const label = labelParts.join(' · ');
@@ -556,7 +595,7 @@ export default function SearchScreen(props = {}) {
     const next = [entry, ...recents.filter(r => r.label !== label)].slice(0, 10);
     setRecents(next);
     try { await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { }
-  }, [debouncedQuery, filters, sort, recents, filterUsers]);
+  }, [debouncedQuery, filters, sort, recents, filterUsers, officeGearActive]);
 
   const fetchAll = useCallback(async () => {
     if (loading) return;
@@ -879,6 +918,17 @@ export default function SearchScreen(props = {}) {
     [selectedIds]
   );
 
+  // Primary asset + remaining IDs for ActionsForm bulk mode
+  const bulkFormEligibleIds = useMemo(
+    () => [...selectedIds].filter((id) => !isAssetIdAwaitingQr(String(id))),
+    [selectedIds]
+  );
+  const bulkFormAsset = useMemo(
+    () => (bulkFormEligibleIds.length ? items.find((item) => String(item.id) === String(bulkFormEligibleIds[0])) || null : null),
+    [bulkFormEligibleIds, items]
+  );
+  const bulkFormAdditionalIds = useMemo(() => bulkFormEligibleIds.slice(1), [bulkFormEligibleIds]);
+
   // Drop awaiting-QR ids from selection when the list refreshes (stale ids)
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -993,7 +1043,7 @@ export default function SearchScreen(props = {}) {
     <Container style={embed ? styles.embedContainer : styles.container}>
       {!hideHeader && presetKey !== 'mine' && (
         <ScreenHeader
-          title={presetKey === 'office' ? 'Office Gear' : presetKey === 'mine' ? 'My Assets' : 'Search'}
+          title={presetKey === 'office' ? 'Office Gear' : presetKey === 'mine' ? 'My Gear' : 'Search'}
           backLabel="Dashboard"
           onBack={Platform.OS === 'web' ? undefined : () => router.replace('/(tabs)/dashboard')}
         />
@@ -1021,7 +1071,10 @@ export default function SearchScreen(props = {}) {
         <View style={styles.quickRow}>
           {presetKey !== 'office' && presetKey !== 'mine' && (
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              <Chip label="My assets" icon="user" active={filters.onlyMine} onPress={() => quickToggle('onlyMine')} />
+              <Chip label="My Gear" icon="user" active={filters.onlyMine} onPress={toggleMyGear} />
+              {officeAssignee?.id ? (
+                <Chip label="Office Gear" icon="briefcase" active={officeGearActive} onPress={toggleOfficeGear} />
+              ) : null}
               <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
             </View>
           )}
@@ -1522,23 +1575,23 @@ export default function SearchScreen(props = {}) {
               <MaterialIcons name="person" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>To Me</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('repair')}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { setBulkFormAction('Repair'); setBulkFormVisible(true); }}>
               <MaterialIcons name="build" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>Log Repair</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('service')}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { setBulkFormAction('Maintenance'); setBulkFormVisible(true); }}>
               <MaterialIcons name="build-circle" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>Log Service</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('eol')}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('End of Life'); setBulkFormVisible(true); }}>
               <MaterialIcons name="remove-circle-outline" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>End of Life</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('lost')}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('Report Lost'); setBulkFormVisible(true); }}>
               <MaterialIcons name="lost-and-found" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>Report Lost</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => performBulkAction('stolen')}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('Report Stolen'); setBulkFormVisible(true); }}>
               <MaterialIcons name="warning-amber" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>Report Stolen</Text>
             </TouchableOpacity>
@@ -1633,6 +1686,24 @@ export default function SearchScreen(props = {}) {
         onDismiss={() => setBulkResultUi(null)}
         onCancel={() => setBulkResultUi(null)}
       />
+
+      {/* Bulk ActionsForm — opens for Repair, Service, EOL, Lost, Stolen */}
+      {bulkFormAsset && (
+        <ActionsForm
+          visible={bulkFormVisible}
+          onClose={() => setBulkFormVisible(false)}
+          asset={bulkFormAsset}
+          action={bulkFormAction}
+          additionalAssetIds={bulkFormAdditionalIds}
+          apiBaseUrl={API_BASE_URL}
+          users={filterUsers}
+          onSubmitted={() => {
+            setBulkFormVisible(false);
+            clearSelection();
+            fetchAll();
+          }}
+        />
+      )}
 
       {/* Advanced Filter Modal */}
       <Modal visible={filterModalOpen} transparent animationType="fade" onRequestClose={closeFilterModal}>
@@ -1792,8 +1863,12 @@ export default function SearchScreen(props = {}) {
                 {/* Switches */}
                 <View style={{ gap: 12 }}>
                   <View style={styles.switchRow}>
-                    <Text style={styles.switchLabel}>Only my assets</Text>
-                    <Switch value={filters.onlyMine} onValueChange={(v) => setFilters(f => ({ ...f, onlyMine: v }))} trackColor={{ false: '#E2E8F0', true: Colors.accent }} />
+                    <Text style={styles.switchLabel}>Only my gear</Text>
+                    <Switch
+                      value={filters.onlyMine}
+                      onValueChange={(v) => setFilters((f) => ({ ...f, onlyMine: v, ...(v ? { assignedToUserIds: [] } : {}) }))}
+                      trackColor={{ false: '#E2E8F0', true: Colors.accent }}
+                    />
                   </View>
                   <View style={styles.switchRow}>
                     <Text style={styles.switchLabel}>Only unassigned</Text>

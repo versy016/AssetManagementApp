@@ -11,6 +11,7 @@ import {
   ScrollView,
   Alert,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import { fetchFields } from '../hooks/useAssetTypeFields';
 import { FIELD_LIMITS } from '../constants/fieldLimits';
 import { normalizeWebImageFile, WEB_IMAGE_FILE_ACCEPT } from '../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT } from '../constants/uploadFormats';
+import PlacesAutocompleteInput from './ui/PlacesAutocompleteInput';
 
 const ACTIONS = [
   'Repair',
@@ -69,6 +71,8 @@ export default function ActionsForm({
   additionalAssetIds = [], // when set, apply same action to these asset ids (bulk)
 }) {
   const scrollRef = React.useRef(null);
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 768;
   const [submitting, setSubmitting] = useState(false);
   const { setTaskCount } = useTasksCount();
 
@@ -148,6 +152,8 @@ export default function ActionsForm({
   // Lost / Stolen
   const [where, setWhere] = useState('');
   const [policeReport, setPoliceReport] = useState(''); // stolen only
+  const [lostProject, setLostProject] = useState('');  // shared between lost + stolen
+  const [lostClient, setLostClient] = useState('');    // shared between lost + stolen
 
   const fields = useMemo(() => {
     switch (action) {
@@ -292,8 +298,8 @@ export default function ActionsForm({
           mode: hireMode,
         } : {}),
         ...(fields === 'eol' ? { eolReason } : {}),
-        ...(fields === 'lost' ? { where } : {}),
-        ...(fields === 'stolen' ? { where, policeReport } : {}),
+        ...(fields === 'lost' ? { where, project: lostProject || undefined, client: lostClient || undefined } : {}),
+        ...(fields === 'stolen' ? { where, policeReport, project: lostProject || undefined, client: lostClient || undefined } : {}),
       };
 
       // Optionally update asset status (only for API-accepted statuses)
@@ -496,14 +502,14 @@ export default function ActionsForm({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+    <Modal visible={visible} animationType={isWebWide ? 'fade' : 'slide'} transparent onRequestClose={onClose}>
+      <View style={isWebWide ? whs.backdrop : styles.backdrop}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardAvoid}
+          style={isWebWide ? whs.keyboardAvoid : styles.keyboardAvoid}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          <View style={styles.sheet}>
+          <View style={isWebWide ? whs.sheet : styles.sheet}>
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>{actionLabel || 'Action'}</Text>
@@ -514,7 +520,7 @@ export default function ActionsForm({
 
             <ScrollView
               ref={scrollRef}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={isWebWide ? whs.scrollContent : styles.scrollContent}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={true}
@@ -526,6 +532,7 @@ export default function ActionsForm({
 
             {fields === 'service' && (
               <>
+                {/* Summary / Description — full width */}
                 <LabeledInput label={summaryLabel}>
                   <TextInput
                     style={styles.input}
@@ -537,6 +544,7 @@ export default function ActionsForm({
                   />
                 </LabeledInput>
 
+                {/* Quick select pills — Maintenance only, full width */}
                 {action !== 'Repair' && (
                   <View style={{ marginBottom: 8 }}>
                     <Text style={{ color: Colors.sub, fontSize: sf(12), marginBottom: 6, fontWeight: '700' }}>
@@ -567,49 +575,128 @@ export default function ActionsForm({
                   </View>
                 )}
 
-                {(action === 'Repair' || action === 'Maintenance') && (
-                  <PickerRow
-                    label="Priority"
-                    value={priority}
-                    onChange={setPriority}
-                    options={['Low','Normal','High','Critical']}
-                  />
+                {/* Priority + Cost: 2-col grid on web, stacked on mobile */}
+                {isWebWide ? (
+                  <View style={whs.formGrid}>
+                    <View style={whs.gridCol}>
+                      <PickerRow
+                        label="Priority"
+                        value={priority}
+                        onChange={setPriority}
+                        options={['Low','Normal','High','Critical']}
+                      />
+                    </View>
+                    <View style={whs.gridCol}>
+                      <LabeledInput label="Estimated Cost (optional)">
+                        <TextInput
+                          style={styles.input}
+                          placeholder="0"
+                          keyboardType="numeric"
+                          placeholderTextColor={Colors.muted}
+                          value={cost}
+                          onChangeText={setCost}
+                        />
+                      </LabeledInput>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {(action === 'Repair' || action === 'Maintenance') && (
+                      <PickerRow
+                        label="Priority"
+                        value={priority}
+                        onChange={setPriority}
+                        options={['Low','Normal','High','Critical']}
+                      />
+                    )}
+                    <LabeledInput label="Estimated Cost (optional)">
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        placeholderTextColor={Colors.muted}
+                        value={cost}
+                        onChangeText={setCost}
+                      />
+                    </LabeledInput>
+                  </>
                 )}
 
-                <LabeledInput label="Estimated Cost (optional)">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    placeholderTextColor={Colors.muted}
-                    value={cost}
-                    onChangeText={setCost}
-                  />
-                </LabeledInput>
-
-                {allowOdometerInput && (
-                  <LabeledInput label="Odometer (optional)">
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g. 125000"
-                      placeholderTextColor={Colors.muted}
-                      keyboardType="numeric"
-                      value={odometer}
-                      onChangeText={setOdometer}
-                    />
-                  </LabeledInput>
+                {/* Repair Date + Odometer: 2-col on web when both available */}
+                {isWebWide ? (
+                  <>
+                    {/* Repair + vehicle: date left, odometer right */}
+                    {action === 'Repair' && allowOdometerInput && (
+                      <View style={whs.formGrid}>
+                        <View style={whs.gridCol}>
+                          <DateField
+                            label="Estimated Date of Repair (optional)"
+                            value={nextServiceDate}
+                            onChange={setNextServiceDate}
+                          />
+                        </View>
+                        <View style={whs.gridCol}>
+                          <LabeledInput label="Odometer (optional)">
+                            <TextInput
+                              style={styles.input}
+                              placeholder="e.g. 125000"
+                              placeholderTextColor={Colors.muted}
+                              keyboardType="numeric"
+                              value={odometer}
+                              onChangeText={setOdometer}
+                            />
+                          </LabeledInput>
+                        </View>
+                      </View>
+                    )}
+                    {/* Repair + no odometer: date full width */}
+                    {action === 'Repair' && !allowOdometerInput && (
+                      <DateField
+                        label="Estimated Date of Repair (optional)"
+                        value={nextServiceDate}
+                        onChange={setNextServiceDate}
+                      />
+                    )}
+                    {/* Maintenance + vehicle: odometer full width */}
+                    {action !== 'Repair' && allowOdometerInput && (
+                      <LabeledInput label="Odometer (optional)">
+                        <TextInput
+                          style={styles.input}
+                          placeholder="e.g. 125000"
+                          placeholderTextColor={Colors.muted}
+                          keyboardType="numeric"
+                          value={odometer}
+                          onChangeText={setOdometer}
+                        />
+                      </LabeledInput>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {allowOdometerInput && (
+                      <LabeledInput label="Odometer (optional)">
+                        <TextInput
+                          style={styles.input}
+                          placeholder="e.g. 125000"
+                          placeholderTextColor={Colors.muted}
+                          keyboardType="numeric"
+                          value={odometer}
+                          onChangeText={setOdometer}
+                        />
+                      </LabeledInput>
+                    )}
+                    {/* Estimated Repair Date (Repair). Next Service Date is now captured when signing off. */}
+                    {action === 'Repair' && (
+                      <DateField
+                        label="Estimated Date of Repair (optional)"
+                        value={nextServiceDate}
+                        onChange={setNextServiceDate}
+                      />
+                    )}
+                  </>
                 )}
 
-                {/* Estimated Repair Date (Repair). Next Service Date is now captured when signing off. */}
-                {action === 'Repair' && (
-                  <DateField
-                    label="Estimated Date of Repair (optional)"
-                    value={nextServiceDate}
-                    onChange={setNextServiceDate}
-                  />
-                )}
-
-                {/* Optional photos for Repair/Maintenance */}
+                {/* Optional photos for Repair/Maintenance — web file input */}
                 {Platform.OS === 'web' && (
                   <LabeledInput label={action === 'Repair' ? 'Upload Repair Images (optional)' : 'Upload Service Images (optional)'}>
                     <View style={{ gap: 8 }}>
@@ -895,45 +982,87 @@ export default function ActionsForm({
               </>
             )}
 
-            {fields === 'lost' && (
-              <LabeledInput label="Where was it last seen? *">
-                <TextInput
-                  style={styles.input}
-                  placeholder="Location / Job / Person"
-                  placeholderTextColor={Colors.muted}
-                  value={where}
-                  onChangeText={setWhere}
-                  maxLength={FIELD_LIMITS.LOCATION}
-                />
-              </LabeledInput>
-            )}
-
-            {fields === 'stolen' && (
+            {(fields === 'lost' || fields === 'stolen') && (
               <>
-                <LabeledInput label="Where was it stolen from? *">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Location / Job / Person"
-                    placeholderTextColor={Colors.muted}
-                    value={where}
-                    onChangeText={setWhere}
-                    maxLength={FIELD_LIMITS.LOCATION}
-                  />
-                </LabeledInput>
-                <LabeledInput label="Police Report # (optional)">
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Reference number"
-                    placeholderTextColor={Colors.muted}
-                    value={policeReport}
-                    onChangeText={setPoliceReport}
-                    maxLength={FIELD_LIMITS.SERIAL}
-                  />
-                </LabeledInput>
+                {/* Location — Google Places autocomplete */}
+                <PlacesAutocompleteInput
+                  label={fields === 'lost' ? 'Where was it last seen? *' : 'Where was it stolen from? *'}
+                  placeholder="Search address or describe location"
+                  value={where}
+                  onChange={setWhere}
+                  maxLength={FIELD_LIMITS.LOCATION}
+                  required
+                />
+
+                {/* Project + Client — mutually exclusive */}
+                <View style={isWebWide ? whs.formGrid : null}>
+                  <View style={isWebWide ? whs.gridCol : null}>
+                    <LabeledInput label="Project (optional)">
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={[styles.input, !!lostClient && { backgroundColor: Colors.bg, color: Colors.muted }]}
+                          placeholder="Project name"
+                          placeholderTextColor={Colors.muted}
+                          value={lostProject}
+                          onChangeText={(v) => { setLostProject(v); if (v) setLostClient(''); }}
+                          editable={!lostClient}
+                          maxLength={FIELD_LIMITS.DESCRIPTION}
+                        />
+                        {!!lostProject && (
+                          <TouchableOpacity style={styles.clearBtn} onPress={() => setLostProject('')}>
+                            <MaterialIcons name="close" size={16} color={Colors.muted} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      {!!lostClient && (
+                        <Text style={{ color: Colors.muted, fontSize: sf(11), marginTop: 4 }}>Clear client to enter project</Text>
+                      )}
+                    </LabeledInput>
+                  </View>
+
+                  <View style={isWebWide ? whs.gridCol : null}>
+                    <LabeledInput label="Client (optional)">
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={[styles.input, !!lostProject && { backgroundColor: Colors.bg, color: Colors.muted }]}
+                          placeholder="Client name"
+                          placeholderTextColor={Colors.muted}
+                          value={lostClient}
+                          onChangeText={(v) => { setLostClient(v); if (v) setLostProject(''); }}
+                          editable={!lostProject}
+                          maxLength={FIELD_LIMITS.DESCRIPTION}
+                        />
+                        {!!lostClient && (
+                          <TouchableOpacity style={styles.clearBtn} onPress={() => setLostClient('')}>
+                            <MaterialIcons name="close" size={16} color={Colors.muted} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      {!!lostProject && (
+                        <Text style={{ color: Colors.muted, fontSize: sf(11), marginTop: 4 }}>Clear project to enter client</Text>
+                      )}
+                    </LabeledInput>
+                  </View>
+                </View>
+
+                {/* Police report — stolen only */}
+                {fields === 'stolen' && (
+                  <LabeledInput label="Police Report # (optional)">
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Reference number"
+                      placeholderTextColor={Colors.muted}
+                      value={policeReport}
+                      onChangeText={setPoliceReport}
+                      maxLength={FIELD_LIMITS.SERIAL}
+                    />
+                  </LabeledInput>
+                )}
               </>
             )}
 
             {/* Notes (all) */}
+            {isWebWide && fields === 'service' && <Text style={whs.sectionHeader}>Notes</Text>}
             <LabeledInput label="Notes (optional)">
               <TextInput
                 style={[styles.input, { height: 96, textAlignVertical: 'top' }]}
@@ -950,12 +1079,12 @@ export default function ActionsForm({
             </LabeledInput>
 
             {/* Buttons */}
-            <View style={styles.row}>
-              <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={onClose} disabled={submitting}>
+            <View style={isWebWide ? whs.btnRow : styles.row}>
+              <TouchableOpacity style={[styles.btn, styles.btnGhost, isWebWide && whs.btnFixed]} onPress={onClose} disabled={submitting}>
                 <Text style={[styles.btnText, { color: Colors.slate }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary, submitting && { opacity: 0.7 }]}
+                style={[styles.btn, styles.btnPrimary, isWebWide && whs.btnFixed, submitting && { opacity: 0.7 }]}
                 onPress={handleSubmit}
                 disabled={submitting}
               >
@@ -970,6 +1099,76 @@ export default function ActionsForm({
     </Modal>
   );
 }
+
+// ─── Web-only styles ────────────────────────────────────────────────────────
+const whs = StyleSheet.create({
+  // Backdrop: centered dialog overlay
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // KeyboardAvoidingView: constrained width
+  keyboardAvoid: {
+    width: '100%',
+    maxWidth: 920,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+  },
+  // Sheet: fully-rounded card
+  sheet: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    maxHeight: '88%',
+    ...Platform.select({ android: { elevation: 4 } }),
+    shadowColor: '#1C1917',
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  // ScrollView content: more padding on web
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 32,
+  },
+  // Section divider header
+  sectionHeader: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginTop: 20,
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+  },
+  // 2-column grid row
+  formGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  // Buttons row: right-aligned on web
+  btnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 8,
+    justifyContent: 'flex-end',
+  },
+  // Fixed-width buttons (not flex-fill) on web
+  btnFixed: {
+    flex: 0,
+    minWidth: 140,
+  },
+});
 
 function LabeledInput({ label, children }) {
   return (

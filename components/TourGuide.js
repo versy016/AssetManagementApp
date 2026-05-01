@@ -99,7 +99,7 @@ export function TourProvider({ children }) {
     {
       id: 'qa-assets',
       route: '/(tabs)/dashboard',
-      title: 'My Assets',
+      title: 'My Gear',
       description: 'View a list of all assets currently assigned to you.',
       targetId: 'qa-assets',
       interaction: false,

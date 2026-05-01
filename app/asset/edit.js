@@ -1,6 +1,6 @@
 import { sf } from '../../constants/uiTheme.js';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch, Image, Modal, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch, Image, Modal, ActivityIndicator, Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -31,6 +31,8 @@ export default function EditAsset() {
 
   const scrollRef = useRef(null);
   const fieldYs = useRef({});
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
 
   const [options, setOptions] = useState({ assetTypes: [], users: [] });
   const [typeOpen, setTypeOpen] = useState(false);
@@ -721,12 +723,22 @@ export default function EditAsset() {
       />
       <KeyboardAwareScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={isWebWide ? [styles.container, whs.pageScroll] : styles.container}
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={80}
         enableOnAndroid
       >
+        {/* Web-only form header */}
+        {isWebWide && (
+          <WebEditAssetFormHeader
+            currentImageUrl={currentImageUrl}
+            pickedImageUri={image?.uri}
+            assetId={assetId}
+            assetTypeName={(options.assetTypes || []).find(t => t.id === typeId)?.name || ''}
+          />
+        )}
         {/* Type */}
+        {isWebWide && <Text style={whs.sectionHeader}>Basic Information</Text>}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={styles.label}>Asset Type *</Text>
           <DropDownPicker
@@ -819,6 +831,7 @@ export default function EditAsset() {
           </TouchableOpacity>
         </View>
 
+        {isWebWide && <Text style={whs.sectionHeader}>Assignment & Notes</Text>}
         <View onLayout={onLayoutFor('notes')}>
           <Text style={styles.label}>Notes</Text>
           <TextInput style={[styles.input, { height: 80 }]} value={notes} onChangeText={setNotes} placeholder="Notes" multiline maxLength={FIELD_LIMITS.NOTES} />
@@ -857,7 +870,8 @@ export default function EditAsset() {
           </View>
         </View>
 
-        {/* Optional image/document updates */}
+        {/* Image & Document */}
+        {isWebWide && <Text style={whs.sectionHeader}>Image & Documents</Text>}
         <View onLayout={onLayoutFor('image')}>
           <Text style={styles.label}>Image</Text>
           <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
@@ -999,6 +1013,35 @@ function WebOverlayPortal({ visible, children }) {
   );
 }
 
+function WebEditAssetFormHeader({ currentImageUrl, pickedImageUri, assetId, assetTypeName }) {
+  const imgUri = pickedImageUri || currentImageUrl;
+  return (
+    <View style={whs.formHeader}>
+      <View style={whs.formHeaderImg}>
+        {imgUri ? (
+          <Image source={{ uri: imgUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        ) : (
+          <View style={whs.formHeaderImgPlaceholder}>
+            <MaterialIcons name="image-not-supported" size={40} color={Colors.sub2} />
+            <Text style={whs.formHeaderImgHint}>No image</Text>
+          </View>
+        )}
+      </View>
+      <View style={whs.formHeaderInfo}>
+        <Text style={whs.formHeaderLabel}>Editing Asset</Text>
+        <Text style={whs.formHeaderTitle}>#{assetId}</Text>
+        {!!assetTypeName && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <MaterialIcons name="category" size={14} color={Colors.sub2} />
+            <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+          </View>
+        )}
+        <Text style={whs.formHeaderSub}>Update the fields below, then tap Save Changes.</Text>
+      </View>
+    </View>
+  );
+}
+
 const Colors = {
   primary: '#1E293B',
   primaryDark: '#0F172A',
@@ -1059,4 +1102,90 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '700', flex: 1 },
+});
+
+// Web-only styles
+const whs = StyleSheet.create({
+  pageScroll: {
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  formHeaderImg: {
+    width: 240,
+    minHeight: 180,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
+  },
+  formHeaderImgFull: {
+    width: '100%',
+    height: '100%',
+  },
+  formHeaderImgPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  formHeaderImgHint: {
+    fontSize: sf(12),
+    fontWeight: '600',
+    color: Colors.sub2,
+  },
+  formHeaderInfo: {
+    flex: 1,
+    padding: 28,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  formHeaderLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  formHeaderTitle: {
+    fontSize: sf(28),
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  formHeaderMeta: {
+    fontSize: sf(13),
+    fontWeight: '600',
+    color: Colors.sub,
+  },
+  formHeaderSub: {
+    fontSize: sf(13),
+    fontWeight: '500',
+    color: Colors.sub2,
+    lineHeight: sf(20),
+    marginTop: 4,
+  },
+  sectionHeader: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginTop: 28,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+  },
 });

@@ -1,13 +1,16 @@
 import { sf } from '../../constants/uiTheme.js';
-// app/type/index.js - Simple placeholder to satisfy Expo Router
+// app/type/index.js - Asset Types landing page
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
 export default function TypeIndexScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
 
   return (
     <ScreenWrapper style={styles.safeArea}>
@@ -16,18 +19,63 @@ export default function TypeIndexScreen() {
         backLabel="Dashboard"
         onBack={() => router.replace('/(tabs)/dashboard')}
       />
-      <View style={styles.container}>
-        <Text style={styles.title}>Asset Types</Text>
-        <Text style={styles.subtitle}>
-          Use the shortcuts below to manage asset types.
-        </Text>
-        <TouchableOpacity style={styles.button} onPress={() => router.push('/type/new')}>
-          <Text style={styles.buttonText}>Create New Type</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={() => router.push('/(tabs)/Inventory')}>
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>Back to Inventory</Text>
-        </TouchableOpacity>
-      </View>
+
+      {isWebWide ? (
+        <View style={whs.page}>
+          {/* Hero banner */}
+          <View style={whs.hero}>
+            <View style={whs.heroIconWrap}>
+              <MaterialIcons name="category" size={48} color={Colors.primary} />
+            </View>
+            <View style={whs.heroInfo}>
+              <Text style={whs.heroLabel}>Asset Management</Text>
+              <Text style={whs.heroTitle}>Asset Types</Text>
+              <Text style={whs.heroSub}>
+                Define the categories of assets tracked in your system. Each type can have its own set of custom fields, preset attributes, and required data.
+              </Text>
+            </View>
+          </View>
+
+          {/* Action cards */}
+          <View style={whs.actions}>
+            <TouchableOpacity style={whs.actionCard} onPress={() => router.push('/type/new')} activeOpacity={0.85}>
+              <View style={whs.actionIconWrap}>
+                <MaterialIcons name="add-circle-outline" size={32} color={Colors.primary} />
+              </View>
+              <Text style={whs.actionCardTitle}>Create New Type</Text>
+              <Text style={whs.actionCardSub}>Define a new asset category with custom fields and presets</Text>
+              <View style={whs.actionArrow}>
+                <MaterialIcons name="arrow-forward" size={18} color={Colors.sub2} />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[whs.actionCard, whs.actionCardSecondary]} onPress={() => router.push('/(tabs)/Inventory')} activeOpacity={0.85}>
+              <View style={[whs.actionIconWrap, { backgroundColor: Colors.chip }]}>
+                <MaterialIcons name="inventory-2" size={32} color={Colors.sub} />
+              </View>
+              <Text style={[whs.actionCardTitle, { color: Colors.sub }]}>View Inventory</Text>
+              <Text style={whs.actionCardSub}>Browse assets and manage existing asset types</Text>
+              <View style={whs.actionArrow}>
+                <MaterialIcons name="arrow-forward" size={18} color={Colors.sub2} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        /* Mobile layout — unchanged */
+        <View style={styles.container}>
+          <Text style={styles.title}>Asset Types</Text>
+          <Text style={styles.subtitle}>
+            Use the shortcuts below to manage asset types.
+          </Text>
+          <TouchableOpacity style={styles.button} onPress={() => router.push('/type/new')}>
+            <Text style={styles.buttonText}>Create New Type</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={() => router.push('/(tabs)/Inventory')}>
+            <Text style={[styles.buttonText, styles.secondaryButtonText]}>Back to Inventory</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScreenWrapper>
   );
 }
@@ -54,6 +102,7 @@ const Colors = {
 };
 
 const Radius = { sm: 6, md: 10, lg: 14 };
+const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 };
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -104,3 +153,100 @@ const styles = StyleSheet.create({
   },
 });
 
+// Web-only styles
+const whs = StyleSheet.create({
+  page: {
+    flex: 1,
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+    padding: 32,
+  },
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    padding: 32,
+    marginBottom: 24,
+    gap: 28,
+    ...CardShadow,
+  },
+  heroIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.line,
+  },
+  heroInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  heroLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  heroTitle: {
+    fontSize: sf(30),
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  heroSub: {
+    fontSize: sf(14),
+    fontWeight: '500',
+    color: Colors.sub,
+    lineHeight: sf(22),
+    maxWidth: 600,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  actionCard: {
+    flex: 1,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    padding: 24,
+    gap: 10,
+    ...CardShadow,
+  },
+  actionCardSecondary: {
+    borderColor: Colors.line,
+  },
+  actionIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  actionCardTitle: {
+    fontSize: sf(18),
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: -0.3,
+  },
+  actionCardSub: {
+    fontSize: sf(13),
+    fontWeight: '500',
+    color: Colors.sub,
+    lineHeight: sf(20),
+  },
+  actionArrow: {
+    marginTop: 8,
+  },
+});

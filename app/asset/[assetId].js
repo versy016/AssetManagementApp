@@ -84,6 +84,100 @@ function MapPreview({ location }) {
   );
 }
 
+/** Web-only two-column asset header (image left, details right). */
+function WebAssetHeader({
+  asset,
+  displaySerial,
+  displayLocation,
+  awaitingQrPlaceholder,
+  prettyDate,
+  copyId,
+  copyDeepLink,
+  openMaps,
+  setQrOpen,
+}) {
+  const infoFields = [
+    { label: 'Serial Number', value: displaySerial || null },
+    { label: 'Assigned To', value: asset.users?.name || null },
+    { label: 'Model', value: asset.model || null },
+    { label: 'Other ID', value: asset.other_id || null },
+    { label: 'Location', value: displayLocation || null },
+    { label: 'Date Purchased', value: asset.date_purchased ? prettyDate(asset.date_purchased) : null },
+    { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : null },
+    { label: 'Updated By', value: asset.last_changed_by_name || asset.last_changed_by || null },
+  ].filter((f) => !!f.value);
+
+  return (
+    <View style={whs.card}>
+      {/* ── Left: image ── */}
+      <View style={whs.imageCol}>
+        {asset.image_url ? (
+          <Image source={{ uri: asset.image_url }} style={whs.image} resizeMode="contain" />
+        ) : (
+          <View style={whs.imagePlaceholder}>
+            <MaterialIcons name="inventory-2" size={64} color={Colors.line} />
+            <Text style={whs.imagePlaceholderText}>No image</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Right: info ── */}
+      <View style={whs.infoCol}>
+        {/* Asset type name */}
+        <Text style={whs.assetName} numberOfLines={2}>
+          {asset.asset_types?.name || 'Asset'}
+        </Text>
+
+        {/* Status badge + action chips */}
+        <View style={whs.statusRow}>
+          <StatusBadge status={asset.status} />
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity onPress={copyId} style={whs.chip}>
+            <MaterialIcons name="fingerprint" size={18} color={Colors.primary} />
+            <Text style={whs.chipText}>
+              ID: <Text style={whs.chipIdVal}>{asset.id}</Text>
+            </Text>
+          </TouchableOpacity>
+          {!awaitingQrPlaceholder && (
+            <TouchableOpacity onPress={copyDeepLink} style={whs.chip}>
+              <MaterialIcons name="link" size={18} color={Colors.primary} />
+              <Text style={whs.chipText}>Copy link</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={openMaps} style={whs.chip}>
+            <MaterialIcons name="place" size={18} color={Colors.primary} />
+            <Text style={whs.chipText}>Maps</Text>
+          </TouchableOpacity>
+          {!awaitingQrPlaceholder && (
+            <TouchableOpacity onPress={() => setQrOpen(true)} style={whs.chip}>
+              <Ionicons name="qr-code-outline" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Divider */}
+        <View style={whs.divider} />
+
+        {/* Info grid — 2 cells per row */}
+        <View style={whs.infoGrid}>
+          {infoFields.map((f, i) => (
+            <View key={i} style={whs.infoCell}>
+              <Text style={whs.infoCellLabel}>{f.label}</Text>
+              <Text style={whs.infoCellValue} numberOfLines={3}>{f.value}</Text>
+            </View>
+          ))}
+          {!!asset.description && (
+            <View style={whs.infoCellFull}>
+              <Text style={whs.infoCellLabel}>Description</Text>
+              <Text style={whs.infoCellValue}>{asset.description}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function AssetDetailPage() {
   const { assetId, returnTo } = useLocalSearchParams();
   const { width } = useWindowDimensions();
@@ -209,56 +303,79 @@ export default function AssetDetailPage() {
           style={styles.detailScrollView}
           contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: Platform.OS === 'web' ? 88 : 24, flexGrow: 1 }}
       >
-          {/* Hero image — contain keeps full photo visible, centered; no horizontal “slice” crop */}
-        <View style={styles.heroImageWrap}>
-          <Image
-            source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
-            style={styles.heroImage}
-          />
-        </View>
+        {/* ── Outer page wrap: centres + caps width on web ── */}
+        <View style={isWebWide ? whs.pageWrap : null}>
 
-        <View style={styles.detailCard}>
-            {/* Title Row */}
-          <View style={styles.titleRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.assetName}>{asset.asset_types?.name || 'Asset'}</Text>
-                <Text style={styles.assetSerialLine} numberOfLines={2}>
-                  Serial number: {displaySerial || 'N/A'}
-            </Text>
+          {/* Mobile only: full-width hero image */}
+          {!isWebWide && (
+            <View style={styles.heroImageWrap}>
+              <Image
+                source={{ uri: asset.image_url || 'https://via.placeholder.com/150' }}
+                style={styles.heroImage}
+              />
+            </View>
+          )}
+
+          {/* Web only: two-column header card */}
+          {isWebWide && (
+            <WebAssetHeader
+              asset={asset}
+              displaySerial={displaySerial}
+              displayLocation={displayLocation}
+              awaitingQrPlaceholder={awaitingQrPlaceholder}
+              prettyDate={prettyDate}
+              copyId={copyId}
+              copyDeepLink={copyDeepLink}
+              openMaps={openMaps}
+              setQrOpen={setQrOpen}
+            />
+          )}
+
+        <View style={[styles.detailCard, isWebWide && whs.detailCardWeb]}>
+            {/* Mobile only: Title Row + meta chips */}
+          {!isWebWide && (
+            <>
+              <View style={styles.titleRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.assetName}>{asset.asset_types?.name || 'Asset'}</Text>
+                  <Text style={styles.assetSerialLine} numberOfLines={2}>
+                    Serial number: {displaySerial || 'N/A'}
+                  </Text>
+                </View>
               </View>
-          </View>
 
-          {/* Meta chips */}
-          <View style={styles.metaRow}>
-            <TouchableOpacity onPress={copyId} style={styles.metaChip}>
-                <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
-                <Text style={styles.metaChipText}>
-                  ID:{' '}
-                  <Text style={styles.metaChipIdValue}>{asset.id}</Text>
-                </Text>
-            </TouchableOpacity>
-            {!awaitingQrPlaceholder ? (
-              <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
-                <MaterialIcons name="link" size={16} color={Colors.accent} />
-                <Text style={styles.metaChipText}>Copy Link</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
-                <MaterialIcons name="place" size={16} color={Colors.accent} />
-              <Text style={styles.metaChipText}>Maps</Text>
-            </TouchableOpacity>
-            {!awaitingQrPlaceholder ? (
-              <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
-                <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+              <View style={styles.metaRow}>
+                <TouchableOpacity onPress={copyId} style={styles.metaChip}>
+                  <MaterialIcons name="fingerprint" size={16} color={Colors.accent} />
+                  <Text style={styles.metaChipText}>
+                    ID:{' '}
+                    <Text style={styles.metaChipIdValue}>{asset.id}</Text>
+                  </Text>
+                </TouchableOpacity>
+                {!awaitingQrPlaceholder ? (
+                  <TouchableOpacity onPress={copyDeepLink} style={styles.metaChip}>
+                    <MaterialIcons name="link" size={16} color={Colors.accent} />
+                    <Text style={styles.metaChipText}>Copy Link</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={openMaps} style={styles.metaChip}>
+                  <MaterialIcons name="place" size={16} color={Colors.accent} />
+                  <Text style={styles.metaChipText}>Maps</Text>
+                </TouchableOpacity>
+                {!awaitingQrPlaceholder ? (
+                  <TouchableOpacity onPress={() => setQrOpen(true)} style={styles.metaChip}>
+                    <Ionicons name="qr-code-outline" size={18} color={Colors.accent} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </>
+          )}
 
-          {/* Core fields */}
-          {(() => {
+          {/* Core fields — mobile only; web shows these in WebAssetHeader above */}
+          {!isWebWide && (() => {
             const coreRows = [
               { label: 'Status', value: <StatusBadge status={asset.status} /> },
-                { label: 'Serial number', value: displaySerial || 'N/A' },
+              { label: 'Serial number', value: displaySerial || 'N/A' },
               { label: 'Assigned To', value: asset.users?.name || 'N/A' },
               { label: 'Last Scanned Location', value: displayLocation },
               { label: 'Model', value: asset.model || 'N/A' },
@@ -267,28 +384,20 @@ export default function AssetDetailPage() {
               { label: 'Last Updated', value: asset.last_updated ? prettyDate(asset.last_updated) : 'N/A' },
               { label: 'Last Updated By', value: (asset.last_changed_by_name || asset.users?.name || asset.last_changed_by || 'N/A') },
               { label: 'Description', value: asset.description || 'No description' },
-              ];
-            if (isWebWide) {
-                return (
-                  <>
-                    <Text style={styles.sectionH}>Overview</Text>
-                    <DetailsGrid rows={coreRows} />
-                  </>
-                );
-              }
-              return (
-                <>
-                  <Text style={styles.sectionH}>Overview</Text>
-                  {coreRows.map((r, i) => (
-                    <Row
-                      key={`core-${i}`}
-                      label={r.label}
-                      value={r.value}
-                      rightAlign={r.right !== false}
-                    />
-                  ))}
-                </>
-              );
+            ];
+            return (
+              <>
+                <Text style={styles.sectionH}>Overview</Text>
+                {coreRows.map((r, i) => (
+                  <Row
+                    key={`core-${i}`}
+                    label={r.label}
+                    value={r.value}
+                    rightAlign={r.right !== false}
+                  />
+                ))}
+              </>
+            );
           })()}
 
             {/* Current work details */}
@@ -653,6 +762,7 @@ export default function AssetDetailPage() {
             <Text style={[styles.sectionH, { marginTop: 16 }]}>Map</Text>
             <MapPreview location={mapEmbedLocation} />
           </View>
+        </View>{/* end pageWrap */}
         </ScrollView>
 
         {/* Action bar */}
@@ -770,6 +880,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -998,5 +1109,139 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: sf(13),
     color: Colors.sub,
+  },
+});
+
+// Web-only header styles
+const whs = StyleSheet.create({
+  pageWrap: {
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 8,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    ...Shadows.card,
+    marginHorizontal: 24,
+    marginTop: 20,
+    overflow: 'hidden',
+  },
+  imageCol: {
+    width: 300,
+    minWidth: 220,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
+  },
+  image: {
+    width: '100%',
+    height: 280,
+    borderRadius: Radius.md,
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: 280,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    borderStyle: 'dashed',
+  },
+  imagePlaceholderText: {
+    fontSize: sf(13),
+    color: Colors.sub2,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  infoCol: {
+    flex: 1,
+    padding: 24,
+    minWidth: 0,
+  },
+  assetName: {
+    fontSize: sf(26),
+    fontWeight: '800',
+    color: Colors.text,
+    marginBottom: 12,
+    letterSpacing: -0.5,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.line,
+  },
+  chipText: {
+    fontSize: sf(14),
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  chipIdVal: {
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+    textDecorationColor: Colors.primary,
+  },
+  divider: {
+    height: 1.5,
+    backgroundColor: Colors.line,
+    marginBottom: 18,
+    marginTop: 2,
+  },
+  infoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  infoCell: {
+    width: '50%',
+    paddingRight: 20,
+    paddingBottom: 16,
+  },
+  infoCellFull: {
+    width: '100%',
+    paddingRight: 0,
+    paddingBottom: 16,
+  },
+  infoCellLabel: {
+    fontSize: sf(10),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  infoCellValue: {
+    fontSize: sf(14),
+    fontWeight: '600',
+    color: Colors.text,
+    lineHeight: sf(20),
+  },
+  detailCardWeb: {
+    marginHorizontal: 24,
+    marginTop: 14,
+    borderRadius: Radius.lg,
   },
 });

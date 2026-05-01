@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import logger from '../../utils/logger';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ScrollView,
-  Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
+  Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform, useWindowDimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -89,6 +89,8 @@ export default function NewAssetType() {
   const router = useRouter();
   const { returnTo } = useLocalSearchParams();
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+  const { width } = useWindowDimensions();
+  const isWebWide = Platform.OS === 'web' && (width || 0) >= 960;
   const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -533,11 +535,14 @@ export default function NewAssetType() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           ref={scrollViewRef}
-          contentContainerStyle={s.container}
+          contentContainerStyle={isWebWide ? [s.container, whs.pageScroll] : s.container}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Web-only form header */}
+          {isWebWide && <WebNewTypeFormHeader image={image} name={name} />}
 
           {/* Type name and image - combined for tour */}
+          {isWebWide && <Text style={whs.sectionHeader}>Type Details</Text>}
           <TourTarget id="type-name-image">
             <View 
               ref={(r) => { sectionRefs.current['name-image'] = r; }}
@@ -565,6 +570,7 @@ export default function NewAssetType() {
           </TourTarget>
 
           {/* Default (always included) */}
+          {isWebWide && <Text style={whs.sectionHeader}>Default Fields (always included)</Text>}
           <TourTarget id="type-defaults">
             <View
               ref={(r) => { sectionRefs.current.defaults = r; }}
@@ -578,6 +584,7 @@ export default function NewAssetType() {
           </TourTarget>
 
           {/* Pick from library (2-column checklist with Required toggles) */}
+          {isWebWide && <Text style={whs.sectionHeader}>Pick from Library</Text>}
           <TourTarget id="type-library">
             <View
               ref={(r) => { sectionRefs.current.library = r; }}
@@ -669,6 +676,7 @@ export default function NewAssetType() {
           </TourTarget>
 
           {/* Custom fields (saved list + editor) */}
+          {isWebWide && <Text style={whs.sectionHeader}>Custom Fields</Text>}
           <TourTarget id="type-custom-fields">
             <View 
               ref={(r) => { sectionRefs.current['custom-fields'] = r; }}
@@ -845,6 +853,28 @@ export default function NewAssetType() {
   );
 }
 
+function WebNewTypeFormHeader({ image, name }) {
+  return (
+    <View style={whs.formHeader}>
+      <View style={whs.formHeaderImg}>
+        {image?.uri ? (
+          <Image source={{ uri: image.uri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        ) : (
+          <View style={whs.formHeaderImgPlaceholder}>
+            <MaterialIcons name="category" size={44} color={Colors.sub2} />
+            <Text style={whs.formHeaderImgHint}>Type image</Text>
+          </View>
+        )}
+      </View>
+      <View style={whs.formHeaderInfo}>
+        <Text style={whs.formHeaderLabel}>Asset Management</Text>
+        <Text style={whs.formHeaderTitle}>{name ? name : 'Create Asset Type'}</Text>
+        <Text style={whs.formHeaderSub}>Define a new category with custom fields, presets, and required attributes. Fill in the details below and submit.</Text>
+      </View>
+    </View>
+  );
+}
+
 const Colors = {
   primary: '#1E293B',
   primaryDark: '#0F172A',
@@ -926,4 +956,85 @@ const s = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '800', flex: 1 },
+});
+
+// Web-only styles
+const whs = StyleSheet.create({
+  pageScroll: {
+    maxWidth: 1100,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    marginBottom: 24,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  formHeaderImg: {
+    width: 240,
+    minHeight: 180,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 2,
+    borderRightColor: Colors.line,
+  },
+  formHeaderImgFull: {
+    width: '100%',
+    height: '100%',
+  },
+  formHeaderImgPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  formHeaderImgHint: {
+    fontSize: sf(12),
+    fontWeight: '600',
+    color: Colors.sub2,
+  },
+  formHeaderInfo: {
+    flex: 1,
+    padding: 28,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  formHeaderLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  formHeaderTitle: {
+    fontSize: sf(28),
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    letterSpacing: -0.5,
+  },
+  formHeaderSub: {
+    fontSize: sf(13),
+    fontWeight: '500',
+    color: Colors.sub2,
+    lineHeight: sf(20),
+    marginTop: 4,
+  },
+  sectionHeader: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginTop: 28,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+  },
 });
