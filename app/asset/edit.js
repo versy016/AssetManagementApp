@@ -306,17 +306,7 @@ export default function EditAsset() {
       }
       showToast('Asset saved');
       setTimeout(() => {
-        if (typeId) {
-          router.replace({
-            pathname: '/type/[type_id]',
-            params: {
-              type_id: String(typeId),
-              returnTo: `/asset/${assetId}`,
-            },
-          });
-        } else {
-          router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
-        }
+        router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
       }, 1000);
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update');

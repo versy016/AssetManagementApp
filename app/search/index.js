@@ -105,6 +105,7 @@ export default function SearchScreen(props = {}) {
   const [pageSize, setPageSize] = useState(25);
 
   // Filters
+  const FILTER_PERSIST_KEY = 'search_filters_v1';
   const [filters, setFilters] = useState({
     types: [],
     status: null,
@@ -113,9 +114,31 @@ export default function SearchScreen(props = {}) {
     onlyMine: false,
     dueSoon: false,
     includeQRReserved: false,
+    includeQRAwaiting: false,
     onlyUnassigned: false,
-    awaitingQROnly: false,
   });
+
+  // Persist only the QR-toggle filters across sessions
+  useEffect(() => {
+    AsyncStorage.getItem(FILTER_PERSIST_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        setFilters((f) => ({
+          ...f,
+          includeQRReserved: !!saved.includeQRReserved,
+          includeQRAwaiting: !!saved.includeQRAwaiting,
+        }));
+      } catch {}
+    });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      FILTER_PERSIST_KEY,
+      JSON.stringify({ includeQRReserved: filters.includeQRReserved, includeQRAwaiting: filters.includeQRAwaiting }),
+    ).catch(() => {});
+  }, [filters.includeQRReserved, filters.includeQRAwaiting]);
 
   // Users from DB (for Assigned To filter)
   const [filterUsers, setFilterUsers] = useState([]);
@@ -205,6 +228,7 @@ export default function SearchScreen(props = {}) {
 
   // Multi-select toggle helpers
   const toggleSelect = useCallback((id) => {
+    if (isAssetIdAwaitingQr(String(id || ''))) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -844,16 +868,36 @@ export default function SearchScreen(props = {}) {
 
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(Math.max(items.length, 1) / pageSize));
 
-  // Select/deselect all visible (current page) assets
+  // UUID rows = "Awaiting QR" — no bulk checkbox / not included in select-all
+  const selectablePaginatedIds = useMemo(
+    () => paginatedItems.map((i) => i.id).filter(Boolean).filter((id) => !isAssetIdAwaitingQr(String(id))),
+    [paginatedItems]
+  );
+
+  const bulkEligibleSelectedCount = useMemo(
+    () => [...selectedIds].filter((id) => !isAssetIdAwaitingQr(String(id))).length,
+    [selectedIds]
+  );
+
+  // Drop awaiting-QR ids from selection when the list refreshes (stale ids)
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => !isAssetIdAwaitingQr(String(id))));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
+
+  // Select/deselect all visible (current page) assets — excluding awaiting-QR rows
   const toggleSelectAll = useCallback(() => {
-    const visibleIds = paginatedItems.map((i) => i.id).filter(Boolean);
-    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+    const visibleIds = selectablePaginatedIds;
+    if (visibleIds.length === 0) return;
+    const allSelected = visibleIds.every((id) => selectedIds.has(id));
     setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
-  }, [paginatedItems, selectedIds]);
+  }, [selectablePaginatedIds, selectedIds]);
 
   // Bulk action executor — mirrors multi-scan/list.js logic
   const performBulkAction = useCallback(async (actionType, selectedUser = null) => {
-    const ids = [...selectedIds];
+    const ids = [...selectedIds].filter((id) => !isAssetIdAwaitingQr(String(id)));
     if (!ids.length) return;
     setShowBulkUserPicker(false);
     setBulkLoading(true);
@@ -1209,17 +1253,18 @@ export default function SearchScreen(props = {}) {
                   {/* Checkbox column — admin web only */}
                   {isAdmin && Platform.OS === 'web' && (
                     <TouchableOpacity
-                      style={[styles.th, styles.thCellIcon, { width: 44 }]}
+                      style={[styles.th, styles.thCellIcon, { width: 44 }, selectablePaginatedIds.length === 0 && { opacity: 0.35 }]}
                       onPress={toggleSelectAll}
+                      disabled={selectablePaginatedIds.length === 0}
                       activeOpacity={0.7}
                       accessibilityRole="checkbox"
                       accessibilityLabel="Select all"
                     >
                       <MaterialIcons
                         name={
-                          paginatedItems.length > 0 && paginatedItems.every((i) => selectedIds.has(i.id))
+                          selectablePaginatedIds.length > 0 && selectablePaginatedIds.every((id) => selectedIds.has(id))
                             ? 'check-box'
-                            : selectedIds.size > 0
+                            : bulkEligibleSelectedCount > 0
                             ? 'indeterminate-check-box'
                             : 'check-box-outline-blank'
                         }
@@ -1301,6 +1346,8 @@ export default function SearchScreen(props = {}) {
                     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '--';
                     const fmtDateTime = (d) => d ? new Date(d).toLocaleString('en-GB', { hour: 'numeric', minute: 'numeric', hour12: true, day: 'numeric', month: 'short', year: 'numeric' }) : '--';
 
+                    const rowAwaitingQr = isAssetIdAwaitingQr(String(item.id || ''));
+
                     return (
                       <View
                         key={item.id}
@@ -1308,21 +1355,25 @@ export default function SearchScreen(props = {}) {
                         onMouseEnter={() => setHoverRowId(item.id)}
                         onMouseLeave={() => setHoverRowId(null)}
                       >
-                        {/* Checkbox — admin web only */}
+                        {/* Checkbox — admin web only (hidden for UUID / awaiting-QR rows) */}
                         {isAdmin && Platform.OS === 'web' && (
-                          <TouchableOpacity
-                            style={[styles.td, styles.tdCellIcon, { width: 44 }]}
-                            onPress={() => toggleSelect(item.id)}
-                            activeOpacity={0.7}
-                            accessibilityRole="checkbox"
-                            accessibilityLabel={selectedIds.has(item.id) ? 'Deselect' : 'Select'}
-                          >
-                            <MaterialIcons
-                              name={selectedIds.has(item.id) ? 'check-box' : 'check-box-outline-blank'}
-                              size={20}
-                              color={selectedIds.has(item.id) ? Colors.accent : Colors.sub2}
-                            />
-                          </TouchableOpacity>
+                          rowAwaitingQr ? (
+                            <View style={[styles.td, styles.tdCellIcon, { width: 44 }]} accessibilityElementsHidden />
+                          ) : (
+                            <TouchableOpacity
+                              style={[styles.td, styles.tdCellIcon, { width: 44 }]}
+                              onPress={() => toggleSelect(item.id)}
+                              activeOpacity={0.7}
+                              accessibilityRole="checkbox"
+                              accessibilityLabel={selectedIds.has(item.id) ? 'Deselect' : 'Select'}
+                            >
+                              <MaterialIcons
+                                name={selectedIds.has(item.id) ? 'check-box' : 'check-box-outline-blank'}
+                                size={20}
+                                color={selectedIds.has(item.id) ? Colors.accent : Colors.sub2}
+                              />
+                            </TouchableOpacity>
+                          )
                         )}
                         {/* Per-row Actions icon — admin web only, left side */}
                         {isAdmin && Platform.OS === 'web' && (
@@ -1455,9 +1506,9 @@ export default function SearchScreen(props = {}) {
       )}
 
       {/* ── Bulk-action floating bar (admin + web + selection active) ── */}
-      {isAdmin && Platform.OS === 'web' && selectedIds.size > 0 && !bulkLoading && (
+      {isAdmin && Platform.OS === 'web' && bulkEligibleSelectedCount > 0 && !bulkLoading && (
         <View style={styles.bulkBar}>
-          <Text style={styles.bulkBarCount}>{selectedIds.size} selected</Text>
+          <Text style={styles.bulkBarCount}>{bulkEligibleSelectedCount} selected</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={styles.bulkBarScroll}>
             <TouchableOpacity style={styles.bulkBtn} onPress={() => setShowBulkUserPicker(true)}>
               <MaterialIcons name="person-add" size={15} color="#fff" />
@@ -1526,7 +1577,7 @@ export default function SearchScreen(props = {}) {
                   <MaterialIcons name="close" size={22} color={Colors.sub} />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.bulkPickerSub}>{selectedIds.size} asset(s) will be transferred</Text>
+              <Text style={styles.bulkPickerSub}>{bulkEligibleSelectedCount} asset(s) will be transferred</Text>
               <TextInput
                 style={styles.bulkPickerSearch}
                 placeholder="Search by name or email…"

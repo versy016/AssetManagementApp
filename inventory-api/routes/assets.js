@@ -2385,6 +2385,17 @@ router.post('/swap-qr', authRequired, async (req, res) => {
       await tx.asset_logs.updateMany({ where: { asset_id: from_id }, data: { asset_id: to_id } });
       await tx.asset_actions.updateMany({ where: { asset_id: from_id }, data: { asset_id: to_id } });
 
+      // If source was a QR-Awaiting import, restore the original description
+      // that was stashed in notes as "Original description: <text>"
+      const isQRAwaitingSource = String(from.description || '').trim().toLowerCase() === 'qr awaiting assets';
+      let resolvedDescription = from.description;
+      let resolvedNotes = from.notes;
+      if (isQRAwaitingSource) {
+        const match = String(from.notes || '').match(/^Original description:\s*([\s\S]*)$/i);
+        resolvedDescription = match ? (match[1].trim() || null) : null;
+        resolvedNotes = match ? null : from.notes;
+      }
+
       // Update target record with source core fields
       const updatedTo = await tx.assets.update({
         where: { id: to_id },
@@ -2392,13 +2403,13 @@ router.post('/swap-qr', authRequired, async (req, res) => {
           type_id: from.type_id,
           serial_number: from.serial_number,
           model: from.model,
-          description: from.description,
+          description: resolvedDescription,
           other_id: from.other_id,
           location: from.location,
           status: from.status,
           next_service_date: from.next_service_date,
           date_purchased: from.date_purchased,
-          notes: from.notes,
+          notes: resolvedNotes,
           assigned_to_id: from.assigned_to_id,
           documentation_url: from.documentation_url,
           image_url: from.image_url,
