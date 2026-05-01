@@ -401,7 +401,7 @@ export default function MapsTabScreen() {
       ) : (
         <View style={styles.mapShell}>
           {Platform.OS === 'web' ? (
-            <View ref={mapDivRef} collapsable={false} style={{ flex: 1, minHeight: 420, borderRadius: Radius.lg }} />
+            <div ref={mapDivRef} style={{ flex: 1, width: '100%', minHeight: 420, borderRadius: Radius.lg }} />
           ) : (
             <NativeAssetMapWebView html={webViewHtml} onMessage={onWebViewMessage} />
           )}

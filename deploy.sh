@@ -28,12 +28,21 @@ cd $API_DIR
 npm ci
 cd ..
 
-# Build the application
-echo "🔨 Building application..."
-npm run build
-
 # Set environment variables
 export NODE_ENV=$ENVIRONMENT
+
+# Load Google Maps key from inventory-api/.env for the Expo web bundle
+GMAPS_KEY=$(grep -E '^GOOGLE_MAPS_WEB_KEY=|^EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY=|^GOOGLE_MAPS_API_KEY=|^GOOGLE_PLACES_API_KEY=' $API_DIR/.env 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d ' ')
+if [ -z "$GMAPS_KEY" ]; then
+  echo "⚠️  Warning: No Google Maps key found in $API_DIR/.env — Maps tab will be broken"
+else
+  echo "🗺️  Google Maps key loaded (${GMAPS_KEY:0:12}...)"
+  export EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY="$GMAPS_KEY"
+fi
+
+# Build the application
+echo "🔨 Building application..."
+NODE_OPTIONS="--max-old-space-size=3072" EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY="$GMAPS_KEY" npx expo export --platform web
 
 # Run database migrations
 echo "🔄 Running database migrations..."
