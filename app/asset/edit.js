@@ -24,6 +24,32 @@ registerTranslation('en', en);
 
 const normSlug = (s = '') => String(s).toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
 
+/**
+ * AssetActionBar passes returnTo as this asset's detail URL so nested ?returnTo= survives.
+ * router.replace() from edit → that URL stacks a second copy of detail; use router.back() instead.
+ */
+function isReturnToThisAssetDetail(returnTo, assetId) {
+  if (returnTo == null || assetId == null || String(assetId) === '') return false;
+  const raw = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+  if (typeof raw !== 'string') return false;
+  let path = raw.split('?')[0].trim();
+  if (!path) return false;
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      path = new URL(path).pathname || '';
+    } catch {
+      return false;
+    }
+  }
+  const parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
+  if (parts.length < 2 || parts[0] !== 'asset') return false;
+  try {
+    return decodeURIComponent(parts[1]) === String(assetId);
+  } catch {
+    return parts[1] === String(assetId);
+  }
+}
+
 export default function EditAsset() {
   const { assetId, returnTo } = useLocalSearchParams();
   const normalizedReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
@@ -308,8 +334,21 @@ export default function EditAsset() {
       }
       showToast('Asset saved');
       setTimeout(() => {
+        const returnToIsOnlyThisDetail =
+          !normalizedReturnTo || isReturnToThisAssetDetail(normalizedReturnTo, assetId);
+        if (normalizedReturnTo && !returnToIsOnlyThisDetail) {
+          try { router.replace(normalizedReturnTo); } catch { router.back(); }
+          return;
+        }
+        // Pop edit — do not replace with same asset detail (returnTo from AssetActionBar caused duplicate stacks).
+        try {
+          if (router.canGoBack?.()) {
+            router.back();
+            return;
+          }
+        } catch { /* fall through */ }
         router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
-      }, 1000);
+      }, 600);
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update');
     } finally {
@@ -338,7 +377,7 @@ export default function EditAsset() {
     if (typeCode === 'datetime') typeCode = 'date';
     const isReq = !!f.is_required;
     const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
-    const Label = <Text style={styles.label}>{displayLabel}{isReq ? ' *' : ''}</Text>;
+    const Label = <Text style={[styles.label, !!errors[slug] && styles.labelError]}>{displayLabel}{isReq ? ' *' : ''}</Text>;
     const items = (f.options || []).map(o => ({ label: String(o.label ?? o), value: (o.value ?? o) }));
 
     // helper: parse validation rules/options
@@ -389,7 +428,7 @@ export default function EditAsset() {
             })()}
             {typeCode !== 'url' ? (
               <TextInput
-                style={[styles.input, typeCode === 'textarea' && { height: 90 }]}
+                style={[styles.input, !!errors[slug] && styles.inputError, typeCode === 'textarea' && { height: 90 }]}
                 placeholder={`Enter ${f.label || f.name}`}
                 value={String(fieldValues[slug] ?? '')}
                 onChangeText={(t) => updateField(slug, t)}
@@ -464,7 +503,7 @@ export default function EditAsset() {
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
             <TextInput
-              style={styles.input}
+              style={[styles.input, !!errors[slug] && styles.inputError]}
               keyboardType="numeric"
               value={fieldValues[slug] !== undefined && fieldValues[slug] !== null ? String(fieldValues[slug]) : ''}
               onChangeText={(t) => updateField(slug, t.replace(/[^\d.-]/g, ''))}
@@ -477,7 +516,7 @@ export default function EditAsset() {
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
-            <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug })}>
+            <TouchableOpacity style={[styles.input, !!errors[slug] && styles.inputError]} onPress={() => setDatePicker({ open: true, slug })}>
               <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
                 {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
               </Text>
@@ -643,7 +682,7 @@ export default function EditAsset() {
             onChangeValue={(val) => updateField(slug, val)}
             items={items}
             placeholder={`Select ${f.label || f.name}`}
-            style={styles.dropdown}
+            style={[styles.dropdown, !!errors[slug] && styles.dropdownError]}
             dropDownContainerStyle={styles.dropdownContainer}
             nestedScrollEnabled
             />
@@ -666,7 +705,7 @@ export default function EditAsset() {
             onChangeValue={(vals) => updateField(slug, Array.isArray(vals) ? vals : [])}
             items={items}
             placeholder={`Select ${f.label || f.name}`}
-            style={styles.dropdown}
+            style={[styles.dropdown, !!errors[slug] && styles.dropdownError]}
             dropDownContainerStyle={styles.dropdownContainer}
             mode="BADGE"
             badgeDotColors={[]}
@@ -681,7 +720,7 @@ export default function EditAsset() {
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
             <TextInput
-              style={styles.input}
+              style={[styles.input, !!errors[slug] && styles.inputError]}
               placeholder={`Enter ${f.label || f.name}`}
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
@@ -713,10 +752,18 @@ export default function EditAsset() {
         title="Edit Asset"
         backLabel="Details"
         onBack={() => {
-          if (normalizedReturnTo) {
+          const returnToIsOnlyThisDetail =
+            !normalizedReturnTo || isReturnToThisAssetDetail(normalizedReturnTo, assetId);
+          if (normalizedReturnTo && !returnToIsOnlyThisDetail) {
             router.replace(normalizedReturnTo);
             return;
           }
+          try {
+            if (router.canGoBack?.()) {
+              router.back();
+              return;
+            }
+          } catch { /* fall through */ }
           router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
         }}
         right={<Text style={styles.headerId}>#{assetId}</Text>}
@@ -740,7 +787,7 @@ export default function EditAsset() {
         {/* Type */}
         {isWebWide && <Text style={whs.sectionHeader}>Basic Information</Text>}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
-          <Text style={styles.label}>Asset Type *</Text>
+          <Text style={[styles.label, !!errors.typeId && styles.labelError]}>Asset Type *</Text>
           <DropDownPicker
             open={typeOpen}
             setOpen={setTypeOpen}
@@ -748,7 +795,7 @@ export default function EditAsset() {
             setValue={(fn) => setTypeId(fn())}
             items={(options.assetTypes || []).map(t => ({ label: t.name, value: t.id }))}
             placeholder="Select Asset Type"
-            style={[styles.dropdown, styles.disabledField]}
+            style={[styles.dropdown, styles.disabledField, !!errors.typeId && styles.dropdownError]}
             dropDownContainerStyle={[styles.dropdownContainer, styles.disabledField]}
             nestedScrollEnabled
             disabled
@@ -1070,6 +1117,9 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
+  labelError: { color: Colors.dangerFg },
+  inputError: { borderColor: Colors.dangerFg },
+  dropdownError: { borderColor: Colors.dangerFg },
   uploadHint: { fontSize: 12, color: Colors.sub, lineHeight: 18, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: Colors.chip, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, justifyContent: 'center', borderWidth: 2, borderColor: Colors.line },

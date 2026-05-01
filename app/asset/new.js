@@ -941,7 +941,7 @@ export default function NewAsset() {
     const displayLabel = (slug === 'documentation_url') ? 'Document/attachment' : ((f.label || f.name) || slug);
 
     const Label = (
-      <Text style={styles.label}>
+      <Text style={[styles.label, !!errors[slug] && styles.labelError]}>
         {displayLabel}{isReq ? ' *' : ''}
       </Text>
     );
@@ -1016,7 +1016,7 @@ export default function NewAsset() {
             {Label}
             <TextInput
               ref={setInputRef(slug)}
-              style={[styles.input, typeCode === 'textarea' && { height: 90 }]}
+              style={[styles.input, !!errors[slug] && styles.inputError, typeCode === 'textarea' && { height: 90 }]}
               placeholder={`Enter ${f.label || f.name}`}
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
@@ -1033,7 +1033,7 @@ export default function NewAsset() {
             {Label}
             <TextInput
               ref={setInputRef(slug)}
-              style={styles.input}
+              style={[styles.input, !!errors[slug] && styles.inputError]}
               placeholder={`Enter ${f.label || f.name}`}
               keyboardType="numeric"
               value={fieldValues[slug] !== undefined && fieldValues[slug] !== null ? String(fieldValues[slug]) : ''}
@@ -1065,7 +1065,7 @@ export default function NewAsset() {
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
-            <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug })}>
+            <TouchableOpacity style={[styles.input, !!errors[slug] && styles.inputError]} onPress={() => setDatePicker({ open: true, slug })}>
               <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
                 {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
               </Text>
@@ -1141,7 +1141,7 @@ export default function NewAsset() {
               setValue={(fn) => updateField(slug, fn())}
               items={selectItems}
               placeholder={`Select ${f.label || f.name}`}
-              style={styles.dropdown}
+              style={[styles.dropdown, !!errors[slug] && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
             />
@@ -1163,7 +1163,7 @@ export default function NewAsset() {
               setValue={(fn) => updateField(slug, fn())}
               items={selectItems}
               placeholder={`Select ${f.label || f.name}`}
-              style={styles.dropdown}
+              style={[styles.dropdown, !!errors[slug] && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               mode="BADGE"
               badgeDotColors={[]}
@@ -1179,7 +1179,7 @@ export default function NewAsset() {
             {Label}
             <TextInput
               ref={setInputRef(slug)}
-              style={styles.input}
+              style={[styles.input, !!errors[slug] && styles.inputError]}
               placeholder={`Enter ${f.label || f.name}`}
               value={String(fieldValues[slug] ?? '')}
               onChangeText={(t) => updateField(slug, t)}
@@ -1258,7 +1258,7 @@ export default function NewAsset() {
 
         {/* QR / Asset ID */}
         <View onLayout={onLayoutFor('id')}>
-          <Text style={styles.label}>Select Asset ID</Text>
+          <Text style={[styles.label, !!errors.id && styles.labelError]}>Select Asset ID</Text>
           <TourTarget id="asset-id">
             {Platform.OS !== 'web' ? (
               <View style={{ alignItems: 'center' }}>
@@ -1381,7 +1381,7 @@ export default function NewAsset() {
         {/* Asset Type */}
         {isWebWide && <Text style={whs.sectionHeader}>Asset Type</Text>}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
-          <Text style={styles.label}>Asset Type *</Text>
+          <Text style={[styles.label, !!errors.typeId && styles.labelError]}>Asset Type *</Text>
           <TourTarget id="asset-type">
             <DropDownPicker
               open={typeOpen}
@@ -1395,7 +1395,7 @@ export default function NewAsset() {
               listMode="SCROLLVIEW"
               searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
               searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
-              style={styles.dropdown}
+              style={[styles.dropdown, !!errors.typeId && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
             />
@@ -1410,10 +1410,10 @@ export default function NewAsset() {
           {!!typeId && fieldsSchema.map(renderField)}
           {/* Serial Number */}
           <View onLayout={onLayoutFor('serial_number')}>
-            <Text style={styles.label}>Serial Number</Text>
+            <Text style={[styles.label, !!errors.serial_number && styles.labelError]}>Serial Number</Text>
             <TextInput
               ref={setInputRef('serial_number')}
-              style={styles.input}
+              style={[styles.input, !!errors.serial_number && styles.inputError]}
               placeholder="Serial Number"
               value={serialNumber}
               onChangeText={(t) => {
@@ -1427,10 +1427,10 @@ export default function NewAsset() {
           </View>
 
           <View onLayout={onLayoutFor('other_id')}>
-            <Text style={styles.label}>Other ID</Text>
+            <Text style={[styles.label, !!errors.other_id && styles.labelError]}>Other ID</Text>
             <TextInput
               ref={setInputRef('other_id')}
-              style={styles.input}
+              style={[styles.input, !!errors.other_id && styles.inputError]}
               placeholder="Optional"
               value={otherId}
               onChangeText={(t) => {
@@ -1444,10 +1444,10 @@ export default function NewAsset() {
           </View>
 
           <View onLayout={onLayoutFor('model')}>
-            <Text style={styles.label}>Model</Text>
+            <Text style={[styles.label, !!errors.model && styles.labelError]}>Model</Text>
             <TextInput
               ref={setInputRef('model')}
-              style={styles.input}
+              style={[styles.input, !!errors.model && styles.inputError]}
               placeholder="Model"
               value={model}
               onChangeText={(t) => { setModel(t); setErrors(prev => ({ ...prev, model: undefined })); }}
@@ -1457,10 +1457,10 @@ export default function NewAsset() {
           </View>
 
           <View onLayout={onLayoutFor('description')}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={[styles.label, !!errors.description && styles.labelError]}>Description</Text>
             <TextInput
               ref={setInputRef('description')}
-              style={[styles.input, { height: 80 }]}
+              style={[styles.input, !!errors.description && styles.inputError, { height: 80 }]}
               placeholder="Description"
               value={description}
               onChangeText={(t) => { setDescription(t); setErrors(prev => ({ ...prev, description: undefined })); }}
@@ -1470,8 +1470,8 @@ export default function NewAsset() {
             {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
           </View>
           <View onLayout={onLayoutFor('date_purchased')}>
-            <Text style={styles.label}>Date Purchased</Text>
-            <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__date_purchased' })}>
+            <Text style={[styles.label, !!errors.date_purchased && styles.labelError]}>Date Purchased</Text>
+            <TouchableOpacity style={[styles.input, !!errors.date_purchased && styles.inputError]} onPress={() => setDatePicker({ open: true, slug: '__date_purchased' })}>
               <Text style={{ color: datePurchased ? '#000' : '#888' }}>
                 {datePurchased ? formatDisplayDate(datePurchased) : 'Select Date Purchased'}
               </Text>
@@ -1479,7 +1479,7 @@ export default function NewAsset() {
             {!!errors.date_purchased && <Text style={styles.errorBelow}>{errors.date_purchased}</Text>}
           </View>
           <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
-            <Text style={styles.label}>User Assigned</Text>
+            <Text style={[styles.label, !!errors.assigned_to_id && styles.labelError]}>User Assigned</Text>
             <DropDownPicker
               open={userOpen}
               setOpen={setUserOpen}
@@ -1492,7 +1492,7 @@ export default function NewAsset() {
               listMode="SCROLLVIEW"
               searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
               searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
-              style={styles.dropdown}
+              style={[styles.dropdown, !!errors.assigned_to_id && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
             />
@@ -1500,7 +1500,7 @@ export default function NewAsset() {
           </View>
 
           <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
-            <Text style={styles.label}>Status</Text>
+            <Text style={[styles.label, !!errors.status && styles.labelError]}>Status</Text>
             <DropDownPicker
               open={statusOpen}
               setOpen={setStatusOpen}
@@ -1508,7 +1508,7 @@ export default function NewAsset() {
               setValue={(fn) => setStatus(fn())}
               items={(options.statuses || []).map(s => ({ label: s, value: s }))}
               placeholder="Select Status"
-              style={styles.dropdown}
+              style={[styles.dropdown, !!errors.status && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
             />
@@ -1749,6 +1749,9 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
+  labelError: { color: Colors.dangerFg },
+  inputError: { borderColor: Colors.dangerFg },
+  dropdownError: { borderColor: Colors.dangerFg },
   subtleLabel: { color: Colors.sub, fontSize: sf(12), marginTop: 6, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },

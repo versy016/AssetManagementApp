@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, View, Text, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
@@ -235,7 +235,13 @@ export function useAssetDetail({ assetId, returnTo }) {
     return unsub;
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Refetch when returning to this screen (e.g. after Edit → back) without stacking duplicate routes.
+  useFocusEffect(
+    useCallback(() => {
+      if (!assetId) return;
+      load();
+    }, [assetId, load])
+  );
 
   // Derived: custom field entries
   const customFieldEntries = useMemo(() => {

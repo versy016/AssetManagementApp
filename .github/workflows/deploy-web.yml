@@ -26,7 +26,8 @@ jobs:
       - name: Build Expo Web
         env:
           EXPO_PUBLIC_API_URL: https://api.gearops.com.au
-        run: npx expo export --platform web
+          NODE_OPTIONS: "--max-old-space-size=3072"
+        run: npx expo export --platform web --clear
 
       - name: List build output
         run: ls -l dist
@@ -38,7 +39,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "dist/*"
-          target: "/home/ec2-user/deploy/AssetManagementApp/web-build"
+          target: "/home/ec2-user/deploy/AssetManagementApp/web-build/dist"
 
       - name: Deploy API to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -60,5 +61,6 @@ jobs:
             cd /home/ec2-user/deploy/AssetManagementApp/inventory-api
             npm install
             npx prisma generate
-            pm2 restart all
+            pm2 restart gearops-api
             pm2 save
+            sudo nginx -s reload

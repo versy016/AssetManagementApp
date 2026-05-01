@@ -548,7 +548,7 @@ export default function NewAssetType() {
               ref={(r) => { sectionRefs.current['name-image'] = r; }}
             >
           {/* Type name */}
-          <Text style={s.label}>Name</Text>
+          <Text style={[s.label, nameError ? s.labelError : null]}>Name</Text>
               <View style={{ marginVertical: 8 }}>
               <TextInput
                 style={[s.input, nameError ? s.inputError : null]}
@@ -907,6 +907,7 @@ const s = StyleSheet.create({
   submit: { backgroundColor: Colors.primary },
   preview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: 10, ...CardShadow },
   label: { fontSize: sf(16), fontWeight: '900', marginBottom: 5, color: Colors.text },
+  labelError: { color: Colors.dangerFg },
   errorBelow: { color: Colors.dangerFg, marginTop: -4, marginBottom: 6, fontWeight: '700' },
   subLabel: { fontSize: sf(14), fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
   card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginBottom: 12, backgroundColor: Colors.card, ...CardShadow },
