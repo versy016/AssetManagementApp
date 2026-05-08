@@ -19,7 +19,7 @@ const config = require('./config');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { handleDocusignConnectWebhook } = require('./services/docusignConnectWebhook');
+const { handleBoldsignWebhook } = require('./services/boldsignWebhook');
 
 // ---- Prisma (singleton) ---------------------------------------------------
 const prisma = require('./lib/prisma');
@@ -105,11 +105,11 @@ const publicLimiter = rateLimit({
 });
 app.use('/public', publicLimiter);
 
-// DocuSign Connect -- must use raw body for HMAC verification (before JSON parser)
+// BoldSign webhook -- must use raw body for HMAC verification (before JSON parser)
 app.post(
-  '/hire-disclaimer/docusign/webhook',
+  '/hire-disclaimer/boldsign/webhook',
   express.raw({ type: () => true, limit: '5mb' }),
-  (req, res) => handleDocusignConnectWebhook(req, res)
+  (req, res) => handleBoldsignWebhook(req, res)
 );
 
 // Only parse JSON when Content-Type is explicitly application/json (never parse multipart as JSON)

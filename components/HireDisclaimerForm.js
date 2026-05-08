@@ -82,7 +82,7 @@ function normalizeRatePeriodUi(raw) {
 export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormMode = 'new' }) {
   const [generating, setGenerating] = useState(false);
   const [sharingSig, setSharingSig] = useState(false);
-  const [docusignEnabled, setDocusignEnabled] = useState(false);
+  const [signingEnabled, setSigningEnabled] = useState(false);
   const [datePicker, setDatePicker] = useState({ open: false, field: null });
   const [timePicker, setTimePicker] = useState({ open: false, field: null });
   const [form, setForm] = useState({
@@ -134,12 +134,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/docusign/status`);
+        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/signing/status`);
         if (!res.ok) return;
         const j = await res.json();
-        if (!cancelled && j.enabled) setDocusignEnabled(true);
+        if (!cancelled && j.enabled) setSigningEnabled(true);
       } catch (e) {
-        logger.warn('HireDisclaimerForm: DocuSign status check failed', e?.message || e);
+        logger.warn('HireDisclaimerForm: signing status check failed', e?.message || e);
       }
     })();
     return () => {
@@ -193,6 +193,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
             ]
           : [];
     setEquipmentItems(items.filter((it) => it.assetId || it.description));
+    const isCopy = hireFormMode === 'copy';
     const fromD = String(initialHire.fromDate || d.hireStartDate || '').slice(0, 10);
     const toD = String(initialHire.toDate || d.hireEndDate || '').slice(0, 10);
     setForm((prev) => ({
@@ -206,12 +207,18 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       email: String(d.email || initialHire.email || '').trim(),
       equipmentDescription: '',
       assetId: '',
-      hireStartDate: fromD,
-      hireStartTime: String(d.hireStartTime || '').trim(),
-      hireEndDate: toD,
+      // Dates are not copied — the new hire needs its own schedule
+      hireStartDate: isCopy ? '' : fromD,
+      hireStartTime: isCopy ? '' : String(d.hireStartTime || '').trim(),
+      hireEndDate: isCopy ? '' : toD,
+      hireEndTime: isCopy ? '' : String(d.hireEndTime || '').trim(),
       rate: d.rate != null && String(d.rate).trim() !== '' ? String(d.rate) : '',
       ratePeriod: normalizeRatePeriodUi(d.ratePeriod),
     }));
+    // Populate Algolia search inputs so the company/project text fields display the
+    // copied value even before the user searches (selectedCompanyHit is null at this point)
+    if (company) setCompanySearch(company);
+    if (proj) setProjectSearch(proj);
     setAddressQuery(String(d.address || '').trim());
     setAssetQuery('');
     setAssetSuggestions([]);
@@ -520,6 +527,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     if (!idVal && !descVal) {
       return;
     }
+    // Prevent adding the same asset ID twice
+    if (idVal && equipmentItems.some((it) => it.assetId && it.assetId.toLowerCase() === idVal.toLowerCase())) {
+      setErrors((prev) => ({ ...prev, assetId: 'This asset is already in the list' }));
+      return;
+    }
+    setErrors((prev) => { const next = { ...prev }; delete next.assetId; return next; });
     setEquipmentItems((prev) => [...prev, { assetId: idVal, description: descVal }]);
     // Clear current line
     setForm((prev) => ({ ...prev, assetId: '', equipmentDescription: '' }));
@@ -571,17 +584,17 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
 
   const formBusy = generating || sharingSig;
 
-  /** Save hire then open an embedded DocuSign signing session in a new tab (in-person signing). */
+  /** Save hire then open an embedded BoldSign signing session in a new tab (in-person signing). */
   const handleGenerateAndSign = async () => {
     const errs = validateForm(form, addressQuery);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
-    if (!docusignEnabled) {
+    if (!signingEnabled) {
       Alert.alert(
-        'DocuSign not configured',
-        'DocuSign is not set up on the server. Ask your administrator to add the DocuSign credentials to the API environment.'
+        'e-Signature not configured',
+        'BoldSign is not set up on the server. Ask your administrator to add the BoldSign API key to the API environment.'
       );
       return;
     }
@@ -603,12 +616,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       }
       const hireId = saveJson.hireId;
 
-      // Point back to our backend return handler so DocuSign triggers the signed-PDF download
+      // Point back to our backend return handler so BoldSign triggers the signed-PDF download
       // and the tab notifies the parent window via postMessage before closing itself.
-      const returnUrl = `${String(API_BASE_URL || '').replace(/\/$/, '')}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/docusign/return`;
+      const returnUrl = `${String(API_BASE_URL || '').replace(/\/$/, '')}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/return`;
 
       const dsRes = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/docusign/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/send`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -621,7 +634,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       }
       const signingUrl = dsJson.signingUrl;
       if (!signingUrl) {
-        throw new Error('No signing URL returned from DocuSign');
+        throw new Error('No signing URL returned from BoldSign');
       }
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -637,12 +650,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     }
   };
 
-  /** DocuSign: email the lessee a link to review the disclaimer and sign the lease. */
+  /** BoldSign: email the lessee a link to review the disclaimer and sign the lease. */
   const handleSendViaEmail = async () => {
-    if (!docusignEnabled) {
+    if (!signingEnabled) {
       Alert.alert(
-        'DocuSign not configured',
-        'DocuSign is not set up on the server. Ask your administrator to add the DocuSign credentials to the API environment.'
+        'e-Signature not configured',
+        'BoldSign is not set up on the server. Ask your administrator to add the BoldSign API key to the API environment.'
       );
       return;
     }
@@ -674,7 +687,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       }
       const hireId = saveJson.hireId;
       const dsRes = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/docusign/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/send`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -683,7 +696,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       );
       const dsJson = await dsRes.json().catch(() => ({}));
       if (!dsRes.ok) {
-        throw new Error(dsJson.error || dsRes.statusText || 'DocuSign send failed');
+        throw new Error(dsJson.error || dsRes.statusText || 'Signing send failed');
       }
       if (typeof onGenerated === 'function') onGenerated(hireId);
     } catch (e) {
@@ -787,10 +800,10 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         <Text style={styles.title}>Equipment Hire Lease Disclaimer</Text>
         <Text style={styles.subtitle}>
           {hireFormMode === 'edit' && initialHire?.id
-            ? 'Editing an existing hire. Use Generate PDF & Sign for in-person signing, or Send via email to dispatch a DocuSign signing request to the contact.'
+            ? 'Editing an existing hire. Use Generate PDF & Sign for in-person signing, or Send via email to dispatch a signing request to the contact.'
             : hireFormMode === 'copy' && initialHire?.id
               ? 'Details loaded from an existing hire. Review and adjust, then choose an action below.'
-              : 'Complete the form. Use Generate PDF & Sign to open the lease in DocuSign for in-person signing, or Send via email to have the lessee sign remotely. Once signed, both the lessee and the office receive a copy and the hire status updates to Signed.'}
+              : 'Complete the form. Use Generate PDF & Sign to open the lease for in-person signing, or Send via email to have the lessee sign remotely. Once signed, both the lessee and the office receive a copy and the hire status updates to Signed.'}
         </Text>
 
         <View style={[styles.section, styles.sectionFirst]}>
@@ -1069,7 +1082,10 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
             <TextInput
               style={styles.input}
               value={assetQuery}
-              onChangeText={(v) => setAssetQuery(v)}
+              onChangeText={(v) => {
+                setAssetQuery(v);
+                if (errors.assetId) setErrors((prev) => { const next = { ...prev }; delete next.assetId; return next; });
+              }}
               placeholder="Search by ID, serial, type, model or description"
               placeholderTextColor={Colors.sub2}
             />
@@ -1101,15 +1117,18 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           {(() => {
             const hasEquipmentData = ((assetQuery || '').trim() || (form.equipmentDescription || '').trim()) !== '';
             return (
-              <View style={styles.equipmentActionsRow}>
-                <TouchableOpacity
-                  style={[styles.equipmentAddBtn, hasEquipmentData && styles.equipmentAddBtnHighlighted]}
-                  onPress={handleAddEquipmentLine}
-                >
-                  <Text style={[styles.equipmentAddText, hasEquipmentData && styles.equipmentAddTextHighlighted]}>
-                    Add asset to list
-                  </Text>
-                </TouchableOpacity>
+              <View>
+                <View style={styles.equipmentActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.equipmentAddBtn, hasEquipmentData && styles.equipmentAddBtnHighlighted]}
+                    onPress={handleAddEquipmentLine}
+                  >
+                    <Text style={[styles.equipmentAddText, hasEquipmentData && styles.equipmentAddTextHighlighted]}>
+                      Add asset to list
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {errors.assetId ? <Text style={styles.fieldError}>{errors.assetId}</Text> : null}
               </View>
             );
           })()}
@@ -1204,7 +1223,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         </View>
 
         <TouchableOpacity
-          style={[styles.exportBtnShare, formBusy && !docusignEnabled ? styles.exportBtnShareDisabledDs : null, formBusy && styles.exportBtnDisabled]}
+          style={[styles.exportBtnShare, formBusy && !signingEnabled ? styles.exportBtnShareDisabledDs : null, formBusy && styles.exportBtnDisabled]}
           onPress={handleSendViaEmail}
           disabled={formBusy}
         >
@@ -1212,9 +1231,9 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
             <ActivityIndicator color="#FFF" />
           ) : (
             <View style={styles.sendBtnInner}>
-              <Text style={styles.exportBtnText}>Send via email (DocuSign)</Text>
-              {!docusignEnabled && (
-                <Text style={styles.sendBtnNote}>DocuSign not configured</Text>
+              <Text style={styles.exportBtnText}>Send via email (e-Signature)</Text>
+              {!signingEnabled && (
+                <Text style={styles.sendBtnNote}>e-Signature not configured</Text>
               )}
             </View>
           )}
@@ -1223,7 +1242,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         <TouchableOpacity
           style={[
             styles.exportBtnSecondary,
-            !docusignEnabled && styles.exportBtnSecondaryDisabled,
+            !signingEnabled && styles.exportBtnSecondaryDisabled,
             formBusy && styles.exportBtnDisabled,
           ]}
           onPress={handleGenerateAndSign}
@@ -1234,8 +1253,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           ) : (
             <View style={styles.sendBtnInner}>
               <Text style={styles.exportBtnSecondaryText}>Generate PDF & Sign</Text>
-              {!docusignEnabled && (
-                <Text style={styles.sendBtnNote2}>DocuSign not configured</Text>
+              {!signingEnabled && (
+                <Text style={styles.sendBtnNote2}>e-Signature not configured</Text>
               )}
             </View>
           )}

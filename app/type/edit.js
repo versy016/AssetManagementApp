@@ -97,6 +97,7 @@ export default function EditAssetType() {
 
   // type core
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [pickedImage, setPickedImage] = useState(null); // { uri, file }
   const [origName, setOrigName] = useState('');
@@ -557,7 +558,11 @@ export default function EditAssetType() {
 
   // ------ Save all ------
   const handleSave = async () => {
-    if (!name.trim()) return Alert.alert('Validation', 'Name is required');
+    if (!name.trim()) {
+      setNameError(true);
+      return;
+    }
+    setNameError(false);
 
     setSaving(true);
     // Resolve auth header once — reused for every fetch in this handler
@@ -885,8 +890,13 @@ export default function EditAssetType() {
 
           {/* Type core */}
           {isWebWide && <Text style={whs.sectionHeader}>Type Details</Text>}
-          <Text style={s.label}>Name *</Text>
-          <TextInput style={s.input} placeholder="Type name" value={name} onChangeText={setName} />
+          <Text style={[s.label, nameError && s.labelError]}>Name *</Text>
+          <TextInput
+            style={[s.input, nameError && s.inputError]}
+            placeholder="Type name"
+            value={name}
+            onChangeText={(t) => { setName(t); if (nameError && t.trim()) setNameError(false); }}
+          />
 
           <Text style={s.label}>Type image (optional)</Text>
           <View style={s.imagePreviewBox}>
@@ -1539,6 +1549,8 @@ const s = StyleSheet.create({
   // container + basics
   container: { padding: 20, paddingBottom: 28, backgroundColor: Colors.bg },
   label: { fontWeight: '700', marginTop: 10, color: Colors.text },
+  labelError: { color: Colors.dangerFg },
+  inputError: { borderColor: Colors.dangerFg },
   input: {
     borderWidth: 2,
     borderColor: Colors.line,

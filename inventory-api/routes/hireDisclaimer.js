@@ -9,7 +9,8 @@ const prisma = require('../lib/prisma');
 const { ASSET_STATUS } = require('../lib/assetStatus');
 const logger = require('../lib/logger');
 const { Document, Packer, Paragraph, AlignmentType, HeadingLevel, TextRun } = require('docx');
-const docusignService = require('../services/docusignService');
+const boldsignService = require('../services/boldsignService');
+const AWS = require('aws-sdk');
 const { convertDocxBufferToPdf } = require('../services/hireDocxToPdf');
 
 // ── Signed document local cache ──────────────────────────────────────────────
@@ -20,14 +21,51 @@ if (!fs.existsSync(SIGNED_DOCS_DIR)) {
 function signedDocFilePath(actionId) {
   return path.join(SIGNED_DOCS_DIR, `hire_${actionId}_signed.pdf`);
 }
+
+// ── S3 helper ────────────────────────────────────────────────────────────────
+function getS3() {
+  const cfg = { region: process.env.AWS_REGION || 'ap-southeast-2' };
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    cfg.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    cfg.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  }
+  return new AWS.S3(cfg);
+}
+
+async function uploadSignedPdfToS3(pdfBuffer, actionId) {
+  const bucket = process.env.S3_BUCKET;
+  if (!bucket) return null;
+  const key = `signed-leases/hire_${actionId}_signed_${Date.now()}.pdf`;
+  const params = { Bucket: bucket, Key: key, Body: pdfBuffer, ContentType: 'application/pdf' };
+  const useAcl = String(process.env.S3_USE_ACL || '').toLowerCase() === 'true';
+  if (useAcl) params.ACL = process.env.S3_ACL || 'private';
+  const result = await getS3().upload(params).promise();
+  return result.Location;
+}
+
 /**
- * Download completed envelope PDF from DocuSign, write to disk, and store path in action data.
+ * Download completed document PDF from BoldSign, upload to S3, write local backup,
+ * and store URL/path in asset_actions.data.
  * Safe to call multiple times (idempotent -- overwrites if exists).
  */
-async function fetchAndStoreSignedPdf(actionId, envelopeId) {
-  const pdfBuf = await docusignService.downloadSignedDocument(envelopeId);
+async function fetchAndStoreSignedPdf(actionId, documentId) {
+  const pdfBuf = await boldsignService.downloadSignedDocument(documentId);
   const filePath = signedDocFilePath(actionId);
   fs.writeFileSync(filePath, pdfBuf);
+
+  const updates = {
+    signatureStatus: SIGNATURE_SIGNED,
+    signedDocPath: filePath,
+  };
+
+  // Upload to S3 (best-effort — local file is the fallback)
+  try {
+    const s3Url = await uploadSignedPdfToS3(pdfBuf, actionId);
+    if (s3Url) updates.signedFileUrl = s3Url;
+  } catch (s3Err) {
+    logger.warn('[hireDisclaimer] S3 upload failed for signed PDF:', s3Err?.message);
+  }
+
   const ex = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
   if (ex) {
     const prevData = ex.data && typeof ex.data === 'object' ? ex.data : {};
@@ -36,9 +74,8 @@ async function fetchAndStoreSignedPdf(actionId, envelopeId) {
       data: {
         data: {
           ...prevData,
-          signatureStatus: SIGNATURE_SIGNED,
+          ...updates,
           signedAt: prevData.signedAt || new Date().toISOString(),
-          signedDocPath: filePath,
         },
       },
     });
@@ -52,7 +89,7 @@ const TEMPLATE_NAMES = [
   'Equipment_hire_lease_disclaimer.docx',
 ];
 
-/** Stored in asset_actions.data -- dashboard + DocuSign/Adobe webhooks */
+/** Stored in asset_actions.data -- dashboard + BoldSign webhook */
 const SIGNATURE_PENDING = 'pending_signature';
 const SIGNATURE_SIGNED = 'signed';
 
@@ -471,7 +508,7 @@ function hireActionToGenerateBody(action) {
   };
 }
 
-/** Asset to attach when hire form has no resolvable equipment id (preview + DocuSign). Env HIRE_STANDALONE_ASSET_ID or first empty placeholder row. */
+/** Asset to attach when hire form has no resolvable equipment id (preview + BoldSign). Env HIRE_STANDALONE_ASSET_ID or first empty placeholder row. */
 async function resolveStandaloneHireAssetId() {
   const envId = process.env.HIRE_STANDALONE_ASSET_ID && String(process.env.HIRE_STANDALONE_ASSET_ID).trim();
   if (envId) {
@@ -940,7 +977,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
 });
 
 // PATCH /hire-disclaimer/hires/:actionId/signature-status
-// Body: { status: 'pending_signature' | 'signed', signedAt?: ISO string } -- for DocuSign/Adobe webhooks or admin tools
+// Body: { status: 'pending_signature' | 'signed', signedAt?: ISO string } -- for BoldSign webhook or admin tools
 router.patch('/hires/:actionId/signature-status', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -1091,8 +1128,8 @@ router.get('/hires', async (req, res) => {
         signatureStatus,
         signatureStatusLabel,
         signedAt: data.signedAt && String(data.signedAt).trim() ? String(data.signedAt).trim() : null,
-        docusignEnvelopeId: data.docusignEnvelopeId ? String(data.docusignEnvelopeId) : null,
-        docusignSentAt: data.docusignSentAt ? String(data.docusignSentAt) : null,
+        boldsignDocumentId: data.boldsignDocumentId ? String(data.boldsignDocumentId) : null,
+        boldsignSentAt: data.boldsignSentAt ? String(data.boldsignSentAt) : null,
         data: data,
       };
     });
@@ -1103,20 +1140,19 @@ router.get('/hires', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/docusign/status -- frontend feature flags
-router.get('/docusign/status', (_req, res) => {
+// GET /hire-disclaimer/signing/status -- frontend feature flags
+router.get('/signing/status', (_req, res) => {
   res.json({
-    enabled: docusignService.isConfigured(),
-    signAnchor: process.env.DOCUSIGN_SIGN_ANCHOR || docusignService.DEFAULT_SIGN_ANCHOR,
+    enabled: boldsignService.isConfigured(),
   });
 });
 
-// POST /hire-disclaimer/hires/:actionId/docusign/send
+// POST /hire-disclaimer/hires/:actionId/signing/send
 // Body: { deliveryMethod: 'email' | 'embedded', signerEmail?, signerName?, returnUrl? (required if embedded) }
-router.post('/hires/:actionId/docusign/send', async (req, res) => {
+router.post('/hires/:actionId/signing/send', async (req, res) => {
   try {
-    if (!docusignService.isConfigured()) {
-      return res.status(503).json({ error: 'DocuSign is not configured on the server' });
+    if (!boldsignService.isConfigured()) {
+      return res.status(503).json({ error: 'BoldSign is not configured on the server' });
     }
     const actionId = String(req.params.actionId || '').trim();
     if (!actionId) {
@@ -1166,14 +1202,14 @@ router.post('/hires/:actionId/docusign/send', async (req, res) => {
       (details.hire_to && String(details.hire_to).trim()) ||
       emailCandidate;
 
+    // Generate the hire lease .docx from stored data and upload to BoldSign for signing
     const body = hireActionToGenerateBody(action);
     const p = parseHireDisclaimerBody(body);
     const { buffer, filename } = await buildHireDisclaimerDocxFromParsed(p);
 
-    const clientUserId =
-      dm === 'embedded' ? `hire-${actionId}-${Date.now()}` : undefined;
+    logger.log('[hireDisclaimer] calling BoldSign for hire:', actionId, 'delivery:', dm, 'signer:', emailCandidate);
 
-    const { envelopeId, signingUrl } = await docusignService.createHireEnvelope({
+    const { documentId, signingUrl } = await boldsignService.createHireDocument({
       documentBuffer: buffer,
       documentFileName: filename,
       signerEmail: emailCandidate,
@@ -1181,14 +1217,16 @@ router.post('/hires/:actionId/docusign/send', async (req, res) => {
       hireActionId: actionId,
       deliveryMethod: dm,
       returnUrl: dm === 'embedded' ? String(returnUrl).trim() : undefined,
-      clientUserId,
     });
+
+    logger.log('[hireDisclaimer] BoldSign document sent. documentId:', documentId, 'delivery:', dm);
 
     const merged = {
       ...data,
-      docusignEnvelopeId: envelopeId,
-      docusignSentAt: new Date().toISOString(),
-      docusignDelivery: dm,
+      boldsignDocumentId: documentId,
+      boldsignSentAt: new Date().toISOString(),
+      boldsignDelivery: dm,
+      signatureStatus: SIGNATURE_PENDING,
     };
     await prisma.asset_actions.update({
       where: { id: actionId },
@@ -1197,53 +1235,55 @@ router.post('/hires/:actionId/docusign/send', async (req, res) => {
 
     res.json({
       ok: true,
-      envelopeId,
+      documentId,
       deliveryMethod: dm,
       signingUrl: signingUrl || null,
     });
   } catch (e) {
-    // Log the full DocuSign response body so the real error code is visible
-    const dsBody =
-      e?.response?.body || e?.response?.data || e?.responseBody || e?.body;
-    if (dsBody) {
-      console.error('[hireDisclaimer] docusign error body:', JSON.stringify(dsBody));
+    // Log the full BoldSign response body so the real error is visible.
+    // HttpError (SDK): body is at e.body
+    // Raw axios error:  body is at e.response.data
+    const bsBody = e?.body ?? e?.response?.data ?? null;
+    if (bsBody) {
+      logger.error('[hireDisclaimer] BoldSign error response body:', JSON.stringify(bsBody));
     }
-    console.error('[hireDisclaimer] docusign send error:', e?.message || e);
-    const userMsg = dsBody?.message || dsBody?.errorCode
-      ? `DocuSign: ${dsBody.errorCode || ''} – ${dsBody.message || e?.message}`
-      : e?.message || 'DocuSign send failed';
+    logger.error('[hireDisclaimer] BoldSign send error:', e?.message || e);
+    const userMsg = (bsBody?.message || bsBody?.errorCode)
+      ? `BoldSign: ${bsBody.errorCode || ''} – ${bsBody.message || e?.message}`
+      : e?.message || 'Signing send failed';
     res.status(500).json({ error: userMsg });
   }
 });
 
 /**
- * GET /hire-disclaimer/hires/:actionId/docusign/return
- * DocuSign redirects the embedded signing tab here after the signer finishes or cancels.
- * Params: event (signing_complete | cancel | decline | exception | session_timeout | ttl_expired)
+ * GET /hire-disclaimer/hires/:actionId/signing/return
+ * BoldSign redirects the embedded signing tab here after the signer finishes or cancels.
+ * Query param: event (Completed | Declined | Expired | etc.)
  *
- * On signing_complete:
- *   1. Download signed PDF from DocuSign and store locally.
+ * On Completed:
+ *   1. Download signed PDF from BoldSign and upload to S3.
  *   2. Mark hire as signed in DB.
  *   3. Return HTML page that postMessages back to the opener tab, then closes itself.
  *
  * On any other event (cancel, decline, …):
  *   Returns HTML page that notifies opener and closes.
  */
-router.get('/hires/:actionId/docusign/return', async (req, res) => {
+router.get('/hires/:actionId/signing/return', async (req, res) => {
   const actionId = String(req.params.actionId || '').trim();
   const event = String(req.query.event || '').trim().toLowerCase();
-  const completed = event === 'signing_complete';
+  // BoldSign uses 'completed'; also accept 'signing_complete' for compat
+  const completed = event === 'completed' || event === 'signing_complete';
 
   if (completed && actionId) {
     try {
       const action = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
-      const envelopeId = action?.data?.docusignEnvelopeId;
-      if (envelopeId) {
-        await fetchAndStoreSignedPdf(actionId, envelopeId);
+      const documentId = action?.data?.boldsignDocumentId;
+      if (documentId) {
+        await fetchAndStoreSignedPdf(actionId, documentId);
         logger.log('[hireDisclaimer] embedded signing complete, signed PDF stored for', actionId);
       }
     } catch (e) {
-      console.warn('[hireDisclaimer] docusign/return sync error:', e?.message || e);
+      console.warn('[hireDisclaimer] signing/return sync error:', e?.message || e);
     }
   }
 
@@ -1282,14 +1322,14 @@ router.get('/hires/:actionId/docusign/return', async (req, res) => {
 });
 
 /**
- * POST /hire-disclaimer/hires/:actionId/docusign/sync
- * Manually pull the current envelope status and signed PDF from DocuSign.
+ * POST /hire-disclaimer/hires/:actionId/signing/sync
+ * Manually pull the current document status and signed PDF from BoldSign.
  * Useful if the webhook hasn't fired yet or the return-URL tab was closed too fast.
  */
-router.post('/hires/:actionId/docusign/sync', async (req, res) => {
+router.post('/hires/:actionId/signing/sync', async (req, res) => {
   try {
-    if (!docusignService.isConfigured()) {
-      return res.status(503).json({ error: 'DocuSign is not configured' });
+    if (!boldsignService.isConfigured()) {
+      return res.status(503).json({ error: 'BoldSign is not configured' });
     }
     const actionId = String(req.params.actionId || '').trim();
     if (!actionId) return res.status(400).json({ error: 'Missing hire id' });
@@ -1297,25 +1337,22 @@ router.post('/hires/:actionId/docusign/sync', async (req, res) => {
     const action = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
     if (!action) return res.status(404).json({ error: 'Hire not found' });
 
-    const envelopeId = action.data?.docusignEnvelopeId;
-    if (!envelopeId) return res.status(400).json({ error: 'No DocuSign envelope on this hire' });
+    const documentId = action.data?.boldsignDocumentId;
+    if (!documentId) return res.status(400).json({ error: 'No BoldSign document on this hire' });
 
-    // Check envelope status via DocuSign API
-    const { apiClient, accountId } = await docusignService.getAuthenticatedClient();
-    const docusign = require('docusign-esign');
-    const envelopesApi = new docusign.EnvelopesApi(apiClient);
-    const envelope = await envelopesApi.getEnvelope(accountId, envelopeId);
+    // Check document status via BoldSign API
+    const props = await boldsignService.getDocumentProperties(documentId);
+    const status = props && String(props.status || props.documentStatus || '').toLowerCase();
 
-    const status = envelope && String(envelope.status || '').toLowerCase();
     if (status !== 'completed') {
       return res.json({ ok: true, status, signed: false });
     }
 
-    // Envelope is complete -- download and store
-    const filePath = await fetchAndStoreSignedPdf(actionId, envelopeId);
+    // Document is complete -- download and store
+    const filePath = await fetchAndStoreSignedPdf(actionId, documentId);
     res.json({ ok: true, status: 'completed', signed: true, signedDocPath: filePath });
   } catch (e) {
-    console.error('[hireDisclaimer] docusign sync error:', e?.message || e);
+    console.error('[hireDisclaimer] signing sync error:', e?.message || e);
     res.status(500).json({ error: e?.message || 'Sync failed' });
   }
 });

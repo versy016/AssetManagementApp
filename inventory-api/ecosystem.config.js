@@ -7,7 +7,7 @@
  *   pm2 save
  *   pm2 startup   ← run the printed command to survive reboots
  *
- * All secrets (DATABASE_URL, AWS keys, DocuSign keys) stay in the
+ * All secrets (DATABASE_URL, AWS keys, BoldSign keys) stay in the
  * server's .env file — NOT here. Only non-secret runtime config lives
  * in this file so it can be safely committed to git.
  */

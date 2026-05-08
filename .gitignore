@@ -17,7 +17,7 @@ node_modules/
 /public/sitemap.xml
 .expo/
 .expo-shared/
-
+.claude/
 # Debug logs
 npm-debug.log*
 yarn-debug.log*
