@@ -66,27 +66,32 @@ async function uploadToS3(pdfBuffer, actionId) {
 // ── Payload parsing ──────────────────────────────────────────────────────────
 
 /**
- * BoldSign puts event type in event.type (e.g. "documentCompleted").
- * Older / alternate shapes may differ; handle gracefully.
+ * BoldSign AU actual webhook payload shape:
+ *   {
+ *     event: { eventType: "Completed", ... },
+ *     data:  { documentId, status: "Completed", labels: ["hireActionId:xxx"], ... },
+ *     document: { documentId, status: "Completed", labels: ["hireActionId:xxx"], ... }
+ *   }
  */
 function isCompletedEvent(payload) {
   if (!payload || typeof payload !== 'object') return false;
 
-  // Primary: { event: { type: "documentCompleted" } }
+  // Primary: event.eventType === "Completed"
   const evType = String(
-    (payload.event && payload.event.type) ||
+    (payload.event && (payload.event.eventType || payload.event.type)) ||
     payload.eventType ||
     payload.type ||
     ''
   ).toLowerCase();
 
-  if (evType.includes('documentcompleted') || evType.includes('document.completed')) {
+  if (evType === 'completed' || evType.includes('documentcompleted') || evType.includes('document.completed')) {
     return true;
   }
 
-  // Fallback: check document status directly
+  // Fallback: check document/data status field
   const docStatus = String(
-    (payload.document && payload.document.documentStatus) ||
+    (payload.document && (payload.document.status || payload.document.documentStatus)) ||
+    (payload.data && (payload.data.status || payload.data.documentStatus)) ||
     payload.documentStatus ||
     ''
   ).toLowerCase();
@@ -96,10 +101,12 @@ function isCompletedEvent(payload) {
 
 /**
  * Extract documentId from the webhook payload.
+ * BoldSign AU: payload.document.documentId or payload.data.documentId
  */
 function extractDocumentId(payload) {
   return (
     (payload.document && payload.document.documentId) ||
+    (payload.data && payload.data.documentId) ||
     payload.documentId ||
     null
   );
@@ -107,11 +114,13 @@ function extractDocumentId(payload) {
 
 /**
  * Extract hireActionId from Labels array.
- * Labels are stored as ["hireActionId:abc123"].
+ * BoldSign AU: labels live in payload.document.labels or payload.data.labels
+ * Format: ["hireActionId:abc123"]
  */
 function extractHireActionId(payload) {
   const labels =
     (payload.document && Array.isArray(payload.document.labels) && payload.document.labels) ||
+    (payload.data && Array.isArray(payload.data.labels) && payload.data.labels) ||
     (Array.isArray(payload.labels) && payload.labels) ||
     [];
 
@@ -155,16 +164,25 @@ async function handleBoldsignWebhook(req, res) {
     return res.status(400).send('Invalid JSON');
   }
 
+  // Log full payload to diagnose event shape / label format issues
+  logger.log('[boldsign webhook] received payload:', JSON.stringify(payload));
+
   // Acknowledge non-completed events immediately
   if (!isCompletedEvent(payload)) {
+    const evType = (payload.event && payload.event.type) || payload.eventType || payload.type || '(unknown)';
+    logger.log('[boldsign webhook] ignoring non-completed event:', evType);
     return res.status(200).send('ok');
   }
 
   const documentId = extractDocumentId(payload);
   const hireActionId = extractHireActionId(payload);
 
+  logger.log('[boldsign webhook] documentId:', documentId, '| hireActionId:', hireActionId);
+
   if (!hireActionId) {
-    logger.warn('[boldsign webhook] documentCompleted but no hireActionId label found');
+    logger.warn('[boldsign webhook] documentCompleted but no hireActionId label found. labels:', JSON.stringify(
+      (payload.document && payload.document.labels) || payload.labels || []
+    ));
     return res.status(200).send('ok');
   }
 

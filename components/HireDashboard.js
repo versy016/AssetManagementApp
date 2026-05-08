@@ -299,7 +299,10 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
 
   const handleViewDocument = (hire) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(docUrl(hire.id, { inline: true }), '_blank', 'noopener,noreferrer');
+      // Prefer the signed PDF on S3 — opens directly as PDF with no server-side conversion needed
+      const s3Url = hire.data?.signedFileUrl && String(hire.data.signedFileUrl).trim();
+      const url = s3Url || docUrl(hire.id, { inline: true });
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     Alert.alert('View document', 'Opening the document in a new tab is available on web. On mobile, use Download.');

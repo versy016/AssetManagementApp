@@ -937,6 +937,12 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return res.send(pdfBuf);
     }
 
+    // Local file missing but signed PDF may be on S3 — redirect there directly
+    const s3Url = data.signedFileUrl && String(data.signedFileUrl).trim();
+    if (s3Url) {
+      return res.redirect(302, s3Url);
+    }
+
     // PDF requested (download or inline) -- try LibreOffice conversion
     if (forcePdf || inline) {
       try {
