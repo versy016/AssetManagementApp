@@ -254,3 +254,12 @@ model asset_deletions {
 
   @@index([deleted_at])
 }
+
+/// Maps an organisation email domain (e.g. engsurveys.com.au) to the legal/display name used on hire signing audit PDFs and related flows.
+model registered_domains {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()"))
+  domain       String   @unique // normalised lowercase, e.g. engsurveys.com.au
+  display_name String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}

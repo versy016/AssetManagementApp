@@ -82,7 +82,6 @@ function normalizeRatePeriodUi(raw) {
 export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormMode = 'new' }) {
   const [generating, setGenerating] = useState(false);
   const [sharingSig, setSharingSig] = useState(false);
-  const [signingEnabled, setSigningEnabled] = useState(false);
   const [datePicker, setDatePicker] = useState({ open: false, field: null });
   const [timePicker, setTimePicker] = useState({ open: false, field: null });
   const [form, setForm] = useState({
@@ -130,22 +129,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
 
   const isEditingExisting = hireFormMode === 'edit' && !!initialHire?.id;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/signing/status`);
-        if (!res.ok) return;
-        const j = await res.json();
-        if (!cancelled && j.enabled) setSigningEnabled(true);
-      } catch (e) {
-        logger.warn('HireDisclaimerForm: signing status check failed', e?.message || e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Signing is always enabled via self-hosted system — no feature flag fetch needed
 
   // Pre-populate equipment fields from a scanned asset (new hire, no existing id)
   useEffect(() => {
@@ -584,18 +568,11 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
 
   const formBusy = generating || sharingSig;
 
-  /** Save hire then open an embedded BoldSign signing session in a new tab (in-person signing). */
+  /** Save hire then open the self-hosted signing page in a new tab (in-person / embedded signing). */
   const handleGenerateAndSign = async () => {
     const errs = validateForm(form, addressQuery);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return;
-    }
-    if (!signingEnabled) {
-      Alert.alert(
-        'e-Signature not configured',
-        'BoldSign is not set up on the server. Ask your administrator to add the BoldSign API key to the API environment.'
-      );
       return;
     }
     setErrors({});
@@ -616,16 +593,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       }
       const hireId = saveJson.hireId;
 
-      // Point back to our backend return handler so BoldSign triggers the signed-PDF download
-      // and the tab notifies the parent window via postMessage before closing itself.
-      const returnUrl = `${String(API_BASE_URL || '').replace(/\/$/, '')}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/return`;
-
       const dsRes = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/create`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deliveryMethod: 'embedded', returnUrl }),
+          body: JSON.stringify({ deliveryMethod: 'embedded' }),
         }
       );
       const dsJson = await dsRes.json().catch(() => ({}));
@@ -633,9 +606,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         throw new Error(dsJson.error || dsRes.statusText || 'Could not create signing session');
       }
       const signingUrl = dsJson.signingUrl;
-      if (!signingUrl) {
-        throw new Error('No signing URL returned from BoldSign');
-      }
+      if (!signingUrl) throw new Error('No signing URL returned');
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.open(signingUrl, '_blank');
@@ -650,15 +621,8 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     }
   };
 
-  /** BoldSign: email the lessee a link to review the disclaimer and sign the lease. */
+  /** Send the lessee a signing link by email. */
   const handleSendViaEmail = async () => {
-    if (!signingEnabled) {
-      Alert.alert(
-        'e-Signature not configured',
-        'BoldSign is not set up on the server. Ask your administrator to add the BoldSign API key to the API environment.'
-      );
-      return;
-    }
     const errs = validateForm(form, addressQuery);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -687,7 +651,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       }
       const hireId = saveJson.hireId;
       const dsRes = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hireId)}/signing/create`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -698,6 +662,10 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
       if (!dsRes.ok) {
         throw new Error(dsJson.error || dsRes.statusText || 'Signing send failed');
       }
+      Alert.alert(
+        'Signing link sent',
+        `An email with the signing link has been sent to ${email}. It expires in 72 hours.`
+      );
       if (typeof onGenerated === 'function') onGenerated(hireId);
     } catch (e) {
       Alert.alert('Send failed', e?.message || 'Could not send signing email.');
@@ -1223,7 +1191,7 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
         </View>
 
         <TouchableOpacity
-          style={[styles.exportBtnShare, formBusy && !signingEnabled ? styles.exportBtnShareDisabledDs : null, formBusy && styles.exportBtnDisabled]}
+          style={[styles.exportBtnShare, formBusy && styles.exportBtnDisabled]}
           onPress={handleSendViaEmail}
           disabled={formBusy}
         >
@@ -1232,19 +1200,12 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           ) : (
             <View style={styles.sendBtnInner}>
               <Text style={styles.exportBtnText}>Send via email (e-Signature)</Text>
-              {!signingEnabled && (
-                <Text style={styles.sendBtnNote}>e-Signature not configured</Text>
-              )}
             </View>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[
-            styles.exportBtnSecondary,
-            !signingEnabled && styles.exportBtnSecondaryDisabled,
-            formBusy && styles.exportBtnDisabled,
-          ]}
+          style={[styles.exportBtnSecondary, formBusy && styles.exportBtnDisabled]}
           onPress={handleGenerateAndSign}
           disabled={formBusy}
         >
@@ -1253,9 +1214,6 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           ) : (
             <View style={styles.sendBtnInner}>
               <Text style={styles.exportBtnSecondaryText}>Generate PDF & Sign</Text>
-              {!signingEnabled && (
-                <Text style={styles.sendBtnNote2}>e-Signature not configured</Text>
-              )}
             </View>
           )}
         </TouchableOpacity>

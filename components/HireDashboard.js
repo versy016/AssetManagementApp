@@ -54,13 +54,26 @@ function formatDate(s) {
 }
 
 function StatusBadge({ hire }) {
-  const signed = hire.signatureStatus === 'signed';
-  const label = hire.signatureStatusLabel || (signed ? 'Signed' : 'Pending signature');
+  const s = String(hire.signatureStatus || '').toUpperCase();
+  // Support both new uppercase values and legacy lowercase
+  const isSigned   = s === 'SIGNED'   || s === 'SIGNED_LEGACY' || hire.signatureStatus === 'signed';
+  const isDeclined = s === 'DECLINED';
+  const isExpired  = s === 'EXPIRED';
+
+  const label = hire.signatureStatusLabel ||
+    (isSigned ? 'Signed' : isDeclined ? 'Declined' : isExpired ? 'Expired' : 'Pending signature');
+
+  const pillStyle  = isSigned ? styles.statusPillSigned
+                   : isDeclined ? styles.statusPillDeclined
+                   : isExpired  ? styles.statusPillExpired
+                   : styles.statusPillPending;
+  const textStyle  = isSigned ? styles.statusPillTextSigned
+                   : isDeclined ? styles.statusPillTextDeclined
+                   : isExpired  ? styles.statusPillTextExpired
+                   : styles.statusPillTextPending;
   return (
-    <View style={[styles.statusPill, signed ? styles.statusPillSigned : styles.statusPillPending]}>
-      <Text style={[styles.statusPillText, signed ? styles.statusPillTextSigned : styles.statusPillTextPending]} numberOfLines={2}>
-        {label}
-      </Text>
+    <View style={[styles.statusPill, pillStyle]}>
+      <Text style={[styles.statusPillText, textStyle]} numberOfLines={2}>{label}</Text>
     </View>
   );
 }
@@ -82,7 +95,6 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hoverRowId, setHoverRowId] = useState(null);
-  const [signingEnabled, setSigningEnabled] = useState(false);
   const [signingSendingId, setSigningSendingId] = useState(null);
   /** Delete flow: confirm → loading → result (replaces window.confirm / window.alert on web). */
   const [deleteUi, setDeleteUi] = useState(null);
@@ -165,7 +177,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     setPage(1);
   }, [query]);
 
-  // Listen for postMessage from the BoldSign signing tab (sent by the /signing/return page)
+  // Listen for postMessage from the self-hosted signing tab.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const handler = (event) => {
@@ -194,22 +206,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/signing/status`);
-        if (!res.ok) return;
-        const j = await res.json();
-        if (!cancelled && j.enabled) setSigningEnabled(true);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Signing is always enabled (self-hosted) — no feature flag fetch needed
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -321,7 +318,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     setSigningSendingId(hire.id);
     try {
       const res = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hire.id)}/signing/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hire.id)}/signing/create`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -332,8 +329,8 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
       if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
       await fetchHires();
       Alert.alert(
-        'e-Signature',
-        'An email was sent to the lessee with a link to review and sign the lease.'
+        'e-Signature sent',
+        `A signing link has been emailed to ${hire.email}. It expires in 72 hours.`
       );
     } catch (e) {
       Alert.alert('Signing failed', e?.message || 'Could not send signing email.');
@@ -391,6 +388,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
         >
           {hireToolbar}
           <View style={styles.empty}>
+            <MaterialIcons name="local-shipping" size={48} color="#CBD5E1" />
             <Text style={styles.emptyTitle}>No hires yet</Text>
             <Text style={styles.emptySub}>
               Create a hire from an asset action (Hire) or use the form to generate a lease document.
@@ -501,7 +499,8 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                             accessibilityLabel="Copy to new form"
                             tooltip="Copy to new form"
                           />
-                          {signingEnabled &&
+                          {/* Show signing email button when not already signed and hirer has email */}
+                          {String(h.signatureStatus || '').toUpperCase() !== 'SIGNED' &&
                           h.signatureStatus !== 'signed' &&
                           lesseeEmailOk(h) ? (
                             <TableIconButton
@@ -511,7 +510,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                               disabled={signingSendingId === h.id}
                               loading={signingSendingId === h.id}
                               accessibilityLabel="Send signing email"
-                              tooltip="Send signing email"
+                              tooltip="Send signing link by email"
                             />
                           ) : null}
                         </View>
@@ -569,7 +568,7 @@ const styles = StyleSheet.create({
     padding: 32,
     alignItems: 'center',
   },
-  emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8 },
+  emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8, marginTop: 12 },
   emptySub: { fontSize: sf(14), color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
   toolbarSurface: { marginBottom: 8 },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -695,8 +694,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  statusPillTextSigned: { color: Colors.successFg },
-  statusPillTextPending: { color: Colors.warningFg },
+  statusPillDeclined: { backgroundColor: '#FEE2E2' },
+  statusPillExpired:  { backgroundColor: '#F1F5F9' },
+  statusPillTextSigned:   { color: Colors.successFg },
+  statusPillTextPending:  { color: Colors.warningFg },
+  statusPillTextDeclined: { color: '#B91C1C' },
+  statusPillTextExpired:  { color: '#64748B' },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',

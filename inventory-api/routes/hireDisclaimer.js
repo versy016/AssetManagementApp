@@ -1,4 +1,4 @@
-// routes/hireDisclaimer.js – Generate Equipment Hire Lease Disclaimer .docx
+// routes/hireDisclaimer.js – Equipment Hire Lease — document generation + self-hosted signing
 // Uses template assets/Sheets/Equipment hire lease disclaimer.docx (repo root, sibling of inventory-api/)
 // or HIRE_LEASE_TEMPLATE_PATH if set; otherwise builds a .docx from scratch.
 const express = require('express');
@@ -9,79 +9,8 @@ const prisma = require('../lib/prisma');
 const { ASSET_STATUS } = require('../lib/assetStatus');
 const logger = require('../lib/logger');
 const { Document, Packer, Paragraph, AlignmentType, HeadingLevel, TextRun } = require('docx');
-const boldsignService = require('../services/boldsignService');
-const AWS = require('aws-sdk');
+const signingService = require('../services/signingService');
 const { convertDocxBufferToPdf } = require('../services/hireDocxToPdf');
-
-// ── Signed document local cache ──────────────────────────────────────────────
-const SIGNED_DOCS_DIR = path.join(__dirname, '..', 'signed_docs');
-if (!fs.existsSync(SIGNED_DOCS_DIR)) {
-  try { fs.mkdirSync(SIGNED_DOCS_DIR, { recursive: true }); } catch { /* ignore */ }
-}
-function signedDocFilePath(actionId) {
-  return path.join(SIGNED_DOCS_DIR, `hire_${actionId}_signed.pdf`);
-}
-
-// ── S3 helper ────────────────────────────────────────────────────────────────
-function getS3() {
-  const cfg = { region: process.env.AWS_REGION || 'ap-southeast-2' };
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-    cfg.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    cfg.secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-  }
-  return new AWS.S3(cfg);
-}
-
-async function uploadSignedPdfToS3(pdfBuffer, actionId) {
-  const bucket = process.env.S3_BUCKET;
-  if (!bucket) return null;
-  const key = `signed-leases/hire_${actionId}_signed_${Date.now()}.pdf`;
-  const params = { Bucket: bucket, Key: key, Body: pdfBuffer, ContentType: 'application/pdf' };
-  const useAcl = String(process.env.S3_USE_ACL || '').toLowerCase() === 'true';
-  if (useAcl) params.ACL = process.env.S3_ACL || 'private';
-  const result = await getS3().upload(params).promise();
-  return result.Location;
-}
-
-/**
- * Download completed document PDF from BoldSign, upload to S3, write local backup,
- * and store URL/path in asset_actions.data.
- * Safe to call multiple times (idempotent -- overwrites if exists).
- */
-async function fetchAndStoreSignedPdf(actionId, documentId) {
-  const pdfBuf = await boldsignService.downloadSignedDocument(documentId);
-  const filePath = signedDocFilePath(actionId);
-  fs.writeFileSync(filePath, pdfBuf);
-
-  const updates = {
-    signatureStatus: SIGNATURE_SIGNED,
-    signedDocPath: filePath,
-  };
-
-  // Upload to S3 (best-effort — local file is the fallback)
-  try {
-    const s3Url = await uploadSignedPdfToS3(pdfBuf, actionId);
-    if (s3Url) updates.signedFileUrl = s3Url;
-  } catch (s3Err) {
-    logger.warn('[hireDisclaimer] S3 upload failed for signed PDF:', s3Err?.message);
-  }
-
-  const ex = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
-  if (ex) {
-    const prevData = ex.data && typeof ex.data === 'object' ? ex.data : {};
-    await prisma.asset_actions.update({
-      where: { id: actionId },
-      data: {
-        data: {
-          ...prevData,
-          ...updates,
-          signedAt: prevData.signedAt || new Date().toISOString(),
-        },
-      },
-    });
-  }
-  return filePath;
-}
 
 const TEMPLATE_NAMES = [
   'Equipment hire lease disclaimer.docx',
@@ -89,12 +18,21 @@ const TEMPLATE_NAMES = [
   'Equipment_hire_lease_disclaimer.docx',
 ];
 
-/** Stored in asset_actions.data -- dashboard + BoldSign webhook */
-const SIGNATURE_PENDING = 'pending_signature';
-const SIGNATURE_SIGNED = 'signed';
+/** Stored in asset_actions.data — self-hosted signing */
+const SIGNATURE_PENDING  = 'PENDING_SIGNATURE';
+const SIGNATURE_SIGNED   = 'SIGNED';
+const SIGNATURE_DECLINED = 'DECLINED';
+const SIGNATURE_EXPIRED  = 'EXPIRED';
 
 function normalizeSignatureStatus(raw) {
-  return raw === SIGNATURE_SIGNED ? SIGNATURE_SIGNED : SIGNATURE_PENDING;
+  if (!raw) return SIGNATURE_PENDING;
+  const u = String(raw).toUpperCase();
+  if (u === 'SIGNED')            return SIGNATURE_SIGNED;
+  if (u === 'DECLINED')          return SIGNATURE_DECLINED;
+  if (u === 'EXPIRED')           return SIGNATURE_EXPIRED;
+  // Legacy lowercase values from old BoldSign flow
+  if (u === 'SIGNED_LEGACY' || raw === 'signed') return SIGNATURE_SIGNED;
+  return SIGNATURE_PENDING;
 }
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -180,6 +118,100 @@ function findTemplatePath() {
     }
   }
   return null;
+}
+
+const SIGNATURE_IMAGE_TOKEN = '__GEAROPS_LESSEE_SIGNATURE_IMAGE__';
+
+function escapeXmlAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function nextRelationshipId(relsXml) {
+  const ids = [...String(relsXml || '').matchAll(/Id="rId(\d+)"/g)]
+    .map((m) => Number(m[1]))
+    .filter(Number.isFinite);
+  return `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+}
+
+function ensurePngContentType(zip) {
+  const pathName = '[Content_Types].xml';
+  const file = zip.file(pathName);
+  if (!file) return;
+
+  let xml = file.asText();
+  if (!/Extension="png"/i.test(xml)) {
+    xml = xml.replace(
+      '</Types>',
+      '<Default Extension="png" ContentType="image/png"/></Types>',
+    );
+    zip.file(pathName, xml);
+  }
+}
+
+function signatureDrawingXml(relId) {
+  const cx = 190 * 9525;
+  const cy = 62 * 9525;
+  return (
+    `<w:drawing>` +
+    `<wp:inline distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+    `<wp:docPr id="2001" name="Lessee Signature" descr="Lessee electronic signature"/>` +
+    `<wp:cNvGraphicFramePr>` +
+    `<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>` +
+    `</wp:cNvGraphicFramePr>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:nvPicPr><pic:cNvPr id="2001" name="Lessee Signature"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${escapeXmlAttr(relId)}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic>` +
+    `</a:graphicData>` +
+    `</a:graphic>` +
+    `</wp:inline>` +
+    `</w:drawing>`
+  );
+}
+
+function insertSignatureImage(zip, signatureImageBuffer) {
+  if (!Buffer.isBuffer(signatureImageBuffer)) return;
+
+  const relsPath = 'word/_rels/document.xml.rels';
+  const relsFile = zip.file(relsPath);
+  if (!relsFile) throw new Error('Template is missing document relationships');
+
+  const imagePath = 'word/media/gearops-lessee-signature.png';
+  const relTarget = 'media/gearops-lessee-signature.png';
+  let relsXml = relsFile.asText();
+  const relId = nextRelationshipId(relsXml);
+
+  zip.file(imagePath, signatureImageBuffer);
+  relsXml = relsXml.replace(
+    '</Relationships>',
+    `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${relTarget}"/></Relationships>`,
+  );
+  zip.file(relsPath, relsXml);
+  ensurePngContentType(zip);
+
+  const docXmlPath = 'word/document.xml';
+  const docFile = zip.file(docXmlPath);
+  if (!docFile) throw new Error('Template is missing document.xml');
+
+  const tokenEscaped = SIGNATURE_IMAGE_TOKEN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const beforeXml = docFile.asText();
+  const xml = beforeXml.replace(
+    new RegExp(`<w:t(?: [^>]*)?>${tokenEscaped}</w:t>`, 'g'),
+    signatureDrawingXml(relId),
+  );
+  if (xml === beforeXml) {
+    throw new Error('Signature placeholder was not found in rendered hire document');
+  }
+  zip.file(docXmlPath, xml);
 }
 
 /**
@@ -302,7 +334,7 @@ function parseHireDisclaimerBody(body = {}) {
  * @param {ReturnType<typeof parseHireDisclaimerBody>} p
  * @returns {Promise<{ buffer: Buffer, filename: string }>}
  */
-async function buildHireDisclaimerDocxFromParsed(p) {
+async function buildHireDisclaimerDocxFromParsed(p, opts = {}) {
   const {
     hirerName,
     address,
@@ -340,16 +372,15 @@ async function buildHireDisclaimerDocxFromParsed(p) {
   const contactPart = sanitizeFilenamePart(hirerName || signatureName);
   const filename = `Equipment hire lease_${contactPart}.docx`;
 
+  const signatureImageBuffer = Buffer.isBuffer(opts.signatureImageBuffer) ? opts.signatureImageBuffer : null;
+  const lesseeSigDate = opts.lesseeSigDate ? String(opts.lesseeSigDate) : '';
+
   const templatePath = findTemplatePath();
   if (templatePath) {
     const PizZip = require('pizzip');
     const Docxtemplater = require('docxtemplater');
     const buf = fs.readFileSync(templatePath);
     const zip = new PizZip(buf);
-    const doc = new Docxtemplater(zip, {
-      delimiters: { start: '[', end: ']' },
-      paragraphLoop: true,
-    });
     const templateData = {
       hirerName: hirerName ?? '',
       address: address ?? '',
@@ -387,17 +418,26 @@ async function buildHireDisclaimerDocxFromParsed(p) {
       serial: serial ?? '',
       description: descriptionText ?? '',
       todaysdate: todaysdate ?? '',
+      lesseeSignature: signatureImageBuffer ? SIGNATURE_IMAGE_TOKEN : '',
+      lesseeSigDate,
       lessor: 'Engineering Surveys',
       lesseeName: signatureName ?? '',
       company: { entity: { person: hirerName ?? '' } },
       // [duration] placeholder → human-readable rate period label
       duration: ratePeriodNorm === 'week' ? 'Per Week' : ratePeriodNorm === 'month' ? 'Per Month' : 'Per Day',
     };
+    const doc = new Docxtemplater(zip, {
+      delimiters: { start: '[', end: ']' },
+      paragraphLoop: true,
+    });
     try {
       doc.render(templateData);
     } catch (renderErr) {
       console.error('[hireDisclaimer] template render error:', renderErr?.message || renderErr);
       throw new Error('Template render failed. Check placeholder names in the Word template.');
+    }
+    if (signatureImageBuffer) {
+      insertSignatureImage(doc.getZip(), signatureImageBuffer);
     }
     const buffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     return { buffer, filename };
@@ -472,6 +512,56 @@ async function buildHireDisclaimerDocxFromParsed(p) {
   return { buffer, filename };
 }
 
+function signatureDataUrlToPngBuffer(dataUrl) {
+  const value = String(dataUrl || '');
+  const match = value.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    throw new Error('Signature must be a PNG data URL');
+  }
+  const buffer = Buffer.from(match[1], 'base64');
+  if (!buffer.length) {
+    throw new Error('Signature image is empty');
+  }
+  return buffer;
+}
+
+function signedDateLabel(input, fallbackIso) {
+  const raw = String(input || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return formatDateLong(raw);
+  }
+  if (raw) {
+    const normalised = normalizeToIsoDate(raw);
+    return normalised ? formatDateLong(normalised) : raw;
+  }
+  return formatDateLong(String(fallbackIso || new Date().toISOString()).slice(0, 10));
+}
+
+async function fetchHireActionForDocument(actionId) {
+  return prisma.asset_actions.findFirst({
+    where: { id: actionId, type: 'HIRE' },
+    include: {
+      asset: { select: { id: true, serial_number: true, model: true, description: true } },
+      details: true,
+    },
+  });
+}
+
+async function buildSigningDocumentForAction(action, opts = {}) {
+  if (!action) {
+    throw new Error('Hire not found');
+  }
+  const body = hireActionToGenerateBody(action);
+  const parsed = parseHireDisclaimerBody(body);
+  const docx = await buildHireDisclaimerDocxFromParsed(parsed, opts);
+  const pdfBuffer = convertDocxBufferToPdf(docx.buffer);
+  return {
+    docxBuffer: docx.buffer,
+    pdfBuffer,
+    filename: docx.filename,
+  };
+}
+
 /** Map DB action row → body shape for parseHireDisclaimerBody */
 function hireActionToGenerateBody(action) {
   const data = (action.data && typeof action.data === 'object') ? action.data : {};
@@ -508,7 +598,7 @@ function hireActionToGenerateBody(action) {
   };
 }
 
-/** Asset to attach when hire form has no resolvable equipment id (preview + BoldSign). Env HIRE_STANDALONE_ASSET_ID or first empty placeholder row. */
+/** Asset to attach when hire form has no resolvable equipment id. Env HIRE_STANDALONE_ASSET_ID or first empty placeholder row. */
 async function resolveStandaloneHireAssetId() {
   const envId = process.env.HIRE_STANDALONE_ASSET_ID && String(process.env.HIRE_STANDALONE_ASSET_ID).trim();
   if (envId) {
@@ -832,34 +922,22 @@ router.post('/generate', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/hires/:actionId/preview.pdf -- short PDF summary (open in new tab)
+// GET /hire-disclaimer/hires/:actionId/preview.pdf -- PDF preview from the Word template.
 router.get('/hires/:actionId/preview.pdf', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
     if (!actionId) {
       return res.status(400).json({ error: 'Missing hire id' });
     }
-    const action = await prisma.asset_actions.findFirst({
-      where: { id: actionId, type: 'HIRE' },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            serial_number: true,
-            model: true,
-            description: true,
-          },
-        },
-        details: true,
-      },
-    });
+    const action = await fetchHireActionForDocument(actionId);
     if (!action) {
       return res.status(404).json({ error: 'Hire not found' });
     }
+    const hireData = action.data && typeof action.data === 'object' ? action.data : {};
     const body = hireActionToGenerateBody(action);
-    const p = parseHireDisclaimerBody(body);
-    const pdfBuf = await buildHirePreviewPdfFromParsed(p);
-    const safeName = sanitizeFilenamePart(p.hirerName || p.signatureName || 'lease');
+    const parsed = parseHireDisclaimerBody(body);
+    const pdfBuf = await buildHirePreviewPdfFromParsed(parsed);
+    const safeName = sanitizeFilenamePart(hireData.hirerName || hireData.contactName || 'hire');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="hire_preview_${safeName}.pdf"`);
     res.send(pdfBuf);
@@ -923,7 +1001,13 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return `${assetPart}_${hirerPart}_hire.${ext}`;
     }
 
-    // Always prefer the signed PDF when it exists.
+    // Prefer the signed PDF from S3.
+    const s3SignedUrl = data.signedFileUrl && String(data.signedFileUrl).trim();
+    if (s3SignedUrl) {
+      return res.redirect(302, s3SignedUrl);
+    }
+
+    // Fallback: local signed PDF (legacy path)
     const storedPath = data.signedDocPath && String(data.signedDocPath).trim();
     if (storedPath && fs.existsSync(storedPath)) {
       const body = hireActionToGenerateBody(action);
@@ -937,30 +1021,23 @@ router.get('/hires/:actionId/document', async (req, res) => {
       return res.send(pdfBuf);
     }
 
-    // Local file missing but signed PDF may be on S3 — redirect there directly
-    const s3Url = data.signedFileUrl && String(data.signedFileUrl).trim();
-    if (s3Url) {
-      return res.redirect(302, s3Url);
+    // Unsigned S3 PDF
+    const s3UnsignedUrl = data.unsignedFileUrl && String(data.unsignedFileUrl).trim();
+    if (s3UnsignedUrl && (forcePdf || inline)) {
+      return res.redirect(302, s3UnsignedUrl);
     }
 
-    // PDF requested (download or inline) -- try LibreOffice conversion
+    // No stored PDF — generate from the Word template and convert to PDF.
     if (forcePdf || inline) {
-      try {
-        const body = hireActionToGenerateBody(action);
-        const p = parseHireDisclaimerBody(body);
-        const pdfBuf = await buildHirePreviewPdfFromParsed(p);
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader(
-          'Content-Disposition',
-          `${inline && !forcePdf ? 'inline' : 'attachment'}; filename="${hireDownloadFilename(p, 'pdf')}"`,
-        );
-        return res.send(pdfBuf);
-      } catch {
-        // LibreOffice not available -- fall through to DOCX for inline; return error for explicit pdf request
-        if (forcePdf) {
-          return res.status(503).json({ error: 'PDF conversion is not available on this server. Please try again or contact your administrator.' });
-        }
-      }
+      const body = hireActionToGenerateBody(action);
+      const p = parseHireDisclaimerBody(body);
+      const pdfBuf = await buildHirePreviewPdfFromParsed(p);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `${inline && !forcePdf ? 'inline' : 'attachment'}; filename="${hireDownloadFilename(p, 'pdf')}"`,
+      );
+      return res.send(pdfBuf);
     }
 
     // Fallback: serve the Word document
@@ -983,7 +1060,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
 });
 
 // PATCH /hire-disclaimer/hires/:actionId/signature-status
-// Body: { status: 'pending_signature' | 'signed', signedAt?: ISO string } -- for BoldSign webhook or admin tools
+// Body: { status: 'PENDING_SIGNATURE' | 'SIGNED', signedAt?: ISO string } -- admin/status tools
 router.patch('/hires/:actionId/signature-status', async (req, res) => {
   try {
     const actionId = String(req.params.actionId || '').trim();
@@ -1116,7 +1193,10 @@ router.get('/hires', async (req, res) => {
         : (data.hireEndDate || data.hire_end || '').toString().slice(0, 10) || '';
       const signatureStatus = normalizeSignatureStatus(data.signatureStatus);
       const signatureStatusLabel =
-        signatureStatus === SIGNATURE_SIGNED ? 'Signed' : 'Pending signature';
+        signatureStatus === SIGNATURE_SIGNED   ? 'Signed'            :
+        signatureStatus === SIGNATURE_DECLINED ? 'Declined'          :
+        signatureStatus === SIGNATURE_EXPIRED  ? 'Expired'           :
+        'Pending signature';
       return {
         id: a.id,
         assetId: asset.id,
@@ -1133,9 +1213,11 @@ router.get('/hires', async (req, res) => {
         client: details.hire_client || data.client || '',
         signatureStatus,
         signatureStatusLabel,
-        signedAt: data.signedAt && String(data.signedAt).trim() ? String(data.signedAt).trim() : null,
-        boldsignDocumentId: data.boldsignDocumentId ? String(data.boldsignDocumentId) : null,
-        boldsignSentAt: data.boldsignSentAt ? String(data.boldsignSentAt) : null,
+        signedAt:       data.signedAt       ? String(data.signedAt).trim()       : null,
+        declinedAt:     data.declinedAt     ? String(data.declinedAt).trim()     : null,
+        signedFileUrl:  data.signedFileUrl  ? String(data.signedFileUrl).trim()  : null,
+        unsignedFileUrl: data.unsignedFileUrl ? String(data.unsignedFileUrl).trim() : null,
+        signingCreatedAt: data.signingCreatedAt ? String(data.signingCreatedAt).trim() : null,
         data: data,
       };
     });
@@ -1146,220 +1228,466 @@ router.get('/hires', async (req, res) => {
   }
 });
 
-// GET /hire-disclaimer/signing/status -- frontend feature flags
+// ── Self-hosted signing routes ────────────────────────────────────────────────
+
+// GET /hire-disclaimer/signing/status -- always enabled (no external dependency)
 router.get('/signing/status', (_req, res) => {
-  res.json({
-    enabled: boldsignService.isConfigured(),
-  });
+  res.json({ enabled: true });
 });
 
-// POST /hire-disclaimer/hires/:actionId/signing/send
-// Body: { deliveryMethod: 'email' | 'embedded', signerEmail?, signerName?, returnUrl? (required if embedded) }
-router.post('/hires/:actionId/signing/send', async (req, res) => {
+/**
+ * POST /hire-disclaimer/hires/:actionId/signing/create
+ * Body: { deliveryMethod: 'email' | 'embedded' }
+ *
+ * Creates a signing session: generates PDF, uploads to S3, mints a token.
+ * For email delivery: sends signing link to the hirer's email.
+ * For embedded: returns signingUrl for the caller to open in a new tab.
+ */
+router.post('/hires/:actionId/signing/create', async (req, res) => {
   try {
-    if (!boldsignService.isConfigured()) {
-      return res.status(503).json({ error: 'BoldSign is not configured on the server' });
-    }
     const actionId = String(req.params.actionId || '').trim();
-    if (!actionId) {
-      return res.status(400).json({ error: 'Missing hire id' });
-    }
-    const { deliveryMethod, signerEmail, signerName, returnUrl } = req.body || {};
-    const dm = deliveryMethod === 'embedded' ? 'embedded' : 'email';
-    if (dm === 'embedded' && !returnUrl) {
-      return res.status(400).json({
-        error: 'returnUrl is required for embedded signing (e.g. your app URL after signing)',
-      });
-    }
+    if (!actionId) return res.status(400).json({ error: 'Missing hire id' });
 
-    const action = await prisma.asset_actions.findFirst({
-      where: { id: actionId, type: 'HIRE' },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            serial_number: true,
-            model: true,
-            description: true,
-          },
-        },
-        details: true,
-      },
-    });
+    const delivery = (req.body?.deliveryMethod === 'embedded') ? 'embedded' : 'email';
+
+    logger.log('[hireDisclaimer] creating signing session for', actionId, 'delivery:', delivery);
+
+    const action = await fetchHireActionForDocument(actionId);
     if (!action) {
       return res.status(404).json({ error: 'Hire not found' });
     }
 
-    const data = action.data && typeof action.data === 'object' ? action.data : {};
-    const details = action.details || {};
-    const emailCandidate =
-      (signerEmail && String(signerEmail).trim()) ||
-      (data.email && String(data.email).trim()) ||
-      '';
-    if (!emailCandidate) {
-      return res.status(400).json({
-        error:
-          'Lessee email is missing. Add signerEmail in the request or save the hire with an email on the form.',
-      });
-    }
-    const nameCandidate =
-      (signerName && String(signerName).trim()) ||
-      (data.hirerName && String(data.hirerName).trim()) ||
-      (details.hire_to && String(details.hire_to).trim()) ||
-      emailCandidate;
+    const generatedDocument = await buildSigningDocumentForAction(action);
+    const { session, signingUrl, token } = await signingService.createSigningSession(actionId, delivery, generatedDocument);
 
-    // Generate the hire lease .docx from stored data and upload to BoldSign for signing
-    const body = hireActionToGenerateBody(action);
-    const p = parseHireDisclaimerBody(body);
-    const { buffer, filename } = await buildHireDisclaimerDocxFromParsed(p);
-
-    logger.log('[hireDisclaimer] calling BoldSign for hire:', actionId, 'delivery:', dm, 'signer:', emailCandidate);
-
-    const { documentId, signingUrl } = await boldsignService.createHireDocument({
-      documentBuffer: buffer,
-      documentFileName: filename,
-      signerEmail: emailCandidate,
-      signerName: nameCandidate,
-      hireActionId: actionId,
-      deliveryMethod: dm,
-      returnUrl: dm === 'embedded' ? String(returnUrl).trim() : undefined,
-    });
-
-    logger.log('[hireDisclaimer] BoldSign document sent. documentId:', documentId, 'delivery:', dm);
-
-    const merged = {
-      ...data,
-      boldsignDocumentId: documentId,
-      boldsignSentAt: new Date().toISOString(),
-      boldsignDelivery: dm,
-      signatureStatus: SIGNATURE_PENDING,
-    };
-    await prisma.asset_actions.update({
-      where: { id: actionId },
-      data: { data: merged },
-    });
+    logger.log('[hireDisclaimer] signing session created, token:', token.slice(0, 8) + '…');
 
     res.json({
       ok: true,
-      documentId,
-      deliveryMethod: dm,
-      signingUrl: signingUrl || null,
+      deliveryMethod: delivery,
+      signingUrl,
+      status: session.status,
     });
   } catch (e) {
-    // Log the full BoldSign response body so the real error is visible.
-    // HttpError (SDK): body is at e.body
-    // Raw axios error:  body is at e.response.data
-    const bsBody = e?.body ?? e?.response?.data ?? null;
-    if (bsBody) {
-      logger.error('[hireDisclaimer] BoldSign error response body:', JSON.stringify(bsBody));
-    }
-    logger.error('[hireDisclaimer] BoldSign send error:', e?.message || e);
-    const userMsg = (bsBody?.message || bsBody?.errorCode)
-      ? `BoldSign: ${bsBody.errorCode || ''} – ${bsBody.message || e?.message}`
-      : e?.message || 'Signing send failed';
-    res.status(500).json({ error: userMsg });
+    logger.error('[hireDisclaimer] signing/create error:', e?.message || e);
+    res.status(500).json({ error: e?.message || 'Failed to create signing session' });
   }
 });
 
-/**
- * GET /hire-disclaimer/hires/:actionId/signing/return
- * BoldSign redirects the embedded signing tab here after the signer finishes or cancels.
- * Query param: event (Completed | Declined | Expired | etc.)
- *
- * On Completed:
- *   1. Download signed PDF from BoldSign and upload to S3.
- *   2. Mark hire as signed in DB.
- *   3. Return HTML page that postMessages back to the opener tab, then closes itself.
- *
- * On any other event (cancel, decline, …):
- *   Returns HTML page that notifies opener and closes.
- */
-router.get('/hires/:actionId/signing/return', async (req, res) => {
-  const actionId = String(req.params.actionId || '').trim();
-  const event = String(req.query.event || '').trim().toLowerCase();
-  // BoldSign uses 'completed'; also accept 'signing_complete' for compat
-  const completed = event === 'completed' || event === 'signing_complete';
+// Backward compat alias: old frontend called /signing/send
+router.post('/hires/:actionId/signing/send', async (req, res) => {
+  req.url = req.url.replace(/\/send$/, '/create');
+  router.handle(req, res, () => {});
+});
 
-  if (completed && actionId) {
-    try {
-      const action = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
-      const documentId = action?.data?.boldsignDocumentId;
-      if (documentId) {
-        await fetchAndStoreSignedPdf(actionId, documentId);
-        logger.log('[hireDisclaimer] embedded signing complete, signed PDF stored for', actionId);
-      }
-    } catch (e) {
-      console.warn('[hireDisclaimer] signing/return sync error:', e?.message || e);
-    }
+/**
+ * GET /hire-disclaimer/signing/:token
+ * The self-hosted signing page — served to the hirer (email link or new tab).
+ * Full HTML page with embedded PDF viewer, canvas signature pad, and submit/decline.
+ */
+router.get('/signing/:token', async (req, res) => {
+  const token = String(req.params.token || '').trim();
+
+  // Validate session (may throw with code)
+  let session;
+  try {
+    session = await signingService.getSessionByToken(token);
+  } catch (err) {
+    // err may be a plain object with { code, session }
+    const code = err?.code || '';
+    const title   = code === 'ALREADY_SIGNED'   ? 'Already Signed'   :
+                    code === 'ALREADY_DECLINED'  ? 'Signing Declined' :
+                    code === 'EXPIRED'           ? 'Link Expired'     :
+                    'Invalid Link';
+    const message = code === 'ALREADY_SIGNED'   ? 'This agreement has already been signed. Check your email for your copy.' :
+                    code === 'ALREADY_DECLINED'  ? 'You declined this agreement. Contact Engineering Surveys if you have questions.' :
+                    code === 'EXPIRED'           ? 'This signing link has expired. Contact Engineering Surveys to request a new one.' :
+                    'This signing link is invalid or has already been used.';
+    const icon    = code === 'ALREADY_SIGNED' ? '✅' : '❌';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(code === 'ALREADY_SIGNED' ? 200 : 400).send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F8FAFC;margin:0;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);
+        padding:48px 40px;max-width:440px;width:100%;text-align:center}
+  .icon{font-size:56px;margin-bottom:16px}
+  h1{color:#1E293B;font-size:22px;margin:0 0 12px}
+  p{color:#64748B;font-size:15px;line-height:1.6;margin:0}
+  .brand{margin-top:32px;color:#94A3B8;font-size:12px}
+</style>
+</head>
+<body><div class="card">
+  <div class="icon">${icon}</div>
+  <h1>${title}</h1>
+  <p>${message}</p>
+  <div class="brand">Engineering Surveys · GearOps</div>
+</div></body></html>`);
   }
 
-  const safeId = String(actionId).replace(/[^a-zA-Z0-9\-_]/g, '');
-  const safeEvent = String(event).replace(/[^a-zA-Z0-9_]/g, '');
+  const hireData = session.hireData || {};
+  const hirerName = hireData.hirerName || hireData.contactName || 'Hirer';
+  const project   = hireData.project  || '';
+  const equipment = (hireData.equipmentItems || [])
+    .map(i => i.assetId || i.description).filter(Boolean).join(', ')
+    || hireData.equipmentDescription || hireData.assetId || '';
+
+  const safeToken = String(token).replace(/[^a-f0-9]/g, '');
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Signing ${completed ? 'complete' : 'cancelled'}</title>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign Hire Agreement — Engineering Surveys</title>
 <style>
-  body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center;
-         min-height: 100vh; margin: 0; background: #F8FAFC; color: #334155; }
-  .card { text-align: center; padding: 40px 48px; background: #fff; border-radius: 16px;
-          box-shadow: 0 4px 24px rgba(0,0,0,.08); max-width: 420px; }
-  .icon { font-size: 48px; margin-bottom: 12px; }
-  h2 { margin: 0 0 8px; font-size: 22px; }
-  p  { margin: 0; color: #64748B; font-size: 15px; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+       background:#F1F5F9;color:#1E293B;min-height:100vh}
+  .header{background:#1D4ED8;color:#fff;padding:16px 24px;display:flex;align-items:center;gap:12px}
+  .header h1{font-size:18px;font-weight:700}
+  .header p{font-size:13px;color:#BFDBFE;margin-top:2px}
+  .container{max-width:860px;margin:0 auto;padding:24px 16px}
+  .card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);
+        padding:24px;margin-bottom:20px}
+  .card h2{font-size:15px;font-weight:700;color:#1D4ED8;text-transform:uppercase;
+           letter-spacing:.05em;margin-bottom:12px;border-bottom:1px solid #E2E8F0;padding-bottom:8px}
+  .details-grid{display:grid;grid-template-columns:120px 1fr;gap:6px 16px;font-size:14px}
+  .details-grid .label{color:#64748B}
+  .details-grid .value{color:#1E293B;font-weight:600}
+  /* PDF viewer */
+  #pdf-container{width:100%;border-radius:8px;overflow:hidden;border:1px solid #E2E8F0;
+                 background:#525659;min-height:400px;position:relative}
+  #pdf-iframe{width:100%;height:600px;border:none}
+  /* Signature pad */
+  #sig-pad-wrapper{border:2px dashed #94A3B8;border-radius:8px;overflow:hidden;
+                   background:#FAFAFA;cursor:crosshair;position:relative}
+  #sig-canvas{display:block;touch-action:none}
+  .sig-actions{display:flex;gap:8px;margin-top:8px}
+  .btn-clear{padding:8px 16px;border:1px solid #CBD5E1;background:#fff;border-radius:6px;
+             font-size:13px;cursor:pointer;color:#64748B}
+  .btn-clear:hover{background:#F1F5F9}
+  /* Buttons */
+  .action-bar{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .btn-sign{flex:1;min-width:200px;padding:14px 24px;background:#1D4ED8;color:#fff;
+            border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer}
+  .btn-sign:hover{background:#1e40af}
+  .btn-sign:disabled{background:#94A3B8;cursor:not-allowed}
+  .btn-decline{padding:14px 24px;background:#fff;color:#DC2626;border:1.5px solid #DC2626;
+               border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+  .btn-decline:hover{background:#FEF2F2}
+  .consent-box{background:#F0F9FF;border:1px solid #7DD3FC;border-radius:8px;padding:16px;
+               font-size:13px;color:#0369A1;line-height:1.6;margin-bottom:16px}
+  .spinner{display:none;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);
+           border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
+           margin-left:8px;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .error-msg{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:12px 16px;
+             color:#B91C1C;font-size:14px;margin-top:12px;display:none}
+  .date-input{padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:6px;font-size:15px;
+              width:100%;margin-top:8px}
+  .date-input:focus{outline:none;border-color:#1D4ED8}
+  label.field-label{font-size:13px;color:#64748B;font-weight:600;display:block;margin-bottom:4px}
+  @media(max-width:600px){#pdf-iframe{height:400px}.btn-sign{min-width:unset}}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="icon">${completed ? '✅' : '❌'}</div>
-  <h2>${completed ? 'Document signed!' : 'Signing ' + (event || 'cancelled')}</h2>
-  <p>This tab will close automatically…</p>
+
+<div class="header">
+  <div>
+    <h1>Equipment Hire Lease Agreement</h1>
+    <p>Engineering Surveys · GearOps — Please review and sign below</p>
+  </div>
 </div>
+
+<div class="container">
+
+  <!-- Hire summary -->
+  <div class="card">
+    <h2>Hire Details</h2>
+    <div class="details-grid">
+      <span class="label">Hirer</span><span class="value">${hirerName.replace(/</g,'&lt;')}</span>
+      ${project   ? `<span class="label">Project</span><span class="value">${project.replace(/</g,'&lt;')}</span>` : ''}
+      ${equipment ? `<span class="label">Equipment</span><span class="value">${equipment.replace(/</g,'&lt;')}</span>` : ''}
+    </div>
+  </div>
+
+  <!-- PDF viewer -->
+  <div class="card">
+    <h2>Hire Agreement Document</h2>
+    <div id="pdf-container">
+      <iframe id="pdf-iframe" src="/hire-disclaimer/signing/${safeToken}/document.pdf" title="Hire Agreement PDF"></iframe>
+    </div>
+  </div>
+
+  <!-- Signature capture -->
+  <div class="card">
+    <h2>Your Signature</h2>
+    <div class="consent-box">
+      By signing below, you acknowledge that you have read, understood, and agreed to the terms of this
+      Equipment Hire Lease Agreement. This constitutes a legally binding electronic signature.
+    </div>
+
+    <label class="field-label">Draw your signature here:</label>
+    <div id="sig-pad-wrapper">
+      <canvas id="sig-canvas" width="760" height="180"></canvas>
+    </div>
+    <div class="sig-actions">
+      <button class="btn-clear" id="btn-clear-sig" type="button">Clear signature</button>
+    </div>
+
+    <div style="margin-top:20px">
+      <label class="field-label" for="sig-date">Date:</label>
+      <input type="date" id="sig-date" class="date-input"
+             value="${new Date().toISOString().slice(0,10)}"
+             max="${new Date().toISOString().slice(0,10)}">
+    </div>
+
+    <div id="error-msg" class="error-msg"></div>
+
+    <div class="action-bar" style="margin-top:24px">
+      <button class="btn-sign" id="btn-submit" type="button">
+        Sign Agreement <span class="spinner" id="spinner"></span>
+      </button>
+      <button class="btn-decline" id="btn-decline" type="button">Decline</button>
+    </div>
+  </div>
+
+</div>
+
 <script>
-  (function () {
-    var msg = { type: 'hire_signed', hireId: '${safeId}', event: '${safeEvent}', completed: ${completed} };
-    try { if (window.opener) window.opener.postMessage(msg, '*'); } catch (e) {}
-    setTimeout(function () { try { window.close(); } catch (e) {} }, 1200);
-  })();
+(function() {
+  'use strict';
+  var token = '${safeToken}';
+  var canvas = document.getElementById('sig-canvas');
+  var ctx = canvas.getContext('2d');
+  var drawing = false;
+  var hasStrokes = false;
+
+  // Resize canvas to wrapper width
+  function resizeCanvas() {
+    var wrapper = document.getElementById('sig-pad-wrapper');
+    var w = wrapper.clientWidth;
+    var ratio = window.devicePixelRatio || 1;
+    canvas.style.width = w + 'px';
+    canvas.style.height = '180px';
+    canvas.width  = w * ratio;
+    canvas.height = 180 * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+  }
+  resizeCanvas();
+  window.addEventListener('resize', function() { if (!hasStrokes) resizeCanvas(); });
+
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = (canvas.width / (window.devicePixelRatio||1)) / rect.width;
+    var scaleY = (canvas.height / (window.devicePixelRatio||1)) / rect.height;
+    if (e.touches) {
+      return { x: (e.touches[0].clientX - rect.left) * scaleX,
+               y: (e.touches[0].clientY - rect.top)  * scaleY };
+    }
+    return { x: (e.clientX - rect.left) * scaleX,
+             y: (e.clientY - rect.top)  * scaleY };
+  }
+
+  canvas.addEventListener('mousedown',  function(e){ drawing=true; var p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
+  canvas.addEventListener('mousemove',  function(e){ if(!drawing) return; var p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasStrokes=true; });
+  canvas.addEventListener('mouseup',    function(){ drawing=false; });
+  canvas.addEventListener('mouseleave', function(){ drawing=false; });
+  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); drawing=true; var p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
+  canvas.addEventListener('touchmove',  function(e){ e.preventDefault(); if(!drawing) return; var p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hasStrokes=true; }, {passive:false});
+  canvas.addEventListener('touchend',   function(){ drawing=false; });
+
+  document.getElementById('btn-clear-sig').addEventListener('click', function() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasStrokes = false;
+  });
+
+  function showError(msg) {
+    var el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function hideError() {
+    document.getElementById('error-msg').style.display = 'none';
+  }
+
+  document.getElementById('btn-submit').addEventListener('click', function() {
+    hideError();
+    if (!hasStrokes) { showError('Please draw your signature before submitting.'); return; }
+    var dateVal = document.getElementById('sig-date').value;
+    if (!dateVal) { showError('Please select the date.'); return; }
+
+    var btn = document.getElementById('btn-submit');
+    var spinner = document.getElementById('spinner');
+    btn.disabled = true;
+    spinner.style.display = 'inline-block';
+
+    var dataUrl = canvas.toDataURL('image/png');
+
+    fetch('/hire-disclaimer/signing/' + token + '/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signatureDataUrl: dataUrl, signedDate: dateVal }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        // Notify opener (dashboard) and show success
+        try { if (window.opener) window.opener.postMessage({ type: 'hire_signed', completed: true }, '*'); } catch(e){}
+        document.querySelector('.container').innerHTML =
+          '<div class="card" style="text-align:center;padding:48px">' +
+          '<div style="font-size:64px;margin-bottom:16px">✅</div>' +
+          '<h2 style="font-size:22px;color:#1E293B;border:none;text-transform:none;letter-spacing:0">Agreement Signed!</h2>' +
+          '<p style="color:#64748B;font-size:15px;margin-top:12px">Thank you. A copy has been sent to your email address.</p>' +
+          '<p style="color:#94A3B8;font-size:13px;margin-top:32px">You may close this tab.</p>' +
+          '</div>';
+      } else {
+        showError(data.error || 'Submission failed. Please try again.');
+        btn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    })
+    .catch(function(e) {
+      showError('Network error. Please check your connection and try again.');
+      btn.disabled = false;
+      spinner.style.display = 'none';
+    });
+  });
+
+  document.getElementById('btn-decline').addEventListener('click', function() {
+    if (!confirm('Are you sure you want to decline this agreement? Engineering Surveys will be notified.')) return;
+    fetch('/hire-disclaimer/signing/' + token + '/decline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      try { if (window.opener) window.opener.postMessage({ type: 'hire_signed', completed: false, declined: true }, '*'); } catch(e){}
+      document.querySelector('.container').innerHTML =
+        '<div class="card" style="text-align:center;padding:48px">' +
+        '<div style="font-size:64px;margin-bottom:16px">❌</div>' +
+        '<h2 style="font-size:22px;color:#1E293B;border:none;text-transform:none;letter-spacing:0">Agreement Declined</h2>' +
+        '<p style="color:#64748B;font-size:15px;margin-top:12px">You have declined this agreement. Engineering Surveys has been notified.</p>' +
+        '<p style="color:#94A3B8;font-size:13px;margin-top:32px">You may close this tab.</p>' +
+        '</div>';
+    })
+    .catch(function(){ alert('Could not process your request. Please try again.'); });
+  });
+})();
 </script>
 </body>
 </html>`);
 });
 
 /**
- * POST /hire-disclaimer/hires/:actionId/signing/sync
- * Manually pull the current document status and signed PDF from BoldSign.
- * Useful if the webhook hasn't fired yet or the return-URL tab was closed too fast.
+ * GET /hire-disclaimer/signing/:token/document.pdf
+ * Serve the unsigned PDF to the signing page's iframe.
  */
-router.post('/hires/:actionId/signing/sync', async (req, res) => {
+router.get('/signing/:token/document.pdf', async (req, res) => {
   try {
-    if (!boldsignService.isConfigured()) {
-      return res.status(503).json({ error: 'BoldSign is not configured' });
+    const token = String(req.params.token || '').trim();
+    const { pdfBuffer, filename } = await signingService.getUnsignedPdf(token);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    const code = err?.code;
+    if (code === 'ALREADY_SIGNED' || code === 'ALREADY_DECLINED' || code === 'EXPIRED') {
+      // Still serve the unsigned PDF for already-completed sessions (view only)
+      // Try to get it by finding the action via the error's session
+      if (err?.session?.unsignedFileUrl) return res.redirect(302, err.session.unsignedFileUrl);
     }
-    const actionId = String(req.params.actionId || '').trim();
-    if (!actionId) return res.status(400).json({ error: 'Missing hire id' });
+    console.error('[hireDisclaimer] signing document.pdf error:', err?.message || err);
+    res.status(400).json({ error: err?.message || 'Could not load document' });
+  }
+});
 
-    const action = await prisma.asset_actions.findFirst({ where: { id: actionId, type: 'HIRE' } });
-    if (!action) return res.status(404).json({ error: 'Hire not found' });
+/**
+ * POST /hire-disclaimer/signing/:token/submit
+ * Body: { signatureDataUrl: 'data:image/png;base64,...', signedDate: 'YYYY-MM-DD' }
+ * Stamps signature on PDF, uploads to S3, updates DB.
+ */
+router.post('/signing/:token/submit', async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    const { signatureDataUrl, signedDate } = req.body || {};
 
-    const documentId = action.data?.boldsignDocumentId;
-    if (!documentId) return res.status(400).json({ error: 'No BoldSign document on this hire' });
-
-    // Check document status via BoldSign API
-    const props = await boldsignService.getDocumentProperties(documentId);
-    const status = props && String(props.status || props.documentStatus || '').toLowerCase();
-
-    if (status !== 'completed') {
-      return res.json({ ok: true, status, signed: false });
+    if (!signatureDataUrl) {
+      return res.status(400).json({ error: 'signatureDataUrl is required' });
     }
 
-    // Document is complete -- download and store
-    const filePath = await fetchAndStoreSignedPdf(actionId, documentId);
-    res.json({ ok: true, status: 'completed', signed: true, signedDocPath: filePath });
-  } catch (e) {
-    console.error('[hireDisclaimer] signing sync error:', e?.message || e);
-    res.status(500).json({ error: e?.message || 'Sync failed' });
+    // Capture IP — respect reverse proxy
+    const signerIp = (
+      req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+      req.headers['x-real-ip'] ||
+      req.connection?.remoteAddress ||
+      req.socket?.remoteAddress ||
+      '—'
+    );
+    const userAgent = req.headers['user-agent'] || '';
+
+    const session = await signingService.getSessionByToken(token);
+    const action = await fetchHireActionForDocument(session.actionId);
+    if (!action) {
+      return res.status(404).json({ error: 'Hire not found' });
+    }
+
+    const signedAt = new Date().toISOString();
+    const lesseeSigDate = signedDateLabel(signedDate, signedAt);
+    const signatureImageBuffer = signatureDataUrlToPngBuffer(signatureDataUrl);
+    const signedDocument = await buildSigningDocumentForAction(action, {
+      signatureImageBuffer,
+      lesseeSigDate,
+    });
+
+    const { signedFileUrl } = await signingService.completeSession(token, {
+      signatureDataUrl,
+      signedAt,
+      signedDate,
+      lesseeSigDate,
+      signerIp,
+      userAgent,
+      signedDocument,
+    });
+
+    logger.log('[hireDisclaimer] signing/submit complete. signedFileUrl:', signedFileUrl);
+
+    res.json({ ok: true, signedFileUrl });
+  } catch (err) {
+    const code = err?.code;
+    if (code === 'ALREADY_SIGNED') return res.status(409).json({ error: 'This agreement has already been signed.' });
+    if (code === 'EXPIRED')        return res.status(410).json({ error: 'This signing link has expired.' });
+    logger.error('[hireDisclaimer] signing/submit error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Signing submission failed' });
+  }
+});
+
+/**
+ * POST /hire-disclaimer/signing/:token/decline
+ * Body: { reason?: string }
+ */
+router.post('/signing/:token/decline', async (req, res) => {
+  try {
+    const token  = String(req.params.token || '').trim();
+    const reason = String(req.body?.reason || '').trim();
+    await signingService.declineSession(token, reason);
+    res.json({ ok: true });
+  } catch (err) {
+    const code = err?.code;
+    if (code === 'ALREADY_SIGNED')   return res.status(409).json({ error: 'This agreement has already been signed.' });
+    if (code === 'ALREADY_DECLINED') return res.status(409).json({ error: 'Already declined.' });
+    logger.error('[hireDisclaimer] signing/decline error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Decline failed' });
   }
 });
 

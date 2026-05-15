@@ -340,7 +340,15 @@ export default function ActivityScreen() {
         : (item.note || null);
     const noteText = isEditNextService
       ? 'Service completed; status set to In Service'
-      : rawNoteText;
+      : (isAction && String(item.type || '').toUpperCase() === 'HIRE')
+        ? (() => {
+            const sigStatus = item.data?.signatureStatus;
+            const sigLabel = sigStatus === 'signed' ? '✓ Signed' : sigStatus === 'pending_signature' ? '⏳ Pending signature' : null;
+            const project = item.data?.project && String(item.data.project).trim();
+            const client = item.data?.companyEntity && String(item.data.companyEntity).trim();
+            return [sigLabel, client, project].filter(Boolean).join(' · ') || rawNoteText;
+          })()
+        : rawNoteText;
 
     const safeUser = (s) => {
       if (!s) return null;
@@ -361,6 +369,7 @@ export default function ActivityScreen() {
     if (t === 'SERVICE_COMPLETE') return 'SERVICE COMPLETE';
     if (t === 'ASSET_EDIT') return 'EDIT';
     if (t === 'NEW_ASSET') return 'NEW ASSET';
+    if (t === 'HIRE') return 'EQUIPMENT HIRE';
     if (item.kind === 'ASSET_ACTION' && (t === 'CHECK_IN' || t === 'CHECK_OUT' || t === 'TRANSFER')) {
       return formatActivityListTitle(t, {
         firebaseUser,
@@ -380,6 +389,12 @@ export default function ActivityScreen() {
       subTop = `From ${fromName}`;
     } else if (isAction && String(item.type).toUpperCase() === 'CHECK_OUT') {
       subTop = `To ${toName}`;
+    } else if (isAction && String(item.type).toUpperCase() === 'HIRE') {
+      const hirerName = (item.data?.hirerName && String(item.data.hirerName).trim()) || '';
+      const startDate = (item.data?.hireStartDate && String(item.data.hireStartDate).slice(0, 10)) || '';
+      const endDate = (item.data?.hireEndDate && String(item.data.hireEndDate).slice(0, 10)) || '';
+      const dateRange = startDate && endDate ? `${startDate} – ${endDate}` : startDate || endDate || '';
+      subTop = [hirerName, dateRange].filter(Boolean).join(' · ');
     } else {
       subTop = safeUser(item.actor) || '';
     }

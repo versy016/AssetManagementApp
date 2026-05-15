@@ -1468,10 +1468,12 @@ export default function CertsView({ visible: initialVisible }) {
         >
           {safeFilteredRows.length === 0 ? (
             <View style={styles.mobileEmptyState}>
-              <MaterialIcons name="description" size={48} color="#CBD5E1" />
-              <Text style={styles.mobileEmptyText}>No documents found</Text>
-              <Text style={styles.mobileEmptySubtext}>Try adjusting your filters</Text>
-      </View>
+              <MaterialIcons name="verified" size={48} color="#CBD5E1" />
+              <Text style={styles.mobileEmptyText}>No documents yet</Text>
+              <Text style={styles.mobileEmptySubtext}>
+                Upload a certificate or document from an asset's detail view, or adjust your filters to find existing documents.
+              </Text>
+            </View>
           ) : (
             <View style={styles.gridContainer}>
               {safeFilteredRows.map((r) => {
@@ -1692,6 +1694,15 @@ export default function CertsView({ visible: initialVisible }) {
               })}
             </View>
             <ScrollView style={styles.tableBodyScroll} showsVerticalScrollIndicator>
+                {paginatedRows.length === 0 && (
+                  <View style={styles.tableEmptyState}>
+                    <MaterialIcons name="verified" size={48} color="#CBD5E1" />
+                    <Text style={styles.tableEmptyText}>No documents yet</Text>
+                    <Text style={styles.tableEmptySubtext}>
+                      Upload a certificate or document from an asset's detail view, or adjust your filters to find existing documents.
+                    </Text>
+                  </View>
+                )}
                 {paginatedRows.map((r, idx) => {
                 const dateDisplay = r.dateValue ? formatValidUntilDisplay(r.dateValue) : '—';
                 const updatedDisplay = r.updatedAt ? formatDisplayDate(r.updatedAt) : '—';
@@ -2047,5 +2058,26 @@ const styles = StyleSheet.create({
     fontSize: sf(13),
     color: Colors.sub,
     marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 400,
+  },
+  tableEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  tableEmptyText: {
+    fontSize: sf(16),
+    fontWeight: '800',
+    color: Colors.text,
+    marginTop: 12,
+  },
+  tableEmptySubtext: {
+    fontSize: sf(13),
+    color: Colors.sub,
+    marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 480,
   },
 });

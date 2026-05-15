@@ -19,7 +19,7 @@ const config = require('./config');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { handleBoldsignWebhook } = require('./services/boldsignWebhook');
+// BoldSign removed — self-hosted signing is now handled in hireDisclaimer.js
 
 // ---- Prisma (singleton) ---------------------------------------------------
 const prisma = require('./lib/prisma');
@@ -89,6 +89,18 @@ app.use('/places', apiLimiter);
 app.use('/activity', apiLimiter);
 app.use('/labels', apiLimiter);
 app.use('/hire-disclaimer', apiLimiter);
+
+// Signing page & submission — unauthenticated but token-gated; allow generous limit
+// per IP so signers on mobile/proxy IPs aren't blocked after a few retries.
+const signingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many signing requests. Please try again later.' },
+  skip: isNonProd,
+});
+app.use('/hire-disclaimer/signing', signingLimiter);
 app.use('/asset-documents', uploadLimiter);
 app.use('/admin', apiLimiter);
 
@@ -104,13 +116,6 @@ const publicLimiter = rateLimit({
   skip: isNonProd,
 });
 app.use('/public', publicLimiter);
-
-// BoldSign webhook -- must use raw body for HMAC verification (before JSON parser)
-app.post(
-  '/hire-disclaimer/boldsign/webhook',
-  express.raw({ type: () => true, limit: '5mb' }),
-  (req, res) => handleBoldsignWebhook(req, res)
-);
 
 // Only parse JSON when Content-Type is explicitly application/json (never parse multipart as JSON)
 app.use(express.json({
