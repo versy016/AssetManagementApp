@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const bs = require\\('boldsign'\\); console.log\\(JSON.stringify\\(Object.keys\\(bs\\), null, 2\\)\\)\")",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\sverma\\\\Documents\\\\AssetManagementApp\\\\inventory-api\\\\node_modules\\\\boldsign\" -Force | ForEach-Object { $_.FullName })"
+    ]
+  }
+}
