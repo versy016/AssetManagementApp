@@ -9,6 +9,36 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
+function overrideDocxFonts(docxBuffer, fontName) {
+  const targetFont = String(fontName || '').trim();
+  if (!targetFont) return docxBuffer;
+
+  const PizZip = require('pizzip');
+  const zip = new PizZip(docxBuffer);
+  const xmlPaths = [
+    'word/document.xml',
+    'word/styles.xml',
+    'word/fontTable.xml',
+    'word/settings.xml',
+  ];
+
+  for (const xmlPath of xmlPaths) {
+    const file = zip.file(xmlPath);
+    if (!file) continue;
+
+    let xml = file.asText();
+    xml = xml
+      .replace(/w:ascii="[^"]*"/g, `w:ascii="${targetFont}"`)
+      .replace(/w:hAnsi="[^"]*"/g, `w:hAnsi="${targetFont}"`)
+      .replace(/w:cs="[^"]*"/g, `w:cs="${targetFont}"`)
+      .replace(/w:eastAsia="[^"]*"/g, `w:eastAsia="${targetFont}"`)
+      .replace(/w:name="Aptos[^"]*"/g, `w:name="${targetFont}"`);
+    zip.file(xmlPath, xml);
+  }
+
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
+
 function findLibreOfficeExecutable() {
   const envPath = process.env.LIBREOFFICE_PATH || process.env.SOFFICE_PATH;
   if (envPath && fs.existsSync(envPath)) {
@@ -46,13 +76,16 @@ function convertDocxBufferToPdf(docxBuffer) {
     throw new Error('Invalid .docx buffer');
   }
 
+  const fontOverride = process.env.HIRE_PDF_FONT_OVERRIDE || '';
+  const sourceBuffer = fontOverride ? overrideDocxFonts(docxBuffer, fontOverride) : docxBuffer;
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hire-docx-'));
   const id = crypto.randomBytes(8).toString('hex');
   const docxPath = path.join(tmpDir, `${id}.docx`);
   const expectedPdf = path.join(tmpDir, `${id}.pdf`);
 
   try {
-    fs.writeFileSync(docxPath, docxBuffer);
+    fs.writeFileSync(docxPath, sourceBuffer);
 
     const exe = findLibreOfficeExecutable();
     const args = [
@@ -95,7 +128,21 @@ function convertDocxBufferToPdf(docxBuffer) {
     }
 
     if (!fs.existsSync(expectedPdf)) {
-      throw new Error('LibreOffice did not create a PDF file (check template and disk space).');
+      const pdfFiles = fs.readdirSync(tmpDir).filter((name) => /\.pdf$/i.test(name));
+      if (pdfFiles.length > 0) {
+        return fs.readFileSync(path.join(tmpDir, pdfFiles[0]));
+      }
+
+      const tmpFiles = fs.readdirSync(tmpDir).join(', ') || '(none)';
+      const msg = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+      throw new Error(
+        [
+          'LibreOffice did not create a PDF file.',
+          msg ? `LibreOffice output: ${msg}` : '',
+          `Temp files: ${tmpFiles}`,
+          'Check that the DOCX opens in Word/LibreOffice and that the configured fonts are installed.',
+        ].filter(Boolean).join(' ')
+      );
     }
 
     return fs.readFileSync(expectedPdf);
@@ -120,4 +167,5 @@ function convertDocxBufferToPdf(docxBuffer) {
 module.exports = {
   findLibreOfficeExecutable,
   convertDocxBufferToPdf,
+  overrideDocxFonts,
 };

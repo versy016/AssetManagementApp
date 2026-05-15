@@ -201,7 +201,8 @@ export default function WebNavbar() {
     { id: 'maps',      href: '/(tabs)/maps',               label: 'Maps',    icon: 'map',                    isActive: active.maps },
     { id: 'activity',  href: '/activity',                   label: 'Activity', icon: 'history',              isActive: active.activity },
     { id: 'certs',     href: '/certs',                      label: 'Certs',    icon: 'verified',             isActive: active.certs },
-    { id: 'hire',      href: '/(tabs)/dashboard?view=hire', label: 'Hire',     icon: 'local-shipping',       isActive: active.hire },
+    // Hire is admin-only — only shown when the current user has admin privileges
+    ...(isAdmin ? [{ id: 'hire', href: '/(tabs)/dashboard?view=hire', label: 'Hire', icon: 'local-shipping', isActive: active.hire }] : []),
   ];
 
   const rightItems = [

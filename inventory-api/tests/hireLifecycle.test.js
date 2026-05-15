@@ -340,10 +340,10 @@ describe('DELETE /hire-disclaimer/hires/:id', () => {
   });
 });
 
-// ─── Hire dashboard / DocuSign flags ─────────────────────────────────────────
+// ─── Hire dashboard / signing flags ──────────────────────────────────────────
 describe('Hire dashboard API extras', () => {
-  test('GET /hire-disclaimer/docusign/status returns enabled and signAnchor', async () => {
-    const res = await request(app).get('/hire-disclaimer/docusign/status').set(authHeader());
+  test('GET /hire-disclaimer/signing/status returns enabled and signAnchor', async () => {
+    const res = await request(app).get('/hire-disclaimer/signing/status').set(authHeader());
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('enabled');
     expect(typeof res.body.enabled).toBe('boolean');

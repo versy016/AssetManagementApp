@@ -43,7 +43,6 @@
         "axios": "^1.10.0",
         "body-parser": "^2.2.0",
         "cors": "^2.8.5",
-        "docusign-esign": "^8.0.1",
         "docx": "^8.5.0",
         "docxtemplater": "^3.41.0",
         "dotenv": "^16.5.0",

@@ -395,7 +395,11 @@ const Dashboard = ({ isAdmin }) => {
       );
     }
     if (key === 'tasks') return <View style={s.webPane}><TasksScreen /></View>;
-    if (key === 'hire') return <View style={s.webPane}><HireView /></View>;
+    if (key === 'hire') {
+      // Admin-only section — redirect non-admins silently to the dashboard home
+      if (!canAdmin) return <View style={s.webPane}><SearchScreen embed /></View>;
+      return <View style={s.webPane}><HireView /></View>;
+    }
     return <View style={s.webPane}><SearchScreen embed /></View>;
   };
 

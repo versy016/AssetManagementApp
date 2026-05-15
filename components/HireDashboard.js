@@ -20,23 +20,28 @@ import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
 import SearchInput from './ui/SearchInput';
 
-// Column flex so table fills full width (keeps CertsView look)
+// Column flex weights for data columns (action column is fixed width — see ACTION_COL_WIDTH)
 const COL_FLEX = {
-  assetId: 1,
-  serial: 0.8,
-  type: 1,
-  contact: 1,
-  phone: 0.9,
-  email: 1.2,
-  from: 0.85,
-  to: 0.85,
-  status: 0.9,
-  /** Wide enough for view / download / edit / delete / copy / DocuSign icon row */
-  action: 1.35,
+  assetId:  1,
+  serial:   0.8,
+  type:     1,
+  client:   1,
+  contact:  1,
+  phone:    0.9,
+  email:    1.2,
+  from:     0.85,
+  to:       0.85,
+  status:   0.9,
 };
 
-/** Ensures the grid is wide enough for all action icons; parent pane scrolls horizontally if needed. */
-const HIRE_TABLE_MIN_INNER_WIDTH = 1020;
+/**
+ * Action column is fixed-width so 6 icon buttons (32 px each, 6 px gap)
+ * always fit on one line: 6×32 + 5×6 = 222 px content + padding.
+ */
+const ACTION_COL_WIDTH = 260;
+
+/** Minimum inner table width — ensures horizontal scroll appears before columns compress. */
+const HIRE_TABLE_MIN_INNER_WIDTH = 1340;
 
 function formatDate(s) {
   if (!s || typeof s !== 'string') return '—';
@@ -49,13 +54,26 @@ function formatDate(s) {
 }
 
 function StatusBadge({ hire }) {
-  const signed = hire.signatureStatus === 'signed';
-  const label = hire.signatureStatusLabel || (signed ? 'Signed' : 'Pending signature');
+  const s = String(hire.signatureStatus || '').toUpperCase();
+  // Support both new uppercase values and legacy lowercase
+  const isSigned   = s === 'SIGNED'   || s === 'SIGNED_LEGACY' || hire.signatureStatus === 'signed';
+  const isDeclined = s === 'DECLINED';
+  const isExpired  = s === 'EXPIRED';
+
+  const label = hire.signatureStatusLabel ||
+    (isSigned ? 'Signed' : isDeclined ? 'Declined' : isExpired ? 'Expired' : 'Pending signature');
+
+  const pillStyle  = isSigned ? styles.statusPillSigned
+                   : isDeclined ? styles.statusPillDeclined
+                   : isExpired  ? styles.statusPillExpired
+                   : styles.statusPillPending;
+  const textStyle  = isSigned ? styles.statusPillTextSigned
+                   : isDeclined ? styles.statusPillTextDeclined
+                   : isExpired  ? styles.statusPillTextExpired
+                   : styles.statusPillTextPending;
   return (
-    <View style={[styles.statusPill, signed ? styles.statusPillSigned : styles.statusPillPending]}>
-      <Text style={[styles.statusPillText, signed ? styles.statusPillTextSigned : styles.statusPillTextPending]} numberOfLines={2}>
-        {label}
-      </Text>
+    <View style={[styles.statusPill, pillStyle]}>
+      <Text style={[styles.statusPillText, textStyle]} numberOfLines={2}>{label}</Text>
     </View>
   );
 }
@@ -77,8 +95,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hoverRowId, setHoverRowId] = useState(null);
-  const [docusignEnabled, setDocusignEnabled] = useState(false);
-  const [docusignSendingId, setDocusignSendingId] = useState(null);
+  const [signingSendingId, setSigningSendingId] = useState(null);
   /** Delete flow: confirm → loading → result (replaces window.confirm / window.alert on web). */
   const [deleteUi, setDeleteUi] = useState(null);
 
@@ -141,7 +158,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     const q = query.trim().toLowerCase();
     if (!q) return hires;
     return hires.filter((h) =>
-      [h.assetId, h.serial, h.assetType, h.contactName, h.phone, h.email, h.signatureStatusLabel]
+      [h.assetId, h.serial, h.assetType, h.contactName, h.phone, h.email, h.client, h.project, h.signatureStatusLabel]
         .some((v) => v && String(v).toLowerCase().includes(q))
     );
   }, [hires, query]);
@@ -160,7 +177,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     setPage(1);
   }, [query]);
 
-  // Listen for postMessage from the DocuSign signing tab (sent by the /docusign/return page)
+  // Listen for postMessage from the self-hosted signing tab.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const handler = (event) => {
@@ -189,22 +206,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/hire-disclaimer/docusign/status`);
-        if (!res.ok) return;
-        const j = await res.json();
-        if (!cancelled && j.enabled) setDocusignEnabled(true);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Signing is always enabled (self-hosted) — no feature flag fetch needed
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -294,7 +296,10 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
 
   const handleViewDocument = (hire) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(docUrl(hire.id, { inline: true }), '_blank', 'noopener,noreferrer');
+      // Prefer the signed PDF on S3 — opens directly as PDF with no server-side conversion needed
+      const s3Url = hire.data?.signedFileUrl && String(hire.data.signedFileUrl).trim();
+      const url = s3Url || docUrl(hire.id, { inline: true });
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     Alert.alert('View document', 'Opening the document in a new tab is available on web. On mobile, use Download.');
@@ -305,15 +310,15 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
     return e && e !== '—' && e.includes('@');
   };
 
-  const handleDocusignEmail = async (hire) => {
+  const handleSigningEmail = async (hire) => {
     if (!lesseeEmailOk(hire)) {
-      Alert.alert('DocuSign', 'This hire needs a valid lessee email on the record.');
+      Alert.alert('e-Signature', 'This hire needs a valid lessee email on the record.');
       return;
     }
-    setDocusignSendingId(hire.id);
+    setSigningSendingId(hire.id);
     try {
       const res = await fetch(
-        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hire.id)}/docusign/send`,
+        `${API_BASE_URL}/hire-disclaimer/hires/${encodeURIComponent(hire.id)}/signing/create`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -324,13 +329,13 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
       if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
       await fetchHires();
       Alert.alert(
-        'DocuSign',
-        'An email was sent to the lessee with a link to review and sign the lease.'
+        'e-Signature sent',
+        `A signing link has been emailed to ${hire.email}. It expires in 72 hours.`
       );
     } catch (e) {
-      Alert.alert('DocuSign failed', e?.message || 'Could not send envelope.');
+      Alert.alert('Signing failed', e?.message || 'Could not send signing email.');
     } finally {
-      setDocusignSendingId(null);
+      setSigningSendingId(null);
     }
   };
 
@@ -350,7 +355,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
         <SearchInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search by asset, contact, email, serial…"
+          placeholder="Search by asset, contact, email, serial, client…"
           autoCapitalize="none"
           autoCorrect={false}
           style={{ flex: 1 }}
@@ -383,6 +388,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
         >
           {hireToolbar}
           <View style={styles.empty}>
+            <MaterialIcons name="local-shipping" size={48} color="#CBD5E1" />
             <Text style={styles.emptyTitle}>No hires yet</Text>
             <Text style={styles.emptySub}>
               Create a hire from an asset action (Hire) or use the form to generate a lease document.
@@ -398,19 +404,24 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
               horizontal
               showsHorizontalScrollIndicator
               contentContainerStyle={styles.tableScrollContent}
+              // On web, force the scrollbar to always be visible so the table
+              // never silently overflows. 'scroll' keeps the track present even
+              // when content fits; 'auto' (the default) hides it.
+              style={Platform.OS === 'web' ? styles.hScrollForceBar : undefined}
             >
             <View style={styles.tableInnerWide}>
               <View style={styles.tableHeader}>
                 <View style={[styles.th, { flex: COL_FLEX.assetId }]}><Text style={styles.thText} numberOfLines={2}>Asset ID</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.serial }]}><Text style={styles.thText} numberOfLines={2}>Serial</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.type }]}><Text style={styles.thText} numberOfLines={2}>Asset type</Text></View>
+                <View style={[styles.th, { flex: COL_FLEX.client }]}><Text style={styles.thText} numberOfLines={2}>Client / Project</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.contact }]}><Text style={styles.thText} numberOfLines={2}>Contact name</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.phone }]}><Text style={styles.thText} numberOfLines={2}>Phone</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.email }]}><Text style={styles.thText} numberOfLines={2}>Email</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.from }]}><Text style={styles.thText} numberOfLines={2}>From</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.to }]}><Text style={styles.thText} numberOfLines={2}>To</Text></View>
                 <View style={[styles.th, { flex: COL_FLEX.status }]}><Text style={styles.thText} numberOfLines={2}>Status</Text></View>
-                <View style={[styles.th, styles.tdActions, { flex: COL_FLEX.action }]}><Text style={styles.thText} numberOfLines={2}>Actions</Text></View>
+                <View style={[styles.th, styles.thActions]}><Text style={styles.thText} numberOfLines={1}>Actions</Text></View>
               </View>
               <ScrollView
                 showsVerticalScrollIndicator
@@ -442,6 +453,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                       <View style={[styles.td, { flex: COL_FLEX.assetId }]}><Text style={styles.tdText} numberOfLines={2}>{h.assetId || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.serial }]}><Text style={styles.tdText} numberOfLines={2}>{h.serial || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.type }]}><Text style={styles.tdText} numberOfLines={2}>{h.assetType || '—'}</Text></View>
+                      <View style={[styles.td, { flex: COL_FLEX.client }]}><Text style={styles.tdText} numberOfLines={2}>{h.client || h.project || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.contact }]}><Text style={styles.tdText} numberOfLines={2}>{h.contactName || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.phone }]}><Text style={styles.tdText} numberOfLines={2}>{h.phone || '—'}</Text></View>
                       <View style={[styles.td, { flex: COL_FLEX.email }]}><Text style={styles.tdText} numberOfLines={2}>{h.email || '—'}</Text></View>
@@ -450,7 +462,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                       <View style={[styles.td, { flex: COL_FLEX.status, justifyContent: 'center' }]}>
                         <StatusBadge hire={h} />
                       </View>
-                      <View style={[styles.td, styles.tdActions, { flex: COL_FLEX.action }]}>
+                      <View style={[styles.td, styles.tdActions]}>
                         <View style={styles.actionRow}>
                           <TableIconButton
                             icon="visibility"
@@ -487,17 +499,18 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
                             accessibilityLabel="Copy to new form"
                             tooltip="Copy to new form"
                           />
-                          {docusignEnabled &&
+                          {/* Show signing email button when not already signed and hirer has email */}
+                          {String(h.signatureStatus || '').toUpperCase() !== 'SIGNED' &&
                           h.signatureStatus !== 'signed' &&
                           lesseeEmailOk(h) ? (
                             <TableIconButton
                               icon="mail-outline"
                               tone="send"
-                              onPress={() => handleDocusignEmail(h)}
-                              disabled={docusignSendingId === h.id}
-                              loading={docusignSendingId === h.id}
-                              accessibilityLabel="Send via DocuSign email"
-                              tooltip="Send via DocuSign email"
+                              onPress={() => handleSigningEmail(h)}
+                              disabled={signingSendingId === h.id}
+                              loading={signingSendingId === h.id}
+                              accessibilityLabel="Send signing email"
+                              tooltip="Send signing link by email"
                             />
                           ) : null}
                         </View>
@@ -555,7 +568,7 @@ const styles = StyleSheet.create({
     padding: 32,
     alignItems: 'center',
   },
-  emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8 },
+  emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8, marginTop: 12 },
   emptySub: { fontSize: sf(14), color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
   toolbarSurface: { marginBottom: 8 },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -586,6 +599,8 @@ const styles = StyleSheet.create({
   },
   tableScrollWrapper: { flex: 1 },
   tableScrollContent: { flexGrow: 1 },
+  /** Forces the horizontal scrollbar track to stay visible on web even when content fits. */
+  hScrollForceBar: { overflowX: 'scroll' },
   tableInnerWide: {
     minWidth: HIRE_TABLE_MIN_INNER_WIDTH,
     flex: 1,
@@ -634,11 +649,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 0,
   },
-  tdActions: {
-    alignItems: 'center',
+  /** Fixed-width action column header — never shrinks, never wraps. */
+  thActions: {
+    width: ACTION_COL_WIDTH,
+    flexGrow: 0,
     flexShrink: 0,
-    minWidth: 200,
-    paddingHorizontal: 4,
+    paddingVertical: 13,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRightWidth: 0,
+  },
+  /** Fixed-width action column cell — never shrinks, never wraps. */
+  tdActions: {
+    width: ACTION_COL_WIDTH,
+    flexGrow: 0,
+    flexShrink: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tdText: {
     fontSize: sf(13),
@@ -664,14 +694,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  statusPillTextSigned: { color: Colors.successFg },
-  statusPillTextPending: { color: Colors.warningFg },
+  statusPillDeclined: { backgroundColor: '#FEE2E2' },
+  statusPillExpired:  { backgroundColor: '#F1F5F9' },
+  statusPillTextSigned:   { color: Colors.successFg },
+  statusPillTextPending:  { color: Colors.warningFg },
+  statusPillTextDeclined: { color: '#B91C1C' },
+  statusPillTextExpired:  { color: '#64748B' },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',   // icons must never wrap to a second line
   },
   details: {
     padding: 12,
