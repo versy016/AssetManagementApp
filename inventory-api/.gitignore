@@ -3,3 +3,6 @@ node_modules
 # .env
 
 /generated/prisma
+
+# Signed PDFs — generated at runtime, must not be wiped by git clean
+signed_docs/
