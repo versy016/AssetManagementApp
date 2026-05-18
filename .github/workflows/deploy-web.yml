@@ -104,12 +104,11 @@ jobs:
             echo "=== Pulling latest code ==="
             cd /home/ec2-user/deploy/AssetManagementApp
 
-            # Remove any untracked files that git would refuse to overwrite on pull
-            # (safe: only removes files that are now tracked in origin)
+            # Sync to origin/main — discard any local modifications or untracked
+            # conflicts. .gitignored files (.env, node_modules, uploads) are safe.
             git fetch origin main
-            git diff --name-only --diff-filter=A origin/main | xargs -r rm -f
-
-            git pull --ff-only
+            git reset --hard FETCH_HEAD
+            git clean -fd
 
             echo "=== Installing API dependencies ==="
             cd inventory-api
