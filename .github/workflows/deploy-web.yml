@@ -103,6 +103,12 @@ jobs:
             set -e
             echo "=== Pulling latest code ==="
             cd /home/ec2-user/deploy/AssetManagementApp
+
+            # Remove any untracked files that git would refuse to overwrite on pull
+            # (safe: only removes files that are now tracked in origin)
+            git fetch origin main
+            git diff --name-only --diff-filter=A origin/main | xargs -r rm -f
+
             git pull --ff-only
 
             echo "=== Installing API dependencies ==="
