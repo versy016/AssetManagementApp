@@ -112,7 +112,7 @@ jobs:
 
             echo "=== Installing API dependencies ==="
             cd inventory-api
-            HUSKY=0 npm install --omit=dev
+            npm install --omit=dev --ignore-scripts
 
             echo "=== Generating Prisma client ==="
             npx prisma generate
