@@ -3,12 +3,29 @@ name: Deploy Expo Web and API to EC2
 on:
   push:
     branches:
-      - main # or your deployment branch
-  workflow_dispatch: # Actions tab → Deploy Expo Web and API to EC2 → Run workflow
+      - main
+  workflow_dispatch:
+    inputs:
+      skip_web_build:
+        description: "Skip Expo web build (deploy API only)"
+        required: false
+        default: false
+        type: boolean
+
+# Only one deploy can run at a time — cancel any in-progress run on new push
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1: Build the Expo web app on the free GH Actions runner
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-web:
+    name: Build Expo Web
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.skip_web_build != 'true' }}
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -26,41 +43,93 @@ jobs:
       - name: Build Expo Web
         env:
           EXPO_PUBLIC_API_URL: https://api.gearops.com.au
-          NODE_OPTIONS: "--max-old-space-size=3072"
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npx expo export --platform web --clear
 
-      - name: List build output
-        run: ls -l dist
+      - name: Verify build output
+        run: |
+          echo "Build contents:"
+          ls -lh dist/
+          echo "Total size: $(du -sh dist | cut -f1)"
 
-      - name: Deploy Web Build to EC2
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-web-dist
+          path: dist/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2: Deploy web build + pull API + run migrations + restart
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: [build-web]
+    # Run even if build-web was skipped (API-only deploy)
+    if: always() && !failure() && !cancelled()
+    timeout-minutes: 15
+
+    steps:
+      - name: Download web dist artifact
+        # Only download if the build job actually ran
+        if: ${{ github.event.inputs.skip_web_build != 'true' && needs.build-web.result == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: expo-web-dist
+          path: dist/
+
+      - name: Copy web build to EC2
+        if: ${{ github.event.inputs.skip_web_build != 'true' && needs.build-web.result == 'success' }}
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "dist/*"
+          # Deploy into the SAME directory the server is already serving from
+          source: "dist/"
           target: "/home/ec2-user/deploy/AssetManagementApp/web-build/dist"
-
-      - name: Deploy API to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "inventory-api/**"
-          target: "/home/ec2-user/deploy/AssetManagementApp/inventory-api"
           strip_components: 1
 
-      - name: Install API Dependencies and Restart Server
+      - name: Pull API code, run migrations, restart services
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
+          # Fail fast — any command error aborts the script
+          script_stop: true
           script: |
-            cd /home/ec2-user/deploy/AssetManagementApp/inventory-api
-            npm install
+            set -e
+            echo "=== Pulling latest code ==="
+            cd /home/ec2-user/deploy/AssetManagementApp
+            git pull --ff-only
+
+            echo "=== Installing API dependencies ==="
+            cd inventory-api
+            npm install --omit=dev
+
+            echo "=== Generating Prisma client ==="
             npx prisma generate
-            pm2 restart gearops-api
+
+            echo "=== Running database migrations ==="
+            npx prisma migrate deploy
+
+            echo "=== Restarting API ==="
+            pm2 restart gearops-api --update-env
             pm2 save
+
+            echo "=== Reloading nginx ==="
             sudo nginx -s reload
+
+            echo "=== Deploy complete ==="
+            pm2 list
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web build:** ${{ needs.build-web.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
