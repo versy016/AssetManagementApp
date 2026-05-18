@@ -351,6 +351,17 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
 
   const hireToolbar = (
     <View style={styles.toolbarSurface}>
+      <View style={styles.hireHeaderRow}>
+        <Text style={styles.hireHeaderTitle}>Equipment Hire</Text>
+        {hires.length > 0 && (
+          <View style={styles.hireHeaderChip}>
+            <MaterialIcons name="local-shipping" size={13} color={Colors.primary} />
+            <Text style={styles.hireHeaderChipText}>
+              {hires.length} record{hires.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
+      </View>
       <View style={styles.toolbarRow}>
         <SearchInput
           value={query}
@@ -571,6 +582,39 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: sf(18), fontWeight: '700', color: Colors.text, marginBottom: 8, marginTop: 12 },
   emptySub: { fontSize: sf(14), color: Colors.sub, textAlign: 'center', maxWidth: 400, marginBottom: 16 },
   toolbarSurface: { marginBottom: 8 },
+  hireHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  hireHeaderTitle: {
+    fontSize: sf(20),
+    fontWeight: '900',
+    color: Colors.text,
+    letterSpacing: -0.3,
+    textTransform: 'uppercase',
+  },
+  hireHeaderChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  hireHeaderChipText: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   btn: {

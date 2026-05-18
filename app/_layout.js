@@ -28,10 +28,14 @@ export default function RootLayout() {
   const [layoutReady, setLayoutReady] = useState(false);
 
   // Check if we're on an auth page (login, register, verify-email, etc.)
-  const isAuthPage = pathname?.includes('/login') || 
-                     pathname?.includes('/register') || 
+  const isAuthPage = pathname?.includes('/login') ||
+                     pathname?.includes('/register') ||
                      pathname?.includes('/verify-email') ||
                      pathname?.includes('/ForgotPassword');
+
+  // Public pages that must work without any authentication — e.g. the QR
+  // check-in page that members of the general public scan from a browser.
+  const isPublicPage = pathname?.startsWith('/check-in/public');
 
   // 1) watch auth
   useEffect(() => {
@@ -51,11 +55,22 @@ export default function RootLayout() {
       hasRedirectedToLoginSession = false;
       return;
     }
-    if (!layoutReady || isAuthPage) return;
+    // Don't redirect away from auth pages or public (no-auth) pages.
+    if (!layoutReady || isAuthPage || isPublicPage) return;
+
+    // QR codes encode /check-in/<id> (authenticated route).  When someone
+    // without the app scans one in a browser they arrive here unauthenticated.
+    // Send them to the public page instead of the login screen.
+    const checkinMatch = pathname?.match(/^\/check-in\/([^/]+)$/);
+    if (checkinMatch) {
+      router.replace(`/check-in/public/${checkinMatch[1]}`);
+      return;
+    }
+
     if (hasRedirectedToLoginSession) return;
     hasRedirectedToLoginSession = true;
     router.replace('/(auth)/login');
-  }, [user, layoutReady, isAuthPage]);
+  }, [user, layoutReady, isAuthPage, isPublicPage, pathname]);
 
   // 3) Web-only: ensure global scrolling is enabled (guard against hidden overflow)
   useEffect(() => {
@@ -92,11 +107,13 @@ export default function RootLayout() {
   }, []);
 
   // 4) still loading?
-  if (user === undefined) {
+  // For public pages skip the auth-pending wait so the page renders immediately
+  // without a blank screen while Firebase resolves the session.
+  if (user === undefined && !isPublicPage) {
     return null; // or your splash
   }
 
-  const showNavbar = Platform.OS === 'web' && user && !isAuthPage;
+  const showNavbar = Platform.OS === 'web' && user && !isAuthPage && !isPublicPage;
 
   // 5) wrap everything in PaperProvider
   return (

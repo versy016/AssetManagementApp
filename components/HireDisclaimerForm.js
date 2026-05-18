@@ -687,17 +687,29 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
     </View>
   );
 
-  const dateField = (label, key) => (
+  const dateField = (label, key, { optional = false, hint = '' } = {}) => (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}<Text style={styles.requiredStar}> *</Text></Text>
+      <Text style={styles.label}>
+        {label}
+        {optional ? ' (optional)' : null}
+        {!optional ? <Text style={styles.requiredStar}> *</Text> : null}
+      </Text>
+      {hint ? <Text style={styles.suggestHint}>{hint}</Text> : null}
       <TouchableOpacity
         style={styles.input}
         onPress={() => setDatePicker({ open: true, field: key })}
       >
         <Text style={{ color: form[key] ? Colors.text : Colors.sub2 }}>
-          {form[key] ? formatDisplayDateLong(form[key], '') : 'Select date'}
+          {form[key]
+            ? formatDisplayDateLong(form[key], '')
+            : (optional ? 'Select date if known' : 'Select date')}
         </Text>
       </TouchableOpacity>
+      {optional && form[key] ? (
+        <TouchableOpacity onPress={() => update(key, '')} style={{ marginTop: 6, alignSelf: 'flex-start' }}>
+          <Text style={styles.suggestHint}>Clear {label.toLowerCase()}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
@@ -1128,11 +1140,21 @@ export default function HireDisclaimerForm({ onGenerated, initialHire, hireFormM
           <Text style={styles.sectionTitle}>Hire period</Text>
           {dateField('Start date', 'hireStartDate')}
           {timeField('Pickup time', 'hireStartTime', { optional: true })}
-          {dateField('Return date', 'hireEndDate')}
+          {dateField('Return date', 'hireEndDate', {
+            optional: true,
+            hint: 'Leave empty for open-ended hire — billing then follows the rate period (per day / week / month).',
+          })}
           {errors.hirePeriod ? <Text style={styles.fieldError}>{errors.hirePeriod}</Text> : null}
           <View style={styles.field}>
-            <Text style={styles.label}>Rate<Text style={styles.requiredStar}> *</Text></Text>
-            <Text style={styles.suggestHint}>Choose whether the amount is per day, week, or month.</Text>
+            <Text style={styles.label}>
+              {form.hireEndDate ? 'Rate' : 'Billing rate'}
+              <Text style={styles.requiredStar}> *</Text>
+            </Text>
+            <Text style={styles.suggestHint}>
+              {form.hireEndDate
+                ? 'Choose whether the amount is per day, week, or month.'
+                : 'No return date set — pick how this hire is billed.'}
+            </Text>
             {(() => {
               // ── Smart rate-period enable/disable ────────────────────────────
               // Compute inclusive day count from the selected dates.

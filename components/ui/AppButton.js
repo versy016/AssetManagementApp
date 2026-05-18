@@ -23,7 +23,7 @@ export default function AppButton({
                 styles.button,
                 sizeStyles.container,
                 variantStyles.container,
-                disabled && styles.disabled,
+                (disabled || loading) && styles.disabled,
                 style
             ]}
             onPress={onPress}
@@ -32,7 +32,19 @@ export default function AppButton({
             {...props}
         >
             {loading ? (
-                <ActivityIndicator color={variantStyles.textColor} size="small" />
+                <View style={styles.content}>
+                    <ActivityIndicator color={variantStyles.textColor} size="small" />
+                    <Text
+                        style={[
+                            styles.label,
+                            sizeStyles.label,
+                            { color: variantStyles.textColor, marginLeft: 10 },
+                            labelStyle
+                        ]}
+                    >
+                        Please wait…
+                    </Text>
+                </View>
             ) : (
                 <View style={styles.content}>
                     {icon && (
@@ -164,7 +176,9 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     label: {
-        fontFamily: 'Inter',
+        // Inherit the system font stack used by every other label / heading
+        // in the app (no fontFamily override). Matches the look of input
+        // labels, the auth heading, the "Forgot Password" / "Register" links.
         letterSpacing: 0.5,
     },
 });

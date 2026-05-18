@@ -165,6 +165,20 @@ function LostAndFoundForm({ assetId, assetName }) {
       </View>
 
       <View style={ss.formBody}>
+        {/* What this form does + who is notified */}
+        <View style={[ss.helperBox, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+          <Text style={[ss.helperIcon, { color: C.primary }]}>ℹ️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[ss.helperTitle, { color: C.primary }]}>What happens next?</Text>
+            <Text style={ss.helperBody}>
+              Use this form if you found this item somewhere unexpected (e.g. a job site, public area, or
+              left behind). Our office team is notified by email straight away and — if you leave your
+              contact details — they will reach out to arrange return.
+            </Text>
+            <Text style={ss.helperFootnote}>Notifies: GearOps asset team · No login required.</Text>
+          </View>
+        </View>
+
         <Field
           label="Where was it found?"
           value={foundAt}
@@ -183,14 +197,14 @@ function LostAndFoundForm({ assetId, assetName }) {
           label="Your contact (phone or email)"
           value={finderContact}
           onChangeText={setFinderContact}
-          placeholder="Optional"
+          placeholder="Optional — only used to follow up about this item"
           maxLength={150}
         />
         <Field
           label="Additional notes"
           value={notes}
           onChangeText={setNotes}
-          placeholder="Any other details…"
+          placeholder="Any other details, e.g. condition, when you found it…"
           multiline
         />
 
@@ -269,6 +283,20 @@ function TransferToOfficeForm({ assetId, assetName }) {
       </View>
 
       <View style={ss.formBody}>
+        {/* What this form does + who is notified */}
+        <View style={[ss.helperBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+          <Text style={[ss.helperIcon, { color: C.accent }]}>ℹ️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[ss.helperTitle, { color: C.accent }]}>What happens next?</Text>
+            <Text style={ss.helperBody}>
+              Use this form when you're handing equipment back and need it sent to the office — for
+              example, after a hire ends or a job finishes. The asset manager is notified by email and
+              will arrange collection, processing, or transport from where the item is right now.
+            </Text>
+            <Text style={ss.helperFootnote}>Notifies: GearOps asset team · No login required.</Text>
+          </View>
+        </View>
+
         <Field
           label="Where is it now?"
           value={location}
@@ -286,14 +314,14 @@ function TransferToOfficeForm({ assetId, assetName }) {
           label="Your contact (phone or email)"
           value={contact}
           onChangeText={setContact}
-          placeholder="Optional"
+          placeholder="Optional — only used to coordinate this collection"
           maxLength={150}
         />
         <Field
           label="Notes"
           value={notes}
           onChangeText={setNotes}
-          placeholder="Any extra details…"
+          placeholder="Any extra details, e.g. when it's available for pickup…"
           multiline
         />
 
@@ -381,8 +409,12 @@ export default function PublicCheckInPage() {
             </View>
           </View>
 
-          {/* Divider */}
+          {/* Divider + section orientation */}
           <Text style={ss.sectionLabel}>What would you like to do?</Text>
+          <Text style={ss.sectionIntro}>
+            Pick the option that matches your situation. You don't need a GearOps account —
+            our office team will be notified as soon as you submit.
+          </Text>
 
           {/* Forms */}
           <LostAndFoundForm   assetId={assetId} assetName={assetName} />
@@ -450,7 +482,37 @@ const ss = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '600' },
 
   // Section label
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: C.sub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: '600', color: C.sub, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
+  sectionIntro: { fontSize: 13, color: C.sub, lineHeight: 19, marginBottom: 16 },
+
+  // Helper / info banner inside each form body
+  helperBox: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'flex-start',
+  },
+  helperIcon: { fontSize: 16, lineHeight: 20 },
+  helperTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  helperBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: C.text,
+  },
+  helperFootnote: {
+    fontSize: 11,
+    color: C.sub,
+    fontWeight: '600',
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
 
   // Form cards
   formCard: {

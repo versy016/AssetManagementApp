@@ -1,6 +1,6 @@
 // app/activity/index.js - Unified activity feed
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Platform, Modal, Pressable, TextInput, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, TouchableOpacity, Platform, Modal, Pressable, TextInput, ScrollView, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,219 @@ import SearchInput from '../../components/ui/SearchInput';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Module-scope pure helpers
+ *
+ * Pulled out of the component so they aren't recreated on every render —
+ * which previously invalidated every memoised row, defeating windowing.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const iconFor = (kind, type) => {
+  if (kind === 'ASSET_TYPE_CREATED') return 'category';
+  switch (String(type || '').toUpperCase()) {
+    case 'ASSET_DELETED': return 'delete';
+    case 'DOCUMENT_DELETED': return 'description';
+    case 'DOCUMENT_CREATED': return 'cloud-upload';
+    case 'ASSET_EDIT': return 'edit';
+    case 'NEW_ASSET': return 'add-circle-outline';
+    case 'TRANSFER': return 'swap-horiz';
+    case 'CHECK_IN': return 'assignment-turned-in';
+    case 'CHECK_OUT': return 'assignment-return';
+    case 'STATUS_CHANGE': return 'sync';
+    case 'REPAIR': return 'build';
+    case 'MAINTENANCE': return 'build-circle';
+    case 'HIRE': return 'work-outline';
+    case 'END_OF_LIFE': return 'block';
+    case 'SERVICE_COMPLETE': return 'build-circle';
+    case 'LOST': return 'help-outline';
+    case 'STOLEN': return 'report';
+    default: return 'event-note';
+  }
+};
+
+const colorFor = (kind, type) => {
+  if (kind === 'ASSET_TYPE_CREATED') return '#7C3AED';
+  switch (String(type || '').toUpperCase()) {
+    case 'ASSET_DELETED': return '#DC2626';
+    case 'DOCUMENT_DELETED': return '#B45309';
+    case 'DOCUMENT_CREATED': return '#15803D';
+    case 'ASSET_EDIT': return '#0EA5E9';
+    case 'NEW_ASSET': return '#10B981';
+    case 'TRANSFER': return Colors.primary;
+    case 'CHECK_IN': return '#16A34A';
+    case 'CHECK_OUT': return '#7C3AED';
+    case 'STATUS_CHANGE': return '#EA580C';
+    case 'REPAIR': return '#B45309';
+    case 'MAINTENANCE': return '#6D28D9';
+    case 'HIRE': return '#0369A1';
+    case 'END_OF_LIFE': return '#7C3AED';
+    case 'SERVICE_COMPLETE': return '#16A34A';
+    case 'LOST': return '#9CA3AF';
+    case 'STOLEN': return '#B91C1C';
+    default: return '#64748B';
+  }
+};
+
+const prettyWhen = (iso) => {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(+d)) return '';
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }).format(d).replace(/ /g, ' ').replace(',', '');
+  } catch { return ''; }
+};
+
+const safeUser = (s) => {
+  if (!s) return null;
+  const str = String(s);
+  const looksUid = /^(?:[A-Za-z0-9_-]{20,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(str);
+  if (looksUid) return null;
+  return str;
+};
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * ActivityRow — memoised so windowing actually skips work
+ * Only re-renders when `item` or `firebaseUser` change identity.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const ActivityRow = React.memo(function ActivityRow({ item, firebaseUser, onOpenAsset }) {
+  const isEditNextService =
+    item.kind === 'ASSET_ACTION' &&
+    String(item.type || '').toUpperCase() === 'ASSET_EDIT' &&
+    item.data &&
+    Array.isArray(item.data.fields) &&
+    item.data.fields.some((f) => String(f || '').toLowerCase().includes('next_service'));
+  const effectiveType = isEditNextService ? 'SERVICE_COMPLETE' : item.type;
+
+  const icon = iconFor(item.kind, effectiveType);
+  const stroke = colorFor(item.kind, effectiveType);
+  const thumb = item.asset?.image_url || item.image_url || null;
+  const isAction = item.kind === 'ASSET_ACTION';
+  const rawNoteText =
+    (item?.data && item.data.user_note_text)
+      ? item.data.user_note_text
+      : (item.note || null);
+  const noteText = isEditNextService
+    ? 'Service completed; status set to In Service'
+    : (isAction && String(item.type || '').toUpperCase() === 'HIRE')
+      ? (() => {
+          const sigStatus = item.data?.signatureStatus;
+          const sigLabel = sigStatus === 'signed' ? '✓ Signed' : sigStatus === 'pending_signature' ? '⏳ Pending signature' : null;
+          const project = item.data?.project && String(item.data.project).trim();
+          const client = item.data?.companyEntity && String(item.data.companyEntity).trim();
+          return [sigLabel, client, project].filter(Boolean).join(' · ') || rawNoteText;
+        })()
+      : rawNoteText;
+
+  const fromName = safeUser(item.from) || 'Unassigned';
+  const toName = safeUser(item.to) || 'Unassigned';
+
+  const prettyTitle = (() => {
+    const t = String(effectiveType || '').toUpperCase();
+    if (item.kind === 'ASSET_TYPE_CREATED') return 'NEW ASSET TYPE';
+    if (t === 'ASSET_DELETED') return 'DELETED';
+    if (t === 'DOCUMENT_DELETED') return 'DOCUMENT DELETED';
+    if (t === 'DOCUMENT_CREATED') return 'DOCUMENT ADDED';
+    if (t === 'SERVICE_COMPLETE') return 'SERVICE COMPLETE';
+    if (t === 'ASSET_EDIT') return 'EDIT';
+    if (t === 'NEW_ASSET') return 'NEW ASSET';
+    if (t === 'HIRE') return 'EQUIPMENT HIRE';
+    if (item.kind === 'ASSET_ACTION' && (t === 'CHECK_IN' || t === 'CHECK_OUT' || t === 'TRANSFER')) {
+      return formatActivityListTitle(t, {
+        firebaseUser,
+        toUser: item.to_user,
+        toLabel: item.to,
+      });
+    }
+    return t.replace(/_/g, ' ');
+  })();
+
+  let subTop = '';
+  if (item.kind === 'ASSET_TYPE_CREATED') {
+    subTop = String(item.name || '').trim();
+  } else if (isAction && String(item.type).toUpperCase() === 'TRANSFER') {
+    subTop = `${fromName} → ${toName}`;
+  } else if (isAction && String(item.type).toUpperCase() === 'CHECK_IN') {
+    subTop = `From ${fromName}`;
+  } else if (isAction && String(item.type).toUpperCase() === 'CHECK_OUT') {
+    subTop = `To ${toName}`;
+  } else if (isAction && String(item.type).toUpperCase() === 'HIRE') {
+    const hirerName = (item.data?.hirerName && String(item.data.hirerName).trim()) || '';
+    const startDate = (item.data?.hireStartDate && String(item.data.hireStartDate).slice(0, 10)) || '';
+    const endDate = (item.data?.hireEndDate && String(item.data.hireEndDate).slice(0, 10)) || '';
+    const dateRange = startDate && endDate ? `${startDate} – ${endDate}` : startDate || endDate || '';
+    subTop = [hirerName, dateRange].filter(Boolean).join(' · ');
+  } else {
+    subTop = safeUser(item.actor) || '';
+  }
+
+  const assetId = item.asset?.id || '';
+  const assetName = item.asset?.name || '';
+  const assetTypeName = item.asset?.type || '';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      style={[styles.card, { borderLeftColor: stroke, borderLeftWidth: 4 }]}
+    >
+      <View style={styles.thumbWrap}>
+        {thumb ? (
+          <Image source={{ uri: thumb }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.thumb, styles.thumbPlaceholder]}>
+            <MaterialIcons name={icon} size={22} color={Colors.primary} />
+          </View>
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={1}>{prettyTitle}</Text>
+          {!!assetTypeName && (
+            <View style={[styles.chip, styles.chipSoft]}><Text style={styles.chipText}>{assetTypeName}</Text></View>
+          )}
+        </View>
+        {!!assetName && (
+          <Text style={styles.assetName} numberOfLines={1}>{assetName}</Text>
+        )}
+        <View style={styles.metaRow}>
+          {assetId ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`Open asset ${assetId}`}
+              onPress={() => onOpenAsset(assetId)}
+              style={{ marginRight: 2 }}
+            >
+              <View style={styles.pill}><Text style={styles.pillText}>ID: {assetId}</Text></View>
+            </TouchableOpacity>
+          ) : null}
+          {isAction && String(item.type).toUpperCase() === 'TRANSFER' ? (
+            <View style={styles.transferRow}>
+              <View style={[styles.chip, styles.chipPrimary]}><Text style={[styles.chipText, styles.chipTextStrong]} numberOfLines={1}>{fromName}</Text></View>
+              <MaterialIcons name="east" size={16} color={Colors.primary} />
+              <View style={[styles.chip, styles.chipPrimary]}><Text style={[styles.chipText, styles.chipTextStrong]} numberOfLines={1}>{toName}</Text></View>
+            </View>
+          ) : !!subTop ? (
+            <View style={[styles.chip, styles.chipMuted]}><Text style={[styles.chipText, styles.chipTextStrong]} numberOfLines={1}>{subTop}</Text></View>
+          ) : null}
+        </View>
+        {(noteText && !(isAction && String(item.type || '').toUpperCase() === 'TRANSFER')) ? (
+          <View style={styles.noteRow}>
+            <MaterialIcons name="notes" size={14} color={Colors.sub2} />
+            <Text style={styles.noteLine} numberOfLines={2}>{noteText}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.when}>{prettyWhen(item.when)}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+/** Window size used for the on-scroll append (matches initial-render budget). */
+const ACTIVITY_PAGE_SIZE = 25;
+
+/** Static row separator — defining it at module scope avoids recreating the
+ *  function on every render (which would force FlatList to remount separators). */
+const ItemSeparator = () => <View style={{ height: 8 }} />;
 
 export default function ActivityScreen() {
   const [rawItems, setRawItems] = useState([]);
@@ -265,63 +478,49 @@ export default function ActivityScreen() {
     setItems(applyFilterSort(rawItems));
   }, [rawItems, applyFilterSort]);
 
-  const iconFor = (kind, type) => {
-    if (kind === 'ASSET_TYPE_CREATED') return 'category';
-    switch (String(type || '').toUpperCase()) {
-      case 'ASSET_DELETED': return 'delete';
-      case 'DOCUMENT_DELETED': return 'description';
-      case 'DOCUMENT_CREATED': return 'cloud-upload';
-      case 'ASSET_EDIT': return 'edit';
-      case 'NEW_ASSET': return 'add-circle-outline';
-      case 'TRANSFER': return 'swap-horiz';
-      case 'CHECK_IN': return 'assignment-turned-in';
-      case 'CHECK_OUT': return 'assignment-return';
-      case 'STATUS_CHANGE': return 'sync';
-      case 'REPAIR': return 'build';
-      case 'MAINTENANCE': return 'build-circle';
-      case 'HIRE': return 'work-outline';
-      case 'END_OF_LIFE': return 'block';
-      case 'SERVICE_COMPLETE': return 'build-circle';
-      case 'LOST': return 'help-outline';
-      case 'STOLEN': return 'report';
-      default: return 'event-note';
-    }
-  };
+  // \u2500\u2500 Windowed display: only mount the first N rows; grow on scroll \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Keeps initial commit cheap (15-25 rows \u2248 <100 ms) and pushes appends to
+  // after the current interaction so they don't drop a scroll frame.
+  const [displayCount, setDisplayCount] = useState(ACTIVITY_PAGE_SIZE);
+  // Reset window whenever the filtered set changes (new query / filter / sort).
+  useEffect(() => {
+    setDisplayCount(ACTIVITY_PAGE_SIZE);
+  }, [items]);
+  const visibleItems = useMemo(
+    () => items.slice(0, Math.min(displayCount, items.length)),
+    [items, displayCount]
+  );
+  const hasMore = displayCount < items.length;
 
-  const colorFor = (kind, type) => {
-    if (kind === 'ASSET_TYPE_CREATED') return '#7C3AED';
-    switch (String(type || '').toUpperCase()) {
-      case 'ASSET_DELETED': return '#DC2626';
-      case 'DOCUMENT_DELETED': return '#B45309';
-      case 'DOCUMENT_CREATED': return '#15803D';
-      case 'ASSET_EDIT': return '#0EA5E9';
-      case 'NEW_ASSET': return '#10B981';
-      case 'TRANSFER': return Colors.primary;
-      case 'CHECK_IN': return '#16A34A';
-      case 'CHECK_OUT': return '#7C3AED';
-      case 'STATUS_CHANGE': return '#EA580C';
-      case 'REPAIR': return '#B45309';
-      case 'MAINTENANCE': return '#6D28D9';
-      case 'HIRE': return '#0369A1';
-      case 'END_OF_LIFE': return '#7C3AED';
-      case 'SERVICE_COMPLETE': return '#16A34A';
-      case 'LOST': return '#9CA3AF';
-      case 'STOLEN': return '#B91C1C';
-      default: return '#64748B';
-    }
-  };
+  const onEndReached = useCallback(() => {
+    if (!hasMore) return;
+    // Defer the state update until after any in-flight scroll animation so the
+    // append commit never blocks the active frame.
+    InteractionManager.runAfterInteractions(() => {
+      setDisplayCount((d) => Math.min(d + ACTIVITY_PAGE_SIZE, items.length));
+    });
+  }, [hasMore, items.length]);
 
-  const prettyWhen = (iso) => {
-    try {
-      const d = new Date(iso);
-      if (Number.isNaN(+d)) return '';
-      return new Intl.DateTimeFormat('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-      }).format(d).replace(/\u00A0/g, ' ').replace(',', '');
-    } catch { return ''; }
-  };
+  const openAsset = useCallback((assetId) => {
+    if (!assetId) return;
+    router.push({
+      pathname: '/asset/[assetId]',
+      params: { assetId, returnTo: '/activity' },
+    });
+  }, [router]);
 
-  const renderItem = ({ item }) => {
+  const keyExtractor = useCallback((it) => String(it.id) + String(it.when), []);
+  const renderItem = useCallback(
+    ({ item }) => <ActivityRow item={item} firebaseUser={firebaseUser} onOpenAsset={openAsset} />,
+    [firebaseUser, openAsset]
+  );
+
+  // Legacy renderItem removed \u2014 rendering is now handled by the memoised
+  // ActivityRow component at module scope. Keeping a one-line stub avoids any
+  // dead references; FlatList below uses the new `renderItem` callback.
+  // eslint-disable-next-line no-unused-vars
+  const _legacyRenderItem = ({ item }) => null;
+  /* removed-block-start ({ item }) => {
     const isEditNextService =
       item.kind === 'ASSET_ACTION' &&
       String(item.type || '').toUpperCase() === 'ASSET_EDIT' &&
@@ -463,10 +662,15 @@ export default function ActivityScreen() {
       </TouchableOpacity>
     );
   };
+  removed-block-end */
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScreenHeader title="Activity" onBack={goBack} backLabel="Back" />
+      <ScreenHeader
+        title="Activity Feed"
+        onBack={Platform.OS === 'web' ? null : goBack}
+        backLabel="Back"
+      />
 
       {/* Search + filter toolbar */}
       <TourTarget id="web-activity-filters">
@@ -499,12 +703,27 @@ export default function ActivityScreen() {
       ) : (
         <TourTarget id="web-activity-feed">
         <FlatList
-          data={items}
-          keyExtractor={(it) => String(it.id) + String(it.when)}
+          data={visibleItems}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           ListEmptyComponent={<ScreenState empty icon="history" title="No activity yet" subtitle="Actions on assets will appear here." />}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          ItemSeparatorComponent={ItemSeparator}
           contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+          // ── Performance: windowing + batched commits ──────────────────────
+          initialNumToRender={15}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={50}
+          windowSize={9}
+          removeClippedSubviews={Platform.OS !== 'web'}
+          // ── Async grow on scroll: append after current interaction ──
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={hasMore ? (
+            <View style={styles.loadMoreFooter}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.loadMoreText}>Loading more…</Text>
+            </View>
+          ) : null}
         />
         </TourTarget>
       )}
@@ -565,6 +784,8 @@ const styles = StyleSheet.create({
   chipPrimary: { backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: Colors.accent },
   chipMuted: { backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line },
   chipSoft: { backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line },
+  loadMoreFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 },
+  loadMoreText: { color: Colors.sub, fontWeight: '700', fontSize: sf(12) },
 });
 
 // --------- Modals and small UI helpers ---------

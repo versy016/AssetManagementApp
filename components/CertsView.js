@@ -1279,7 +1279,7 @@ export default function CertsView({ visible: initialVisible }) {
     <View style={[styles.certsWrap, (Platform.OS !== 'web' || isCompact) && styles.certsWrapMobile]}>
       {isNative && (
         <ScreenHeader
-          title="Certificates"
+          title="Documents & Certificates"
           backLabel="Dashboard"
           onBack={() => {
             try {
@@ -1297,6 +1297,20 @@ export default function CertsView({ visible: initialVisible }) {
       )}
       {/* Top surface like Search */}
       <View style={styles.toolbarSurface}>
+        {/* Web-only page heading (native shows the ScreenHeader above) */}
+        {!isNative && (
+          <View style={styles.certsHeaderRow}>
+            <Text style={styles.certsHeaderTitle}>Documents &amp; Certificates</Text>
+            {Array.isArray(rows) && rows.length > 0 && (
+              <View style={styles.certsHeaderChip}>
+                <MaterialIcons name="verified" size={13} color={Colors.primary} />
+                <Text style={styles.certsHeaderChipText}>
+                  {rows.length} document{rows.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
         <TourTarget id="web-certs-search">
         <View style={styles.toolbarRow}>
           <SearchInput
@@ -1852,6 +1866,39 @@ const styles = StyleSheet.create({
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
   sectionTitle: { fontSize: sf(22), fontWeight: '800', color: Colors.text, marginBottom: 10, textTransform: 'uppercase', flexShrink: 1 },
   toolbarSurface: { marginBottom: 8 },
+  certsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  certsHeaderTitle: {
+    fontSize: sf(20),
+    fontWeight: '900',
+    color: Colors.text,
+    letterSpacing: -0.3,
+    textTransform: 'uppercase',
+  },
+  certsHeaderChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  certsHeaderChipText: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   toolbarRow: { gap: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inlineIconBtn: { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.accentMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.accent },
   quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },

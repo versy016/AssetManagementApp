@@ -88,6 +88,7 @@ export default function MapsTabScreen() {
   const [geoFail, setGeoFail] = useState(0);
   const [geoDisabled, setGeoDisabled] = useState(false);
   const [mapLoadError, setMapLoadError] = useState('');
+  const [mapScriptLoading, setMapScriptLoading] = useState(false);
   const [query, setQuery] = useState('');
   const cacheRef = useRef(new Map());
 
@@ -213,12 +214,18 @@ export default function MapsTabScreen() {
 
     (async () => {
       setMapLoadError('');
+      // Show a loading overlay while the Maps JS bundle downloads (cold load ~8-10 s)
+      if (!window.google?.maps) {
+        setMapScriptLoading(true);
+      }
       try {
         await loadGoogleMapsScriptOnce(mapsKey);
       } catch (e) {
         if (!cancelled) setMapLoadError(e?.message || 'Could not load Google Maps');
+        if (!cancelled) setMapScriptLoading(false);
         return;
       }
+      if (!cancelled) setMapScriptLoading(false);
       if (cancelled) return;
       const el = mapDivRef.current;
       if (!el || !window.google?.maps) return;
@@ -333,7 +340,11 @@ export default function MapsTabScreen() {
 
   return (
     <ScreenWrapper style={styles.wrap} edges={['top', 'left', 'right', 'bottom']}>
-      <ScreenHeader title="Asset map" onBack={() => router.push('/(tabs)/dashboard')} backLabel="Back" />
+      <ScreenHeader
+        title="Asset Locations"
+        onBack={Platform.OS === 'web' ? null : () => router.push('/(tabs)/dashboard')}
+        backLabel="Back"
+      />
       <View style={styles.toolbar}>
         <View style={styles.statRow}>
           <MaterialIcons name="place" size={18} color={Colors.accent} />
@@ -405,10 +416,12 @@ export default function MapsTabScreen() {
           ) : (
             <NativeAssetMapWebView html={webViewHtml} onMessage={onWebViewMessage} />
           )}
-          {geocoding ? (
+          {(mapScriptLoading || geocoding) ? (
             <View style={styles.mapOverlay}>
               <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.mapOverlayText}>Plotting pins…</Text>
+              <Text style={styles.mapOverlayText}>
+                {mapScriptLoading ? 'Loading map…' : 'Plotting pins…'}
+              </Text>
             </View>
           ) : null}
         </View>

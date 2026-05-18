@@ -30,10 +30,16 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+
+  // Live mismatch indicator — only surfaces once the user has typed in the
+  // confirm field, so the field doesn't show an error the moment it appears.
+  const confirmTouched = confirmPassword.length > 0;
+  const confirmMismatch = confirmTouched && confirmPassword !== password;
 
   const isEmailAllowed = async (email) => {
     const domain = email.split('@')[1]?.toLowerCase();
@@ -61,8 +67,12 @@ export default function Register() {
   };
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      if (isMountedRef.current) setErrorMessage('Please enter your name, email, and password.');
+    if (!name || !email || !password || !confirmPassword) {
+      if (isMountedRef.current) setErrorMessage('Please fill in every field, including Confirm Password.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      if (isMountedRef.current) setErrorMessage('Passwords do not match. Please re-enter them.');
       return;
     }
     setLoading(true);
@@ -91,7 +101,7 @@ export default function Register() {
         setRegistrationSuccess(true);
         setRegisteredEmail(registeredEmailValue);
         setLoading(false);
-        setName(''); setPassword(''); setEmail('');
+        setName(''); setPassword(''); setConfirmPassword(''); setEmail('');
         redirectTimerRef.current = setTimeout(() => {
           if (isMountedRef.current) router.replace('/(auth)/login');
         }, 10000);
@@ -153,13 +163,36 @@ export default function Register() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          autoComplete="new-password"
+          textContentType="newPassword"
         />
+
+        <AppTextInput
+          label="Confirm Password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          autoComplete="new-password"
+          textContentType="newPassword"
+          error={confirmMismatch ? 'Passwords do not match' : null}
+          onSubmitEditing={handleRegister}
+          returnKeyType="go"
+        />
+        {confirmTouched && !confirmMismatch && (
+          <Text style={s.matchHint}>✓ Passwords match</Text>
+        )}
 
         <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
         <View style={s.btnGap} />
-        <AppButton mode="contained" onPress={handleRegister} loading={loading}>
-          Register
+        <AppButton
+          variant="primary"
+          size="lg"
+          onPress={handleRegister}
+          loading={loading}
+          disabled={loading || confirmMismatch}
+        >
+          Create Account
         </AppButton>
       </View>
 
@@ -192,6 +225,13 @@ const s = StyleSheet.create({
     gap: 4,
   },
   btnGap: { height: 8 },
+  matchHint: {
+    fontSize: sf(12),
+    color: Colors.successFg,
+    fontWeight: '700',
+    marginTop: -4,
+    marginBottom: 4,
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',

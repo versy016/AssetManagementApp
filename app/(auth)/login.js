@@ -81,6 +81,9 @@ export default function Login() {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          editable={!loading}
+          autoComplete="email"
+          textContentType="emailAddress"
         />
 
         <AppTextInput
@@ -88,26 +91,38 @@ export default function Login() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          editable={!loading}
+          autoComplete="password"
+          textContentType="password"
+          onSubmitEditing={handleLogin}
+          returnKeyType="go"
         />
 
         <TouchableOpacity
           onPress={() => router.push('/(auth)/ForgotPassword')}
           style={s.forgotRow}
+          disabled={loading}
         >
-          <Text style={s.forgotText}>Forgot Password?</Text>
+          <Text style={[s.forgotText, loading && { opacity: 0.5 }]}>Forgot Password?</Text>
         </TouchableOpacity>
 
         <ErrorMessage error={errorMessage} visible={!!errorMessage} />
 
-        <AppButton mode="contained" onPress={handleLogin} loading={loading}>
-          Login
+        <AppButton
+          variant="primary"
+          size="lg"
+          onPress={handleLogin}
+          loading={loading}
+          disabled={loading}
+        >
+          Sign In
         </AppButton>
       </View>
 
       <View style={s.footer}>
         <Text style={s.footerText}>Don't have an account?</Text>
         <TouchableOpacity onPress={() => router.push('/(auth)/register')} disabled={loading}>
-          <Text style={s.footerLink}> Register</Text>
+          <Text style={[s.footerLink, loading && { opacity: 0.5 }]}> Register</Text>
         </TouchableOpacity>
       </View>
     </AuthLayout>

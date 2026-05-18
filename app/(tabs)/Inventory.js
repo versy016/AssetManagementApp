@@ -15,6 +15,7 @@ import {
   Modal,
   ScrollView,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -24,7 +25,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import logger from '../../utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../../inventory-api/apiBase';
+import { API_BASE_URL, CHECKIN_WEB_BASE_URL } from '../../inventory-api/apiBase';
 import { TourTarget } from '../../components/TourGuide';
 import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
@@ -34,7 +35,9 @@ import StatusBadge, {
   STATUS_CONFIG,
   normalizeStatus,
 } from '../../components/ui/StatusBadge';
+import AssetQRModal from '../../components/asset/AssetQRModal';
 import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
+import { useResponsive } from '../../hooks/useResponsive';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
@@ -103,6 +106,717 @@ function DetailRow({ icon, label, value }) {
   );
 }
 
+// ─── Web-only: All Assets data table ─────────────────────────────────────────
+function WebAssetsTable({ sortedAssets, assetSort, setAssetSort, loaded }) {
+  const router = useRouter();
+  const [hoveredId, setHoveredId] = useState(null);
+
+  // ── Pagination ────────────────────────────────────────────────────────
+  const PAGE_SIZES = [10, 25, 50, 100];
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(0);                       // 0-based
+  const totalPages = Math.max(1, Math.ceil(sortedAssets.length / pageSize));
+  // Clamp page when filters/sorting change the row count
+  useEffect(() => { if (page > totalPages - 1) setPage(0); }, [totalPages, page]);
+  const startIdx  = page * pageSize;
+  const endIdx    = Math.min(startIdx + pageSize, sortedAssets.length);
+  const pagedAssets = sortedAssets.slice(startIdx, endIdx);
+
+  // Build a windowed page-number list: 1 … current-1, current, current+1 … last
+  const pageNumbers = (() => {
+    const out = new Set([0, totalPages - 1, page, page - 1, page + 1]);
+    return [...out]
+      .filter((n) => n >= 0 && n < totalPages)
+      .sort((a, b) => a - b);
+  })();
+
+  const timeAgo = (iso) => {
+    if (!iso) return '—';
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d}d ago`;
+    return prettyDate(iso);
+  };
+
+  const SortTh = ({ field, label, flex, width }) => {
+    const active = assetSort.field === field;
+    return (
+      <TouchableOpacity
+        style={[wS.th, flex ? { flex } : { width }]}
+        onPress={() => setAssetSort(s => ({ field, dir: s.field === field && s.dir === 'asc' ? 'desc' : 'asc' }))}
+      >
+        <Text style={[wS.thText, active && wS.thTextActive]}>{label}</Text>
+        <MaterialIcons
+          name={active ? (assetSort.dir === 'asc' ? 'arrow-upward' : 'arrow-downward') : 'unfold-more'}
+          size={11}
+          color={active ? Colors.accent : Colors.sub2}
+        />
+      </TouchableOpacity>
+    );
+  };
+
+  if (!loaded) {
+    return <View style={wS.centred}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+  }
+  if (sortedAssets.length === 0) {
+    return (
+      <View style={wS.centred}>
+        <MaterialIcons name="search-off" size={40} color={Colors.sub2} />
+        <Text style={wS.emptyText}>No assets found</Text>
+        <Text style={wS.emptySub}>Try adjusting your search or filters.</Text>
+      </View>
+    );
+  }
+
+  // Inner scrollable area; horizontal scroll guarantees columns never collapse.
+  return (
+    <View style={wS.tableWrap}>
+      <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={{ minWidth: '100%' }}>
+        <View style={{ flex: 1, minWidth: 1480 }}>
+          {/* Sticky header */}
+          <View style={wS.thead}>
+            <View style={wS.thImg} />
+            <SortTh field="name" label="Name / Type" flex={2} />
+            <View style={[wS.th, { width: 110 }]}><Text style={wS.thText}>ID</Text></View>
+            <View style={[wS.th, { width: 130 }]}><Text style={wS.thText}>Status</Text></View>
+            <View style={[wS.th, { width: 140 }]}><Text style={wS.thText}>Serial</Text></View>
+            <View style={[wS.th, { flex: 1 }]}><Text style={wS.thText}>Model</Text></View>
+            <View style={[wS.th, { flex: 2 }]}><Text style={wS.thText}>Description</Text></View>
+            <View style={[wS.th, { flex: 1 }]}><Text style={wS.thText}>Location</Text></View>
+            <View style={[wS.th, { width: 140 }]}><Text style={wS.thText}>Assigned&nbsp;To</Text></View>
+            <View style={[wS.th, { width: 110 }]}><Text style={wS.thText}>Purchased</Text></View>
+            <SortTh field="updated" label="Updated" width={110} />
+          </View>
+
+          {/* Rows */}
+          <ScrollView style={{ flex: 1 }}>
+            {pagedAssets.map((item, idx) => {
+              const name    = item?.name || item?.asset_name || item?.model || item?.id;
+              const type    = item?.asset_type ?? item?.type ?? item?.asset_types?.name;
+              const serial  = item?.serial_number ?? item?.fields?.serial_number;
+              const model   = item?.model ?? item?.fields?.model;
+              const loc     = item?.location ?? item?.fields?.location;
+              const assignedTo  = item?.assigned_to ?? item?.users?.name ?? item?.users?.email;
+              const datePurchased = item?.date_purchased ?? item?.fields?.date_purchased;
+              const updatedAt   = item?.updated_at;
+              const description = item?.description ?? item?.notes ?? item?.fields?.notes ?? '';
+              const isHov = hoveredId === String(item.id);
+
+              return (
+                <TouchableOpacity
+                  key={String(item.id)}
+                  style={[wS.tr, idx % 2 !== 0 && wS.trAlt, isHov && wS.trHov]}
+                  onPress={() => router.push({ pathname: '/asset/[assetId]', params: { assetId: String(item.id), returnTo: '/Inventory?tab=all' } })}
+                  onMouseEnter={() => setHoveredId(String(item.id))}
+                  onMouseLeave={() => setHoveredId(null)}
+                  activeOpacity={0.85}
+                >
+                  <View style={wS.tdImg}>
+                    {item.image_url ? (
+                      <Image source={{ uri: item.image_url }} style={wS.rowImg} resizeMode="cover" />
+                    ) : (
+                      <View style={[wS.rowImg, wS.rowImgPlaceholder]}>
+                        <Feather name="package" size={16} color={Colors.sub2} />
+                      </View>
+                    )}
+                  </View>
+                  <View style={[wS.td, { flex: 2 }]}>
+                    <Text style={wS.rowName} numberOfLines={1}>{name}</Text>
+                    {!!type && <Text style={wS.rowType} numberOfLines={1}>{type}</Text>}
+                  </View>
+                  <View style={[wS.td, { width: 110 }]}>
+                    <View style={wS.idPill}><Text style={wS.idPillText}>{item.id}</Text></View>
+                  </View>
+                  <View style={[wS.td, { width: 130 }]}>
+                    <StatusBadge status={item?.status} size="sm" style={{ alignSelf: 'center' }} />
+                  </View>
+                  <View style={[wS.td, { width: 140 }]}>
+                    <Text style={wS.rowSub} numberOfLines={1}>{serial || '—'}</Text>
+                  </View>
+                  <View style={[wS.td, { flex: 1 }]}>
+                    <Text style={wS.rowSub} numberOfLines={1}>{model || '—'}</Text>
+                  </View>
+                  <View style={[wS.td, { flex: 2 }]}>
+                    {description ? (
+                      <Text style={wS.rowDesc} numberOfLines={2}>{description}</Text>
+                    ) : (
+                      <Text style={wS.rowSub}>—</Text>
+                    )}
+                  </View>
+                  <View style={[wS.td, { flex: 1 }]}>
+                    {loc ? (
+                      <View style={wS.cellWithIcon}>
+                        <Feather name="map-pin" size={11} color={Colors.sub2} />
+                        <Text style={wS.rowSub} numberOfLines={1}>{loc}</Text>
+                      </View>
+                    ) : (
+                      <Text style={wS.rowSub}>—</Text>
+                    )}
+                  </View>
+                  <View style={[wS.td, { width: 140 }]}>
+                    {assignedTo ? (
+                      <View style={wS.cellWithIcon}>
+                        <Feather name="user" size={11} color={Colors.sub2} />
+                        <Text style={wS.rowSub} numberOfLines={1}>{assignedTo}</Text>
+                      </View>
+                    ) : (
+                      <Text style={wS.rowSub}>—</Text>
+                    )}
+                  </View>
+                  <View style={[wS.td, { width: 110 }]}>
+                    <Text style={wS.rowSub} numberOfLines={1}>{prettyDate(datePurchased)}</Text>
+                  </View>
+                  <View style={[wS.td, { width: 110 }]}>
+                    <Text style={wS.rowUpdated}>{timeAgo(updatedAt)}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={{ height: 12 }} />
+          </ScrollView>
+        </View>
+      </ScrollView>
+
+      {/* ── Pagination bar ─────────────────────────────────────────────── */}
+      <View style={wS.pagBar}>
+        {/* Left: row count summary */}
+        <Text style={wS.pagSummary}>
+          Showing <Text style={wS.pagSummaryBold}>{sortedAssets.length === 0 ? 0 : startIdx + 1}–{endIdx}</Text>
+          {' '}of <Text style={wS.pagSummaryBold}>{sortedAssets.length}</Text>
+        </Text>
+
+        {/* Middle: page size selector */}
+        <View style={wS.pagSizeGroup}>
+          <Text style={wS.pagSizeLabel}>Per page:</Text>
+          {PAGE_SIZES.map((sz) => (
+            <TouchableOpacity
+              key={sz}
+              style={[wS.pagSizeBtn, pageSize === sz && wS.pagSizeBtnActive]}
+              onPress={() => { setPageSize(sz); setPage(0); }}
+            >
+              <Text style={[wS.pagSizeBtnText, pageSize === sz && wS.pagSizeBtnTextActive]}>{sz}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Right: page navigation */}
+        <View style={wS.pagNav}>
+          <TouchableOpacity
+            style={[wS.pagArrow, page === 0 && wS.pagDisabled]}
+            disabled={page === 0}
+            onPress={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            <MaterialIcons name="chevron-left" size={18} color={page === 0 ? Colors.sub2 : Colors.text} />
+            <Text style={[wS.pagArrowText, page === 0 && wS.pagDisabledText]}>Prev</Text>
+          </TouchableOpacity>
+
+          {pageNumbers.map((n, i) => {
+            const prev = pageNumbers[i - 1];
+            const showGap = i > 0 && prev !== undefined && n - prev > 1;
+            return (
+              <React.Fragment key={n}>
+                {showGap && <Text style={wS.pagEllipsis}>…</Text>}
+                <TouchableOpacity
+                  style={[wS.pagNumBtn, n === page && wS.pagNumBtnActive]}
+                  onPress={() => setPage(n)}
+                >
+                  <Text style={[wS.pagNumBtnText, n === page && wS.pagNumBtnTextActive]}>{n + 1}</Text>
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
+
+          <TouchableOpacity
+            style={[wS.pagArrow, page >= totalPages - 1 && wS.pagDisabled]}
+            disabled={page >= totalPages - 1}
+            onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          >
+            <Text style={[wS.pagArrowText, page >= totalPages - 1 && wS.pagDisabledText]}>Next</Text>
+            <MaterialIcons name="chevron-right" size={18} color={page >= totalPages - 1 ? Colors.sub2 : Colors.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Web-only: Asset Types responsive grid ────────────────────────────────────
+function WebTypesGrid({ sorted, typeCounts, loaded }) {
+  const router = useRouter();
+  const { width } = useResponsive();
+  // Responsive columns: 4 at 1400+, 3 at 900+, 2 otherwise
+  const cols = width >= 1400 ? 4 : width >= 900 ? 3 : 2;
+  const gap = 16;
+
+  if (!loaded) {
+    return <View style={wS.centred}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+  }
+  if (sorted.length === 0) {
+    return (
+      <View style={wS.centred}>
+        <MaterialIcons name="folder-open" size={40} color={Colors.sub2} />
+        <Text style={wS.emptyText}>No asset types found</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: gap, paddingBottom: 40 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
+        {sorted.map((type) => {
+          const id = String(type?.id ?? '');
+          const c  = typeCounts[id] || {};
+          const inService   = (c.in_service  ?? Number(type?.inService  ?? 0)) || 0;
+          const endOfLife   = (c.end_of_life ?? Number(type?.endOfLife  ?? 0)) || 0;
+          const repair      = (c.repair      ?? Number(type?.repair     ?? 0)) || 0;
+          const maintenance = (c.maintenance ?? Number(type?.maintenance ?? 0)) || 0;
+          const onHire      = (c.on_hire     ?? Number(type?.onHire     ?? 0)) || 0;
+          const total       = (c.total       ?? inService + endOfLife + repair + maintenance + onHire) || 0;
+
+          // Compute card width accounting for gaps
+          const cardStyle = { width: `calc(${(100 / cols).toFixed(2)}% - ${gap * (cols - 1) / cols}px)` };
+
+          return (
+            <TouchableOpacity
+              key={id}
+              style={[wS.typeCard, cardStyle]}
+              onPress={() => router.push({ pathname: '/type/[type_id]', params: { type_id: id, type_name: type.name, returnTo: '/Inventory?tab=types' } })}
+              activeOpacity={0.88}
+            >
+              <View style={wS.typeCoverWrap}>
+                {type.image_url ? (
+                  <Image source={{ uri: String(type.image_url).trim() }} style={wS.typeCoverImg} resizeMode="contain" />
+                ) : (
+                  <View style={[wS.typeCoverImg, wS.typeCoverPlaceholder]}>
+                    <MaterialIcons name="category" size={48} color={Colors.sub2} />
+                  </View>
+                )}
+              </View>
+              <View style={wS.typeCardBody}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={wS.typeCardName} numberOfLines={2}>{type.name}</Text>
+                  <MaterialIcons name="chevron-right" size={18} color={Colors.sub2} style={{ marginLeft: 4 }} />
+                </View>
+                {/* Status chips — side-by-side, always visible */}
+                <View style={wS.typeStatChipsRow}>
+                  <View style={[wS.typeStatChip, { backgroundColor: STATUS_CONFIG.in_service.bg, borderColor: STATUS_CONFIG.in_service.bd }]}>
+                    <MaterialIcons name={STATUS_CONFIG.in_service.icon} size={12} color={STATUS_CONFIG.in_service.fg} />
+                    <Text style={[wS.typeStatChipText, { color: STATUS_CONFIG.in_service.fg }]}>In Service</Text>
+                    <Text style={[wS.typeStatChipValue, { color: STATUS_CONFIG.in_service.fg }]}>{inService}</Text>
+                  </View>
+                  <View style={[wS.typeStatChip, { backgroundColor: STATUS_CONFIG.on_hire.bg, borderColor: STATUS_CONFIG.on_hire.bd }]}>
+                    <MaterialIcons name={STATUS_CONFIG.on_hire.icon} size={12} color={STATUS_CONFIG.on_hire.fg} />
+                    <Text style={[wS.typeStatChipText, { color: STATUS_CONFIG.on_hire.fg }]}>On Hire</Text>
+                    <Text style={[wS.typeStatChipValue, { color: STATUS_CONFIG.on_hire.fg }]}>{onHire}</Text>
+                  </View>
+                  <View style={[wS.typeStatChip, { backgroundColor: STATUS_CONFIG.repair.bg, borderColor: STATUS_CONFIG.repair.bd }]}>
+                    <MaterialIcons name={STATUS_CONFIG.repair.icon} size={12} color={STATUS_CONFIG.repair.fg} />
+                    <Text style={[wS.typeStatChipText, { color: STATUS_CONFIG.repair.fg }]}>Repair</Text>
+                    <Text style={[wS.typeStatChipValue, { color: STATUS_CONFIG.repair.fg }]}>{repair}</Text>
+                  </View>
+                  <View style={[wS.typeStatChip, { backgroundColor: STATUS_CONFIG.maintenance.bg, borderColor: STATUS_CONFIG.maintenance.bd }]}>
+                    <MaterialIcons name={STATUS_CONFIG.maintenance.icon} size={12} color={STATUS_CONFIG.maintenance.fg} />
+                    <Text style={[wS.typeStatChipText, { color: STATUS_CONFIG.maintenance.fg }]}>Maintenance</Text>
+                    <Text style={[wS.typeStatChipValue, { color: STATUS_CONFIG.maintenance.fg }]}>{maintenance}</Text>
+                  </View>
+                  {endOfLife > 0 && (
+                    <View style={[wS.typeStatChip, { backgroundColor: STATUS_CONFIG.end_of_life.bg, borderColor: STATUS_CONFIG.end_of_life.bd }]}>
+                      <MaterialIcons name={STATUS_CONFIG.end_of_life.icon} size={12} color={STATUS_CONFIG.end_of_life.fg} />
+                      <Text style={[wS.typeStatChipText, { color: STATUS_CONFIG.end_of_life.fg }]}>End of Life</Text>
+                      <Text style={[wS.typeStatChipValue, { color: STATUS_CONFIG.end_of_life.fg }]}>{endOfLife}</Text>
+                    </View>
+                  )}
+                  <View style={[wS.typeStatChip, wS.typeStatChipTotal]}>
+                    <MaterialIcons name="inventory-2" size={12} color={Colors.text} />
+                    <Text style={[wS.typeStatChipText, { color: Colors.text }]}>Total</Text>
+                    <Text style={[wS.typeStatChipValue, { color: Colors.text }]}>{total}</Text>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
+/* ─── Web-only: master-detail building blocks (design 1a) ─────────────────── */
+
+// Horizontal filter-chip bar above the list (Status + count).
+// `color` = status foreground (used for text + active fill)
+// `bg`    = tinted background for the inactive state
+// `bd`    = matching border for the inactive state
+function WebStatusChip({ label, count, active, color, bg, bd, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[
+        wS.statusChip,
+        // Inactive but coloured — keep the status palette as a soft tint
+        !active && color && { backgroundColor: bg || Colors.card, borderColor: bd || color },
+        // Active — full status fill
+        active && wS.statusChipActive,
+        active && color && { backgroundColor: color, borderColor: color },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <Text style={[
+        wS.statusChipText,
+        !active && color && { color },
+        active && wS.statusChipTextActive,
+      ]}>{label}</Text>
+      {count !== undefined && (
+        <View style={[
+          wS.statusChipCount,
+          !active && color && { backgroundColor: 'rgba(0,0,0,0.06)' },
+          active && wS.statusChipCountActive,
+        ]}>
+          <Text style={[
+            wS.statusChipCountText,
+            !active && color && { color },
+            active && wS.statusChipCountTextActive,
+          ]}>{count}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// One row in the master list (thumb · name · status badge · ID pill).
+function WebAssetListRow({ asset, selected, onPress }) {
+  const name = asset?.name || asset?.asset_name || asset?.model || asset?.id;
+  const serial = asset?.serial_number ?? asset?.fields?.serial_number;
+  const type = asset?.asset_type ?? asset?.type ?? asset?.asset_types?.name;
+  const datePurchased = asset?.date_purchased ?? asset?.fields?.date_purchased;
+  const loc = asset?.location ?? asset?.fields?.location;
+  const subParts = [];
+  if (serial) subParts.push(`SN: ${serial}`);
+  if (datePurchased) subParts.push(prettyDate(datePurchased));
+  else if (loc) subParts.push(loc);
+  const sub = subParts.join(' · ');
+
+  return (
+    <TouchableOpacity
+      style={[wS.listRow, selected && wS.listRowSelected]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <View style={wS.listRowThumb}>
+        {asset?.image_url ? (
+          <Image source={{ uri: asset.image_url }} style={wS.listRowImg} resizeMode="cover" />
+        ) : (
+          <Feather name="package" size={20} color={Colors.sub2} />
+        )}
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={wS.listRowName} numberOfLines={1}>{name}</Text>
+        {!!sub && <Text style={wS.listRowSub} numberOfLines={1}>{sub}</Text>}
+        {!!type && <Text style={wS.listRowType} numberOfLines={1}>{type}</Text>}
+      </View>
+      <View style={wS.listRowMeta}>
+        <StatusBadge status={asset?.status} size="sm" style={{ alignSelf: 'flex-end' }} />
+        <View style={wS.listRowIdPill}>
+          <Text style={wS.listRowIdPillText}>{asset?.id}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Single key–value row inside the detail panel.
+function DetailKV({ k, v }) {
+  return (
+    <View style={wS.kvRow}>
+      <Text style={wS.kvKey}>{k}</Text>
+      <Text style={wS.kvValue} numberOfLines={2}>{v}</Text>
+    </View>
+  );
+}
+
+// The right-side detail panel. Renders an empty state when nothing is selected.
+function WebAssetDetailPanel({ asset, onOpenFull, onShowQR, onTransfer }) {
+  if (!asset) {
+    return (
+      <View style={wS.detailEmpty}>
+        <MaterialIcons name="inventory-2" size={56} color={Colors.line} />
+        <Text style={wS.detailEmptyTitle}>Select an asset</Text>
+        <Text style={wS.detailEmptySub}>
+          Click any row on the left to see its full details, status, and quick actions here.
+        </Text>
+      </View>
+    );
+  }
+
+  const name = asset?.name || asset?.asset_name || asset?.model || asset?.id;
+  const type = asset?.asset_type ?? asset?.type ?? asset?.asset_types?.name;
+  const serial = asset?.serial_number ?? asset?.fields?.serial_number;
+  const model = asset?.model ?? asset?.fields?.model;
+  const loc = asset?.location ?? asset?.fields?.location;
+  const assignedTo = asset?.assigned_to ?? asset?.users?.name ?? asset?.users?.email;
+  const datePurchased = asset?.date_purchased ?? asset?.fields?.date_purchased;
+  const updatedAt = asset?.updated_at;
+  const description = asset?.description ?? asset?.notes ?? asset?.fields?.notes;
+
+  const statusKey = normalizeStatus(asset?.status);
+  const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.in_service;
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+      {/* Hero */}
+      <View style={[wS.detailHero, { backgroundColor: cfg.bg }]}>
+        {asset?.image_url ? (
+          <Image source={{ uri: asset.image_url }} style={wS.detailHeroImg} resizeMode="contain" />
+        ) : (
+          <MaterialIcons name={cfg.icon || 'inventory-2'} size={72} color={cfg.fg} />
+        )}
+      </View>
+
+      <View style={wS.detailBody}>
+        <Text style={wS.detailIdLine}>ID · {asset?.id}</Text>
+        <Text style={wS.detailTitle} numberOfLines={3}>{name}</Text>
+        <Text style={wS.detailTypeLine}>
+          {type ? `${type} · ` : ''}
+          <Text style={{ color: cfg.fg }}>{cfg.label}</Text>
+        </Text>
+
+        {/* Quick actions — primary action only; everything else lives on the full page */}
+        <View style={wS.quickActionsRow}>
+          <TouchableOpacity style={wS.quickAction} onPress={onShowQR}>
+            <MaterialIcons name="qr-code-2" size={14} color={Colors.sub} />
+            <Text style={wS.quickActionText}>View QR</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* KV details */}
+        <View style={wS.kvList}>
+          <DetailKV k="Serial" v={serial || '—'} />
+          <DetailKV k="Model" v={model || '—'} />
+          <DetailKV k="Purchased" v={datePurchased ? prettyDate(datePurchased) : '—'} />
+          <DetailKV k="Location" v={loc || '—'} />
+          <DetailKV k="Assigned to" v={assignedTo || '—'} />
+          <DetailKV k="Updated" v={updatedAt ? prettyDate(updatedAt) : '—'} />
+        </View>
+
+        {!!description && (
+          <View style={wS.descBox}>
+            <Text style={wS.descLabel}>Description</Text>
+            <Text style={wS.descText}>{description}</Text>
+          </View>
+        )}
+
+        {/* Footer actions */}
+        <View style={wS.detailFooter}>
+          <TouchableOpacity style={[wS.detailFooterBtn, wS.detailFooterBtnPrimary]} onPress={onOpenFull}>
+            <Text style={wS.detailFooterBtnPrimaryText}>Open full ↗</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+// Container that wires together the chip bar, master list, and detail panel.
+function WebMasterDetailView({ assets, sortedAssets, loaded, assetSort, setAssetSort, filters, setFilters, router }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const selectedAsset = useMemo(
+    () => sortedAssets.find((a) => String(a?.id) === String(selectedId)) || null,
+    [sortedAssets, selectedId]
+  );
+
+  // Auto-select the first row whenever the filtered set changes and the
+  // current selection is no longer in view.
+  useEffect(() => {
+    if (sortedAssets.length === 0) {
+      if (selectedId) setSelectedId(null);
+      return;
+    }
+    const stillThere = sortedAssets.some((a) => String(a?.id) === String(selectedId));
+    if (!stillThere) setSelectedId(String(sortedAssets[0]?.id));
+  }, [sortedAssets, selectedId]);
+
+  // Status chip counts — computed from the FULL raw asset pool so each chip
+  // always shows the maximum reachable count.
+  const statusCounts = useMemo(() => {
+    const out = { in_service: 0, on_hire: 0, repair: 0, maintenance: 0, end_of_life: 0 };
+    for (const a of assets) {
+      const k = normalizeStatus(a?.status);
+      if (k in out) out[k] += 1;
+    }
+    return out;
+  }, [assets]);
+
+  const handlePickStatus = (label) => {
+    if (!setFilters) return;
+    setFilters((f) => ({ ...f, status: f?.status === label ? null : label }));
+  };
+
+  // QR modal — same as the asset detail page uses
+  const [qrOpen, setQrOpen] = useState(false);
+  const qrPayload = useMemo(() => {
+    if (!selectedAsset) return '';
+    const base = String(CHECKIN_WEB_BASE_URL || API_BASE_URL || '').replace(/\/+$/, '');
+    return `${base}/check-in/${selectedAsset.id}`;
+  }, [selectedAsset]);
+
+  const onOpenFull = () => {
+    if (!selectedAsset) return;
+    router.push({
+      pathname: '/asset/[assetId]',
+      params: { assetId: String(selectedAsset.id), returnTo: '/Inventory?tab=all' },
+    });
+  };
+  const onShowQR = () => {
+    if (!selectedAsset) return;
+    setQrOpen(true);
+  };
+  const onTransfer = () => {
+    if (!selectedAsset) return;
+    router.push({ pathname: '/transfer/[assetId]', params: { assetId: String(selectedAsset.id) } });
+  };
+
+  return (
+    <View style={{ flex: 1, flexDirection: 'column' }}>
+      {/* ── Chip bar (status filter + sort) ── */}
+      <View style={wS.chipsBar}>
+        <Text style={wS.chipBarLabel}>Status</Text>
+        <WebStatusChip
+          label="Any"
+          count={assets.length}
+          active={!filters?.status}
+          onPress={() => setFilters && setFilters((f) => ({ ...f, status: null }))}
+        />
+        <WebStatusChip
+          label="In Service"
+          count={statusCounts.in_service}
+          color={STATUS_CONFIG.in_service.fg}
+          bg={STATUS_CONFIG.in_service.bg}
+          bd={STATUS_CONFIG.in_service.bd}
+          active={filters?.status === 'In Service'}
+          onPress={() => handlePickStatus('In Service')}
+        />
+        <WebStatusChip
+          label="On Hire"
+          count={statusCounts.on_hire}
+          color={STATUS_CONFIG.on_hire.fg}
+          bg={STATUS_CONFIG.on_hire.bg}
+          bd={STATUS_CONFIG.on_hire.bd}
+          active={filters?.status === 'On Hire'}
+          onPress={() => handlePickStatus('On Hire')}
+        />
+        <WebStatusChip
+          label="Repair"
+          count={statusCounts.repair}
+          color={STATUS_CONFIG.repair.fg}
+          bg={STATUS_CONFIG.repair.bg}
+          bd={STATUS_CONFIG.repair.bd}
+          active={filters?.status === 'Repair'}
+          onPress={() => handlePickStatus('Repair')}
+        />
+        <WebStatusChip
+          label="Maintenance"
+          count={statusCounts.maintenance}
+          color={STATUS_CONFIG.maintenance.fg}
+          bg={STATUS_CONFIG.maintenance.bg}
+          bd={STATUS_CONFIG.maintenance.bd}
+          active={filters?.status === 'Maintenance'}
+          onPress={() => handlePickStatus('Maintenance')}
+        />
+        <WebStatusChip
+          label="End of Life"
+          count={statusCounts.end_of_life}
+          color={STATUS_CONFIG.end_of_life.fg}
+          bg={STATUS_CONFIG.end_of_life.bg}
+          bd={STATUS_CONFIG.end_of_life.bd}
+          active={filters?.status === 'End of Life'}
+          onPress={() => handlePickStatus('End of Life')}
+        />
+
+        <View style={wS.chipBarSpacer} />
+
+        <Text style={wS.chipBarLabel}>Sort</Text>
+        <TouchableOpacity
+          style={[wS.sortMiniChip, assetSort.field === 'name' && wS.sortMiniChipActive]}
+          onPress={() => setAssetSort((s) => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+        >
+          <Feather
+            name={assetSort.field === 'name' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'}
+            size={11}
+            color={assetSort.field === 'name' ? Colors.accent : Colors.sub}
+          />
+          <Text style={[wS.sortMiniChipText, assetSort.field === 'name' && wS.sortMiniChipTextActive]}>Name</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[wS.sortMiniChip, assetSort.field === 'updated' && wS.sortMiniChipActive]}
+          onPress={() => setAssetSort((s) => ({ field: 'updated', dir: s.field === 'updated' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+        >
+          <Feather
+            name={assetSort.field === 'updated' && assetSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'}
+            size={11}
+            color={assetSort.field === 'updated' ? Colors.accent : Colors.sub}
+          />
+          <Text style={[wS.sortMiniChipText, assetSort.field === 'updated' && wS.sortMiniChipTextActive]}>Updated</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Master-detail split ── */}
+      <View style={wS.masterDetail}>
+        <View style={wS.masterList}>
+          <View style={wS.masterListHeader}>
+            <Text style={wS.masterListCount}>
+              {sortedAssets.length} asset{sortedAssets.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+          {!loaded ? (
+            <View style={wS.centred}>
+              <ActivityIndicator size="large" color={Colors.accent} />
+            </View>
+          ) : sortedAssets.length === 0 ? (
+            <View style={wS.centred}>
+              <MaterialIcons name="search-off" size={40} color={Colors.sub2} />
+              <Text style={wS.emptyText}>No assets match your filters</Text>
+              <Text style={wS.emptySub}>Try removing a chip or clearing the search.</Text>
+            </View>
+          ) : (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}>
+              {sortedAssets.map((asset) => (
+                <WebAssetListRow
+                  key={String(asset.id)}
+                  asset={asset}
+                  selected={String(asset.id) === String(selectedId)}
+                  onPress={() => setSelectedId(String(asset.id))}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        <View style={wS.detailPane}>
+          <WebAssetDetailPanel
+            asset={selectedAsset}
+            onOpenFull={onOpenFull}
+            onShowQR={onShowQR}
+            onTransfer={onTransfer}
+          />
+        </View>
+      </View>
+
+      {/* QR code modal — shown in place, no navigation */}
+      <AssetQRModal
+        visible={qrOpen && !!selectedAsset}
+        onClose={() => setQrOpen(false)}
+        qrValue={qrPayload}
+        assetId={selectedAsset?.id || ''}
+      />
+    </View>
+  );
+}
+
 /** ================== TAB: Asset Types (live filtered + full status chips) ================== */
 const AssetTypesTab = ({ query, filters }) => {
   const router = useRouter();
@@ -148,6 +862,7 @@ const AssetTypesTab = ({ query, filters }) => {
           acc[tid] = {
             in_service: 0, end_of_life: 0,
             repair: 0, maintenance: 0,
+            on_hire: 0,
             total: 0,
           };
         }
@@ -342,6 +1057,35 @@ const AssetTypesTab = ({ query, filters }) => {
   };
 
 
+  // ── Web: render responsive grid instead of mobile card list ──
+  if (Platform.OS === 'web') {
+    return (
+      <View style={{ flex: 1, flexDirection: 'column' }}>
+        {/* Sort bar */}
+        <View style={wS.webSortBar}>
+          <Text style={wS.webCount}>{sorted.length} type{sorted.length !== 1 ? 's' : ''}</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={wS.sortBarLabel}>Sort:</Text>
+          <TouchableOpacity
+            style={[styles.sortChip, typeSort.field === 'name' && styles.sortChipActive]}
+            onPress={() => setTypeSort(s => ({ field: 'name', dir: s.field === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={typeSort.field === 'name' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'name' ? Colors.accent : Colors.sub} />
+            <Text style={[styles.sortText, typeSort.field === 'name' && styles.sortTextActive]}>Name</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortChip, typeSort.field === 'total' && styles.sortChipActive]}
+            onPress={() => setTypeSort(s => ({ field: 'total', dir: s.field === 'total' && s.dir === 'asc' ? 'desc' : 'asc' }))}
+          >
+            <Feather name={typeSort.field === 'total' && typeSort.dir === 'desc' ? 'arrow-down' : 'arrow-up'} size={12} color={typeSort.field === 'total' ? Colors.accent : Colors.sub} />
+            <Text style={[styles.sortText, typeSort.field === 'total' && styles.sortTextActive]}>Total</Text>
+          </TouchableOpacity>
+        </View>
+        <WebTypesGrid sorted={sorted} typeCounts={typeCounts} loaded={loaded} />
+      </View>
+    );
+  }
+
   return (
     <FlatList
       ListHeaderComponent={
@@ -387,7 +1131,7 @@ const AssetTypesTab = ({ query, filters }) => {
 };
 
 /** ================== TAB: All Assets (live filtered) ================== */
-const AllAssetsTab = ({ query, filters }) => {
+const AllAssetsTab = ({ query, filters, setFilters }) => {
   const router = useRouter();
   const [assets, setAssets] = useState([]);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -619,6 +1363,22 @@ const AllAssetsTab = ({ query, filters }) => {
     );
   };
 
+  // ── Web: master-detail layout (design 1a) ─────────────────────────────
+  if (Platform.OS === 'web') {
+    return (
+      <WebMasterDetailView
+        assets={assets}
+        sortedAssets={sortedAssets}
+        loaded={loaded}
+        assetSort={assetSort}
+        setAssetSort={setAssetSort}
+        filters={filters}
+        setFilters={setFilters}
+        router={router}
+      />
+    );
+  }
+
   return (
     <FlatList
       ListHeaderComponent={
@@ -732,6 +1492,170 @@ const Inventory = () => {
 
   const isTypesTab = index === 1;
   const headerPlaceholder = isTypesTab ? 'Search asset types' : 'Search assets';
+
+  // ── Web layout: custom tab bar + content (no TabView on web) ──
+  if (Platform.OS === 'web') {
+    return (
+      <ScreenWrapper style={styles.safeArea}>
+        {/* ── Web header: 2 rows — tabs above, controls below ── */}
+        <View style={wS.webHeader}>
+          {/* Row 1: page title + tabs */}
+          <View style={wS.webHeaderTop}>
+            <Text style={wS.webHeaderTitle}>Inventory</Text>
+            <View style={wS.webTabsRow}>
+              {routes.map((route, i) => (
+                <TouchableOpacity
+                  key={route.key}
+                  style={[wS.webTab, index === i && wS.webTabActive]}
+                  onPress={() => setIndex(i)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons
+                    name={route.key === 'types' ? 'category' : 'inventory-2'}
+                    size={16}
+                    color={index === i ? Colors.accent : Colors.sub}
+                  />
+                  <Text style={[wS.webTabText, index === i && wS.webTabTextActive]}>
+                    {route.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Row 2: search + filter + add */}
+          <View style={wS.webControlsRow}>
+            <View style={wS.webSearchWrap}>
+              <SearchInput
+                placeholder={isTypesTab ? 'Search asset types…' : 'Search assets, IDs, serials…'}
+                value={headerQuery}
+                onChangeText={setHeaderQuery}
+                returnKeyType="search"
+              />
+            </View>
+
+            {!isTypesTab && (
+              <TouchableOpacity style={wS.webIconBtn} onPress={() => setFilterModalOpen(true)} activeOpacity={0.85}>
+                <View style={{ position: 'relative' }}>
+                  <Feather name="sliders" size={18} color={Colors.accent} />
+                  {activeFilterCount > 0 && (
+                    <View style={styles.filterBadge}>
+                      <Text style={styles.filterBadgeText}>{Math.min(activeFilterCount, 9)}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={wS.webIconBtnLabel}>Filters</Text>
+              </TouchableOpacity>
+            )}
+
+            {isAdmin && (
+              <TouchableOpacity
+                style={wS.webAddBtn}
+                onPress={() => (isTypesTab ? router.push('/type/new') : router.push('/asset/new'))}
+                activeOpacity={0.9}
+              >
+                <MaterialIcons name="add" size={18} color="#fff" />
+                <Text style={wS.webAddBtnText}>{isTypesTab ? 'New Asset Type' : 'New Asset'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Active filter chips strip */}
+        {!isTypesTab && activeFilterCount > 0 && (
+          <View style={wS.activeFiltersBar}>
+            {filters.status && (
+              <TouchableOpacity
+                style={wS.activeFilterChip}
+                onPress={() => setFilters(f => ({ ...f, status: null }))}
+              >
+                <Text style={wS.activeFilterChipText}>{filters.status}</Text>
+                <Feather name="x" size={12} color={Colors.accent} />
+              </TouchableOpacity>
+            )}
+            {(filters.assetTypes || []).map(t => (
+              <TouchableOpacity
+                key={t}
+                style={wS.activeFilterChip}
+                onPress={() => setFilters(f => ({ ...f, assetTypes: f.assetTypes.filter(x => x !== t) }))}
+              >
+                <Text style={wS.activeFilterChipText}>{t}</Text>
+                <Feather name="x" size={12} color={Colors.accent} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setFilters({ status: null, assetTypes: [] })}>
+              <Text style={wS.clearFiltersText}>Clear all</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Tab content */}
+        <View style={{ flex: 1 }}>
+          {index === 0 ? (
+            <AllAssetsTab query={headerQuery} filters={filters} setFilters={setFilters} />
+          ) : (
+            <AssetTypesTab query={headerQuery} filters={filters} />
+          )}
+        </View>
+
+        {/* Filter Modal (reused from mobile) */}
+        <Modal visible={filterModalOpen} transparent animationType="fade">
+          <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+            <TouchableOpacity style={styles.modalBackdropTouch} activeOpacity={1} onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }} />
+            <View style={[styles.filterSheet, { borderRadius: Radius.lg, maxWidth: 480, alignSelf: 'center', width: '100%', marginBottom: 40 }]}>
+              <View style={styles.filterSheetHeader}>
+                <Text style={styles.filterSheetTitle}>FILTERS</Text>
+                <TouchableOpacity onPress={() => { setFilterModalOpen(false); setTypeSearch(''); }}>
+                  <MaterialIcons name="close" size={24} color={Colors.sub} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.filterSheetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={styles.filterGroupTitle}>Status</Text>
+                <View style={styles.filterChipsRow}>
+                  <TouchableOpacity style={[styles.filterChip, !filters.status && styles.filterChipActive]} onPress={() => setFilters(f => ({ ...f, status: null }))}>
+                    <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
+                  </TouchableOpacity>
+                  {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                    <TouchableOpacity key={s} style={[styles.filterChip, filters.status === s && { ...styles.filterChipActive, backgroundColor: Colors.accent }]} onPress={() => setFilters(f => ({ ...f, status: f.status === s ? null : s }))}>
+                      <Text style={[styles.filterChipText, filters.status === s && { ...styles.filterChipTextActive, color: '#fff' }]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={[styles.filterGroupTitle, { marginTop: 16 }]}>Asset Type</Text>
+                {(filters.assetTypes || []).length > 0 && (
+                  <View style={styles.filterSelectedTypesWrap}>
+                    {(filters.assetTypes || []).map(t => (
+                      <View key={t} style={styles.filterSelectedChip}>
+                        <Text style={styles.filterSelectedChipText} numberOfLines={1}>{t}</Text>
+                        <TouchableOpacity onPress={() => setFilters(f => ({ ...f, assetTypes: (f.assetTypes || []).filter(x => x !== t) }))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Feather name="x" size={14} color={Colors.accent} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <TextInput style={styles.filterTypeInput} placeholder="Search and select asset types…" placeholderTextColor="#94A3B8" value={typeSearch} onChangeText={setTypeSearch} />
+                {typeSearch.trim().length > 0 && (
+                  <ScrollView style={styles.filterTypeList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    {filterAssetTypes.filter(t => String(t).toLowerCase().includes(typeSearch.trim().toLowerCase()) && !(filters.assetTypes || []).includes(t)).map(t => (
+                      <TouchableOpacity key={t} style={styles.filterTypeItem} onPress={() => { setFilters(f => ({ ...f, assetTypes: [...(f.assetTypes || []), t] })); setTypeSearch(''); }}>
+                        <Text style={styles.filterTypeItemText} numberOfLines={1}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </ScrollView>
+              {activeFilterCount > 0 && (
+                <TouchableOpacity style={styles.filterClearBtn} onPress={() => { setFilters({ status: null, assetTypes: [] }); setTypeSearch(''); setFilterModalOpen(false); }}>
+                  <Text style={styles.filterClearText}>Clear all</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </ScreenWrapper>
+    );
+  }
 
   return (
     <ScreenWrapper style={styles.safeArea}>
@@ -1116,6 +2040,600 @@ const styles = StyleSheet.create({
   typeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 6, borderRadius: Radius.sm, borderWidth: 1.5 },
   typeChipText: { fontSize: sf(12), fontWeight: '700' },
+});
+
+// ─── Web-only styles ──────────────────────────────────────────────────────────
+const wS = StyleSheet.create({
+  // ── Web header (2 rows) ─────────────────────────────────────────────────
+  webHeader: {
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  // Row 1: page title + tab strip; the bottom border of this row is what the
+  // active tab's underline overlaps.
+  webHeaderTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 24,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  webHeaderTitle: {
+    fontSize: sf(20),
+    fontWeight: '900',
+    color: Colors.text,
+    letterSpacing: -0.3,
+    paddingBottom: 12,
+    textTransform: 'uppercase',
+  },
+  webTabsRow: {
+    flexDirection: 'row',
+    gap: 0,
+    alignSelf: 'flex-end',
+  },
+  webTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+    marginBottom: -1, // overlap parent's bottom border for a seamless underline
+  },
+  webTabActive: { borderBottomColor: Colors.accent },
+  webTabText: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  webTabTextActive: { color: Colors.accent },
+
+  // Row 2: search + filter + add
+  webControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  webSearchWrap: { flex: 1, maxWidth: 520 },
+
+  webIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+  },
+  webIconBtnLabel: {
+    fontSize: sf(13),
+    fontWeight: '700',
+    color: Colors.sub,
+  },
+  webAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+  },
+  webAddBtnText: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: '#fff',
+  },
+
+  // Active filter chips bar
+  activeFiltersBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.accentLight,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent,
+  },
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  activeFilterChipText: { fontSize: sf(12), fontWeight: '700', color: Colors.accent },
+  clearFiltersText: { fontSize: sf(12), fontWeight: '800', color: Colors.sub, textDecorationLine: 'underline' },
+
+  // Sort bar (web, above table/grid)
+  webSortBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  webCount: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  sortBarLabel: {
+    fontSize: sf(11),
+    fontWeight: '700',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // Table
+  tableWrap: {
+    flex: 1,
+    backgroundColor: Colors.card,
+  },
+  thead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.chip,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.line,
+    paddingHorizontal: 12,
+    minHeight: 40,
+  },
+  thImg: { width: 56 },
+  th: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  thText: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  thTextActive: { color: Colors.accent },
+  tr: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    paddingHorizontal: 12,
+    minHeight: 58,
+  },
+  trAlt: { backgroundColor: Colors.bg },
+  trHov: { backgroundColor: Colors.accentLight },
+  tdImg: { width: 56, paddingVertical: 8 },
+  td: {
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rowImg: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.line,
+  },
+  rowImgPlaceholder: {
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowName: { fontSize: sf(14), fontWeight: '700', color: Colors.text, textAlign: 'center' },
+  rowType: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  idPill: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  idPillText: { fontSize: sf(11), color: '#fff', fontWeight: '700', letterSpacing: 0.2, textAlign: 'center' },
+  rowSub: { fontSize: sf(13), color: Colors.sub, fontWeight: '500', textAlign: 'center' },
+  rowDesc: { fontSize: sf(12), color: Colors.text, fontWeight: '500', lineHeight: 16, textAlign: 'center' },
+  rowUpdated: { fontSize: sf(11), color: Colors.sub2, fontWeight: '600', textAlign: 'center' },
+  cellWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+
+  // Empty / loading
+  centred: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 48 },
+  emptyText: { fontSize: sf(16), fontWeight: '700', color: Colors.sub },
+  emptySub: { fontSize: sf(13), color: Colors.sub2 },
+
+  // Type grid
+  typeCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...Shadows.card,
+  },
+  typeCoverWrap: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  typeCoverImg: { width: '100%', height: '100%' },
+  typeCoverPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  typeCardBody: { padding: 14, gap: 10 },
+  typeCardName: { flex: 1, fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  typeChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+  },
+  typeChipText: { fontSize: sf(11), fontWeight: '700' },
+
+  // Side-by-side status chips on each type card (always visible, wrap on narrow cards)
+  typeStatChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  typeStatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+  },
+  typeStatChipText: {
+    fontSize: sf(11),
+    fontWeight: '700',
+  },
+  typeStatChipValue: {
+    fontSize: sf(12),
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    marginLeft: 1,
+  },
+  typeStatChipTotal: {
+    backgroundColor: Colors.chip,
+    borderColor: Colors.line,
+  },
+
+  // ── Pagination bar ──
+  pagBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.card,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+  },
+  pagSummary: {
+    fontSize: sf(12),
+    color: Colors.sub,
+    fontWeight: '600',
+  },
+  pagSummaryBold: {
+    color: Colors.text,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  pagSizeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  pagSizeLabel: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginRight: 4,
+  },
+  pagSizeBtn: {
+    minWidth: 30,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+  },
+  pagSizeBtnActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  pagSizeBtnText: {
+    fontSize: sf(12),
+    fontWeight: '700',
+    color: Colors.sub,
+    fontVariant: ['tabular-nums'],
+  },
+  pagSizeBtnTextActive: { color: '#fff' },
+  pagNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pagArrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
+  },
+  pagArrowText: {
+    fontSize: sf(12),
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  pagNumBtn: {
+    minWidth: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+  },
+  pagNumBtnActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  pagNumBtnText: {
+    fontSize: sf(12),
+    fontWeight: '700',
+    color: Colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  pagNumBtnTextActive: { color: '#fff' },
+  pagEllipsis: {
+    paddingHorizontal: 4,
+    color: Colors.sub2,
+    fontSize: sf(13),
+    fontWeight: '700',
+  },
+  pagDisabled: { opacity: 0.4 },
+  pagDisabledText: { color: Colors.sub2 },
+
+  // ── Master-detail (design 1a) ────────────────────────────────────────
+  chipsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  chipBarLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginRight: 2,
+  },
+  chipBarSpacer: { flex: 1, minWidth: 16 },
+
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+  },
+  statusChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  statusChipText: { fontSize: 12, fontWeight: '700', color: Colors.sub },
+  statusChipTextActive: { color: '#fff' },
+  statusChipCount: {
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+  },
+  statusChipCountActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  statusChipCountText: { fontSize: 10, fontWeight: '800', color: Colors.sub, fontVariant: ['tabular-nums'] },
+  statusChipCountTextActive: { color: '#fff' },
+
+  sortMiniChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.chip,
+  },
+  sortMiniChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accent },
+  sortMiniChipText: { fontSize: 12, fontWeight: '700', color: Colors.sub },
+  sortMiniChipTextActive: { color: Colors.accent },
+
+  masterDetail: { flex: 1, flexDirection: 'row', minHeight: 0 },
+  masterList: { flex: 1, minHeight: 0, backgroundColor: Colors.bg },
+  masterListHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    backgroundColor: Colors.bg,
+  },
+  masterListCount: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 12,
+    marginTop: 8,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.line,
+  },
+  listRowSelected: {
+    borderColor: Colors.accent,
+    backgroundColor: '#FFF7ED',
+    borderLeftWidth: 4,
+  },
+  listRowThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.chip,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  listRowImg: { width: 48, height: 48 },
+  listRowName: { fontSize: 14, fontWeight: '800', color: Colors.text },
+  listRowSub: { fontSize: 12, color: Colors.sub, marginTop: 2 },
+  listRowType: {
+    fontSize: 10,
+    color: Colors.sub2,
+    textTransform: 'uppercase',
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginTop: 3,
+  },
+  listRowMeta: { alignItems: 'flex-end', gap: 6 },
+  listRowIdPill: { backgroundColor: Colors.primary, paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.sm },
+  listRowIdPillText: { fontSize: 10, color: '#fff', fontWeight: '800', fontVariant: ['tabular-nums'] },
+
+  detailPane: {
+    width: 380,
+    minWidth: 320,
+    backgroundColor: Colors.card,
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.line,
+  },
+  detailEmpty: {
+    flex: 1,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  detailEmptyTitle: { fontSize: 16, fontWeight: '800', color: Colors.sub },
+  detailEmptySub: { fontSize: 13, color: Colors.sub2, textAlign: 'center', lineHeight: 18 },
+
+  detailHero: { height: 200, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  detailHeroImg: { width: '100%', height: '100%' },
+  detailBody: { padding: 18 },
+  detailIdLine: { fontFamily: 'monospace', fontSize: 11, color: Colors.sub, marginBottom: 4 },
+  detailTitle: { fontSize: 20, fontWeight: '900', color: Colors.text, marginBottom: 4 },
+  detailTypeLine: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, color: Colors.sub2 },
+
+  quickActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
+  quickAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    backgroundColor: Colors.chip,
+    borderRadius: Radius.sm,
+  },
+  quickActionText: { fontSize: 12, fontWeight: '700', color: Colors.sub },
+
+  kvList: { marginTop: 18 },
+  kvRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    borderStyle: 'dashed',
+    gap: 12,
+  },
+  kvKey: { fontSize: 13, color: Colors.sub, flexShrink: 0 },
+  kvValue: { fontSize: 13, fontWeight: '700', color: Colors.text, textAlign: 'right', flex: 1 },
+
+  descBox: { marginTop: 14, padding: 12, backgroundColor: Colors.bg, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.line },
+  descLabel: { fontSize: 11, fontWeight: '800', color: Colors.sub2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
+  descText: { fontSize: 13, color: Colors.text, lineHeight: 18 },
+
+  detailFooter: { flexDirection: 'row', gap: 8, marginTop: 18 },
+  detailFooterBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailFooterBtnPrimary: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  detailFooterBtnPrimaryText: { color: '#fff', fontWeight: '800', fontSize: 13 },
 });
 
 export default Inventory;

@@ -121,7 +121,7 @@ export default function TasksScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListHeaderComponent={() => (
             <View style={styles.tasksHeaderRow}>
-              <Text style={styles.sectionTitle}>Hire</Text>
+              <Text style={styles.sectionTitle}>Active Hires</Text>
               {hires.length > 0 && (
                 <View style={styles.tasksHeaderChip}>
                   <MaterialIcons name="assignment" size={13} color={Colors.primary} />
@@ -168,6 +168,21 @@ export default function TasksScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListHeaderComponent={() => (
             <View style={styles.tasksHeader}>
+              {/* Heading row first — title + count chip */}
+              <View style={styles.tasksHeaderRow}>
+                <Text style={styles.sectionTitle}>Tasks &amp; Reminders</Text>
+                {totalTasks > 0 && (
+                  <View style={styles.tasksHeaderChip}>
+                    <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
+                    <Text style={styles.tasksHeaderChipText}>
+                      {searchedTaskItems.length !== totalTasks
+                        ? `${searchedTaskItems.length} of ${totalTasks}`
+                        : `${totalTasks} open`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {/* Search below the heading */}
               <SearchInput
                 value={query}
                 onChangeText={setQuery}
@@ -176,21 +191,8 @@ export default function TasksScreen() {
                 autoCorrect={false}
                 style={styles.taskSearch}
               />
-              <View style={styles.tasksHeaderRow}>
-                <Text style={styles.sectionTitle}>Tasks</Text>
-                {totalTasks > 0 && (
-                  <View style={styles.tasksHeaderChip}>
-                    <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
-                    <Text style={styles.tasksHeaderChipText}>
-                      {searchedTaskItems.length !== totalTasks
-                        ? `${searchedTaskItems.length} of ${totalTasks}`
-                        : `${totalTasks} open`}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                              </View>
-                            )}
+            </View>
+          )}
           ListEmptyComponent={() =>
             tasks.loading ? (
               <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
