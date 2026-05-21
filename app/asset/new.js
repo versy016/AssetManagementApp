@@ -26,7 +26,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTasksCount } from '../../contexts/TasksCountContext';
 import { fetchTaskCount } from '../../utils/fetchTaskCount';
 
-import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES } from '../../utils/getFormFileFromPicker';
+import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchDropdownOptions } from '../../utils/fetchDropdownOptions';
 import { TourTarget, TourContext } from '../../components/TourGuide';
@@ -168,6 +168,13 @@ export default function NewAsset() {
 
   // ---------- static / non-dynamic fields ----------
   const [image, setImage] = useState(null);
+  // Ref + unmount cleanup so we revoke any leftover blob: URL when the user
+  // navigates away (prevents the Chrome STATUS_ILLEGAL_INSTRUCTION crash
+  // after repeated Replace clicks).
+  const imageUriRef = useRef(null);
+  useEffect(() => { imageUriRef.current = image?.uri || null; }, [image]);
+  useEffect(() => () => { revokeImageUri(imageUriRef.current); }, []);
+
   const [document, setDocument] = useState(null);
   // For custom URL fields: allow selecting a document and auto-fill with S3 URL after upload
   const [urlDocMap, setUrlDocMap] = useState({}); // { [slug]: { uri, name, mimeType } }
@@ -475,6 +482,7 @@ export default function NewAsset() {
                 };
 
                 setErrors(prev => ({ ...prev, image: undefined }));
+                revokeImageUri(image?.uri);
                 setImage(result);
               },
             },
@@ -493,6 +501,7 @@ export default function NewAsset() {
                   return;
                 }
                 setErrors(prev => ({ ...prev, image: undefined }));
+                revokeImageUri(image?.uri);
                 setImage(result);
               },
             },
@@ -1239,11 +1248,15 @@ export default function NewAsset() {
         extraScrollHeight={80}
         enableOnAndroid
       >
-        {/* Web-only form header */}
+        {/* Web-only form header — image + heading + upload controls all in one card. */}
         {isWebWide && (
           <WebNewAssetFormHeader
             pickedImageUri={image?.uri}
             assetTypeName={(options.assetTypes || []).find(t => t.id === typeId)?.name || ''}
+            onPickImage={pickImage}
+            onClearImage={() => { if (!uploading) { revokeImageUri(image?.uri); setImage(null); setErrors((prev) => ({ ...prev, image: undefined })); } }}
+            uploading={uploading}
+            uploadProgress={uploadProgress}
           />
         )}
         {/* Header copy */}
@@ -1255,6 +1268,58 @@ export default function NewAsset() {
             </Text>
           ) : null}
         </View>
+
+        {/* Mobile-only image picker (web hero card carries the controls). */}
+        {!isWebWide && (
+          <View onLayout={onLayoutFor('image')}>
+            <Text style={styles.label}>Asset image (optional)</Text>
+            <View style={styles.imagePreviewBox}>
+              {image?.uri ? (
+                uploading ? (
+                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="large" color="#1E90FF" />
+                    <Text style={{ marginTop: 8, color: '#5374a6' }}>
+                      Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
+                    </Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="contain" />
+                )
+              ) : (
+                <Text style={styles.imagePreviewPlaceholder}>No image yet.</Text>
+              )}
+            </View>
+            <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
+            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+              {image?.uri ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.btn, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
+                    onPress={pickImage}
+                    disabled={uploading}
+                  >
+                    <Text>Replace image</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
+                    onPress={() => { if (!uploading) { revokeImageUri(image?.uri); setImage(null); setErrors((prev) => ({ ...prev, image: undefined })); } }}
+                    disabled={uploading}
+                  >
+                    <Text style={styles.btnDangerOutlineText}>Remove image</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.btn, { flex: 1, minWidth: 140, opacity: uploading ? 0.6 : 1 }]}
+                  onPress={pickImage}
+                  disabled={uploading}
+                >
+                  <Text>Pick image</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* QR / Asset ID */}
         <View onLayout={onLayoutFor('id')}>
@@ -1378,8 +1443,8 @@ export default function NewAsset() {
           </View>
         )}
 
-        {/* Asset Type */}
-        {isWebWide && <Text style={whs.sectionHeader}>Asset Type</Text>}
+        {/* Asset Type — the field label below carries the section name,
+           so no separate uppercase whs.sectionHeader (was duplicating it). */}
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={[styles.label, !!errors.typeId && styles.labelError]}>Asset Type *</Text>
           <TourTarget id="asset-type">
@@ -1404,8 +1469,12 @@ export default function NewAsset() {
         </View>
 
         {/* All Asset Details - Wrapped for Tour */}
-        {isWebWide && <Text style={whs.sectionHeader}>Asset Details</Text>}
-        <TourTarget id="asset-details">
+        <Text style={whs.sectionHeader}>Asset Details</Text>
+        {/* zIndex on the TourTarget creates a stacking context that contains
+           the inner dropdown menus (Asset Type / Assigned User / Status). Without
+           this, later siblings (the Document section below) paint over the
+           open menus because plain Views default to zIndex 0. */}
+        <TourTarget id="asset-details" style={{ zIndex: 10 }}>
           {/* Dynamic Fields */}
           {!!typeId && fieldsSchema.map(renderField)}
           {/* Serial Number */}
@@ -1515,40 +1584,15 @@ export default function NewAsset() {
             {!!errors.status && <Text style={styles.errorBelow}>{errors.status}</Text>}
           </View>
 
-          {/* Attachments */}
-          <View onLayout={onLayoutFor('image')}>
-            {image?.uri && (
-              <View>
-                {uploading ? (
-                  <View style={[styles.preview, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF5FF', borderWidth: 1, borderColor: '#DBEAFE' }]}>
-                    <ActivityIndicator size="large" color="#1E90FF" />
-                    <Text style={{ marginTop: 8, color: '#5374a6' }}>
-                      Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
-                    </Text>
-                  </View>
-                ) : (
-                  <Image source={{ uri: image.uri }} style={styles.preview} />
-                )}
-                <TouchableOpacity
-                  style={[styles.btn, { backgroundColor: Colors.dangerBg, opacity: uploading ? 0.6 : 1 }]}
-                  onPress={() => { if (!uploading) { setImage(null); setErrors(prev => ({ ...prev, image: undefined })); } }}
-                  disabled={uploading}
-                >
-                  <Text style={{ color: Colors.dangerFg }}>{uploading ? 'Uploading…' : 'Remove Image'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
-            <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
-              <TouchableOpacity style={[styles.btn, styles.pickerBtn]} onPress={pickImage} disabled={uploading}>
-                <Text>{image?.uri ? 'Replace Image' : 'Pick Image'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          {/* Image picker was moved to the top of the form (right after the
+             hero) for consistency with the Edit Asset screen. Errors that
+             reference the image still surface here if any are set. */}
+          {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
         </TourTarget>
 
-        <View onLayout={onLayoutFor('document')}>
+        {/* Document — explicitly low zIndex so an open Status dropdown menu
+           above us paints cleanly over this section. */}
+        <View onLayout={onLayoutFor('document')} style={{ zIndex: 1 }}>
           {document && (
             <Text style={{ marginTop: 10, fontStyle: 'italic' }}>Attached: {document.name}</Text>
           )}
@@ -1667,12 +1711,22 @@ export default function NewAsset() {
   );
 }
 
-function WebNewAssetFormHeader({ pickedImageUri, assetTypeName }) {
+function WebNewAssetFormHeader({ pickedImageUri, assetTypeName, onPickImage, onClearImage, uploading, uploadProgress }) {
+  const hasImage = !!pickedImageUri;
   return (
     <View style={whs.formHeader}>
       <View style={whs.formHeaderImg}>
-        {pickedImageUri ? (
-          <Image source={{ uri: pickedImageUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        {hasImage ? (
+          uploading ? (
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color="#1E90FF" />
+              <Text style={{ marginTop: 8, color: '#5374a6' }}>
+                Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
+              </Text>
+            </View>
+          ) : (
+            <Image source={{ uri: pickedImageUri }} style={whs.formHeaderImgFull} resizeMode="contain" />
+          )
         ) : (
           <View style={whs.formHeaderImgPlaceholder}>
             <MaterialIcons name="add-photo-alternate" size={40} color={Colors.sub2} />
@@ -1681,15 +1735,48 @@ function WebNewAssetFormHeader({ pickedImageUri, assetTypeName }) {
         )}
       </View>
       <View style={whs.formHeaderInfo}>
-        <Text style={whs.formHeaderLabel}>Asset Management</Text>
-        <Text style={whs.formHeaderTitle}>Create New Asset</Text>
-        {!!assetTypeName && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <MaterialIcons name="category" size={14} color={Colors.sub2} />
-            <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+        <View style={whs.formHeaderText}>
+          <Text style={whs.formHeaderLabel}>Asset Management</Text>
+          <Text style={whs.formHeaderTitle}>Create New Asset</Text>
+          {!!assetTypeName && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <MaterialIcons name="category" size={14} color={Colors.sub2} />
+              <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+            </View>
+          )}
+          <Text style={whs.formHeaderSub}>Select an Asset ID, choose a type, fill in the details below, and submit.</Text>
+        </View>
+        <View style={whs.formHeaderControls}>
+          <Text style={whs.formHeaderControlsHint}>{IMAGE_UPLOAD_HINT}</Text>
+          <View style={whs.formHeaderControlsRow}>
+            {hasImage ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.btn, { flex: 1, minWidth: 120, marginVertical: 0, opacity: uploading ? 0.6 : 1 }]}
+                  onPress={onPickImage}
+                  disabled={uploading}
+                >
+                  <Text>Replace image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120, marginVertical: 0, opacity: uploading ? 0.6 : 1 }]}
+                  onPress={onClearImage}
+                  disabled={uploading}
+                >
+                  <Text style={styles.btnDangerOutlineText}>Remove image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={[styles.btn, { flex: 1, minWidth: 140, marginVertical: 0, opacity: uploading ? 0.6 : 1 }]}
+                onPress={onPickImage}
+                disabled={uploading}
+              >
+                <Text>Pick image</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
-        <Text style={whs.formHeaderSub}>Select an Asset ID, choose a type, fill in the details below, and submit.</Text>
+        </View>
       </View>
     </View>
   );
@@ -1810,6 +1897,29 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '700' },
+
+  // ── Big image preview box (matches Edit Asset / Edit Asset Type) ──
+  imagePreviewBox: {
+    marginTop: 10,
+    minHeight: 180,
+    maxHeight: 240,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 12,
+  },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePreviewPlaceholder: { color: Colors.sub2, fontWeight: '600', fontSize: sf(13) },
+  btnDangerOutline: {
+    backgroundColor: Colors.card,
+    borderColor: Colors.dangerFg,
+    borderWidth: 2,
+  },
+  btnDangerOutlineText: { color: Colors.dangerFg, fontWeight: '800' },
 });
 
 // Web-only styles
@@ -1830,9 +1940,10 @@ const whs = StyleSheet.create({
     overflow: 'hidden',
     ...CardShadow,
   },
+  // Evenly-weighted columns — image and heading each take half the card.
   formHeaderImg: {
-    width: 240,
-    minHeight: 180,
+    flex: 1,
+    minHeight: 200,
     backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1856,8 +1967,28 @@ const whs = StyleSheet.create({
   formHeaderInfo: {
     flex: 1,
     padding: 28,
-    justifyContent: 'center',
-    gap: 6,
+    justifyContent: 'space-between', // text on top, upload controls on bottom
+    gap: 12,
+    minHeight: 220,
+  },
+  formHeaderText: { gap: 6 },
+  formHeaderControls: {
+    marginTop: 12,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+    gap: 8,
+  },
+  formHeaderControlsHint: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '600',
+    lineHeight: sf(16),
+  },
+  formHeaderControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   formHeaderLabel: {
     fontSize: sf(11),
@@ -1884,17 +2015,13 @@ const whs = StyleSheet.create({
     lineHeight: sf(20),
     marginTop: 4,
   },
+  // Bold title-case section heading, no underline. Same look on web & mobile.
   sectionHeader: {
-    fontSize: sf(11),
-    fontWeight: '800',
-    color: Colors.sub2,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    fontSize: sf(18),
+    fontWeight: '900',
+    color: Colors.text,
     marginTop: 28,
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
+    marginBottom: 14,
   },
 });
 

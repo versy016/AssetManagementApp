@@ -168,3 +168,19 @@ export function normalizeWebImageFile(file) {
   if (!file.type && t) return new File([file], file.name || 'image.jpg', { type: t });
   return file;
 }
+
+/**
+ * Revoke a blob:URL produced by `getImageFileFromPicker` so the underlying
+ * File can be garbage-collected. No-op for any other URI shape (http(s)://,
+ * data:, file:// from native, undefined).
+ *
+ * IMPORTANT: every consumer that replaces an image state must call this on
+ * the *previous* uri before discarding it. Without this, repeatedly choosing
+ * Replace → Replace keeps every prior file alive in memory, eventually
+ * starving the browser (Chrome shows STATUS_ILLEGAL_INSTRUCTION).
+ */
+export function revokeImageUri(uri) {
+  if (typeof uri !== 'string') return;
+  if (!uri.startsWith('blob:')) return;
+  try { URL.revokeObjectURL(uri); } catch { /* ignore */ }
+}

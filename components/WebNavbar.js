@@ -23,6 +23,7 @@ import { API_BASE_URL } from '../inventory-api/apiBase';
 import { TourTarget } from './TourGuide';
 import { Colors, Radius, sf } from '../constants/uiTheme';
 import { useTasksCount } from '../contexts/TasksCountContext';
+import { useUserData } from '../contexts/UserDataContext';
 import { useResponsive } from '../hooks/useResponsive';
 
 const C = Colors;
@@ -75,7 +76,9 @@ export default function WebNavbar() {
   const { isMobile, isTablet } = useResponsive();
   const router             = useRouter();
 
-  const [isAdmin, setIsAdmin]         = useState(false);
+  // Admin + user come from the shared UserDataContext so the navbar doesn't
+  // re-fetch /users/<uid> on every mount.
+  const { isAdmin, profile } = useUserData();
   const [user, setUser]               = useState(null);
   const [searchVersion, setSearchVersion] = useState(0);
   const [drawerOpen, setDrawerOpen]   = useState(false);
@@ -102,26 +105,11 @@ export default function WebNavbar() {
     });
   };
 
-  // Auth state
+  // Auth state — admin flag + DB profile are owned by UserDataContext now,
+  // so this effect only tracks the local user reference for null-checks.
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (currentUser) => {
-      try {
-        setUser(currentUser);
-        if (!currentUser) { setIsAdmin(false); return; }
-        await currentUser.getIdToken(true);
-        const tr = await currentUser.getIdTokenResult();
-        const role = String(tr?.claims?.role || '').toUpperCase();
-        const adminClaim = !!tr?.claims?.admin || role === 'ADMIN';
-        let dbAdmin = false;
-        try {
-          const res = await fetch(`${API_BASE_URL}/users/${currentUser.uid}`);
-          if (res.ok) {
-            const dbUser = await res.json();
-            dbAdmin = String(dbUser?.role || '').toUpperCase() === 'ADMIN';
-          }
-        } catch { /* ignore */ }
-        setIsAdmin(!!adminClaim || dbAdmin);
-      } catch { setIsAdmin(false); setUser(null); }
+    const unsub = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
     });
     return unsub;
   }, []);

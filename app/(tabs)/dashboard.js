@@ -59,7 +59,7 @@ const Dashboard = ({ isAdmin }) => {
           setAdminClaim(false);
         } else {
           setUser(currentUser);
-          await currentUser.getIdToken(true);
+          // Use the cached token + claims; Firebase auto-refreshes when expired.
           const tokenResult = await currentUser.getIdTokenResult();
           setAdminClaim(!!tokenResult?.claims?.admin);
         }

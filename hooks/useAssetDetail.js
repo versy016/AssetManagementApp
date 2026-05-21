@@ -429,6 +429,12 @@ export function useAssetDetail({ assetId, returnTo }) {
 
   // Handle back navigation
   const handleBack = () => {
+    // 1) Honour an explicit returnTo first. The caller already told us where
+    //    to land — bypassing this in favour of browser history was the source
+    //    of "back takes me somewhere random" reports.
+    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
+
+    // 2) Otherwise fall back to the navigator's own history.
     try {
       if (router?.canGoBack?.() && router.canGoBack()) {
         router.back();
@@ -441,7 +447,8 @@ export function useAssetDetail({ assetId, returnTo }) {
       router.back();
       return;
     }
-    if (normalizedReturnTo && navigateToReturnTarget(normalizedReturnTo)) return;
+
+    // 3) Final fallback: Inventory.
     router.replace({ pathname: '/(tabs)/Inventory', params: { tab: 'all' } });
   };
 

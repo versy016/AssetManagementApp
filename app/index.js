@@ -44,8 +44,8 @@ export default function Index() {
             return;
           }
 
-          // Refresh the token to get the latest custom claims
-          await firebaseUser.getIdToken(true);
+          // Use cached token + claims (auto-refreshed by Firebase when expired).
+          // Forcing a refresh here cost ~1 s on every cold app start.
           const tokenResult = await firebaseUser.getIdTokenResult();
           const adminClaim = !!tokenResult.claims.admin;
 

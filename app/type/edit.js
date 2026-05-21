@@ -1,6 +1,6 @@
 import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/type/edit.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -27,9 +27,36 @@ import { invalidateAssetTypeFields } from '../../hooks/useAssetTypeFields';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getAuthHeaders } from '../../utils/authHeaders';
-import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+
+// ---- System-managed default fields (always present on every asset type) ----
+// Mirrors the list rendered on the New Asset Type screen so users see the same
+// "what comes for free" set when editing.
+const DEFAULT_FIELDS = [
+  { slug: 'id', label: 'Asset ID (system)' },
+  { slug: 'other_id', label: 'Other ID' },
+  { slug: 'type_id', label: 'Asset Type' },
+  { slug: 'serial_number', label: 'Serial Number' },
+  { slug: 'description', label: 'Description' },
+  { slug: 'model', label: 'Model' },
+  { slug: 'assigned_to_id', label: 'Assigned To' },
+  { slug: 'status', label: 'Status' },
+  { slug: 'image_url', label: 'Image URL' },
+  { slug: 'date_purchased', label: 'Date Purchased' },
+  { slug: 'last_updated', label: 'Last Updated (system)' },
+  { slug: 'last_changed_by', label: 'Last Changed By (system)' },
+];
+
+function DefaultFieldRow({ label }) {
+  return (
+    <View style={s.defaultRow}>
+      <MaterialIcons name="lock-outline" size={16} color={Colors.sub2} />
+      <Text style={s.defaultRowLabel}>{label}</Text>
+    </View>
+  );
+}
 
 // ---- Presets (must match how you created them originally) ----
 const PRESET_LIBRARY = [
@@ -100,6 +127,10 @@ export default function EditAssetType() {
   const [nameError, setNameError] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [pickedImage, setPickedImage] = useState(null); // { uri, file }
+  // Unmount cleanup so any held blob:URL is released when leaving the page.
+  const pickedImageUriRef = useRef(null);
+  useEffect(() => { pickedImageUriRef.current = pickedImage?.uri || null; }, [pickedImage]);
+  useEffect(() => () => { revokeImageUri(pickedImageUriRef.current); }, []);
   const [origName, setOrigName] = useState('');
   const [origImageUrl, setOrigImageUrl] = useState('');
 
@@ -175,13 +206,19 @@ export default function EditAssetType() {
   const pickImage = async () => {
     try {
       const res = await getImageFileFromPicker();
-      if (res) setPickedImage(res);
+      if (res) {
+        // Revoke the previous blob: URL before swapping — prevents leaks
+        // that snowball into a Chrome STATUS_ILLEGAL_INSTRUCTION on heavy use.
+        revokeImageUri(pickedImage?.uri);
+        setPickedImage(res);
+      }
     } catch (e) {
       Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.');
     }
   };
 
   const removeTypeImage = () => {
+    revokeImageUri(pickedImage?.uri);
     setPickedImage(null);
     setImageUrl('');
   };
@@ -885,11 +922,22 @@ export default function EditAssetType() {
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
           >
-          {/* Web-only form header */}
-          {isWebWide && <WebEditTypeFormHeader typeImagePreviewUri={typeImagePreviewUri} name={name} />}
+          {/* Web-only form header — image + heading + upload controls all in
+             one card (no duplicate picker section below on web). */}
+          {isWebWide && (
+            <WebEditTypeFormHeader
+              typeImagePreviewUri={typeImagePreviewUri}
+              name={name}
+              hasTypeImageActions={hasTypeImageActions}
+              pickImage={pickImage}
+              removeTypeImage={removeTypeImage}
+              busy={saving}
+              busyLabel="Saving…"
+            />
+          )}
 
           {/* Type core */}
-          {isWebWide && <Text style={whs.sectionHeader}>Type Details</Text>}
+          <Text style={whs.sectionHeader}>Type Details</Text>
           <Text style={[s.label, nameError && s.labelError]}>Name *</Text>
           <TextInput
             style={[s.input, nameError && s.inputError]}
@@ -898,44 +946,77 @@ export default function EditAssetType() {
             onChangeText={(t) => { setName(t); if (nameError && t.trim()) setNameError(false); }}
           />
 
-          <Text style={s.label}>Type image (optional)</Text>
-          <View style={s.imagePreviewBox}>
-            {typeImagePreviewUri ? (
-              <Image source={{ uri: typeImagePreviewUri }} style={s.imagePreview} resizeMode="contain" />
-            ) : (
-              <Text style={s.imagePreviewPlaceholder}>
-                {origImageUrl === 'changed'
-                  ? 'Image is set on this type. Use Replace or Remove, then save.'
-                  : 'No type image yet.'}
-              </Text>
-            )}
-          </View>
-          <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
-          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-            {hasTypeImageActions ? (
-              <>
-                <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120 }]} onPress={pickImage}>
-                  <Text>Replace image</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120 }]}
-                  onPress={removeTypeImage}
-                >
-                  <Text style={s.btnDangerOutlineText}>Remove image</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140 }]} onPress={pickImage}>
-                <Text>Pick image</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Mobile-only image picker (the web hero card carries the controls
+             on wide screens, so this section is hidden there). */}
+          {!isWebWide && (
+            <>
+              <Text style={s.label}>Type image (optional)</Text>
+              <View style={s.imagePreviewBox}>
+                {typeImagePreviewUri ? (
+                  <Image source={{ uri: typeImagePreviewUri }} style={s.imagePreview} resizeMode="contain" />
+                ) : (
+                  <Text style={s.imagePreviewPlaceholder}>
+                    {origImageUrl === 'changed'
+                      ? 'Image is set on this type. Use Replace or Remove, then save.'
+                      : 'No type image yet.'}
+                  </Text>
+                )}
+                {saving ? (
+                  <View style={s.imagePreviewBoxOverlay}>
+                    <ActivityIndicator size="large" color={Colors.accent} />
+                    <Text style={s.imagePreviewBoxOverlayLabel}>Saving…</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                {hasTypeImageActions ? (
+                  <>
+                    <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120 }]} onPress={pickImage}>
+                      <Text>Replace image</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120 }]}
+                      onPress={removeTypeImage}
+                    >
+                      <Text style={s.btnDangerOutlineText}>Remove image</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140 }]} onPress={pickImage}>
+                    <Text>Pick image</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
 
-          {/* Presets grid */}
-          {isWebWide && <Text style={whs.sectionHeader}>Add Extra Fields</Text>}
-          <View style={{ marginTop: 24 }}>
-            <Text style={s.sectionTitle}>Add Extra Fields</Text>
-            <View style={s.grid}>
+          {/* Fields — sidebar info (locked defaults) on the left, picker on
+             the right.  On narrow viewports the sidebar stacks above the
+             picker (flexWrap on .fieldsLayout). */}
+          <Text style={whs.sectionHeader}>Fields</Text>
+          <View style={s.fieldsLayout}>
+            <View style={s.fieldsSidebar}>
+              <View style={s.fieldsSidebarBadge}>
+                <MaterialIcons name="lock-outline" size={13} color={Colors.successFg} />
+                <Text style={s.fieldsSidebarBadgeText}>{DEFAULT_FIELDS.length} system fields</Text>
+              </View>
+              <Text style={s.fieldsSidebarTitle}>Always included</Text>
+              <Text style={s.fieldsSidebarSub}>
+                Every asset on this type automatically gets these. They can't be removed.
+              </Text>
+              <View style={s.fieldsSidebarList}>
+                {DEFAULT_FIELDS.map((f, idx) => (
+                  <View key={f.slug} style={[s.fieldsSidebarRow, idx === DEFAULT_FIELDS.length - 1 && { borderBottomWidth: 0 }]}>
+                    <MaterialIcons name="lock-outline" size={13} color={Colors.sub2} />
+                    <Text style={s.fieldsSidebarRowLabel}>{f.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View style={s.fieldsMain}>
+              <Text style={s.fieldsMainTitle}>Add extra fields</Text>
+              <View style={s.grid}>
               {PRESET_LIBRARY.map((p) => {
                 const state = presetState[p.key] || { selected: false, required: false };
                 const checked = !!state.selected;
@@ -1050,13 +1131,13 @@ export default function EditAssetType() {
                   </View>
                 );
               })}
-            </View>
-          </View>
-          
+              </View>{/* end .grid */}
+            </View>{/* end .fieldsMain */}
+          </View>{/* end .fieldsLayout */}
+
           {/* Existing custom fields */}
-          {isWebWide && <Text style={whs.sectionHeader}>Existing Custom Fields</Text>}
-          <View style={{ marginTop: 24 }}>
-            <Text style={s.sectionTitle}>Existing custom fields</Text>
+          <Text style={whs.sectionHeader}>Existing Custom Fields</Text>
+          <View style={{ marginTop: 4 }}>
             {editableCustom.length === 0 ? (
               <Text style={{ color: '#777', marginTop: 6 }}>No custom fields.</Text>
             ) : null}
@@ -1182,9 +1263,8 @@ export default function EditAssetType() {
           </View>
 
           {/* Add custom field */}
-          {isWebWide && <Text style={whs.sectionHeader}>Add Custom Field</Text>}
-          <View style={{ marginTop: 24 }}>
-            <Text style={s.sectionTitle}>Add custom field</Text>
+          <Text style={whs.sectionHeader}>Add Custom Field</Text>
+          <View style={{ marginTop: 4 }}>
             {addOpen ? (
               <View style={s.card}>
                 <Text style={s.subLabel}>Field name</Text>
@@ -1499,23 +1579,53 @@ export default function EditAssetType() {
   );
 }
 
-function WebEditTypeFormHeader({ typeImagePreviewUri, name }) {
+function WebEditTypeFormHeader({ typeImagePreviewUri, name, hasTypeImageActions, pickImage, removeTypeImage, busy = false, busyLabel = 'Saving…' }) {
   return (
     <View style={whs.formHeader}>
       <View style={whs.formHeaderImg}>
         {typeImagePreviewUri ? (
-          <Image source={{ uri: typeImagePreviewUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+          <Image source={{ uri: typeImagePreviewUri }} style={whs.formHeaderImgFull} resizeMode="contain" />
         ) : (
           <View style={whs.formHeaderImgPlaceholder}>
             <MaterialIcons name="category" size={44} color={Colors.sub2} />
             <Text style={whs.formHeaderImgHint}>Type image</Text>
           </View>
         )}
+        {busy ? (
+          <View style={whs.formHeaderImgOverlay}>
+            <ActivityIndicator size="large" color={Colors.accent} />
+            <Text style={whs.formHeaderImgOverlayLabel}>{busyLabel}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={whs.formHeaderInfo}>
-        <Text style={whs.formHeaderLabel}>Edit Asset Type</Text>
-        <Text style={whs.formHeaderTitle}>{name || 'Asset Type'}</Text>
-        <Text style={whs.formHeaderSub}>Update the type name, image, and field configuration below, then save.</Text>
+        <View style={whs.formHeaderText}>
+          <Text style={whs.formHeaderLabel}>Edit Asset Type</Text>
+          <Text style={whs.formHeaderTitle}>{name || 'Asset Type'}</Text>
+          <Text style={whs.formHeaderSub}>Update the type name, image, and field configuration below, then save.</Text>
+        </View>
+        <View style={whs.formHeaderControls}>
+          <Text style={whs.formHeaderControlsHint}>{IMAGE_UPLOAD_HINT}</Text>
+          <View style={whs.formHeaderControlsRow}>
+            {hasTypeImageActions ? (
+              <>
+                <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120, marginVertical: 0 }]} onPress={pickImage}>
+                  <Text>Replace image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120, marginVertical: 0 }]}
+                  onPress={removeTypeImage}
+                >
+                  <Text style={s.btnDangerOutlineText}>Remove image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140, marginVertical: 0 }]} onPress={pickImage}>
+                <Text>Pick image</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -1582,34 +1692,161 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
   imagePreview: { width: '100%', height: 180 },
   imagePreviewPlaceholder: { padding: 16, textAlign: 'center', color: Colors.sub, fontSize: sf(13), fontWeight: '600' },
+  imagePreviewBoxOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  imagePreviewBoxOverlayLabel: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   helpMuted: { fontSize: sf(12), color: Colors.sub, marginTop: 2, marginBottom: 2, fontWeight: '500' },
 
-  sectionTitle: { fontSize: sf(18), fontWeight: '900', borderBottomWidth: 2, borderBottomColor: Colors.line, paddingBottom: 6, marginBottom: 14, color: Colors.text },
+  sectionTitle: { fontSize: sf(18), fontWeight: '900', marginBottom: 14, color: Colors.text },
 
-  // grid for presets
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  // ── Fields layout: sidebar (locked defaults) + main (picker) ──────────
+  fieldsLayout: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 20,
+    flexWrap: 'wrap',
+  },
+  fieldsSidebar: {
+    flex: 1,
+    flexBasis: 280,
+    minWidth: 240,
+    maxWidth: 320,
+    backgroundColor: '#FAFAF9',
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    padding: 18,
+    ...CardShadow,
+  },
+  fieldsSidebarBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: Colors.successBg,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    marginBottom: 14,
+  },
+  fieldsSidebarBadgeText: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.successFg,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  fieldsSidebarTitle: {
+    fontSize: sf(14),
+    fontWeight: '900',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  fieldsSidebarSub: {
+    fontSize: sf(12),
+    color: Colors.sub,
+    lineHeight: sf(18),
+    marginBottom: 14,
+  },
+  fieldsSidebarList: {
+    flexDirection: 'column',
+  },
+  fieldsSidebarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    borderStyle: 'dashed',
+  },
+  fieldsSidebarRowLabel: {
+    fontSize: sf(13),
+    color: Colors.sub,
+    fontWeight: '600',
+  },
+  fieldsMain: {
+    flex: 2,
+    flexBasis: 360,
+    minWidth: 300,
+  },
+  fieldsMainTitle: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  // Default-fields list — legacy card (kept for any remaining references).
+  defaultList: {
+    marginTop: 4,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  // Locked-default row inside the defaultList card.
+  defaultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  defaultRowLabel: {
+    color: Colors.text,
+    fontSize: sf(14),
+    fontWeight: '700',
+  },
+
+  // ── Add Extra Fields — list of standalone preset cards ────────────────
+  grid: { flexDirection: 'column', gap: 8, marginTop: 4 },
   gridItem: {
     width: '100%',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: Colors.line,
     borderRadius: Radius.md,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     backgroundColor: Colors.card,
     flexDirection: 'column',
     alignItems: 'stretch',
-    ...CardShadow,
   },
   gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
-  gridBox: { width: 22, height: 22, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  gridBox: { width: 20, height: 20, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   gridBoxUnchecked: { borderColor: '#64748B', backgroundColor: '#F1F5F9' },
   gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
-  reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: sf(11), color: Colors.sub, marginBottom: 4, fontWeight: '700' },
+  // "Required" label + switch — put them in a tight row instead of stacked,
+  // saving ~14 px per card.
+  reqWrap: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reqLabel: { fontSize: sf(11), color: Colors.sub, fontWeight: '700' },
 
   // pills
   pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.sm, alignSelf: 'flex-start' },
@@ -1702,18 +1939,35 @@ const whs = StyleSheet.create({
     overflow: 'hidden',
     ...CardShadow,
   },
+  // Evenly-weighted columns — image and heading each take half the card.
   formHeaderImg: {
-    width: 240,
-    minHeight: 180,
+    flex: 1,
+    minHeight: 200,
     backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 2,
     borderRightColor: Colors.line,
+    position: 'relative',
   },
   formHeaderImgFull: {
     width: '100%',
     height: '100%',
+  },
+  formHeaderImgOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  formHeaderImgOverlayLabel: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   formHeaderImgPlaceholder: {
     alignItems: 'center',
@@ -1728,8 +1982,28 @@ const whs = StyleSheet.create({
   formHeaderInfo: {
     flex: 1,
     padding: 28,
-    justifyContent: 'center',
-    gap: 6,
+    justifyContent: 'space-between', // text on top, upload controls on bottom
+    gap: 12,
+    minHeight: 220,
+  },
+  formHeaderText: { gap: 6 },
+  formHeaderControls: {
+    marginTop: 12,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+    gap: 8,
+  },
+  formHeaderControlsHint: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '600',
+    lineHeight: sf(16),
+  },
+  formHeaderControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   formHeaderLabel: {
     fontSize: sf(11),
@@ -1751,16 +2025,12 @@ const whs = StyleSheet.create({
     lineHeight: sf(20),
     marginTop: 4,
   },
+  // Bold title-case section heading, no underline. Same look on web & mobile.
   sectionHeader: {
-    fontSize: sf(11),
-    fontWeight: '800',
-    color: Colors.sub2,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    fontSize: sf(18),
+    fontWeight: '900',
+    color: Colors.text,
     marginTop: 28,
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
+    marginBottom: 14,
   },
 });

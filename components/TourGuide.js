@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { API_BASE_URL } from '../inventory-api/apiBase';
+import { useUserData } from '../contexts/UserDataContext';
 
 const TOUR_STORAGE_KEY = '@app_tour_completed_v2';
 
@@ -41,34 +42,13 @@ export function TourProvider({ children }) {
   const [targets, setTargets] = useState({});
   const [stepStartTime, setStepStartTime] = useState(Date.now());
   const [scrollViewRef, setScrollViewRef] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Admin flag now comes from the shared UserDataContext — saves a per-mount
+  // /users/<uid> fetch from this component.
+  const { isAdmin } = useUserData();
   const pathname = usePathname();
   const router = useRouter();
   const targetsRef = useRef({});
   targetsRef.current = targets;
-
-  // Check admin status
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        if (!user) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await fetch(`${API_BASE_URL}/users/${user.uid}`);
-        if (res.ok) {
-          const dbUser = await res.json();
-          setIsAdmin(dbUser?.role === 'ADMIN');
-        } else {
-          setIsAdmin(false);
-        }
-      } catch (e) {
-        logger.warn('TourGuide: admin role fetch failed', e?.message || e);
-        setIsAdmin(false);
-      }
-    });
-    return unsubscribe;
-  }, []);
 
   // Common steps (same for all users)
   const commonSteps = [

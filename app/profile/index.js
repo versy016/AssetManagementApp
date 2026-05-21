@@ -49,8 +49,7 @@ export default function ProfileScreen() {
         return;
       }
       try {
-        // Refresh token so new custom claims (e.g., admin) are visible
-        await fbUser.getIdToken(true);
+        // Use cached token + claims — Firebase auto-refreshes when expired.
         const tokenResult = await fbUser.getIdTokenResult();
         const isAdminClaim = !!tokenResult?.claims?.admin;
 

@@ -12,7 +12,7 @@ import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -98,6 +98,10 @@ export default function NewAssetType() {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [image, setImage] = useState(null); // { uri, file }
+  // Unmount cleanup so any held blob:URL is released on navigation away.
+  const imageUriRef = useRef(null);
+  useEffect(() => { imageUriRef.current = image?.uri || null; }, [image]);
+  useEffect(() => () => { revokeImageUri(imageUriRef.current); }, []);
   const [submitting, setSubmitting] = useState(false);
 
   // Field types from API
@@ -281,7 +285,10 @@ export default function NewAssetType() {
   const pickImage = async () => {
     try {
       const result = await getImageFileFromPicker();
-      if (result) setImage(result);
+      if (result) {
+        revokeImageUri(image?.uri);
+        setImage(result);
+      }
     } catch (e) {
       Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.');
     }
@@ -538,11 +545,21 @@ export default function NewAssetType() {
           contentContainerStyle={isWebWide ? [s.container, whs.pageScroll] : s.container}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Web-only form header */}
-          {isWebWide && <WebNewTypeFormHeader image={image} name={name} />}
+          {/* Web-only form header — image + heading + upload controls all in
+             one card (no duplicate picker section below on web). */}
+          {isWebWide && (
+            <WebNewTypeFormHeader
+              image={image}
+              name={name}
+              pickImage={pickImage}
+              clearImage={() => { revokeImageUri(image?.uri); setImage(null); }}
+              busy={submitting}
+              busyLabel="Creating…"
+            />
+          )}
 
           {/* Type name and image - combined for tour */}
-          {isWebWide && <Text style={whs.sectionHeader}>Type Details</Text>}
+          <Text style={whs.sectionHeader}>Type Details</Text>
           <TourTarget id="type-name-image">
             <View 
               ref={(r) => { sectionRefs.current['name-image'] = r; }}
@@ -560,38 +577,73 @@ export default function NewAssetType() {
             </View>
           {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
 
-          {/* Type image */}
-            <TouchableOpacity style={s.btn} onPress={pickImage}>
-              <Text>{image ? 'Change Image' : 'Pick Image (optional)'}</Text>
-            </TouchableOpacity>
-            <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
-              {image?.uri && <Image source={{ uri: image.uri }} style={s.preview} />}
+          {/* Mobile-only image picker (web hero card carries the controls). */}
+          {!isWebWide && (
+            <>
+              <Text style={s.label}>Type image (optional)</Text>
+              <View style={s.imagePreviewBox}>
+                {image?.uri ? (
+                  <Image source={{ uri: image.uri }} style={s.imagePreview} resizeMode="contain" />
+                ) : (
+                  <Text style={s.imagePreviewPlaceholder}>No type image yet.</Text>
+                )}
+              </View>
+              <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 6 }}>{IMAGE_UPLOAD_HINT}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                {image?.uri ? (
+                  <>
+                    <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120 }]} onPress={pickImage}>
+                      <Text>Replace image</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120 }]}
+                      onPress={() => { revokeImageUri(image?.uri); setImage(null); }}
+                    >
+                      <Text style={s.btnDangerOutlineText}>Remove image</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140 }]} onPress={pickImage}>
+                    <Text>Pick image</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
             </View>
           </TourTarget>
 
-          {/* Default (always included) */}
-          {isWebWide && <Text style={whs.sectionHeader}>Default Fields (always included)</Text>}
-          <TourTarget id="type-defaults">
-            <View
-              ref={(r) => { sectionRefs.current.defaults = r; }}
-              style={{ marginTop: 24 }}
-            >
-            <Text style={[s.label, { fontSize: sf(18) }]}>Default fields (always included)</Text>
-            <View style={s.defaultList}>
-              {DEFAULT_FIELDS.map(f => <DefaultFieldRow key={f.slug} label={f.label} />)}
-            </View>
-          </View>
-          </TourTarget>
-
-          {/* Pick from library (2-column checklist with Required toggles) */}
-          {isWebWide && <Text style={whs.sectionHeader}>Pick from Library</Text>}
-          <TourTarget id="type-library">
-            <View
-              ref={(r) => { sectionRefs.current.library = r; }}
-              style={{ marginTop: 24 }}
-            >
-            <Text style={[s.label, { fontSize: sf(18) }]}>Pick from library</Text>
-            <View style={s.grid}>
+          {/* Fields — sidebar info (locked defaults) on the left, picker on
+             the right.  On narrow viewports the sidebar stacks above. */}
+          <Text style={whs.sectionHeader}>Fields</Text>
+          <View
+            ref={(r) => { sectionRefs.current.defaults = r; sectionRefs.current.library = r; }}
+            style={s.fieldsLayout}
+          >
+            <TourTarget id="type-defaults">
+              <View style={s.fieldsSidebar}>
+                <View style={s.fieldsSidebarBadge}>
+                  <MaterialIcons name="lock-outline" size={13} color={Colors.successFg} />
+                  <Text style={s.fieldsSidebarBadgeText}>{DEFAULT_FIELDS.length} system fields</Text>
+                </View>
+                <Text style={s.fieldsSidebarTitle}>Always included</Text>
+                <Text style={s.fieldsSidebarSub}>
+                  Every asset on this type automatically gets these. They can't be removed.
+                </Text>
+                <View style={s.fieldsSidebarList}>
+                  {DEFAULT_FIELDS.map((f, idx) => (
+                    <View key={f.slug} style={[s.fieldsSidebarRow, idx === DEFAULT_FIELDS.length - 1 && { borderBottomWidth: 0 }]}>
+                      <MaterialIcons name="lock-outline" size={13} color={Colors.sub2} />
+                      <Text style={s.fieldsSidebarRowLabel}>{f.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </TourTarget>
+            <TourTarget id="type-library">
+              <View style={s.fieldsMain}>
+                <Text style={s.fieldsMainTitle}>Add extra fields</Text>
+                <View style={s.grid}>
               {PRESET_LIBRARY.map((p) => {
                 const state = presetState[p.key];
                 const checked = !!state?.selected;
@@ -671,19 +723,18 @@ export default function NewAssetType() {
                   </View>
                 );
               })}
-            </View>
-          </View>
-          </TourTarget>
+                </View>{/* end .grid */}
+              </View>{/* end .fieldsMain */}
+            </TourTarget>
+          </View>{/* end .fieldsLayout */}
 
           {/* Custom fields (saved list + editor) */}
-          {isWebWide && <Text style={whs.sectionHeader}>Custom Fields</Text>}
+          <Text style={whs.sectionHeader}>Custom Fields</Text>
           <TourTarget id="type-custom-fields">
             <View 
               ref={(r) => { sectionRefs.current['custom-fields'] = r; }}
               style={{ marginTop: 24 }}
             >
-            <Text style={[s.label, { fontSize: sf(18) }]}>Custom fields</Text>
-
             {loadingFieldTypes && (
               <View style={{ paddingVertical: 12 }}>
                 <ActivityIndicator />
@@ -853,23 +904,53 @@ export default function NewAssetType() {
   );
 }
 
-function WebNewTypeFormHeader({ image, name }) {
+function WebNewTypeFormHeader({ image, name, pickImage, clearImage, busy = false, busyLabel = 'Saving…' }) {
   return (
     <View style={whs.formHeader}>
       <View style={whs.formHeaderImg}>
         {image?.uri ? (
-          <Image source={{ uri: image.uri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+          <Image source={{ uri: image.uri }} style={whs.formHeaderImgFull} resizeMode="contain" />
         ) : (
           <View style={whs.formHeaderImgPlaceholder}>
             <MaterialIcons name="category" size={44} color={Colors.sub2} />
             <Text style={whs.formHeaderImgHint}>Type image</Text>
           </View>
         )}
+        {busy ? (
+          <View style={whs.formHeaderImgOverlay}>
+            <ActivityIndicator size="large" color={Colors.accent} />
+            <Text style={whs.formHeaderImgOverlayLabel}>{busyLabel}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={whs.formHeaderInfo}>
-        <Text style={whs.formHeaderLabel}>Asset Management</Text>
-        <Text style={whs.formHeaderTitle}>{name ? name : 'Create Asset Type'}</Text>
-        <Text style={whs.formHeaderSub}>Define a new category with custom fields, presets, and required attributes. Fill in the details below and submit.</Text>
+        <View style={whs.formHeaderText}>
+          <Text style={whs.formHeaderLabel}>Asset Management</Text>
+          <Text style={whs.formHeaderTitle}>{name ? name : 'Create Asset Type'}</Text>
+          <Text style={whs.formHeaderSub}>Define a new category with custom fields, presets, and required attributes. Fill in the details below and submit.</Text>
+        </View>
+        <View style={whs.formHeaderControls}>
+          <Text style={whs.formHeaderControlsHint}>{IMAGE_UPLOAD_HINT}</Text>
+          <View style={whs.formHeaderControlsRow}>
+            {image?.uri ? (
+              <>
+                <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 120, marginVertical: 0 }]} onPress={pickImage}>
+                  <Text>Replace image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btn, s.btnDangerOutline, { flex: 1, minWidth: 120, marginVertical: 0 }]}
+                  onPress={clearImage}
+                >
+                  <Text style={s.btnDangerOutlineText}>Remove image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity style={[s.btn, { flex: 1, minWidth: 140, marginVertical: 0 }]} onPress={pickImage}>
+                <Text>Pick image</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -906,6 +987,28 @@ const s = StyleSheet.create({
   btn: { backgroundColor: Colors.chip, padding: 15, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, borderWidth: 2, borderColor: Colors.line },
   submit: { backgroundColor: Colors.primary },
   preview: { width: '100%', height: 200, borderRadius: Radius.md, marginVertical: 10, ...CardShadow },
+  // ── Big image preview box (matches Edit Asset Type) ──
+  imagePreviewBox: {
+    marginTop: 10,
+    minHeight: 180,
+    maxHeight: 240,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 12,
+  },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePreviewPlaceholder: { color: Colors.sub2, fontWeight: '600', fontSize: sf(13) },
+  btnDangerOutline: {
+    backgroundColor: Colors.card,
+    borderColor: Colors.dangerFg,
+    borderWidth: 2,
+  },
+  btnDangerOutlineText: { color: Colors.dangerFg, fontWeight: '800' },
   label: { fontSize: sf(16), fontWeight: '900', marginBottom: 5, color: Colors.text },
   labelError: { color: Colors.dangerFg },
   errorBelow: { color: Colors.dangerFg, marginTop: -4, marginBottom: 6, fontWeight: '700' },
@@ -917,8 +1020,107 @@ const s = StyleSheet.create({
   dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
 
   // Default-fields UI
-  defaultList: { marginTop: 8, borderRadius: Radius.lg, backgroundColor: Colors.card, borderWidth: 2, borderColor: Colors.line, ...CardShadow },
-  defaultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: Colors.line },
+  // ── Fields layout: sidebar (locked defaults) + main (picker) ──────────
+  fieldsLayout: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 20,
+    flexWrap: 'wrap',
+  },
+  fieldsSidebar: {
+    flex: 1,
+    flexBasis: 280,
+    minWidth: 240,
+    maxWidth: 320,
+    backgroundColor: '#FAFAF9',
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    padding: 18,
+    ...CardShadow,
+  },
+  fieldsSidebarBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: Colors.successBg,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    marginBottom: 14,
+  },
+  fieldsSidebarBadgeText: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.successFg,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  fieldsSidebarTitle: {
+    fontSize: sf(14),
+    fontWeight: '900',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  fieldsSidebarSub: {
+    fontSize: sf(12),
+    color: Colors.sub,
+    lineHeight: sf(18),
+    marginBottom: 14,
+  },
+  fieldsSidebarList: { flexDirection: 'column' },
+  fieldsSidebarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+    borderStyle: 'dashed',
+  },
+  fieldsSidebarRowLabel: {
+    fontSize: sf(13),
+    color: Colors.sub,
+    fontWeight: '600',
+  },
+  fieldsMain: {
+    flex: 2,
+    flexBasis: 360,
+    minWidth: 300,
+  },
+  fieldsMainTitle: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.sub,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  // ── Default Fields — legacy card (kept for any remaining references) ──
+  defaultList: {
+    marginTop: 4,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.card,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    overflow: 'hidden',
+    ...CardShadow,
+  },
+  defaultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
   defaultRowLabel: { marginLeft: 10, color: Colors.sub, fontSize: sf(15), fontWeight: '600' },
   checkboxDisabled: { width: 20, height: 20, borderRadius: Radius.sm, backgroundColor: Colors.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: Colors.line },
   checkboxTick: { color: Colors.sub, fontSize: sf(14), lineHeight: 16, fontWeight: '700' },
@@ -937,12 +1139,18 @@ const s = StyleSheet.create({
   checkboxBoxTick: { color: Colors.card, fontWeight: '800', fontSize: sf(14), lineHeight: 16 },
 
   // Grid (preset library)
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  // ── Add Extra Fields — list of standalone preset cards ──────────────────
+  grid: { flexDirection: 'column', gap: 8, marginTop: 4 },
   gridItem: {
-    width: '48%', borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md,
-    paddingVertical: 10, paddingHorizontal: 12, backgroundColor: Colors.card,
-    // Stack content vertically when a preset reveals inline config
-    flexDirection: 'column', alignItems: 'stretch', ...CardShadow,
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: Colors.line,
+    borderRadius: Radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.card,
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, fontWeight: '700' },
   gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
@@ -950,9 +1158,9 @@ const s = StyleSheet.create({
   gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },
   gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
 
-  // Required toggle on grid item
-  reqWrap: { marginLeft: 'auto', alignItems: 'center' },
-  reqLabel: { fontSize: sf(11), color: Colors.sub, marginBottom: 4, fontWeight: '700' },
+  // Required toggle on grid item — horizontal so the row stays compact.
+  reqWrap: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reqLabel: { fontSize: sf(11), color: Colors.sub, fontWeight: '700' },
 
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
@@ -977,18 +1185,35 @@ const whs = StyleSheet.create({
     overflow: 'hidden',
     ...CardShadow,
   },
+  // Evenly-weighted columns — image and heading each take half the card.
   formHeaderImg: {
-    width: 240,
-    minHeight: 180,
+    flex: 1,
+    minHeight: 200,
     backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 2,
     borderRightColor: Colors.line,
+    position: 'relative',
   },
   formHeaderImgFull: {
     width: '100%',
     height: '100%',
+  },
+  formHeaderImgOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  formHeaderImgOverlayLabel: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   formHeaderImgPlaceholder: {
     alignItems: 'center',
@@ -1003,8 +1228,28 @@ const whs = StyleSheet.create({
   formHeaderInfo: {
     flex: 1,
     padding: 28,
-    justifyContent: 'center',
-    gap: 6,
+    justifyContent: 'space-between', // text on top, upload controls on bottom
+    gap: 12,
+    minHeight: 220,
+  },
+  formHeaderText: { gap: 6 },
+  formHeaderControls: {
+    marginTop: 12,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+    gap: 8,
+  },
+  formHeaderControlsHint: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '600',
+    lineHeight: sf(16),
+  },
+  formHeaderControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   formHeaderLabel: {
     fontSize: sf(11),
@@ -1026,16 +1271,12 @@ const whs = StyleSheet.create({
     lineHeight: sf(20),
     marginTop: 4,
   },
+  // Bold title-case section heading, no underline. Same look on web & mobile.
   sectionHeader: {
-    fontSize: sf(11),
-    fontWeight: '800',
-    color: Colors.sub2,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    fontSize: sf(18),
+    fontWeight: '900',
+    color: Colors.text,
     marginTop: 28,
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
+    marginBottom: 14,
   },
 });

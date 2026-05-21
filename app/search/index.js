@@ -38,6 +38,7 @@ import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
 import StatusBadge from '../../components/ui/StatusBadge';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { useUserData } from '../../contexts/UserDataContext';
 import ActionsForm from '../../components/ActionsForm';
 
 const RECENT_KEY = 'search_recents_v2';
@@ -114,15 +115,17 @@ export default function SearchScreen(props = {}) {
     assignedToUserIds: [],
     onlyMine: false,
     dueSoon: false,
-    favouritesOnly: false, // ⭐ quick filter — show only the user's favourite assets
     includeQRReserved: false,
     includeQRAwaiting: false,
     onlyUnassigned: false,
   });
 
-  // ⭐ Favourites — up to MAX_FAVOURITES asset IDs per user, persisted locally.
-  const MAX_FAVOURITES = 5;
-  const [favouriteIds, setFavouriteIds] = useState([]);
+  // ⭐ Favourite ASSET TYPES — up to MAX_FAVOURITE_TYPES, owned by
+  // UserDataContext (the actual `favouriteTypes` + `setFavouriteTypes` are
+  // hooked up below from the context). Each renders as its own quick-filter
+  // chip next to "Needs service". Clicking a chip toggles that type in
+  // filters.types.
+  const MAX_FAVOURITE_TYPES = 3;
   const [favPickerOpen, setFavPickerOpen] = useState(false);
   const [favPickerDraft, setFavPickerDraft] = useState([]); // in-flight selection inside the picker
   const [favPickerQuery, setFavPickerQuery] = useState('');
@@ -149,62 +152,12 @@ export default function SearchScreen(props = {}) {
     ).catch(() => {});
   }, [filters.includeQRReserved, filters.includeQRAwaiting]);
 
-  // ⭐ Favourites — stored on the server (users.favourite_asset_ids) so the list
-  // syncs across devices. We track the current uid locally (avoids a temporal-
-  // dead-zone reference to `me.uid`, which is declared further down).
-  const [favouritesUid, setFavouritesUid] = useState(() => auth.currentUser?.uid || null);
-  // Skip the first save round-trip — the load effect populates state from
-  // the server, and we don't want to immediately write it back.
-  const favouritesHydratedRef = useRef(false);
-
-  useEffect(() => {
-    const unsub = auth.onAuthStateChanged((u) => setFavouritesUid(u?.uid || null));
-    return () => { try { unsub?.(); } catch { /* ignore */ } };
-  }, []);
-
-  // Load whenever the uid changes
-  useEffect(() => {
-    let cancelled = false;
-    favouritesHydratedRef.current = false;
-    if (!favouritesUid) {
-      setFavouriteIds([]);
-      favouritesHydratedRef.current = true;
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/users/${encodeURIComponent(favouritesUid)}/favourites`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        const arr = Array.isArray(j?.favouriteIds) ? j.favouriteIds.map(String) : [];
-        setFavouriteIds(arr.slice(0, MAX_FAVOURITES));
-      } catch (e) {
-        if (!cancelled) {
-          // Network/API failure → leave the list empty; user can re-pick.
-          // (Server is the source of truth; we don't fall back to localStorage.)
-          logger?.warn?.('[favourites] load failed', e?.message || e);
-          setFavouriteIds([]);
-        }
-      } finally {
-        if (!cancelled) favouritesHydratedRef.current = true;
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [favouritesUid]);
-
-  // Save on change — debounced lightly so rapid clicks coalesce into one PUT.
-  useEffect(() => {
-    if (!favouritesHydratedRef.current || !favouritesUid) return;
-    const handle = setTimeout(() => {
-      fetch(`${API_BASE_URL}/users/${encodeURIComponent(favouritesUid)}/favourites`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ favouriteIds }),
-      }).catch((e) => logger?.warn?.('[favourites] save failed', e?.message || e));
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [favouriteIds, favouritesUid]);
+  // ⭐ Favourite asset types — owned by UserDataContext (single source of
+  // truth, single fetch per session). Local `favouriteTypes` shadows the
+  // context value so existing useMemos / chips don't need any rewrite.
+  const userData = useUserData();
+  const favouriteTypes = userData.favouriteTypes;
+  const setFavouriteTypes = userData.setFavouriteTypes;
 
   // Users from DB (for Assigned To filter)
   const [filterUsers, setFilterUsers] = useState([]);
@@ -444,10 +397,10 @@ export default function SearchScreen(props = {}) {
       const awaitingQR = isAssetIdAwaitingQr(String(it.id || ''));
       const awaitingOk = filters.awaitingQROnly ? awaitingQR : !awaitingQR;
 
-      // ⭐ Favourites filter — show only assets the user has starred.
-      const favouriteOk = !filters.favouritesOnly || favouriteIds.includes(String(it.id || ''));
+      // ⭐ Favourite asset types are reflected via filters.types — the existing
+      // `typeOk` check above handles them, so no extra clause is needed here.
 
-      const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk && favouriteOk;
+      const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
       return filters.onlyUnassigned ? (baseOk && unassignedOk) : baseOk;
     });
 
@@ -574,7 +527,7 @@ export default function SearchScreen(props = {}) {
     });
 
     return filtered;
-  }, [debouncedQuery, filters, me.email, me.uid, sort, favouriteIds]);
+  }, [debouncedQuery, filters, me.email, me.uid, sort]);
 
   useEffect(() => {
     const processed = clientFilterAndSort(rawItems);
@@ -745,7 +698,6 @@ export default function SearchScreen(props = {}) {
     !!(filters.assignedToUserIds?.length > 0),
     !!filters.onlyMine,
     !!filters.dueSoon,
-    !!filters.favouritesOnly,
     !!filters.awaitingQROnly,
   ].filter(Boolean).length;
 
@@ -1146,55 +1098,56 @@ export default function SearchScreen(props = {}) {
               ) : null}
               <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
 
-              {/* ⭐ My Favourites — single bordered chip with the toggle on the left
-                 and an inline "+" picker tap target on the right. Both areas share
-                 the chip's border, separated by a thin vertical divider. */}
-              <View style={[styles.favChipWrap, filters.favouritesOnly && styles.favChipWrapActive]}>
-                <TouchableOpacity
-                  style={styles.favChipMain}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    // Toggling the filter with no favourites yet opens the picker straight away.
-                    if (favouriteIds.length === 0) {
-                      setFavPickerDraft([]);
+              {/* ⭐ Per-user favourite asset-type chips — each toggles its
+                 type in filters.types. A "+" button at the end opens the
+                 picker so the user can add / change up to MAX_FAVOURITE_TYPES
+                 favourites. Empty state: just the "+" button so the row
+                 doesn't look broken. */}
+              {favouriteTypes.map((typeName) => {
+                const active = Array.isArray(filters.types) && filters.types.includes(typeName);
+                return (
+                  <Chip
+                    key={typeName}
+                    label={typeName}
+                    icon="bookmark"
+                    active={active}
+                    onPress={() => {
+                      setFilters((f) => {
+                        const cur = Array.isArray(f.types) ? f.types : [];
+                        const next = cur.includes(typeName)
+                          ? cur.filter((t) => t !== typeName)
+                          : [...cur, typeName];
+                        return { ...f, types: next };
+                      });
+                    }}
+                  />
+                );
+              })}
+              {(() => {
+                const full = favouriteTypes.length >= MAX_FAVOURITE_TYPES;
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setFavPickerDraft([...favouriteTypes]);
                       setFavPickerQuery('');
                       setFavPickerOpen(true);
-                      return;
-                    }
-                    quickToggle('favouritesOnly');
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle favourites filter"
-                >
-                  <Feather
-                    name="star"
-                    size={14}
-                    color={filters.favouritesOnly ? Colors.primary : Colors.sub}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text style={[styles.favChipLabel, filters.favouritesOnly && styles.favChipLabelActive]}>
-                    {favouriteIds.length ? `MY FAVOURITES · ${favouriteIds.length}` : 'MY FAVOURITES'}
-                  </Text>
-                </TouchableOpacity>
-                <View style={[styles.favChipDivider, filters.favouritesOnly && styles.favChipDividerActive]} />
-                <TouchableOpacity
-                  onPress={() => {
-                    setFavPickerDraft([...favouriteIds]);
-                    setFavPickerQuery('');
-                    setFavPickerOpen(true);
-                  }}
-                  style={styles.favChipPlus}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pick favourite assets"
-                >
-                  <Feather
-                    name="plus"
-                    size={14}
-                    color={filters.favouritesOnly ? Colors.primary : Colors.accent}
-                  />
-                </TouchableOpacity>
-              </View>
+                    }}
+                    style={[styles.favAddBtn, full && styles.favEditBtn]}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={full ? 'Edit pinned asset types (max reached)' : 'Pin asset type'}
+                  >
+                    <Feather
+                      name={full ? 'edit-2' : 'plus'}
+                      size={14}
+                      color={Colors.accent}
+                    />
+                    {favouriteTypes.length === 0 ? (
+                      <Text style={styles.favAddBtnLabel}>PIN ASSET TYPE</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
           )}
           {(presetKey === 'office' || presetKey === 'mine') && <View />}
@@ -2092,9 +2045,9 @@ export default function SearchScreen(props = {}) {
       </Modal>
 
       {/* ──────────────────────────────────────────────────────────────────
-        * ⭐ Favourites picker — pick up to MAX_FAVOURITES asset IDs.
-        * Opens from the "+" button next to the My Favourites chip, or
-        * automatically the first time the user toggles the empty filter.
+        * ⭐ Favourite ASSET-TYPE picker — pick up to MAX_FAVOURITE_TYPES.
+        * Each picked type becomes its own quick-filter chip next to the
+        * "Needs service" chip on the search page.
         * ────────────────────────────────────────────────────────────────── */}
       <Modal visible={favPickerOpen} transparent animationType="fade" onRequestClose={() => setFavPickerOpen(false)}>
         <View style={[styles.modalBackdrop, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
@@ -2102,9 +2055,9 @@ export default function SearchScreen(props = {}) {
           <View style={styles.favModalCard}>
             <View style={styles.favModalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Pick your favourite assets</Text>
+                <Text style={styles.modalTitle}>Pick favourite asset types</Text>
                 <Text style={styles.favModalSub}>
-                  Select up to {MAX_FAVOURITES}. They'll get their own quick filter at the top of the search.
+                  Choose up to {MAX_FAVOURITE_TYPES}. Each one becomes a quick-filter chip on this page.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setFavPickerOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2118,60 +2071,46 @@ export default function SearchScreen(props = {}) {
                 <SearchInput
                   value={favPickerQuery}
                   onChangeText={setFavPickerQuery}
-                  placeholder="Search assets by name, ID, type, serial…"
+                  placeholder="Search asset types…"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
               </View>
-              <View style={[styles.favCounter, favPickerDraft.length === MAX_FAVOURITES && styles.favCounterFull]}>
-                <Feather name="star" size={12} color={favPickerDraft.length === MAX_FAVOURITES ? '#fff' : Colors.accent} />
-                <Text style={[styles.favCounterText, favPickerDraft.length === MAX_FAVOURITES && { color: '#fff' }]}>
-                  {favPickerDraft.length} / {MAX_FAVOURITES}
+              <View style={[styles.favCounter, favPickerDraft.length === MAX_FAVOURITE_TYPES && styles.favCounterFull]}>
+                <Feather name="bookmark" size={12} color={favPickerDraft.length === MAX_FAVOURITE_TYPES ? '#fff' : Colors.accent} />
+                <Text style={[styles.favCounterText, favPickerDraft.length === MAX_FAVOURITE_TYPES && { color: '#fff' }]}>
+                  {favPickerDraft.length} / {MAX_FAVOURITE_TYPES}
                 </Text>
               </View>
             </View>
 
-            {/* Asset list */}
+            {/* Type list */}
             <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
               {(() => {
                 const q = favPickerQuery.trim().toLowerCase();
-                const all = Array.isArray(rawItems) ? rawItems : [];
-                const visible = all.filter((it) => {
-                  // Hide QR placeholders / awaiting QR rows — picking those makes no sense
-                  const desc = String(it?.description || it?.fields?.description || '').toLowerCase();
-                  if (desc === 'qr reserved asset') return false;
-                  if (isAssetIdAwaitingQr(String(it?.id || ''))) return false;
-                  if (!q) return true;
-                  const blob = [
-                    it?.id, it?.name, it?.asset_name, it?.serial_number, it?.model,
-                    it?.asset_type, it?.type, it?.asset_types?.name,
-                  ].filter(Boolean).join(' ').toLowerCase();
-                  return blob.includes(q);
-                });
+                const all = Array.isArray(assetTypesForFilter) ? assetTypesForFilter : [];
+                const visible = all.filter((name) => !q || String(name).toLowerCase().includes(q));
                 if (visible.length === 0) {
                   return (
                     <View style={{ padding: 24, alignItems: 'center' }}>
                       <MaterialIcons name="search-off" size={32} color={Colors.sub2} />
-                      <Text style={{ color: Colors.sub, marginTop: 8, fontWeight: '600' }}>No matches</Text>
+                      <Text style={{ color: Colors.sub, marginTop: 8, fontWeight: '600' }}>No matching asset types</Text>
                     </View>
                   );
                 }
-                return visible.map((it) => {
-                  const id = String(it?.id || '');
-                  const picked = favPickerDraft.includes(id);
-                  const full = favPickerDraft.length >= MAX_FAVOURITES;
+                return visible.map((name) => {
+                  const picked = favPickerDraft.includes(name);
+                  const full = favPickerDraft.length >= MAX_FAVOURITE_TYPES;
                   const disabled = !picked && full;
-                  const name = it?.name || it?.asset_name || it?.model || id;
-                  const type = it?.asset_type ?? it?.type ?? it?.asset_types?.name;
                   return (
                     <TouchableOpacity
-                      key={id}
+                      key={name}
                       style={[styles.favRow, picked && styles.favRowPicked, disabled && styles.favRowDisabled]}
                       onPress={() => {
                         if (picked) {
-                          setFavPickerDraft((d) => d.filter((x) => x !== id));
+                          setFavPickerDraft((d) => d.filter((x) => x !== name));
                         } else if (!full) {
-                          setFavPickerDraft((d) => [...d, id]);
+                          setFavPickerDraft((d) => [...d, name]);
                         }
                       }}
                       disabled={disabled}
@@ -2182,9 +2121,6 @@ export default function SearchScreen(props = {}) {
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.favRowName} numberOfLines={1}>{name}</Text>
-                        <Text style={styles.favRowMeta} numberOfLines={1}>
-                          {[id, type, it?.serial_number].filter(Boolean).join(' · ')}
-                        </Text>
                       </View>
                       {disabled ? (
                         <Text style={styles.favRowMaxHint}>Max reached</Text>
@@ -2199,9 +2135,7 @@ export default function SearchScreen(props = {}) {
             <View style={styles.favFooter}>
               <TouchableOpacity
                 style={styles.btnGhost}
-                onPress={() => {
-                  setFavPickerDraft([]);
-                }}
+                onPress={() => { setFavPickerDraft([]); }}
                 disabled={favPickerDraft.length === 0}
               >
                 <Text style={[styles.btnText, { color: Colors.sub }]}>Clear all</Text>
@@ -2213,12 +2147,9 @@ export default function SearchScreen(props = {}) {
               <TouchableOpacity
                 style={[styles.btn, styles.btnPrimary]}
                 onPress={() => {
-                  setFavouriteIds(favPickerDraft.slice(0, MAX_FAVOURITES).map(String));
+                  const next = favPickerDraft.slice(0, MAX_FAVOURITE_TYPES).map(String);
+                  setFavouriteTypes(next);
                   setFavPickerOpen(false);
-                  // If the user picked at least one, auto-enable the filter to show the result.
-                  if (favPickerDraft.length > 0) {
-                    setFilters((f) => ({ ...f, favouritesOnly: true }));
-                  }
                 }}
               >
                 <Text style={[styles.btnText, { color: '#fff' }]}>
@@ -2520,51 +2451,34 @@ const styles = StyleSheet.create({
   bulkPickerName: { fontSize: sf(14), fontWeight: '700', color: Colors.text },
   bulkPickerEmail: { fontSize: sf(12), color: Colors.sub },
 
-  // ── ⭐ Favourites filter chip (toggle + inline picker plus) ────────────
-  favChipWrap: {
+  // ── ⭐ "+" button to add favourite asset types (dashed = "add more") ──
+  favAddBtn: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: Radius.sm,
     borderWidth: 1.5,
-    borderColor: Colors.line,
-    backgroundColor: Colors.card,
-    overflow: 'hidden',
+    borderColor: Colors.accent,
+    borderStyle: 'dashed',
+    backgroundColor: Colors.accentLight,
     marginRight: 6,
   },
-  favChipWrapActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primaryLight,
+  // When the cap is reached the same button flips to "edit" mode — solid
+  // border + pencil glyph so it no longer reads as "you can add more".
+  favEditBtn: {
+    borderStyle: 'solid',
+    backgroundColor: Colors.card,
   },
-  favChipMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  favChipLabel: {
-    fontWeight: '700',
-    fontSize: sf(12),
+  favAddBtnLabel: {
+    fontSize: sf(11),
+    fontWeight: '800',
+    color: Colors.accent,
     letterSpacing: 0.5,
-    color: Colors.sub,
-  },
-  favChipLabelActive: {
-    color: Colors.primary,
-  },
-  favChipDivider: {
-    width: 1.5,
-    backgroundColor: Colors.line,
-    alignSelf: 'stretch',
-  },
-  favChipDividerActive: {
-    backgroundColor: Colors.primary,
-  },
-  favChipPlus: {
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
-  // ── ⭐ Favourites picker modal ─────────────────────────────────────────
+  // ── ⭐ Favourite-type picker modal ─────────────────────────────────────
   favModalCard: {
     width: '100%',
     maxWidth: 520,

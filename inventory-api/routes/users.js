@@ -884,66 +884,70 @@ router.get('/:id', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------------- */
-/*                     Per-user favourites (max 5 asset IDs)                 */
+/*                Per-user favourite ASSET TYPES (max 3 names)               */
 /* ------------------------------------------------------------------------- */
 
-/** Hard cap on favourites per user — keep in sync with the client constant. */
-const MAX_FAVOURITES = 5;
+/** Hard cap on favourite asset types per user — keep in sync with client. */
+const MAX_FAVOURITE_TYPES = 3;
 
-/** Strip ids that aren't strings, trim whitespace, dedupe, cap at MAX_FAVOURITES. */
-function normaliseFavourites(input) {
+/** Normalise input: trim, drop non-strings/empties, dedupe (case-insensitive), cap. */
+function normaliseFavouriteTypes(input) {
   if (!Array.isArray(input)) return [];
   const seen = new Set();
   const out = [];
   for (const raw of input) {
     if (typeof raw !== 'string') continue;
-    const id = raw.trim();
-    if (!id) continue;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-    if (out.length >= MAX_FAVOURITES) break;
+    const name = raw.trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(name);
+    if (out.length >= MAX_FAVOURITE_TYPES) break;
   }
   return out;
 }
 
 /**
  * GET /users/:id/favourites
- * Returns the user's favourite asset IDs (max MAX_FAVOURITES, may be empty).
+ * Returns the user's favourite asset-type names.
+ * Response: { favouriteTypes: string[] }
  */
 router.get('/:id/favourites', async (req, res) => {
   try {
     const user = await prisma.users.findUnique({
       where: { id: req.params.id },
-      select: { favourite_asset_ids: true },
+      select: { favourite_type_names: true },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    return res.json({ favouriteIds: Array.isArray(user.favourite_asset_ids) ? user.favourite_asset_ids : [] });
+    return res.json({
+      favouriteTypes: Array.isArray(user.favourite_type_names) ? user.favourite_type_names : [],
+    });
   } catch (err) {
-    console.error('❌ Failed to fetch favourites:', err);
-    return res.status(500).json({ error: 'Failed to fetch favourites' });
+    console.error('❌ Failed to fetch favourite types:', err);
+    return res.status(500).json({ error: 'Failed to fetch favourite types' });
   }
 });
 
 /**
  * PUT /users/:id/favourites
- * Body: { favouriteIds: string[] }
- * Replaces the user's favourite list with the given array (max MAX_FAVOURITES).
+ * Body: { favouriteTypes: string[] }
+ * Replaces the user's favourite-type list (max MAX_FAVOURITE_TYPES).
  */
 router.put('/:id/favourites', async (req, res) => {
-  const { favouriteIds } = req.body || {};
-  const clean = normaliseFavourites(favouriteIds);
+  const { favouriteTypes } = req.body || {};
+  const clean = normaliseFavouriteTypes(favouriteTypes);
   try {
     const updated = await prisma.users.update({
       where: { id: req.params.id },
-      data: { favourite_asset_ids: clean },
-      select: { favourite_asset_ids: true },
+      data: { favourite_type_names: clean },
+      select: { favourite_type_names: true },
     });
-    return res.json({ favouriteIds: updated.favourite_asset_ids });
+    return res.json({ favouriteTypes: updated.favourite_type_names });
   } catch (err) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'User not found' });
-    console.error('❌ Failed to save favourites:', err);
-    return res.status(500).json({ error: 'Failed to save favourites' });
+    console.error('❌ Failed to save favourite types:', err);
+    return res.status(500).json({ error: 'Failed to save favourite types' });
   }
 });
 

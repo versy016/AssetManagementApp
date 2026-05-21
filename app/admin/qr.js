@@ -27,7 +27,7 @@ export default function AdminQrSheets() {
   const authHeader = async () => {
     const u = auth.currentUser;
     if (!u) throw new Error('No current user');
-    const token = await u.getIdToken(true);
+    const token = await u.getIdToken();
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,

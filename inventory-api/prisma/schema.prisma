@@ -159,9 +159,13 @@ model users {
   id                  String      @id @default(dbgenerated("uuid_generate_v4()"))
   name                String
   userassets          String[]
-  /// Up to 5 asset IDs the user has starred as favourites — surfaced as the
-  /// "My Favourites" quick filter on the Search / Inventory screen.
-  favourite_asset_ids String[]    @default([])
+  /// Up to 3 asset-type names the user has pinned — each renders as its own
+  /// quick-filter chip alongside "Needs service" on the Search / Inventory
+  /// screen. Stored as type names (matching `assets.asset_type`) so the
+  /// filter applies cleanly even if the underlying asset_types row is
+  /// renamed; the chip will simply stop matching anything and the user can
+  /// re-pick it.
+  favourite_type_names String[]   @default([])
   useremail           String?     @unique
   role                UserRole    @default(USER)
   status              UserStatus  @default(ACTIVE)  // Account lifecycle status

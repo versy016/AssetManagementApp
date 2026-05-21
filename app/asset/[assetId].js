@@ -31,19 +31,40 @@ const DEFAULT_ADDRESS = '4/11 Ridley Street, Hindmarsh, South Australia';
 
 function MapPreview({ location }) {
   const url = `https://www.google.com/maps?q=${encodeURIComponent(location)}&z=16&output=embed`;
+  // Defer loading the Maps iframe until the user explicitly opens it.
+  // The embedded Google Maps iframe pulls in ~500 kB of JS as soon as it mounts
+  // — that's a noticeable chunk of every asset-detail page load, and most users
+  // never look at it.  `loading="lazy"` on the iframe wasn't enough because
+  // browsers only defer truly off-screen iframes; this card sits near the top
+  // of the page.
+  const [mapOpen, setMapOpen] = useState(false);
 
   if (Platform.OS === 'web') {
     return (
       <View style={styles.mapCard}>
-        <div style={{ width: '100%', height: '100%' }}>
-          <iframe
-            title="map"
-            src={url}
-            style={{ border: 0, width: '100%', height: '100%', borderRadius: 10 }}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
-        </div>
+        {mapOpen ? (
+          <div style={{ width: '100%', height: '100%' }}>
+            <iframe
+              title="map"
+              src={url}
+              style={{ border: 0, width: '100%', height: '100%', borderRadius: 10 }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+        ) : (
+          <TouchableOpacity
+            style={styles.mapPlaceholder}
+            onPress={() => setMapOpen(true)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Show map"
+          >
+            <MaterialIcons name="map" size={36} color="#64748B" />
+            <Text style={styles.mapPlaceholderTitle}>Show map</Text>
+            <Text style={styles.mapPlaceholderSub} numberOfLines={2}>{location}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -851,6 +872,26 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chip,
     marginTop: 16,
     marginBottom: 16,
+  },
+  mapPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 6,
+  },
+  mapPlaceholderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1E293B',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  mapPlaceholderSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    maxWidth: 320,
   },
   map: {
     flex: 1,

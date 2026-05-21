@@ -16,6 +16,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { theme } from '../constants/uiTheme';
 import { TourProvider } from '../components/TourGuide';
 import { TasksCountProvider } from '../contexts/TasksCountContext';
+import { UserDataProvider } from '../contexts/UserDataContext';
 import TaskCountLoader from '../components/TaskCountLoader';
 
 // Persist across RootLayout remounts (e.g. after router.replace) to avoid redirect loop / "maximum update depth"
@@ -120,19 +121,24 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <PaperProvider theme={theme}>
-          <TourProvider>
-            <TasksCountProvider>
-              <TaskCountLoader />
-              <View style={styles.root}>
-                {/* WebNavbar handles its own responsive behaviour (hamburger on mobile) */}
-                {showNavbar && <WebNavbar />}
-                {/* Content wrapper: centred + max-width on wide desktop screens */}
-                <View style={styles.contentWrapper}>
-                  <Slot />
+          {/* UserDataProvider sits outside TourProvider so the tour guide
+             can consume the shared admin flag / user profile instead of
+             fetching /users/<uid> independently. */}
+          <UserDataProvider>
+            <TourProvider>
+              <TasksCountProvider>
+                <TaskCountLoader />
+                <View style={styles.root}>
+                  {/* WebNavbar handles its own responsive behaviour (hamburger on mobile) */}
+                  {showNavbar && <WebNavbar />}
+                  {/* Content wrapper: centred + max-width on wide desktop screens */}
+                  <View style={styles.contentWrapper}>
+                    <Slot />
+                  </View>
                 </View>
-              </View>
-            </TasksCountProvider>
-          </TourProvider>
+              </TasksCountProvider>
+            </TourProvider>
+          </UserDataProvider>
         </PaperProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

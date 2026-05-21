@@ -30,7 +30,8 @@ import { TourTarget } from '../../components/TourGuide';
 async function buildHeaders() {
   const u = auth.currentUser;
   if (!u) throw new Error('Not authenticated');
-  const token = await u.getIdToken(true);
+  // getIdToken() returns the cached token instantly and auto-refreshes when expired.
+  const token = await u.getIdToken();
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-User-Id': u.uid };
 }
 

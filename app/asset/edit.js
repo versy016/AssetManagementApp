@@ -16,7 +16,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import * as DocumentPicker from 'expo-document-picker';
-import { getImageFileFromPicker } from '../../utils/getFormFileFromPicker';
+import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
@@ -83,6 +83,11 @@ export default function EditAsset() {
   const [assetDocs, setAssetDocs] = useState([]);     // DB-backed documents for this asset
   const [image, setImage] = useState(null);       // { uri, file }
   const [currentImageUrl, setCurrentImageUrl] = useState('');
+  // Track the latest image uri in a ref so the unmount cleanup can revoke it
+  // even if React strips the closure (which it does in StrictMode dev).
+  const imageUriRef = useRef(null);
+  useEffect(() => { imageUriRef.current = image?.uri || null; }, [image]);
+  useEffect(() => () => { revokeImageUri(imageUriRef.current); }, []);
   /** Pending doc for main "Document" section (maps upload on save). { uri, name, mimeType, file? } */
   const [document, setDocument] = useState(null);
 
@@ -775,17 +780,104 @@ export default function EditAsset() {
         extraScrollHeight={80}
         enableOnAndroid
       >
-        {/* Web-only form header */}
+        {/* Web-only form header — image + heading + upload controls all in
+           one card. The mobile-only standalone picker is rendered below. */}
         {isWebWide && (
           <WebEditAssetFormHeader
             currentImageUrl={currentImageUrl}
             pickedImageUri={image?.uri}
             assetId={assetId}
             assetTypeName={(options.assetTypes || []).find(t => t.id === typeId)?.name || ''}
+            busy={saving}
+            busyLabel="Saving…"
+            onPickImage={async () => {
+              try {
+                const res = await getImageFileFromPicker();
+                if (res) {
+                  // Free the previous blob: URL before swapping it out
+                  revokeImageUri(image?.uri);
+                  setImage(res);
+                }
+              } catch (e) {
+                Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.');
+              }
+            }}
+            onRemoveImage={() => {
+              if (image?.uri) {
+                revokeImageUri(image.uri);
+                setImage(null);
+              } else if (currentImageUrl) {
+                removeCurrentImage();
+              }
+            }}
           />
         )}
+
+        {/* Mobile-only image picker (web hero card carries the controls). */}
+        {!isWebWide && (
+          <View onLayout={onLayoutFor('image')}>
+            <Text style={styles.label}>Asset image (optional)</Text>
+            <View style={styles.imagePreviewBox}>
+              {(image?.uri || currentImageUrl) ? (
+                <Image
+                  source={{ uri: image?.uri || currentImageUrl }}
+                  style={styles.imagePreview}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.imagePreviewPlaceholder}>No image yet.</Text>
+              )}
+              {saving ? (
+                <View style={styles.imagePreviewBoxOverlay}>
+                  <ActivityIndicator size="large" color={Colors.accent} />
+                  <Text style={styles.imagePreviewBoxOverlayLabel}>Saving…</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
+            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+              {(image?.uri || currentImageUrl) ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.btn, { flex: 1, minWidth: 120 }]}
+                    onPress={async () => {
+                      try {
+                        const res = await getImageFileFromPicker();
+                        if (res) { revokeImageUri(image?.uri); setImage(res); }
+                      } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); }
+                    }}
+                  >
+                    <Text>Replace image</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120 }]}
+                    onPress={() => {
+                      if (image?.uri) { revokeImageUri(image.uri); setImage(null); }
+                      else if (currentImageUrl) removeCurrentImage();
+                    }}
+                  >
+                    <Text style={styles.btnDangerOutlineText}>Remove image</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.btn, { flex: 1, minWidth: 140 }]}
+                  onPress={async () => {
+                    try {
+                      const res = await getImageFileFromPicker();
+                      if (res) { revokeImageUri(image?.uri); setImage(res); }
+                    } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); }
+                  }}
+                >
+                  <Text>Pick image</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Type */}
-        {isWebWide && <Text style={whs.sectionHeader}>Basic Information</Text>}
+        <Text style={whs.sectionHeader}>Basic Information</Text>
         <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={[styles.label, !!errors.typeId && styles.labelError]}>Asset Type *</Text>
           <DropDownPicker
@@ -878,7 +970,7 @@ export default function EditAsset() {
           </TouchableOpacity>
         </View>
 
-        {isWebWide && <Text style={whs.sectionHeader}>Assignment & Notes</Text>}
+        <Text style={whs.sectionHeader}>Assignment & Notes</Text>
         <View onLayout={onLayoutFor('notes')}>
           <Text style={styles.label}>Notes</Text>
           <TextInput style={[styles.input, { height: 80 }]} value={notes} onChangeText={setNotes} placeholder="Notes" multiline maxLength={FIELD_LIMITS.NOTES} />
@@ -917,31 +1009,9 @@ export default function EditAsset() {
           </View>
         </View>
 
-        {/* Image & Document */}
-        {isWebWide && <Text style={whs.sectionHeader}>Image & Documents</Text>}
-        <View onLayout={onLayoutFor('image')}>
-          <Text style={styles.label}>Image</Text>
-          <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
-          {(image?.uri || currentImageUrl) ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Image source={{ uri: image?.uri || currentImageUrl }} style={{ width: 80, height: 80, borderRadius: 6, backgroundColor: '#eef' }} />
-              {image?.uri ? (
-                <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={() => setImage(null)}>
-                  <Text style={{ color: '#b00020' }}>Remove Selected</Text>
-                </TouchableOpacity>
-              ) : currentImageUrl ? (
-                <TouchableOpacity style={[styles.btn, { backgroundColor: Colors.dangerBg }]} onPress={removeCurrentImage}>
-                  <Text style={{ color: '#b00020' }}>Remove Current</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity style={styles.btn} onPress={async () => { try { const res = await getImageFileFromPicker(); if (res) setImage(res); } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); } }}>
-              <Text>{image?.uri ? 'Change Image' : 'Pick Image'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Image picker moved to the top of the form — only the Documents
+           section remains in this position. */}
+        <Text style={whs.sectionHeader}>Documents</Text>
 
         <View onLayout={onLayoutFor('document')}>
           <Text style={styles.label}>Document</Text>
@@ -1060,30 +1130,61 @@ function WebOverlayPortal({ visible, children }) {
   );
 }
 
-function WebEditAssetFormHeader({ currentImageUrl, pickedImageUri, assetId, assetTypeName }) {
+function WebEditAssetFormHeader({ currentImageUrl, pickedImageUri, assetId, assetTypeName, onPickImage, onRemoveImage, busy = false, busyLabel = 'Saving…' }) {
   const imgUri = pickedImageUri || currentImageUrl;
+  const hasImage = !!imgUri;
   return (
     <View style={whs.formHeader}>
       <View style={whs.formHeaderImg}>
-        {imgUri ? (
-          <Image source={{ uri: imgUri }} style={whs.formHeaderImgFull} resizeMode="cover" />
+        {hasImage ? (
+          <Image source={{ uri: imgUri }} style={whs.formHeaderImgFull} resizeMode="contain" />
         ) : (
           <View style={whs.formHeaderImgPlaceholder}>
             <MaterialIcons name="image-not-supported" size={40} color={Colors.sub2} />
             <Text style={whs.formHeaderImgHint}>No image</Text>
           </View>
         )}
+        {busy ? (
+          <View style={whs.formHeaderImgOverlay}>
+            <ActivityIndicator size="large" color={Colors.accent} />
+            <Text style={whs.formHeaderImgOverlayLabel}>{busyLabel}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={whs.formHeaderInfo}>
-        <Text style={whs.formHeaderLabel}>Editing Asset</Text>
-        <Text style={whs.formHeaderTitle}>#{assetId}</Text>
-        {!!assetTypeName && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-            <MaterialIcons name="category" size={14} color={Colors.sub2} />
-            <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+        <View style={whs.formHeaderText}>
+          <Text style={whs.formHeaderLabel}>Editing Asset</Text>
+          <Text style={whs.formHeaderTitle}>#{assetId}</Text>
+          {!!assetTypeName && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <MaterialIcons name="category" size={14} color={Colors.sub2} />
+              <Text style={whs.formHeaderMeta}>{assetTypeName}</Text>
+            </View>
+          )}
+          <Text style={whs.formHeaderSub}>Update the fields below, then tap Save Changes.</Text>
+        </View>
+        <View style={whs.formHeaderControls}>
+          <Text style={whs.formHeaderControlsHint}>{IMAGE_UPLOAD_HINT}</Text>
+          <View style={whs.formHeaderControlsRow}>
+            {hasImage ? (
+              <>
+                <TouchableOpacity style={[styles.btn, { flex: 1, minWidth: 120, marginVertical: 0 }]} onPress={onPickImage}>
+                  <Text>Replace image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120, marginVertical: 0 }]}
+                  onPress={onRemoveImage}
+                >
+                  <Text style={styles.btnDangerOutlineText}>Remove image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity style={[styles.btn, { flex: 1, minWidth: 140, marginVertical: 0 }]} onPress={onPickImage}>
+                <Text>Pick image</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
-        <Text style={whs.formHeaderSub}>Update the fields below, then tap Save Changes.</Text>
+        </View>
       </View>
     </View>
   );
@@ -1152,6 +1253,45 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },
   toastSuccess: { backgroundColor: Colors.successBg, borderWidth: 2, borderColor: Colors.successFg },
   toastText: { color: Colors.successFg, fontWeight: '700', flex: 1 },
+
+  // ── Big image preview box (matches the asset-type pickers) ──
+  imagePreviewBox: {
+    marginTop: 10,
+    minHeight: 180,
+    maxHeight: 240,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 12,
+    position: 'relative',
+  },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePreviewPlaceholder: { color: Colors.sub2, fontWeight: '600', fontSize: sf(13) },
+  imagePreviewBoxOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  imagePreviewBoxOverlayLabel: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  btnDangerOutline: {
+    backgroundColor: Colors.card,
+    borderColor: Colors.dangerFg,
+    borderWidth: 2,
+  },
+  btnDangerOutlineText: { color: Colors.dangerFg, fontWeight: '800' },
 });
 
 // Web-only styles
@@ -1172,18 +1312,36 @@ const whs = StyleSheet.create({
     overflow: 'hidden',
     ...CardShadow,
   },
+  // Evenly-weighted columns — image and heading each take half the card.
   formHeaderImg: {
-    width: 240,
-    minHeight: 180,
+    flex: 1,
+    minHeight: 200,
     backgroundColor: Colors.chip,
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 2,
     borderRightColor: Colors.line,
+    position: 'relative',
   },
   formHeaderImgFull: {
     width: '100%',
     height: '100%',
+  },
+  // Translucent overlay shown over the image area during save / upload.
+  formHeaderImgOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  formHeaderImgOverlayLabel: {
+    fontSize: sf(13),
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   formHeaderImgPlaceholder: {
     alignItems: 'center',
@@ -1198,8 +1356,28 @@ const whs = StyleSheet.create({
   formHeaderInfo: {
     flex: 1,
     padding: 28,
-    justifyContent: 'center',
-    gap: 6,
+    justifyContent: 'space-between', // text on top, upload controls on bottom
+    gap: 12,
+    minHeight: 220,
+  },
+  formHeaderText: { gap: 6 },
+  formHeaderControls: {
+    marginTop: 12,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+    gap: 8,
+  },
+  formHeaderControlsHint: {
+    fontSize: sf(11),
+    color: Colors.sub2,
+    fontWeight: '600',
+    lineHeight: sf(16),
+  },
+  formHeaderControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   formHeaderLabel: {
     fontSize: sf(11),
@@ -1226,16 +1404,12 @@ const whs = StyleSheet.create({
     lineHeight: sf(20),
     marginTop: 4,
   },
+  // Bold title-case section heading, no underline. Same look on web & mobile.
   sectionHeader: {
-    fontSize: sf(11),
-    fontWeight: '800',
-    color: Colors.sub2,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    fontSize: sf(18),
+    fontWeight: '900',
+    color: Colors.text,
     marginTop: 28,
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.line,
+    marginBottom: 14,
   },
 });
