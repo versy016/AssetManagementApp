@@ -58,22 +58,24 @@ function DefaultFieldRow({ label }) {
   );
 }
 
-// ---- Presets (must match how you created them originally) ----
+// ---- Pick-from-library presets ---------------------------------------------
+// IMPORTANT: this list must stay in lock-step with app/type/new.js's
+// PRESET_LIBRARY so the Edit screen shows the same picker options as the
+// Create screen. If you add a preset, add it to BOTH files.
 const PRESET_LIBRARY = [
+  // Yours
   { key: 'asset_life_years', label: 'Asset life (years)', fieldTypeSlug: 'number' },
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
-  // Common fields moved to library (optional per type)
+  { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
+  // Moved common fields (now optional)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
   { key: 'documentation_url', label: 'Document', fieldTypeSlug: 'url' },
   { key: 'location', label: 'Location', fieldTypeSlug: 'text' },
-  { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
+  // Suggestions
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
   { key: 'purchase_price', label: 'Purchase price', fieldTypeSlug: 'currency' },
   { key: 'condition', label: 'Condition', fieldTypeSlug: 'select', options: ['New', 'Good', 'Fair', 'Poor'] },
   { key: 'warranty_expiry', label: 'Warranty expiry', fieldTypeSlug: 'date' },
-  { key: 'maintenance_interval_days', label: 'Maintenance interval (days)', fieldTypeSlug: 'number' },
-  { key: 'barcode_tag', label: 'Tag / Barcode', fieldTypeSlug: 'text' },
-  { key: 'department', label: 'Department', fieldTypeSlug: 'text' },
 ];
 
 function Square({ checked }) {
@@ -902,17 +904,8 @@ export default function EditAssetType() {
           }
           router.replace('/Inventory?tab=types');
         }}
-        right={
-          <TouchableOpacity
-            onPress={() => setShowSummary(true)}
-            disabled={saving}
-            style={[s.headerSaveBtn, saving && { opacity: 0.6 }]}
-            accessibilityRole="button"
-          >
-            <MaterialIcons name="save" size={16} color="#fff" style={{ marginRight: 5 }} />
-            <Text style={s.headerSaveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
-          </TouchableOpacity>
-        }
+        // Top-right Save button removed — the sticky "Save Changes" button at
+        // the bottom is enough; two save buttons just confused users.
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -998,7 +991,7 @@ export default function EditAssetType() {
           <View style={s.fieldsLayout}>
             <View style={s.fieldsSidebar}>
               <View style={s.fieldsSidebarBadge}>
-                <MaterialIcons name="lock-outline" size={13} color={Colors.successFg} />
+                <MaterialIcons name="lock-outline" size={14} color={Colors.successFg} />
                 <Text style={s.fieldsSidebarBadgeText}>{DEFAULT_FIELDS.length} system fields</Text>
               </View>
               <Text style={s.fieldsSidebarTitle}>Always included</Text>
@@ -1008,7 +1001,7 @@ export default function EditAssetType() {
               <View style={s.fieldsSidebarList}>
                 {DEFAULT_FIELDS.map((f, idx) => (
                   <View key={f.slug} style={[s.fieldsSidebarRow, idx === DEFAULT_FIELDS.length - 1 && { borderBottomWidth: 0 }]}>
-                    <MaterialIcons name="lock-outline" size={13} color={Colors.sub2} />
+                    <MaterialIcons name="lock-outline" size={15} color={Colors.sub2} />
                     <Text style={s.fieldsSidebarRowLabel}>{f.label}</Text>
                   </View>
                 ))}
@@ -1776,14 +1769,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 6,
+    paddingVertical: 9,             // a bit roomier for the larger text
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
     borderStyle: 'dashed',
   },
   fieldsSidebarRowLabel: {
-    fontSize: sf(13),
-    color: Colors.sub,
+    fontSize: sf(15),              // bumped from 13 → 15 (was small)
+    color: Colors.text,            // darker for legibility
     fontWeight: '600',
   },
   fieldsMain: {
@@ -1845,7 +1838,23 @@ const s = StyleSheet.create({
   gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
   // "Required" label + switch — put them in a tight row instead of stacked,
   // saving ~14 px per card.
-  reqWrap: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // "Required" toggle group. On mobile the bare Switch sits awkwardly next
+  // to the row content with no visible chrome, so wrap it in a soft bordered
+  // pill so the user can clearly tell it's an interactive control.
+  reqWrap: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    ...(Platform.OS !== 'web' ? {
+      borderWidth: 1.5,
+      borderColor: Colors.line,
+      backgroundColor: Colors.chip,
+      borderRadius: Radius.sm,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    } : null),
+  },
   reqLabel: { fontSize: sf(11), color: Colors.sub, fontWeight: '700' },
 
   // pills

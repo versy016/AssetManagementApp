@@ -614,36 +614,36 @@ export default function NewAssetType() {
           </TourTarget>
 
           {/* Fields — sidebar info (locked defaults) on the left, picker on
-             the right.  On narrow viewports the sidebar stacks above. */}
+             the right.  On narrow viewports the sidebar stacks above.
+             NOTE: flex sizing goes on the TourTarget itself (not an inner
+             child) so the wrapping <View> from TourTarget participates in
+             fieldsLayout's flexbox correctly. */}
           <Text style={whs.sectionHeader}>Fields</Text>
           <View
             ref={(r) => { sectionRefs.current.defaults = r; sectionRefs.current.library = r; }}
             style={s.fieldsLayout}
           >
-            <TourTarget id="type-defaults">
-              <View style={s.fieldsSidebar}>
-                <View style={s.fieldsSidebarBadge}>
-                  <MaterialIcons name="lock-outline" size={13} color={Colors.successFg} />
-                  <Text style={s.fieldsSidebarBadgeText}>{DEFAULT_FIELDS.length} system fields</Text>
-                </View>
-                <Text style={s.fieldsSidebarTitle}>Always included</Text>
-                <Text style={s.fieldsSidebarSub}>
-                  Every asset on this type automatically gets these. They can't be removed.
-                </Text>
-                <View style={s.fieldsSidebarList}>
-                  {DEFAULT_FIELDS.map((f, idx) => (
-                    <View key={f.slug} style={[s.fieldsSidebarRow, idx === DEFAULT_FIELDS.length - 1 && { borderBottomWidth: 0 }]}>
-                      <MaterialIcons name="lock-outline" size={13} color={Colors.sub2} />
-                      <Text style={s.fieldsSidebarRowLabel}>{f.label}</Text>
-                    </View>
-                  ))}
-                </View>
+            <TourTarget id="type-defaults" style={s.fieldsSidebar}>
+              <View style={s.fieldsSidebarBadge}>
+                <MaterialIcons name="lock-outline" size={14} color={Colors.successFg} />
+                <Text style={s.fieldsSidebarBadgeText}>{DEFAULT_FIELDS.length} system fields</Text>
+              </View>
+              <Text style={s.fieldsSidebarTitle}>Always included</Text>
+              <Text style={s.fieldsSidebarSub}>
+                Every asset on this type automatically gets these. They can't be removed.
+              </Text>
+              <View style={s.fieldsSidebarList}>
+                {DEFAULT_FIELDS.map((f, idx) => (
+                  <View key={f.slug} style={[s.fieldsSidebarRow, idx === DEFAULT_FIELDS.length - 1 && { borderBottomWidth: 0 }]}>
+                    <MaterialIcons name="lock-outline" size={15} color={Colors.sub2} />
+                    <Text style={s.fieldsSidebarRowLabel}>{f.label}</Text>
+                  </View>
+                ))}
               </View>
             </TourTarget>
-            <TourTarget id="type-library">
-              <View style={s.fieldsMain}>
-                <Text style={s.fieldsMainTitle}>Add extra fields</Text>
-                <View style={s.grid}>
+            <TourTarget id="type-library" style={s.fieldsMain}>
+              <Text style={s.fieldsMainTitle}>Add extra fields</Text>
+              <View style={s.grid}>
               {PRESET_LIBRARY.map((p) => {
                 const state = presetState[p.key];
                 const checked = !!state?.selected;
@@ -723,9 +723,8 @@ export default function NewAssetType() {
                   </View>
                 );
               })}
-                </View>{/* end .grid */}
-              </View>{/* end .fieldsMain */}
-            </TourTarget>
+              </View>{/* end .grid */}
+            </TourTarget>{/* end .fieldsMain (now on TourTarget) */}
           </View>{/* end .fieldsLayout */}
 
           {/* Custom fields (saved list + editor) */}
@@ -1079,14 +1078,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 6,
+    paddingVertical: 9,             // a bit roomier for the larger text
     borderBottomWidth: 1,
     borderBottomColor: Colors.line,
     borderStyle: 'dashed',
   },
   fieldsSidebarRowLabel: {
-    fontSize: sf(13),
-    color: Colors.sub,
+    fontSize: sf(15),              // bumped from 13 → 15
+    color: Colors.text,            // darker for legibility
     fontWeight: '600',
   },
   fieldsMain: {
@@ -1159,7 +1158,22 @@ const s = StyleSheet.create({
   gridTick: { color: Colors.card, fontSize: sf(12), fontWeight: '800', lineHeight: 12 },
 
   // Required toggle on grid item — horizontal so the row stays compact.
-  reqWrap: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // "Required" toggle — bordered pill on mobile so the Switch reads as a
+  // tappable control instead of floating bare against the row content.
+  reqWrap: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    ...(Platform.OS !== 'web' ? {
+      borderWidth: 1.5,
+      borderColor: Colors.line,
+      backgroundColor: Colors.chip,
+      borderRadius: Radius.sm,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    } : null),
+  },
   reqLabel: { fontSize: sf(11), color: Colors.sub, fontWeight: '700' },
 
   toast: { position: 'absolute', bottom: 24, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderRadius: Radius.lg, zIndex: 9999, elevation: 4, ...CardShadow },

@@ -29,6 +29,7 @@ import StatusBadge, {
   normalizeStatus,
 } from '../../components/ui/StatusBadge';
 import EmptyState from '../../components/ui/EmptyState';
+import AssetsMasterDetail from '../../components/AssetsMasterDetail';
 
 /* ---------------------------- main ---------------------------- */
 export default function AssetsType() {
@@ -72,6 +73,10 @@ export default function AssetsType() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleteBlockedMessage, setDeleteBlockedMessage] = useState(null);
+
+  // Local sort / filter state used by the web master-detail view.
+  const [assetSort, setAssetSort] = useState({ field: 'updated', dir: 'desc' });
+  const [filters, setFilters] = useState({});
 
   // Determine admin via DB role
   useEffect(() => {
@@ -242,21 +247,65 @@ export default function AssetsType() {
     return rows;
   }, [withQR, withoutQR]);
 
+  // ── Web master-detail view: filtered & sorted asset list ──
+  // Skips QR-reserved placeholders, BUT keeps assets still awaiting a QR
+  // (UUID-id rows) — they're shown after the QR-assigned ones, matching the
+  // mobile FlatList behaviour (which groups them under an "Awaiting QR" header).
+  const isReservedQR = (a) => String(a?.description || '').toLowerCase() === 'qr reserved asset';
+  const webFilteredAssets = useMemo(() => {
+    let arr = assets.filter((a) => !isReservedQR(a));
+    const statusFilter = filters?.status;
+    if (statusFilter) {
+      const wantKey = normalizeStatus(statusFilter);
+      arr = arr.filter((a) => normalizeStatus(a?.status) === wantKey);
+    }
+    return arr;
+  }, [assets, filters?.status]);
+
+  const sortedAssetsForWeb = useMemo(() => {
+    // Group QR-assigned rows before awaiting-QR rows (matches mobile FlatList).
+    const qrAssigned = [];
+    const awaitingQR = [];
+    for (const a of webFilteredAssets) {
+      if (isUUID(String(a?.id || ''))) awaitingQR.push(a);
+      else qrAssigned.push(a);
+    }
+    const dir = assetSort.dir === 'asc' ? 1 : -1;
+    const sortFn = assetSort.field === 'name'
+      ? (a, b) => {
+          const na = String(a?.name || a?.asset_name || a?.model || a?.id || '');
+          const nb = String(b?.name || b?.asset_name || b?.model || b?.id || '');
+          return na.localeCompare(nb, undefined, { sensitivity: 'base' }) * dir;
+        }
+      : (a, b) => {
+          const ta = new Date(a?.updated_at || 0).getTime();
+          const tb = new Date(b?.updated_at || 0).getTime();
+          return (ta - tb) * dir;
+        };
+    qrAssigned.sort(sortFn);
+    awaitingQR.sort(sortFn);
+    return [...qrAssigned, ...awaitingQR];
+  }, [webFilteredAssets, assetSort]);
+
   const renderContent = () => (
       <View style={styles.container}>
         <View style={styles.contentWrap}>
-          {/* stats chips (now color-coded by status config) */}
-          <View style={styles.metaRow}>
-            <StatChip code="in_service"  count={counts.in_service} />
-            <StatChip code="on_hire"     count={counts.on_hire} />
-            <StatChip code="repair"      count={counts.repair} />
-            <StatChip code="maintenance" count={counts.maintenance} />
-            <StatChip code="end_of_life" count={counts.end_of_life} />
-            <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
-              <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
-              <Text style={[styles.metaChipText, { color: Colors.accent }]}>Total: {counts.total}</Text>
+          {/* Stat chips — mobile only. On web the AssetsMasterDetail's
+             status filter chip bar already shows the same info as
+             interactive filters, so this row would be duplicate noise. */}
+          {!isWebWide && (
+            <View style={styles.metaRow}>
+              <StatChip code="in_service"  count={counts.in_service} />
+              <StatChip code="on_hire"     count={counts.on_hire} />
+              <StatChip code="repair"      count={counts.repair} />
+              <StatChip code="maintenance" count={counts.maintenance} />
+              <StatChip code="end_of_life" count={counts.end_of_life} />
+              <View style={[styles.metaChip, { backgroundColor: '#f0f8ff' }]}>
+                <MaterialIcons name="inventory-2" size={16} color="#1E90FF" />
+                <Text style={[styles.metaChipText, { color: Colors.accent }]}>Total: {counts.total}</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* list / empty state */}
           {assets.length === 0 ? (
@@ -264,6 +313,18 @@ export default function AssetsType() {
               icon="search-off"
               title="No assets found"
               subtitle="No assets have been assigned to this type yet."
+            />
+          ) : isWebWide ? (
+            <AssetsMasterDetail
+              assets={webFilteredAssets}
+              sortedAssets={sortedAssetsForWeb}
+              loaded={!loading}
+              assetSort={assetSort}
+              setAssetSort={setAssetSort}
+              filters={filters}
+              setFilters={setFilters}
+              router={router}
+              returnTo={selfReturnTarget}
             />
           ) : (
             <FlatList
