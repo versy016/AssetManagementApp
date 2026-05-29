@@ -1,6 +1,6 @@
 import { sf } from '../../constants/uiTheme.js';
 // app/(tabs)/assets/new.js
-import React, { useEffect, useState, useCallback, useRef, useContext } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, Switch, ActivityIndicator, Modal, useWindowDimensions
 } from 'react-native';
@@ -43,6 +43,116 @@ const ALLOWED_DOC_MIME = [
 
 const normSlug = (s = '') =>
   String(s).toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+/**
+ * Lightweight autocomplete: shows a filtered dropdown of `suggestions` below
+ * the input when it's focused.  Also accepts a `forcedSuggestion` (used for
+ * the "next Other ID" computed pill, which we always offer regardless of
+ * current input).  Suggestions filter on substring match (case-insensitive).
+ *
+ * The parent renders the actual <TextInput> itself; this component only
+ * renders the dropdown panel.  We keep it this way so existing input refs,
+ * placeholder, error styling, etc. stay exactly as before.
+ */
+function SuggestionDropdown({ value, suggestions, forcedSuggestion, visible, onPick, max = 6 }) {
+  if (!visible) return null;
+  const v = String(value || '').toLowerCase().trim();
+  const list = (() => {
+    const base = Array.isArray(suggestions) ? suggestions : [];
+    const filtered = v
+      ? base.filter((s) => String(s).toLowerCase().includes(v) && String(s).toLowerCase() !== v)
+      : base;
+    return filtered.slice(0, max);
+  })();
+  const showForced = !!forcedSuggestion && String(forcedSuggestion) !== String(value || '');
+  if (list.length === 0 && !showForced) return null;
+  // We commit the pick on `onPressIn` (= mousedown on web) so the value is
+  // set BEFORE the input's onBlur fires and tears down the dropdown — the
+  // previous `onPress` (= click, fires on mouseup) was racing the blur handler
+  // and frequently losing.  `onMouseDown.preventDefault` keeps focus on the
+  // input so the picked text remains editable immediately afterwards.
+  const handlePick = (val) => () => onPick(val);
+  const keepFocus = Platform.OS === 'web'
+    ? (e) => { try { e?.preventDefault?.(); } catch { /* ignore */ } }
+    : undefined;
+
+  return (
+    <View style={ds.dropdownPanel}>
+      {showForced ? (
+        <TouchableOpacity
+          style={[ds.dropdownRow, ds.dropdownRowForced]}
+          onPressIn={handlePick(forcedSuggestion)}
+          onMouseDown={keepFocus}
+          activeOpacity={0.85}
+        >
+          <View style={ds.dropdownForcedBadge}>
+            <Text style={ds.dropdownForcedBadgeText}>NEXT</Text>
+          </View>
+          <Text style={ds.dropdownRowText} numberOfLines={1}>{forcedSuggestion}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {list.map((s, i) => (
+        <TouchableOpacity
+          key={`${s}-${i}`}
+          style={[ds.dropdownRow, (showForced || i > 0) && ds.dropdownRowBordered]}
+          onPressIn={handlePick(s)}
+          onMouseDown={keepFocus}
+          activeOpacity={0.85}
+        >
+          <Text style={ds.dropdownRowText} numberOfLines={1}>{s}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+const ds = StyleSheet.create({
+  dropdownPanel: {
+    marginTop: 4,
+    borderWidth: 1.5,
+    borderColor: '#D6D3D1',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    shadowColor: '#1C1917',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  dropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  dropdownRowBordered: {
+    borderTopWidth: 1,
+    borderTopColor: '#EDEAE6',
+  },
+  dropdownRowForced: {
+    backgroundColor: '#FFF7ED',
+  },
+  dropdownRowText: {
+    fontSize: 14,
+    color: '#1C1917',
+    fontWeight: '600',
+    flex: 1,
+  },
+  dropdownForcedBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#EA580C',
+  },
+  dropdownForcedBadgeText: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+});
 
 export default function NewAsset() {
   const router = useRouter();
@@ -250,6 +360,220 @@ export default function NewAsset() {
   const [fieldsSchema, setFieldsSchema] = useState([]); // backend-defined fields for the chosen type
   const [fieldValues, setFieldValues] = useState({});
   const [datePicker, setDatePicker] = useState({ open: false, slug: null });
+
+  // ── Type-aware suggestions ────────────────────────────────────────────
+  // Pull all existing assets once on mount so we can suggest common values
+  // (model, description, custom fields) and an incremented Other ID based on
+  // what's already in inventory for the selected type.
+  const [allAssets, setAllAssets] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/assets`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (!cancelled && Array.isArray(data)) setAllAssets(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Assets of the currently-selected type — the suggestion pool.
+  const typeAssets = useMemo(() => {
+    if (!typeId) return [];
+    return allAssets.filter((a) => String(a?.type_id || '') === String(typeId));
+  }, [allAssets, typeId]);
+
+  /** Unique non-empty trimmed values from a field across `typeAssets`. */
+  const collectDistinct = (getter) => {
+    const seen = new Set();
+    const out = [];
+    for (const a of typeAssets) {
+      const raw = getter(a);
+      if (raw == null) continue;
+      const s = String(raw).trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  };
+
+  const modelSuggestions = useMemo(
+    () => collectDistinct((a) => a?.model ?? a?.fields?.model),
+    [typeAssets], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const descriptionSuggestions = useMemo(
+    () => collectDistinct((a) => a?.description ?? a?.fields?.description),
+    [typeAssets], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Which suggestion dropdown is currently open ('model' | 'description' | 'other_id' | null).
+  const [suggestOpen, setSuggestOpen] = useState(null);
+
+  /**
+   * Next Other ID suggestion. Detects `<prefix><number>` patterns in existing
+   * other_id values for this type, picks the most-common prefix, and returns
+   * `prefix + (maxNumber + 1)` preserving zero-padding.
+   * Returns `null` if no usable pattern is found.
+   */
+  const nextOtherIdSuggestion = useMemo(() => {
+    const raws = typeAssets
+      .map((a) => String(a?.other_id ?? a?.fields?.other_id ?? '').trim())
+      .filter(Boolean);
+    if (raws.length === 0) return null;
+    const re = /^(.*?)(\d+)$/;
+    /** @type {Record<string, {samples: number, max: number, pad: number}>} */
+    const groups = {};
+    for (const v of raws) {
+      const m = v.match(re);
+      if (!m) continue;
+      const prefix = m[1];
+      const numStr = m[2];
+      const n = parseInt(numStr, 10);
+      if (!Number.isFinite(n)) continue;
+      const g = groups[prefix] || { samples: 0, max: -Infinity, pad: 0 };
+      g.samples += 1;
+      if (n > g.max) g.max = n;
+      // Track the longest digit-length so we can preserve zero-padding
+      g.pad = Math.max(g.pad, numStr.length);
+      groups[prefix] = g;
+    }
+    let best = null;
+    for (const [prefix, info] of Object.entries(groups)) {
+      if (!best || info.samples > best.samples) best = { prefix, ...info };
+    }
+    if (!best || !Number.isFinite(best.max)) return null;
+    const nextN = best.max + 1;
+    const nextStr = String(nextN).padStart(best.pad, '0');
+    return `${best.prefix}${nextStr}`;
+  }, [typeAssets]);
+
+  // ── Image-based auto-fill (dedicated picker, NOT the asset image) ───
+  // Separate flow from the asset's hero image. The user opens a dedicated
+  // picker (camera on native, file/camera on web), the photo is sent to
+  // /assets/scan-image where a vision model extracts model / serial /
+  // description / price, and any currently-empty matching field is filled.
+  // The picked photo itself is NEVER persisted as the asset's image — it's
+  // ephemeral and the blob URL is revoked as soon as the request returns.
+  // User-typed values are never overwritten.
+  const [scanning, setScanning] = useState(false);
+  const [scanResultLabel, setScanResultLabel] = useState('');
+
+  const applyScanResult = useCallback((fields) => {
+    const f = fields || {};
+    const filled = [];
+    if (f.model && !String(model || '').trim()) { setModel(String(f.model)); filled.push('Model'); }
+    if (f.serial_number && !String(serialNumber || '').trim()) { setSerialNumber(String(f.serial_number)); filled.push('Serial Number'); }
+    if (f.description && !String(description || '').trim()) { setDescription(String(f.description)); filled.push('Description'); }
+    if (f.price && !String(fieldValues?.purchase_price || '').trim()) {
+      setFieldValues((prev) => ({ ...prev, purchase_price: String(f.price) }));
+      filled.push('Purchase price');
+    }
+    setScanResultLabel(
+      filled.length === 0
+        ? 'No new values found in photo (or fields already filled).'
+        : `Filled ${filled.join(', ')} from photo.`
+    );
+  }, [model, serialNumber, description, fieldValues]);
+
+  /**
+   * Send a picked file to the server's vision endpoint and apply the result.
+   * Accepts the same { uri, file, name, type } shape returned by our picker
+   * helpers — so it works for web File uploads and native ImagePicker assets.
+   */
+  const runScan = useCallback(async (picked) => {
+    if (!picked) return;
+    setScanning(true);
+    setScanResultLabel('');
+    try {
+      const form = new FormData();
+      if (picked.file && typeof File !== 'undefined' && picked.file instanceof File) {
+        form.append('image', picked.file);
+      } else if (picked.uri) {
+        form.append('image', {
+          uri: picked.uri,
+          name: picked.name || 'scan.jpg',
+          type: picked.type || 'image/jpeg',
+        });
+      } else {
+        Alert.alert('Could not read photo', 'The selected photo could not be opened.');
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/assets/scan-image`, { method: 'POST', body: form });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.ok) {
+        Alert.alert('Could not scan photo', j?.error || `Scan failed (HTTP ${res.status}).`);
+        return;
+      }
+      applyScanResult(j.fields);
+    } catch (e) {
+      Alert.alert('Could not scan photo', e?.message || 'Network error.');
+    } finally {
+      // Free the ephemeral blob URL — we never kept this photo around.
+      try { revokeImageUri(picked?.uri); } catch { /* ignore */ }
+      setScanning(false);
+    }
+  }, [applyScanResult]);
+
+  /**
+   * Open the dedicated "scan asset photo" picker. On native, presents an
+   * Alert with Take Photo / Choose from Library. On web, opens the file
+   * dialog (mobile browsers will surface the camera via accept="image/*").
+   */
+  const handleScanImage = useCallback(async () => {
+    if (scanning) return;
+    try {
+      if (Platform.OS !== 'web') {
+        Alert.alert(
+          'Scan asset',
+          'Take a photo of the nameplate, label, or receipt — we\'ll auto-fill the fields.',
+          [
+            {
+              text: 'Take Photo',
+              onPress: async () => {
+                const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                if (status !== 'granted') {
+                  Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+                  return;
+                }
+                const { assets, canceled } = await ImagePicker.launchCameraAsync({
+                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                  allowsEditing: false,
+                  quality: 0.7,
+                });
+                if (canceled || !assets?.length) return;
+                const asset = assets[0];
+                const contentType = (asset.mimeType || 'image/jpeg').replace(/jpg/i, 'jpeg');
+                await runScan({
+                  uri: asset.uri,
+                  file: { uri: asset.uri, name: asset.fileName || `scan_${Date.now()}.jpg`, type: contentType },
+                  name: asset.fileName || `scan_${Date.now()}.jpg`,
+                  type: contentType,
+                });
+              },
+            },
+            {
+              text: 'Choose from Library',
+              onPress: async () => {
+                const result = await getImageFileFromPicker();
+                if (!result) return;
+                await runScan(result);
+              },
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+          { cancelable: true }
+        );
+        return;
+      }
+      // Web — same library picker (mobile browsers expose camera via the OS sheet)
+      const result = await getImageFileFromPicker();
+      if (!result) return;
+      await runScan(result);
+    } catch (e) {
+      Alert.alert('Could not scan photo', e?.message || 'Could not open photo picker.');
+    }
+  }, [scanning, runScan]);
 
   // ---------- load dropdowns & optional copy-from ----------
   useEffect(() => {
@@ -942,6 +1266,34 @@ export default function NewAsset() {
   }, [uploading, uploadProgress]);
 
   // ---------- UI pieces ----------
+  // Which url-field slugs are "owned" by a date field via requires_document_slug.
+  // Those upload controls are rendered INSIDE the date's grouped card, so we
+  // skip rendering them standalone (avoids the confusing duplicate upload).
+  const docLinkInfo = useMemo(() => {
+    const linkedDocSlugs = new Set();
+    const dateForDoc = {};
+    (fieldsSchema || []).forEach((f) => {
+      const tc = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
+      if (tc !== 'date' && tc !== 'datetime') return;
+      let link = '';
+      try {
+        const vr = f.validation_rules && typeof f.validation_rules === 'object'
+          ? f.validation_rules
+          : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+        const opts = f.options && typeof f.options === 'object' ? f.options : null;
+        const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+        link = Array.isArray(l) ? (l[0] || '') : (l || '');
+        link = String(link || '').trim();
+      } catch { /* ignore */ }
+      if (link) {
+        const ds = normSlug(link);
+        linkedDocSlugs.add(ds);
+        dateForDoc[ds] = f;
+      }
+    });
+    return { linkedDocSlugs, dateForDoc };
+  }, [fieldsSchema]);
+
   const renderField = (f) => {
     const slug = f.slug || normSlug(f.name);
     let typeCode = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
@@ -959,6 +1311,9 @@ export default function NewAsset() {
 
     switch (typeCode) {
       case 'url':
+        // If a date field "owns" this document, it renders the upload inside
+        // its grouped card — don't render a second standalone control here.
+        if (docLinkInfo.linkedDocSlugs.has(slug)) return null;
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
@@ -1054,8 +1409,9 @@ export default function NewAsset() {
 
       case 'date':
       case 'datetime': {
-        // Try to read a linked document slug from validation_rules
+        // Try to read a linked document slug + which side is "primary"
         let requiredDocSlug = '';
+        let linkPrimary = '';
         try {
           const vr = f.validation_rules && typeof f.validation_rules === 'object'
             ? f.validation_rules
@@ -1064,66 +1420,106 @@ export default function NewAsset() {
           const link = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
           requiredDocSlug = Array.isArray(link) ? (link[0] || '') : (link || '');
           requiredDocSlug = String(requiredDocSlug || '').trim();
+          linkPrimary = String((vr && vr.link_primary) || '').toLowerCase();
         } catch { }
 
         const docSlug = requiredDocSlug ? normSlug(requiredDocSlug) : '';
-        const docFieldExists = !!fieldsSchema.find(ff => (ff.slug || normSlug(ff.name)) === docSlug && ((ff.field_type?.slug || ff.field_type?.name || '').toLowerCase() === 'url'));
+        const docField = docSlug
+          ? fieldsSchema.find(ff => (ff.slug || normSlug(ff.name)) === docSlug && ((ff.field_type?.slug || ff.field_type?.name || '').toLowerCase() === 'url'))
+          : null;
         const pickedDoc = docSlug ? urlDocMap[docSlug] : null;
-        const docLabel = requiredDocSlug || 'document';
+        const docName = docField ? ((docField.label || docField.name) || 'Document') : 'Document';
+        const docRequired = !!docField?.is_required;
+        const dateName = (f.label || f.name);
 
-        return (
-          <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
-            {Label}
+        // No linked document → plain date picker.
+        if (!docSlug) {
+          return (
+            <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
+              {Label}
+              <TouchableOpacity style={[styles.input, !!errors[slug] && styles.inputError]} onPress={() => setDatePicker({ open: true, slug })}>
+                <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
+                  {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
+                </Text>
+              </TouchableOpacity>
+              {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+            </View>
+          );
+        }
+
+        // The two sub-controls, rendered in an order that depends on which
+        // side is the "primary" of the link (so labels never get swapped).
+        const dateIsPrimary = linkPrimary === 'date';
+        const headlineText = dateIsPrimary ? `${dateName}${isReq ? ' *' : ''}` : `${docName}${docRequired ? ' *' : ''}`;
+
+        const UploadBlock = (
+          <View>
+            {!dateIsPrimary ? null : (
+              <Text style={[styles.label, { marginTop: 0 }]}>{docName}{docRequired ? ' *' : ''}</Text>
+            )}
+            <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
+            {pickedDoc ? (
+              <Text style={{ marginTop: 6, fontStyle: 'italic', color: '#444' }}>Attached: {pickedDoc.name || 'document'}</Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <TouchableOpacity
+                style={[styles.btn, { paddingVertical: 10 }]}
+                onPress={async () => {
+                  try {
+                    const res = await DocumentPicker.getDocumentAsync({ type: ALLOWED_DOC_MIME, multiple: false });
+                    if (res.canceled) return;
+                    const asset = res.assets?.[0];
+                    if (!asset) return;
+                    setUrlDocMap((m) => ({ ...m, [docSlug]: asset }));
+                    setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
+                  } catch (e) {
+                    Alert.alert('Error', e.message || 'Failed to select document');
+                  }
+                }}
+              >
+                <Text>{pickedDoc ? 'Replace Document' : 'Upload Document'}</Text>
+              </TouchableOpacity>
+              {pickedDoc ? (
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: Colors.dangerBg, paddingVertical: 10 }]}
+                  onPress={() => {
+                    setUrlDocMap((m) => { const n = { ...m }; delete n[docSlug]; return n; });
+                    setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
+                  }}
+                >
+                  <Text style={{ color: Colors.dangerFg }}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {!!errors[docSlug] && <Text style={styles.errorBelow}>{errors[docSlug]}</Text>}
+          </View>
+        );
+
+        const DateBlock = (
+          <View>
+            {!dateIsPrimary ? (
+              <Text style={[styles.label, { marginTop: 0 }, !!errors[slug] && styles.labelError]}>{dateName}{isReq ? ' *' : ''}</Text>
+            ) : null}
             <TouchableOpacity style={[styles.input, !!errors[slug] && styles.inputError]} onPress={() => setDatePicker({ open: true, slug })}>
               <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
-                {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
+                {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${dateName}`}
               </Text>
             </TouchableOpacity>
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+          </View>
+        );
 
-            {docSlug ? (
-              <View style={{ marginTop: 8 }}>
-                <Text style={[styles.subtleLabel]}>Linked document category: {docLabel}</Text>
-                <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
-                {pickedDoc ? (
-                  <Text style={{ marginTop: 6, fontStyle: 'italic', color: '#444' }}>Attached: {pickedDoc.name || 'document'}</Text>
-                ) : null}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                  <TouchableOpacity
-                    style={[styles.btn, { paddingVertical: 10 }]}
-                    onPress={async () => {
-                      try {
-                        const res = await DocumentPicker.getDocumentAsync({
-                          type: ALLOWED_DOC_MIME,
-                          multiple: false,
-                        });
-                        if (res.canceled) return;
-                        const asset = res.assets?.[0];
-                        if (!asset) return;
-                        setUrlDocMap((m) => ({ ...m, [docSlug]: asset }));
-                        setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
-                      } catch (e) {
-                        Alert.alert('Error', e.message || 'Failed to select document');
-                      }
-                    }}
-                  >
-                    <Text>{pickedDoc ? 'Replace Document' : `Upload ${docLabel}`}</Text>
-                  </TouchableOpacity>
-                  {pickedDoc ? (
-                    <TouchableOpacity
-                      style={[styles.btn, { backgroundColor: Colors.dangerBg, paddingVertical: 10 }]}
-                      onPress={() => {
-                        setUrlDocMap((m) => { const n = { ...m }; delete n[docSlug]; return n; });
-                        setErrors((prev) => ({ ...prev, [docSlug]: undefined }));
-                      }}
-                    >
-                      <Text style={{ color: Colors.dangerFg }}>Remove</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                {!!errors[docSlug] && <Text style={styles.errorBelow}>{errors[docSlug]}</Text>}
-              </View>
-            ) : null}
+        // Linked document/date → ONE grouped card. Headline + order follow the
+        // configured primary side: document-first or date-first.
+        return (
+          <View key={slug} style={styles.docGroupCard} onLayout={onLayoutFor(slug)}>
+            <View style={styles.docGroupHeader}>
+              <MaterialIcons name={dateIsPrimary ? 'event' : 'description'} size={18} color={Colors.primary} />
+              <Text style={styles.docGroupTitle}>{headlineText}</Text>
+            </View>
+            {dateIsPrimary ? DateBlock : UploadBlock}
+            <View style={styles.docGroupDivider} />
+            {dateIsPrimary ? UploadBlock : DateBlock}
           </View>
         );
       }
@@ -1468,6 +1864,52 @@ export default function NewAsset() {
           {!!errors.typeId && <Text style={styles.errorBelow}>{errors.typeId}</Text>}
         </View>
 
+        {/* ── Scan-from-photo card (iOS/Android only) ──────────────────
+            Dedicated picker that ONLY extracts asset metadata via vision —
+            the photo is never persisted as the asset's image. Hidden on
+            web because the camera-on-phone flow is the primary use case
+            (snap a nameplate in the field). */}
+        {Platform.OS !== 'web' && (
+          <View>
+            <View style={whs.scanCard}>
+              <View style={whs.scanCardIconWrap}>
+                <MaterialIcons name="document-scanner" size={24} color="#fff" />
+              </View>
+              <View style={whs.scanCardTextWrap}>
+                <Text style={whs.scanCardTitle}>Scan from photo</Text>
+                <Text style={whs.scanCardSub}>
+                  Snap or upload a photo of the asset's nameplate, label, or receipt and we'll auto-fill model, serial, description, and price.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnScan, { minWidth: 160, marginVertical: 0, opacity: scanning ? 0.7 : 1 }]}
+                onPress={handleScanImage}
+                disabled={scanning}
+                accessibilityRole="button"
+                accessibilityLabel="Scan a photo to auto-fill fields"
+              >
+                {scanning ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.btnScanText}>Scanning…</Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <MaterialIcons name="auto-fix-high" size={16} color="#fff" />
+                    <Text style={styles.btnScanText}>Scan photo</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+            {!!scanResultLabel && (
+              <View style={whs.scanResultBanner}>
+                <MaterialIcons name="check-circle" size={14} color={Colors.successFg} />
+                <Text style={whs.scanResultBannerText}>{scanResultLabel}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* All Asset Details - Wrapped for Tour */}
         <Text style={whs.sectionHeader}>Asset Details</Text>
         {/* zIndex on the TourTarget creates a stacking context that contains
@@ -1495,12 +1937,12 @@ export default function NewAsset() {
             {!!errors.serial_number && <Text style={styles.errorBelow}>{errors.serial_number}</Text>}
           </View>
 
-          <View onLayout={onLayoutFor('other_id')}>
+          <View onLayout={onLayoutFor('other_id')} style={{ zIndex: suggestOpen === 'other_id' ? 50 : 1 }}>
             <Text style={[styles.label, !!errors.other_id && styles.labelError]}>Other ID</Text>
             <TextInput
               ref={setInputRef('other_id')}
               style={[styles.input, !!errors.other_id && styles.inputError]}
-              placeholder="Optional"
+              placeholder={nextOtherIdSuggestion ? `Suggested: ${nextOtherIdSuggestion}` : 'Optional'}
               value={otherId}
               onChangeText={(t) => {
                 setOtherId(t);
@@ -1508,33 +1950,58 @@ export default function NewAsset() {
               }}
               autoCapitalize="none"
               maxLength={FIELD_LIMITS.SERIAL}
+              onFocus={() => setSuggestOpen('other_id')}
+              onBlur={() => setTimeout(() => setSuggestOpen((s) => (s === 'other_id' ? null : s)), 150)}
+            />
+            <SuggestionDropdown
+              value={otherId}
+              suggestions={[]}
+              forcedSuggestion={nextOtherIdSuggestion}
+              visible={suggestOpen === 'other_id'}
+              onPick={(v) => { setOtherId(v); setSuggestOpen(null); }}
             />
             {!!errors.other_id && <Text style={styles.errorBelow}>{errors.other_id}</Text>}
           </View>
 
-          <View onLayout={onLayoutFor('model')}>
+          <View onLayout={onLayoutFor('model')} style={{ zIndex: suggestOpen === 'model' ? 50 : 1 }}>
             <Text style={[styles.label, !!errors.model && styles.labelError]}>Model</Text>
             <TextInput
               ref={setInputRef('model')}
               style={[styles.input, !!errors.model && styles.inputError]}
               placeholder="Model"
               value={model}
-              onChangeText={(t) => { setModel(t); setErrors(prev => ({ ...prev, model: undefined })); }}
+              onChangeText={(t) => { setModel(t); setErrors(prev => ({ ...prev, model: undefined })); setSuggestOpen('model'); }}
               maxLength={FIELD_LIMITS.MODEL}
+              onFocus={() => setSuggestOpen('model')}
+              onBlur={() => setTimeout(() => setSuggestOpen((s) => (s === 'model' ? null : s)), 150)}
+            />
+            <SuggestionDropdown
+              value={model}
+              suggestions={modelSuggestions}
+              visible={suggestOpen === 'model'}
+              onPick={(v) => { setModel(v); setSuggestOpen(null); }}
             />
             {!!errors.model && <Text style={styles.errorBelow}>{errors.model}</Text>}
           </View>
 
-          <View onLayout={onLayoutFor('description')}>
+          <View onLayout={onLayoutFor('description')} style={{ zIndex: suggestOpen === 'description' ? 50 : 1 }}>
             <Text style={[styles.label, !!errors.description && styles.labelError]}>Description</Text>
             <TextInput
               ref={setInputRef('description')}
               style={[styles.input, !!errors.description && styles.inputError, { height: 80 }]}
               placeholder="Description"
               value={description}
-              onChangeText={(t) => { setDescription(t); setErrors(prev => ({ ...prev, description: undefined })); }}
+              onChangeText={(t) => { setDescription(t); setErrors(prev => ({ ...prev, description: undefined })); setSuggestOpen('description'); }}
               multiline
               maxLength={FIELD_LIMITS.DESCRIPTION}
+              onFocus={() => setSuggestOpen('description')}
+              onBlur={() => setTimeout(() => setSuggestOpen((s) => (s === 'description' ? null : s)), 150)}
+            />
+            <SuggestionDropdown
+              value={description}
+              suggestions={descriptionSuggestions}
+              visible={suggestOpen === 'description'}
+              onPick={(v) => { setDescription(v); setSuggestOpen(null); }}
             />
             {!!errors.description && <Text style={styles.errorBelow}>{errors.description}</Text>}
           </View>
@@ -1920,6 +2387,27 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   btnDangerOutlineText: { color: Colors.dangerFg, fontWeight: '800' },
+  // "Auto-fill from image" button — visually distinct (accent fill) so the
+  // discovery surface for the AI feature stands out from secondary controls.
+  btnScan: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accentDark,
+    borderWidth: 2,
+  },
+  btnScanText: { color: '#fff', fontWeight: '800' },
+  // ── Grouped document+date card (asset form) ──
+  docGroupCard: {
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.line,
+    backgroundColor: Colors.card,
+    ...CardShadow,
+  },
+  docGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  docGroupTitle: { fontSize: sf(16), fontWeight: '800', color: Colors.text },
+  docGroupDivider: { height: 1, backgroundColor: Colors.line, marginVertical: 12 },
 });
 
 // Web-only styles
@@ -1963,6 +2451,59 @@ const whs = StyleSheet.create({
     fontSize: sf(12),
     fontWeight: '600',
     color: Colors.sub2,
+  },
+  // ── Scan-from-photo card (dedicated to the AI auto-fill flow — picker
+  // photo is ephemeral, never becomes the asset's image) ────────────────
+  scanCard: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  scanCardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanCardTextWrap: { flex: 1, minWidth: 200, gap: 2 },
+  scanCardTitle: {
+    fontSize: sf(15),
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  scanCardSub: {
+    fontSize: sf(12),
+    color: Colors.sub,
+    lineHeight: sf(17),
+  },
+  // Success banner that appears under the scan card after a successful scan.
+  scanResultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.successBg,
+    borderWidth: 1,
+    borderColor: Colors.successFg,
+    alignSelf: 'flex-start',
+  },
+  scanResultBannerText: {
+    color: Colors.successFg,
+    fontWeight: '700',
+    fontSize: sf(12),
   },
   formHeaderInfo: {
     flex: 1,

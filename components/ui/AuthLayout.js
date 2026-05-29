@@ -45,7 +45,7 @@ export default function AuthLayout({ subtitle, children }) {
               <PropRow icon="📦" title="Track every asset, anywhere"
                        body="Vehicles, total stations, accessories — one inventory across every site." />
               <PropRow icon="📱" title="QR scan for instant updates"
-                       body="Field crews check-in, transfer or report lost equipment from any phone." />
+                       body="Scan an asset to check its status or notes and perform transfers easily." />
               <PropRow icon="📊" title="Hire, maintenance &amp; activity"
                        body="Schedule services, send signed hire docs, and see every change in one feed." />
             </View>

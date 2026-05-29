@@ -144,13 +144,27 @@ export default function EditAssetType() {
   const [existingFields, setExistingFields] = useState([]);
 
   // presets state (preloaded to reflect existing)
-  // structure: { [key]: { selected:boolean, required:boolean, fieldId?:string, requiresDocSlug?:string, reminderLeadDays?:number } }
+  // structure per key: {
+  //   selected, required, fieldId?,
+  //   // DATE presets (e.g. Next Service Date): optionally attach a document
+  //   attachDoc, docName, docRequired, docFieldId?,
+  //   // DOCUMENT preset: optionally attach a date (e.g. expiry)
+  //   attachDate, dateName, dateRequired, dateFieldId?,
+  //   reminderLeadDays,
+  // }
   const [presetState, setPresetState] = useState(
     PRESET_LIBRARY.reduce((acc, p) => {
-      acc[p.key] = { selected: false, required: false, requiresDocSlug: '', reminderLeadDays: 0 };
+      acc[p.key] = {
+        selected: false, required: false,
+        attachDoc: false, docName: '', docRequired: false,
+        attachDate: false, dateName: '', dateRequired: false,
+        reminderLeadDays: 0,
+      };
       return acc;
     }, {})
   );
+  const setPreset = (key, patch) =>
+    setPresetState((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
 
   // editable existing custom rows (NOT matching presets)
   // [{id,name,field_type_id,is_required,optionsCsv,requiresDocSlug,reminderLeadDays,dirty?:bool,__open?:bool}]
@@ -158,6 +172,11 @@ export default function EditAssetType() {
 
   // queued brand-new custom fields (created on Save)
   const [newCustomQueue, setNewCustomQueue] = useState([]);
+
+  // Mirror of the backend's slugify so a generated date field links to its
+  // document field by slug (inventory-api/routes/assets.js).
+  const slugifyName = (str) =>
+    String(str || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 
   // UI state
   const [showSummary, setShowSummary] = useState(false);
@@ -300,59 +319,101 @@ export default function EditAssetType() {
         const fields = Array.isArray(row?.fields) ? row.fields : [];
         setExistingFields(fields);
 
-        // 1) Pre-check presets from existing fields
+        // 1) Pre-check presets from existing fields + reconstruct document/date links
         const nextPreset = PRESET_LIBRARY.reduce((acc, p) => {
-          acc[p.key] = { selected: false, required: false, requiresDocSlug: '', reminderLeadDays: 0 };
+          acc[p.key] = {
+            selected: false, required: false,
+            attachDoc: false, docName: '', docRequired: false,
+            attachDate: false, dateName: '', dateRequired: false,
+            reminderLeadDays: 0,
+          };
           return acc;
         }, {});
 
-        const customBucket = [];
-        for (const f of fields) {
-          const presetKey = matchPresetKeyForField(f);
-          const parseDocSlug = () => {
-            try {
-              const vr = f.validation_rules;
-              const obj = vr && typeof vr === 'object' ? vr : vr ? JSON.parse(vr) : null;
-              const s = obj && (obj.requires_document_slug || obj.require_document_slug);
-              return (Array.isArray(s) ? s[0] : s) || '';
-            } catch {
-              return '';
-            }
-          };
-          const parseReminder = () => {
-            try {
-              const vr = f.validation_rules;
-              const obj = vr && typeof vr === 'object' ? vr : vr ? JSON.parse(vr) : null;
-              const n = obj && (obj.reminder_lead_days || obj.reminderDays || obj.reminder_days);
-              const v = Number(n);
-              return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
-            } catch { return 0; }
-          };
-          const parseDocRequired = () => {
-            try {
-              const vr = f.validation_rules;
-              const obj = vr && typeof vr === 'object' ? vr : vr ? JSON.parse(vr) : null;
-              const v = obj && (obj.requires_document_required ?? obj.require_document_required ?? obj.document_required ?? obj.require_document);
-              if (typeof v === 'boolean') return v;
-              if (typeof v === 'string') return v.toLowerCase() === 'true';
-              return true;
-            } catch { return true; }
-          };
+        // Field-level parse helpers
+        const parseVR = (f) => {
+          try { const vr = f.validation_rules; return vr && typeof vr === 'object' ? vr : (vr ? JSON.parse(vr) : {}); }
+          catch { return {}; }
+        };
+        const docSlugOf = (f) => {
+          const o = parseVR(f); const s = o.requires_document_slug || o.require_document_slug;
+          return String((Array.isArray(s) ? s[0] : s) || '').trim();
+        };
+        const reminderOf = (f) => {
+          const o = parseVR(f); const n = Number(o.reminder_lead_days || o.reminderDays || o.reminder_days);
+          return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+        };
+        const docReqOf = (f) => {
+          const o = parseVR(f);
+          const v = o.requires_document_required ?? o.require_document_required ?? o.document_required ?? o.require_document;
+          if (typeof v === 'boolean') return v;
+          if (typeof v === 'string') return v.toLowerCase() === 'true';
+          return true;
+        };
+        const primaryOf = (f) => String(parseVR(f).link_primary || '').toLowerCase();
+        const slugOf = (f) => (f.slug || slugifyName(f.name));
+        const fieldBySlug = (sl) => fields.find((ff) => slugOf(ff) === sl);
+        const ftSlugOf = (f) => (ftList.find((x) => x.id === f.field_type_id)?.slug || '').toLowerCase();
 
-          if (presetKey) {
-            nextPreset[presetKey] = {
+        // (a) Base preset match (selected / required / reminder)
+        for (const f of fields) {
+          const key = matchPresetKeyForField(f);
+          if (key) {
+            nextPreset[key] = {
+              ...nextPreset[key],
               selected: true,
               required: !!f.is_required,
               fieldId: f.id,
-              requiresDocSlug: parseDocSlug(),
-              reminderLeadDays: parseReminder(),
-              documentRequired: parseDocRequired(),
+              reminderLeadDays: reminderOf(f),
             };
+          }
+        }
+
+        // (b) Reconstruct links from date fields that point at a document.
+        // Fields that are "attached" (managed via a preset's attach UI) are
+        // hidden from the custom list to avoid double-management.
+        const attachedFieldIds = new Set();
+        for (const f of fields) {
+          const tc = ftSlugOf(f);
+          if (tc !== 'date' && tc !== 'datetime') continue;
+          const dslug = docSlugOf(f);
+          if (!dslug) continue;
+          const target = fieldBySlug(dslug);
+          const primary = primaryOf(f) || 'date';
+          if (primary === 'document') {
+            // f is the ATTACHED DATE; target is the primary Document field.
+            const docKey = target ? matchPresetKeyForField(target) : null;
+            if (docKey) {
+              nextPreset[docKey] = {
+                ...nextPreset[docKey],
+                attachDate: true,
+                dateName: f.name || '',
+                dateRequired: !!f.is_required,
+                dateFieldId: f.id,
+                reminderLeadDays: reminderOf(f) || nextPreset[docKey].reminderLeadDays || 0,
+              };
+              attachedFieldIds.add(f.id);
+            }
           } else {
-            customBucket.push(f);
+            // date-primary: f matches a date preset; target is the attached document.
+            const dateKey = matchPresetKeyForField(f);
+            if (dateKey) {
+              nextPreset[dateKey] = {
+                ...nextPreset[dateKey],
+                attachDoc: true,
+                docName: (target?.name || dslug),
+                docRequired: docReqOf(f),
+                docFieldId: target?.id || null,
+                reminderLeadDays: reminderOf(f),
+              };
+              if (target) attachedFieldIds.add(target.id);
+            }
           }
         }
         setPresetState(nextPreset);
+
+        // Custom = fields that neither match a preset nor are attached to one.
+        const customBucket = fields.filter((f) => !matchPresetKeyForField(f) && !attachedFieldIds.has(f.id));
 
         // 2) Populate editable custom with everything that didn't match a preset
         const editable = customBucket
@@ -663,86 +724,106 @@ export default function EditAssetType() {
       // (B) Diff presets against existing fields
       const existingBySlug = Object.fromEntries(existingFields.map((f) => [f.slug, f]));
       const presetErrors = [];
+      const urlTypeId = slugToTypeId('url');
+      const dateTypeId = slugToTypeId('date');
+
+      // Match an existing field to a preset by slug OR by name+type (handles
+      // the Document preset whose key 'documentation_url' ≠ slug 'document').
+      const findPresetField = (key) => existingFields.find((f) => matchPresetKeyForField(f) === key) || null;
+      const slugOfField = (f) => (f.slug || slugifyName(f.name));
+      // Idempotent create-by-slug so re-saves don't duplicate fields.
+      const existingSlugSet = new Set(existingFields.map(slugOfField));
+      let extraOrder = (existingFields?.length || 0) + 60;
+      const createField = async (payload, labelForErr) => {
+        const sl = slugifyName(payload.name);
+        if (existingSlugSet.has(sl)) return existingFields.find((f) => slugOfField(f) === sl) || null;
+        const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authH }, body: JSON.stringify(payload),
+        });
+        if (!r.ok) { presetErrors.push(`${labelForErr}: ${(await r.text()) || 'Failed to create'}`); return null; }
+        existingSlugSet.add(sl);
+        return await r.json().catch(() => null);
+      };
+      const updateField = async (fieldId, body, labelForErr) => {
+        const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${fieldId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authH }, body: JSON.stringify(body),
+        });
+        if (!r.ok) presetErrors.push(`${labelForErr}: ${(await r.text()) || 'Failed to update'}`);
+      };
+      const deleteField = async (fieldId, labelForErr) => {
+        const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${fieldId}`, {
+          method: 'DELETE', headers: { ...authH },
+        });
+        if (!r.ok) presetErrors.push(`${labelForErr}: ${(await r.text()) || 'Failed to delete (may have values)'}`);
+      };
 
       for (const p of PRESET_LIBRARY) {
-        const state = presetState[p.key] || { selected: false, required: false };
-        const exists = !!existingBySlug[p.key];
+        const state = presetState[p.key] || {};
+        const ftSlug = (p.fieldTypeSlug || '').toLowerCase();
+        const matched = findPresetField(p.key);
+        const exists = !!matched;
+        const ftId = slugToTypeId(p.fieldTypeSlug);
 
-        // CREATE if selected but not exists
-        if (state.selected && !exists) {
-          const ftId = slugToTypeId(p.fieldTypeSlug);
-          if (!ftId) {
-            presetErrors.push(`${p.label}: field type missing`);
-            continue;
+        // ── DELETE preset (and its linked partner) when deselected ──
+        if (!state.selected) {
+          if (exists) await deleteField(matched.id, p.label);
+          // Remove the attached partner too (doc for a date, date for a doc).
+          if (ftSlug === 'date' && state.docFieldId) await deleteField(state.docFieldId, `${p.label} document`);
+          if (ftSlug === 'url' && state.dateFieldId) await deleteField(state.dateFieldId, `${p.label} date`);
+          continue;
+        }
+        if (!ftId) { presetErrors.push(`${p.label}: field type missing`); continue; }
+
+        if (ftSlug === 'date') {
+          // DATE primary (+ optional attached document)
+          const lead = Number(state.reminderLeadDays) || 0;
+          const docName = (state.docName || '').trim();
+          const vr = {};
+          if (lead > 0) vr.reminder_lead_days = lead;
+          if (state.attachDoc && docName) {
+            vr.requires_document_slug = slugifyName(docName);
+            vr.requires_document_required = !!state.docRequired;
+            vr.link_primary = 'date';
           }
-          const payload = {
-            name: p.label,
-            field_type_id: ftId,
-            is_required: !!state.required,
-            display_order: (existingFields?.length || 0) + 50,
-          };
-          if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
-          if ((p.fieldTypeSlug || '').toLowerCase() === 'date') {
-            const docSlug = (presetState[p.key]?.requiresDocSlug || '').trim();
-            const lead = Number(presetState[p.key]?.reminderLeadDays) || 0;
-            const docReq = !!presetState[p.key]?.documentRequired;
-            const vr = {};
-            if (docSlug) vr.requires_document_slug = docSlug;
+          if (!exists) {
+            await createField({ name: p.label, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++, ...(Object.keys(vr).length ? { validation_rules: vr } : {}) }, p.label);
+          } else {
+            await updateField(matched.id, { is_required: !!state.required, validation_rules: vr }, p.label);
+          }
+          // Ensure / rename / remove the attached document (url) field.
+          if (state.attachDoc && docName) {
+            if (state.docFieldId) await updateField(state.docFieldId, { name: docName, is_required: !!state.docRequired }, `${p.label} document`);
+            else if (urlTypeId) await createField({ name: docName, field_type_id: urlTypeId, is_required: !!state.docRequired, display_order: extraOrder++ }, `${p.label} document`);
+          } else if (state.docFieldId) {
+            await deleteField(state.docFieldId, `${p.label} document`);
+          }
+        } else if (ftSlug === 'url') {
+          // DOCUMENT primary (+ optional attached date)
+          const docName = p.label; // "Document"
+          if (!exists) {
+            await createField({ name: docName, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++ }, p.label);
+          } else {
+            await updateField(matched.id, { is_required: !!state.required }, p.label);
+          }
+          const dateName = (state.dateName || '').trim();
+          if (state.attachDate && dateName && dateTypeId) {
+            const lead = Number(state.reminderLeadDays) || 0;
+            const vr = { requires_document_slug: slugifyName(docName), requires_document_required: !!state.required, link_primary: 'document' };
             if (lead > 0) vr.reminder_lead_days = lead;
-            if (docSlug) vr.requires_document_required = docReq; // only meaningful when slug present
-            if (Object.keys(vr).length) payload.validation_rules = vr;
+            if (state.dateFieldId) await updateField(state.dateFieldId, { name: dateName, is_required: !!state.dateRequired, validation_rules: vr }, `${p.label} date`);
+            else await createField({ name: dateName, field_type_id: dateTypeId, is_required: !!state.dateRequired, display_order: extraOrder++, validation_rules: vr }, `${p.label} date`);
+          } else if (state.dateFieldId) {
+            await deleteField(state.dateFieldId, `${p.label} date`);
           }
-
-          const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...authH,
-            },
-            body: JSON.stringify(payload),
-          });
-          if (!r.ok) presetErrors.push(`${p.label}: ${(await r.text()) || 'Failed to create'}`);
-        }
-
-        // UPDATE required if exists and changed (and update date validation link)
-        if (state.selected && exists) {
-          const old = existingBySlug[p.key];
-          const shouldUpdateRequired = !!old.is_required !== !!state.required;
-          const isDate = (p.fieldTypeSlug || '').toLowerCase() === 'date';
-          const newDocSlug = (presetState[p.key]?.requiresDocSlug || '').trim();
-
-          if (shouldUpdateRequired || isDate) {
-            const body = { is_required: !!state.required };
-            if (isDate) {
-              const lead = Number(presetState[p.key]?.reminderLeadDays) || 0;
-              const docReq = !!presetState[p.key]?.documentRequired;
-              const vr = {};
-              if (newDocSlug) vr.requires_document_slug = newDocSlug;
-              if (lead > 0) vr.reminder_lead_days = lead;
-              if (newDocSlug) vr.requires_document_required = docReq;
-              body.validation_rules = vr;
-            }
-
-            const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${old.id}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                ...authH,
-              },
-              body: JSON.stringify(body),
-            });
-            if (!r.ok) presetErrors.push(`${p.label}: ${(await r.text()) || 'Failed to update'}`);
+        } else {
+          // Plain preset
+          if (!exists) {
+            const payload = { name: p.label, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++ };
+            if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
+            await createField(payload, p.label);
+          } else if (!!matched.is_required !== !!state.required) {
+            await updateField(matched.id, { is_required: !!state.required }, p.label);
           }
-        }
-
-        // DELETE if not selected but existed
-        if (!state.selected && exists) {
-          const old = existingBySlug[p.key];
-          const r = await fetch(`${API_BASE_URL}/assets/asset-types/${id}/fields/${old.id}`, {
-            method: 'DELETE',
-            headers: { ...authH },
-          });
-          if (!r.ok) presetErrors.push(`${p.label}: ${(await r.text()) || 'Failed to delete (may have values)'}`);
         }
       }
 
@@ -1054,71 +1135,109 @@ export default function EditAssetType() {
                         </View>
                       )}
                     </View>
+                    {/* DATE preset → optionally attach a document to this date */}
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
-                        <Text style={s.subLabel}>
-                          Link a document with {p.label} (optional)
-                        </Text>
-                        <Text style={s.helpMuted}>{documentLinkExamplesLine(p.label)}</Text>
-                        <TextInput
-                          style={s.input}
-                          value={presetState[p.key]?.requiresDocSlug || ''}
-                          onChangeText={(t) =>
-                            setPresetState((prev) => ({
-                              ...prev,
-                              [p.key]: { ...(prev[p.key] || {}), requiresDocSlug: t },
-                            }))
-                          }
-                          placeholder={documentLinkPlaceholder(p.label)}
-                          autoCapitalize="none"
-                        />
                         <View style={s.switchRow}>
-                          <Text style={s.subLabel}>Document required</Text>
-                          <Switch
-                            value={!!presetState[p.key]?.documentRequired}
-                            onValueChange={(v) =>
-                              setPresetState((prev) => ({
-                                ...prev,
-                                [p.key]: { ...(prev[p.key] || {}), documentRequired: v },
-                              }))
-                            }
-                          />
+                          <Text style={s.subLabel}>Attach a document to this date</Text>
+                          <Switch value={!!state.attachDoc} onValueChange={(v) => setPreset(p.key, { attachDoc: v })} />
                         </View>
+                        {state.attachDoc ? (
+                          <View style={s.linkBox}>
+                            <Text style={s.subLabel}>Document name</Text>
+                            <TextInput
+                              style={s.input}
+                              value={state.docName || ''}
+                              onChangeText={(t) => setPreset(p.key, { docName: t })}
+                              placeholder="e.g. Service Report"
+                            />
+                            <View style={s.switchRow}>
+                              <Text style={s.subLabel}>Document required</Text>
+                              <Switch value={!!state.docRequired} onValueChange={(v) => setPreset(p.key, { docRequired: v })} />
+                            </View>
+                          </View>
+                        ) : null}
+
                         <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                          {[7,14,30].map((d) => (
+                          {[7, 14, 30].map((d) => (
                             <TouchableOpacity
                               key={`lead-${d}`}
-                              onPress={() =>
-                                setPresetState((prev) => ({
-                                  ...prev,
-                                  [p.key]: { ...(prev[p.key] || {}), reminderLeadDays: d },
-                                }))
-                              }
-                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays||0) === d ? Colors.primaryLight : Colors.chip }]}
+                              onPress={() => setPreset(p.key, { reminderLeadDays: d })}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (state.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
                             >
-                              <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d/7} week${d===14? 's':''}`}</Text>
+                              <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                         <TextInput
                           style={[s.input, { marginTop: 6 }]}
-                          value={(Number(presetState[p.key]?.reminderLeadDays)||0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
+                          value={(Number(state.reminderLeadDays) || 0) > 0 ? String(Number(state.reminderLeadDays)) : ''}
                           onChangeText={(t) => {
-                            const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g,''), 10) || 0);
-                            setPresetState((prev) => ({
-                              ...prev,
-                              [p.key]: { ...(prev[p.key] || {}), reminderLeadDays: n },
-                            }));
+                            const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
+                            setPreset(p.key, { reminderLeadDays: n });
                           }}
                           placeholder="No Reminder"
                           keyboardType="numeric"
                         />
                         <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 6 }}>
-                          {(Number(presetState[p.key]?.reminderLeadDays)||0) > 0
-                            ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
+                          {(Number(state.reminderLeadDays) || 0) > 0
+                            ? `Reminder to be sent ${Number(state.reminderLeadDays)} days before this date`
                             : 'No Reminder'}
                         </Text>
+                      </View>
+                    ) : null}
+
+                    {/* DOCUMENT preset → optionally attach a date (e.g. expiry) */}
+                    {checked && (p.fieldTypeSlug || '').toLowerCase() === 'url' ? (
+                      <View style={{ width: '100%', marginTop: 8 }}>
+                        <View style={s.switchRow}>
+                          <Text style={s.subLabel}>Add a date for this document</Text>
+                          <Switch value={!!state.attachDate} onValueChange={(v) => setPreset(p.key, { attachDate: v })} />
+                        </View>
+                        {state.attachDate ? (
+                          <View style={s.linkBox}>
+                            <Text style={s.subLabel}>Date name</Text>
+                            <TextInput
+                              style={s.input}
+                              value={state.dateName || ''}
+                              onChangeText={(t) => setPreset(p.key, { dateName: t })}
+                              placeholder="e.g. Expiry date"
+                            />
+                            <View style={s.switchRow}>
+                              <Text style={s.subLabel}>Date required</Text>
+                              <Switch value={!!state.dateRequired} onValueChange={(v) => setPreset(p.key, { dateRequired: v })} />
+                            </View>
+
+                            <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                              {[7, 14, 30].map((d) => (
+                                <TouchableOpacity
+                                  key={`dlead-${d}`}
+                                  onPress={() => setPreset(p.key, { reminderLeadDays: d })}
+                                  style={[s.btn, { paddingVertical: 8, backgroundColor: (state.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
+                                >
+                                  <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                            <TextInput
+                              style={[s.input, { marginTop: 6 }]}
+                              value={(Number(state.reminderLeadDays) || 0) > 0 ? String(Number(state.reminderLeadDays)) : ''}
+                              onChangeText={(t) => {
+                                const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
+                                setPreset(p.key, { reminderLeadDays: n });
+                              }}
+                              placeholder="No Reminder"
+                              keyboardType="numeric"
+                            />
+                            <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 6 }}>
+                              {(Number(state.reminderLeadDays) || 0) > 0
+                                ? `Reminder to be sent ${Number(state.reminderLeadDays)} days before this date`
+                                : 'No Reminder'}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : null}
                   </View>
@@ -1869,6 +1988,8 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: sf(16), fontWeight: '800', marginBottom: 6, color: Colors.text },
   subLabel: { fontSize: sf(14), fontWeight: '700', marginTop: 8, marginBottom: 4, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
+  // Nested box for an attached document/date inside a preset's config.
+  linkBox: { marginTop: 8, padding: 12, borderRadius: Radius.md, backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.line },
 
   // dropdown
   dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },

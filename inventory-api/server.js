@@ -140,7 +140,11 @@ const assetDocumentsRoutes = require('./routes/assetDocuments');
 const hireDisclaimerRoutes = require('./routes/hireDisclaimer');
 const publicAssetsRoutes   = require('./routes/publicAssets');
 const adminUsersRoutes     = require('./routes/adminUsers');
+const assetScanRoutes      = require('./routes/assetScan');
 
+// Mount the vision scan route BEFORE the catch-all assetRoutes so the more
+// specific `/assets/scan-image` path wins.
+app.use('/assets/scan-image', assetScanRoutes);
 app.use('/assets', assetRoutes);
 app.use('/users', usersRouter);
 app.use('/assets/asset-types', assetTypeFieldsRoutes);

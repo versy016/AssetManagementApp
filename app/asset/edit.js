@@ -1,5 +1,5 @@
 import { sf } from '../../constants/uiTheme.js';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert, Switch, Image, Modal, ActivityIndicator, Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -376,6 +376,28 @@ export default function EditAsset() {
     }
   };
 
+  // url-field slugs that a date field "owns" via requires_document_slug — we
+  // render their upload inside the date's grouped card, not standalone.
+  const linkedDocSlugs = useMemo(() => {
+    const set = new Set();
+    (fieldsSchema || []).forEach((f) => {
+      const tc = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
+      if (tc !== 'date' && tc !== 'datetime') return;
+      let link = '';
+      try {
+        const vr = f.validation_rules && typeof f.validation_rules === 'object'
+          ? f.validation_rules
+          : (f.validation_rules ? JSON.parse(f.validation_rules) : null);
+        const opts = f.options && typeof f.options === 'object' ? f.options : null;
+        const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+        link = Array.isArray(l) ? (l[0] || '') : (l || '');
+        link = String(link || '').trim();
+      } catch { /* ignore */ }
+      if (link) set.add(normSlug(link));
+    });
+    return set;
+  }, [fieldsSchema]);
+
   const renderDynamic = (f) => {
     const slug = f.slug || normSlug(f.name);
     let typeCode = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
@@ -408,6 +430,8 @@ export default function EditAsset() {
       case 'textarea':
       case 'email':
       case 'url': {
+        // Linked documents are rendered inside their date's grouped card.
+        if (typeCode === 'url' && linkedDocSlugs.has(slug)) return null;
         const val = fieldValues[slug];
         const hasUrl = typeof val === 'string' && /^https?:\/\//i.test(val);
         const isReq = !!f.is_required;
@@ -517,19 +541,44 @@ export default function EditAsset() {
           </View>
         );
       case 'date':
-      case 'datetime':
-        return (
-          <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
-            {Label}
+      case 'datetime': {
+        const docName = docFieldDef ? ((docFieldDef.label || docFieldDef.name) || 'Document') : 'Document';
+        const docRequired = !!docFieldDef?.is_required;
+        const dateName = (f.label || f.name);
+        const linkPrimary = String((parseJsonMaybe(f.validation_rules) || {}).link_primary || '').toLowerCase();
+        const dateIsPrimary = linkPrimary === 'date';
+        const DateRow = (
+          <>
+            {/* Show the date's own label unless it's the card headline already */}
+            {(!requiredDocSlug || !dateIsPrimary) ? (
+              <Text style={[styles.label, requiredDocSlug && { marginTop: 0 }, !!errors[slug] && styles.labelError]}>
+                {dateName}{isReq ? ' *' : ''}
+              </Text>
+            ) : null}
             <TouchableOpacity style={[styles.input, !!errors[slug] && styles.inputError]} onPress={() => setDatePicker({ open: true, slug })}>
               <Text style={{ color: fieldValues[slug] ? '#000' : '#888' }}>
-                {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${f.label || f.name}`}
+                {fieldValues[slug] ? formatDisplayDate(fieldValues[slug]) : `Select ${dateName}`}
               </Text>
             </TouchableOpacity>
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
-            {/* Attachment controls linked to this date, when a document field is required */}
-            {requiredDocSlug ? (
-              <View style={{ marginTop: 6 }}>
+          </>
+        );
+        // Plain date (no linked document)
+        if (!requiredDocSlug) {
+          return (
+            <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
+              {DateRow}
+            </View>
+          );
+        }
+        // Linked document/date → ONE grouped card; headline + order follow
+        // the configured primary side (document-first or date-first).
+        const DocBlock = (
+          <View style={{ marginTop: 2 }}>
+            {/* Show the document's own label unless it's the card headline */}
+            {dateIsPrimary ? (
+              <Text style={[styles.label, { marginTop: 0 }]}>{docName}{docRequired ? ' *' : ''}</Text>
+            ) : null}
                 {(() => {
                   // Prefer DB-backed document logically associated to this date+doc pair
                   const toYmd = (v) => {
@@ -661,10 +710,22 @@ export default function EditAsset() {
                     </View>
                   );
                 })()}
-              </View>
-            ) : null}
           </View>
         );
+        return (
+          <View key={slug} style={styles.docGroupCard} onLayout={onLayoutFor(slug)}>
+            <View style={styles.docGroupHeader}>
+              <MaterialIcons name={dateIsPrimary ? 'event' : 'description'} size={18} color={Colors.primary} />
+              <Text style={styles.docGroupTitle}>
+                {dateIsPrimary ? `${dateName}${isReq ? ' *' : ''}` : `${docName}${docRequired ? ' *' : ''}`}
+              </Text>
+            </View>
+            {dateIsPrimary ? DateRow : DocBlock}
+            <View style={styles.docGroupDivider} />
+            {dateIsPrimary ? DocBlock : DateRow}
+          </View>
+        );
+      }
       case 'boolean':
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
@@ -1217,6 +1278,11 @@ const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
+  // ── Grouped document+date card ──
+  docGroupCard: { marginBottom: 16, padding: 14, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card, ...CardShadow },
+  docGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  docGroupTitle: { fontSize: sf(16), fontWeight: '800', color: Colors.text },
+  docGroupDivider: { height: 1, backgroundColor: Colors.line, marginVertical: 12 },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
   labelError: { color: Colors.dangerFg },
   inputError: { borderColor: Colors.dangerFg },

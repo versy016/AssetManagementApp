@@ -111,13 +111,27 @@ export default function NewAssetType() {
   // Saved custom fields (manually added via editor)
   const [fields, setFields] = useState([]);
 
-  // Preset selections: key -> { selected: boolean, required: boolean }
+  // Preset selections: key -> {
+  //   selected, required,
+  //   // when this preset is a DATE (e.g. Next Service Date): optionally attach a document
+  //   attachDoc, docName, docRequired,
+  //   // when this preset is the DOCUMENT: optionally attach a date (e.g. expiry)
+  //   attachDate, dateName, dateRequired,
+  //   reminderLeadDays,
+  // }
   const [presetState, setPresetState] = useState(
     PRESET_LIBRARY.reduce((acc, p) => {
-      acc[p.key] = { selected: false, required: false, requiresDocSlug: '', reminderLeadDays: 0, documentRequired: false };
+      acc[p.key] = {
+        selected: false, required: false,
+        attachDoc: false, docName: '', docRequired: false,
+        attachDate: false, dateName: '', dateRequired: false,
+        reminderLeadDays: 0,
+      };
       return acc;
     }, {})
   );
+  const setPreset = (key, patch) =>
+    setPresetState((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
 
   // "Editor" state (only shown when adding)
   const [editingOpen, setEditingOpen] = useState(false);
@@ -276,6 +290,15 @@ export default function NewAssetType() {
   const slugToTypeId = (slug) => fieldTypes.find(ft => ft.slug === slug)?.id || null;
   const slugHasOptions = (slug) => !!fieldTypes.find(ft => ft.slug === slug)?.has_options;
 
+  // Mirror of the backend's slugify (inventory-api/routes/assets.js) so the
+  // date field we generate can reliably link to its document field by slug.
+  const slugifyName = (s) =>
+    String(s || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '');
+
   const selectedTypeMeta = useMemo(
     () => fieldTypeItems.find(it => it.value === editing.field_type_id),
     [fieldTypeItems, editing.field_type_id]
@@ -297,17 +320,11 @@ export default function NewAssetType() {
   // Preset grid toggles
   const togglePresetSelected = (key) => {
     setPresetState(prev => {
-      const nextSel = !prev[key]?.selected;
       const current = prev[key] || {};
+      const nextSel = !current.selected;
       return {
         ...prev,
-        [key]: {
-          selected: nextSel,
-          required: nextSel ? !!current.required : false,
-          requiresDocSlug: current.requiresDocSlug || '',
-          reminderLeadDays: Number(current.reminderLeadDays) || 0,
-          documentRequired: !!current.documentRequired,
-        },
+        [key]: { ...current, selected: nextSel, required: nextSel ? !!current.required : false },
       };
     });
   };
@@ -317,13 +334,7 @@ export default function NewAssetType() {
       const nextReq = !current.required;
       return {
         ...prev,
-        [key]: {
-          selected: nextReq ? true : !!current.selected,
-          required: nextReq,
-          requiresDocSlug: current.requiresDocSlug || '',
-          reminderLeadDays: Number(current.reminderLeadDays) || 0,
-          documentRequired: !!current.documentRequired,
-        },
+        [key]: { ...current, selected: nextReq ? true : !!current.selected, required: nextReq },
       };
     });
   };
@@ -392,29 +403,80 @@ export default function NewAssetType() {
       // 2) Combine preset selections (with required state) + manual fields
       const selectedPresetKeys = PRESET_LIBRARY.filter(p => presetState[p.key]?.selected).map(p => p.key);
 
-      const presetPayloads = selectedPresetKeys.map((key, i) => {
+      const urlTypeId = slugToTypeId('url');
+      const dateTypeId = slugToTypeId('date');
+      const presetPayloads = [];
+      let presetOrder = 0;
+      for (const key of selectedPresetKeys) {
         const p = PRESET_LIBRARY.find(x => x.key === key);
+        const st = presetState[key] || {};
+        const ftSlug = (p.fieldTypeSlug || '').toLowerCase();
         const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
-        if (!typeIdMapped) return null;
-        const payload = {
-          name: p.label,
-          field_type_id: typeIdMapped,
-          is_required: !!presetState[key]?.required,
-          display_order: i,
-        };
-        if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
-        if ((p.fieldTypeSlug || '').toLowerCase() === 'date') {
-          const docSlug = (presetState[key]?.requiresDocSlug || '').trim();
-          const lead = Number(presetState[key]?.reminderLeadDays) || 0;
-          const docReq = !!presetState[key]?.documentRequired;
+        if (!typeIdMapped) continue;
+
+        if (ftSlug === 'date') {
+          // DATE is primary; optionally attach a document to it.
+          const datePayload = {
+            name: p.label,
+            field_type_id: typeIdMapped,
+            is_required: !!st.required,
+            display_order: presetOrder++,
+          };
+          const lead = Number(st.reminderLeadDays) || 0;
           const vr = {};
-          if (docSlug) vr.requires_document_slug = docSlug;
           if (lead > 0) vr.reminder_lead_days = lead;
-          if (docSlug) vr.requires_document_required = docReq;
-          if (Object.keys(vr).length) payload.validation_rules = vr;
+          if (st.attachDoc && (st.docName || '').trim() && urlTypeId) {
+            const docName = st.docName.trim();
+            vr.requires_document_slug = slugifyName(docName);
+            vr.requires_document_required = !!st.docRequired;
+            vr.link_primary = 'date'; // date is the headline; document attaches to it
+            // Create the attached document (url) field too.
+            presetPayloads.push({
+              name: docName,
+              field_type_id: urlTypeId,
+              is_required: !!st.docRequired,
+              display_order: presetOrder++,
+            });
+          }
+          if (Object.keys(vr).length) datePayload.validation_rules = vr;
+          presetPayloads.push(datePayload);
+        } else if (ftSlug === 'url') {
+          // DOCUMENT is primary; optionally attach a date to it (e.g. expiry).
+          const docName = p.label; // "Document"
+          presetPayloads.push({
+            name: docName,
+            field_type_id: typeIdMapped,
+            is_required: !!st.required,
+            display_order: presetOrder++,
+          });
+          if (st.attachDate && (st.dateName || '').trim() && dateTypeId) {
+            const lead = Number(st.reminderLeadDays) || 0;
+            const vr = {
+              requires_document_slug: slugifyName(docName),
+              requires_document_required: !!st.required,
+              link_primary: 'document', // document is the headline; date attaches to it
+            };
+            if (lead > 0) vr.reminder_lead_days = lead;
+            presetPayloads.push({
+              name: st.dateName.trim(),
+              field_type_id: dateTypeId,
+              is_required: !!st.dateRequired,
+              display_order: presetOrder++,
+              validation_rules: vr,
+            });
+          }
+        } else {
+          // Plain preset (text/number/select/etc.)
+          const payload = {
+            name: p.label,
+            field_type_id: typeIdMapped,
+            is_required: !!st.required,
+            display_order: presetOrder++,
+          };
+          if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
+          presetPayloads.push(payload);
         }
-        return payload;
-      }).filter(Boolean);
+      }
 
       const manualPayloads = fields
         .filter(f => f.enabled && f.name && f.field_type_id)
@@ -664,40 +726,39 @@ export default function NewAssetType() {
                         <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
                       </View>
                     </View>
+                    {/* DATE preset → optionally attach a document to this date */}
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
-                        <Text style={s.subLabel}>{p.label} → Document link (optional)</Text>
-                        <TextInput
-                          style={s.input}
-                          value={presetState[p.key]?.requiresDocSlug || ''}
-                          onChangeText={(t) =>
-                            setPresetState((prev) => ({
-                              ...prev,
-                              [p.key]: { ...prev[p.key], requiresDocSlug: t },
-                            }))
-                          }
-                          placeholder="e.g. documentation_url"
-                          autoCapitalize="none"
-                        />
                         <View style={s.switchRow}>
-                          <Text style={s.subLabel}>Document required</Text>
+                          <Text style={s.subLabel}>Attach a document to this date</Text>
                           <Switch
-                            value={!!presetState[p.key]?.documentRequired}
-                            onValueChange={(v) =>
-                              setPresetState((prev) => ({
-                                ...prev,
-                                [p.key]: { ...prev[p.key], documentRequired: v },
-                              }))
-                            }
+                            value={!!state?.attachDoc}
+                            onValueChange={(v) => setPreset(p.key, { attachDoc: v })}
                           />
                         </View>
+                        {state?.attachDoc ? (
+                          <View style={s.linkBox}>
+                            <Text style={s.subLabel}>Document name</Text>
+                            <TextInput
+                              style={s.input}
+                              value={state?.docName || ''}
+                              onChangeText={(t) => setPreset(p.key, { docName: t })}
+                              placeholder="e.g. Service Report"
+                            />
+                            <View style={s.switchRow}>
+                              <Text style={s.subLabel}>Document required</Text>
+                              <Switch value={!!state?.docRequired} onValueChange={(v) => setPreset(p.key, { docRequired: v })} />
+                            </View>
+                          </View>
+                        ) : null}
+
                         <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           {[7, 14, 30].map((d) => (
                             <TouchableOpacity
                               key={`lead-${p.key}-${d}`}
-                              onPress={() => setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: d } }))}
-                              style={[s.btn, { paddingVertical: 8, backgroundColor: (presetState[p.key]?.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
+                              onPress={() => setPreset(p.key, { reminderLeadDays: d })}
+                              style={[s.btn, { paddingVertical: 8, backgroundColor: (state?.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
                             >
                               <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
                             </TouchableOpacity>
@@ -705,19 +766,75 @@ export default function NewAssetType() {
                         </View>
                         <TextInput
                           style={[s.input, { marginTop: 6 }]}
-                          value={(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0 ? String(Number(presetState[p.key]?.reminderLeadDays)) : ''}
+                          value={(Number(state?.reminderLeadDays) || 0) > 0 ? String(Number(state?.reminderLeadDays)) : ''}
                           onChangeText={(t) => {
                             const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
-                            setPresetState((prev) => ({ ...prev, [p.key]: { ...prev[p.key], reminderLeadDays: n } }));
+                            setPreset(p.key, { reminderLeadDays: n });
                           }}
                           placeholder="No Reminder"
                           keyboardType="numeric"
                         />
                         <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 10, marginBottom: 4 }}>
-                          {(Number(presetState[p.key]?.reminderLeadDays) || 0) > 0
-                            ? `Reminder to be sent ${Number(presetState[p.key]?.reminderLeadDays)} days before expiry date`
+                          {(Number(state?.reminderLeadDays) || 0) > 0
+                            ? `Reminder to be sent ${Number(state?.reminderLeadDays)} days before this date`
                             : 'No Reminder'}
                         </Text>
+                      </View>
+                    ) : null}
+
+                    {/* DOCUMENT preset → optionally attach a date (e.g. expiry) */}
+                    {checked && (p.fieldTypeSlug || '').toLowerCase() === 'url' ? (
+                      <View style={{ width: '100%', marginTop: 8 }}>
+                        <View style={s.switchRow}>
+                          <Text style={s.subLabel}>Add a date for this document</Text>
+                          <Switch
+                            value={!!state?.attachDate}
+                            onValueChange={(v) => setPreset(p.key, { attachDate: v })}
+                          />
+                        </View>
+                        {state?.attachDate ? (
+                          <View style={s.linkBox}>
+                            <Text style={s.subLabel}>Date name</Text>
+                            <TextInput
+                              style={s.input}
+                              value={state?.dateName || ''}
+                              onChangeText={(t) => setPreset(p.key, { dateName: t })}
+                              placeholder="e.g. Expiry date"
+                            />
+                            <View style={s.switchRow}>
+                              <Text style={s.subLabel}>Date required</Text>
+                              <Switch value={!!state?.dateRequired} onValueChange={(v) => setPreset(p.key, { dateRequired: v })} />
+                            </View>
+
+                            <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                              {[7, 14, 30].map((d) => (
+                                <TouchableOpacity
+                                  key={`dlead-${p.key}-${d}`}
+                                  onPress={() => setPreset(p.key, { reminderLeadDays: d })}
+                                  style={[s.btn, { paddingVertical: 8, backgroundColor: (state?.reminderLeadDays || 0) === d ? Colors.primaryLight : Colors.chip }]}
+                                >
+                                  <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>{d === 30 ? '1 month' : `${d / 7} week${d === 14 ? 's' : ''}`}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                            <TextInput
+                              style={[s.input, { marginTop: 6 }]}
+                              value={(Number(state?.reminderLeadDays) || 0) > 0 ? String(Number(state?.reminderLeadDays)) : ''}
+                              onChangeText={(t) => {
+                                const n = Math.max(0, parseInt(String(t).replace(/[^\d]/g, ''), 10) || 0);
+                                setPreset(p.key, { reminderLeadDays: n });
+                              }}
+                              placeholder="No Reminder"
+                              keyboardType="numeric"
+                            />
+                            <Text style={{ color: '#6B7280', fontSize: sf(12), marginTop: 10, marginBottom: 4 }}>
+                              {(Number(state?.reminderLeadDays) || 0) > 0
+                                ? `Reminder to be sent ${Number(state?.reminderLeadDays)} days before this date`
+                                : 'No Reminder'}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : null}
                   </View>
@@ -1015,6 +1132,8 @@ const s = StyleSheet.create({
   card: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, padding: 12, marginBottom: 12, backgroundColor: Colors.card, ...CardShadow },
   cardTitle: { fontSize: sf(16), fontWeight: '800', marginBottom: 6, color: Colors.text },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
+  // Nested box for an attached document/date inside a preset's config.
+  linkBox: { marginTop: 8, padding: 12, borderRadius: Radius.md, backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.line },
   dropdown: { borderColor: Colors.line, borderRadius: Radius.md, marginTop: 4, borderWidth: 2 },
   dropdownContainer: { borderColor: Colors.line, borderRadius: Radius.md },
 
