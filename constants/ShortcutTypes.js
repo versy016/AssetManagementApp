@@ -35,9 +35,9 @@ export const SHORTCUT_TYPES = {
     },
     QUICK_SERVICE: {
         id: 'quick_service',
-        label: 'Log Service',
+        label: 'Servicing',
         icon: 'build',
-        description: 'Scan asset to mark for service',
+        description: 'Scan asset to log or schedule a service',
         requiresAdmin: false,
         color: '#EA580C',   // orange
         bgColor: '#FFEDD5',
@@ -45,9 +45,9 @@ export const SHORTCUT_TYPES = {
     },
     QUICK_REPAIR: {
         id: 'quick_repair',
-        label: 'Log Repair',
+        label: 'Repair Required',
         icon: 'build-circle',
-        description: 'Scan asset to mark for repair',
+        description: 'Scan asset to flag a repair',
         requiresAdmin: false,
         color: '#DC2626',   // red
         bgColor: '#FEF2F2',

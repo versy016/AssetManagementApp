@@ -545,9 +545,18 @@ async function validateDynamicFields(reqId, typeId, fieldsObj, options = {}) {
             if (linkSlug && requireDocFlag && !skipRequiredLinkedDocuments) {
               const requiredSlugs = Array.isArray(linkSlug) ? linkSlug : [linkSlug];
               for (const s of requiredSlugs) {
+                // Only enforce when the linked document field actually exists on
+                // this type. A dangling slug (typo'd in the old free-text box, or
+                // pointing at a since-deleted field) would otherwise make the
+                // asset permanently unsaveable — treat it as "no requirement".
+                const docDef = bySlug[slugify(s)];
+                if (!docDef) {
+                  log(reqId, 'WARN', 'linked-doc-slug-unresolved', { dateField: slug, wantedDocSlug: s });
+                  continue;
+                }
                 const docVal = getDynamicValue(s);
                 const emptyDoc = docVal === undefined || docVal === null || String(docVal).trim() === '';
-                if (emptyDoc) missing.push(`${def.name || slug} → document '${s}'`);
+                if (emptyDoc) missing.push(`${def.name || slug} → document '${docDef.name || s}'`);
               }
             }
           } catch (_) { }
@@ -614,10 +623,22 @@ async function getTypeFieldDefsBySlug(typeId) {
 router.get('/', async (req, res) => {
   const reqId = rid();
   const debug = String(req.query.debug || '').toLowerCase() === '1';
+  // Optional pagination — backward compatible: when take/skip are absent the
+  // endpoint behaves exactly as before (returns all). Callers can opt into
+  // paging to avoid loading the entire table + deep relations into memory.
+  const takeRaw = Number(req.query.take);
+  const skipRaw = Number(req.query.skip);
+  const take = Number.isFinite(takeRaw) && takeRaw > 0 ? Math.min(takeRaw, 5000) : undefined;
+  const skip = Number.isFinite(skipRaw) && skipRaw >= 0 ? skipRaw : undefined;
+  const paged = take !== undefined || skip !== undefined;
   try {
     log(reqId, 'INFO', 'list-assets-start');
 
     const assets = await prisma.assets.findMany({
+      ...(take !== undefined ? { take } : {}),
+      ...(skip !== undefined ? { skip } : {}),
+      // Stable ordering only when paging (so pages don't overlap); unchanged otherwise.
+      ...(paged ? { orderBy: { last_updated: 'desc' } } : {}),
       include: {
         asset_types: true,
         users: { select: { id: true, name: true, useremail: true } },
@@ -975,21 +996,35 @@ router.get('/asset_types', async (_req, res) => {
 // --------------------------------------------------------
 router.get('/asset-types-summary', async (_req, res) => {
   try {
-    const assetTypes = await prisma.asset_types.findMany();
-    const assets = await prisma.assets.findMany({ select: { type_id: true, status: true } });
+    // Count in the DB (GROUP BY type_id, status) instead of pulling every asset
+    // row into Node and filtering 5× per type. Result set is tiny
+    // (≈ types × statuses), so the per-type aggregation below is cheap.
+    const [assetTypes, grouped] = await Promise.all([
+      prisma.asset_types.findMany(),
+      prisma.assets.groupBy({ by: ['type_id', 'status'], _count: { _all: true } }),
+    ]);
+
+    // type_id -> { normalizedStatus -> count } (status casing varies in data)
+    const byType = new Map();
+    for (const g of grouped) {
+      if (!g.type_id) continue;
+      const st = String(g.status || '').toLowerCase();
+      const bucket = byType.get(g.type_id) || {};
+      bucket[st] = (bucket[st] || 0) + (g._count?._all || 0);
+      byType.set(g.type_id, bucket);
+    }
 
     const summary = assetTypes.map(type => {
-      const filtered = assets.filter(a => a.type_id === type.id);
-      const lower = s => (s || '').toLowerCase();
+      const b = byType.get(type.id) || {};
       return {
         id: type.id,
         name: type.name,
         image_url: type.image_url,
-        inService: filtered.filter(a => lower(a.status) === 'in service').length,
-        endOfLife: filtered.filter(a => lower(a.status) === 'end of life').length,
-        repair: filtered.filter(a => lower(a.status) === 'repair').length,
-        maintenance: filtered.filter(a => lower(a.status) === 'maintenance').length,
-        onHire: filtered.filter(a => lower(a.status) === 'on hire').length,
+        inService: b['in service'] || 0,
+        endOfLife: b['end of life'] || 0,
+        repair: b['repair'] || 0,
+        maintenance: b['maintenance'] || 0,
+        onHire: b['on hire'] || 0,
       };
     });
 
@@ -1286,6 +1321,11 @@ router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset),
       }
     } catch { }
 
+    // Guard against absurd payloads before we build a transaction.
+    if (Object.keys(dynamicFields || {}).length > 500) {
+      return errJson(res, 400, 'Too many dynamic field values (max 500)');
+    }
+
     // Validate dynamic fields now that we might have auto-filled URL field(s)
     await validateDynamicFields(reqId, data.type_id, dynamicFields);
 
@@ -1454,25 +1494,34 @@ router.post('/asset-types/:id/sync', adminOnly, async (req, res) => {
       });
     }
 
-    // Fill defaults for missing values
+    // Fill defaults for missing values.
+    // Batched: one findMany per field to learn which assets already have a row,
+    // then a single createMany for all the missing rows — instead of
+    // findFirst+create per (field × asset), which was O(fields × assets) queries.
     if (fillDefaults) {
+      const creates = [];
       for (const f of fields) {
         if (!f.default_value) continue;
         const encodedDefault = encodeValue(f.field_type?.slug || f.field_type?.name, f.default_value);
-        // For each asset, ensure a row exists
-        for (const a of assets) {
-          const exists = await prisma.asset_field_values.findFirst({ where: { asset_id: a.id, asset_type_field_id: f.id }, select: { id: true } });
-          if (!exists) {
-            try {
-              await prisma.asset_field_values.create({ data: { asset_id: a.id, asset_type_field_id: f.id, value: encodedDefault } });
-            } catch { }
-          }
+        const existing = await prisma.asset_field_values.findMany({
+          where: { asset_type_field_id: f.id, asset_id: { in: assetIds } },
+          select: { asset_id: true },
+        });
+        const have = new Set(existing.map(r => r.asset_id));
+        for (const aid of assetIds) {
+          if (!have.has(aid)) creates.push({ asset_id: aid, asset_type_field_id: f.id, value: encodedDefault });
         }
+      }
+      const CHUNK = 1000;
+      for (let i = 0; i < creates.length; i += CHUNK) {
+        await prisma.asset_field_values.createMany({ data: creates.slice(i, i + CHUNK), skipDuplicates: true });
       }
     }
 
-    // Option value renames
+    // Option value renames — collect the changes, then apply them in batched
+    // transactions instead of one round-trip per changed row.
     if (optionValueMap && typeof optionValueMap === 'object') {
+      const updates = [];
       for (const [slug, map] of Object.entries(optionValueMap)) {
         const f = bySlug[slug];
         if (!f) continue;
@@ -1497,9 +1546,13 @@ router.post('/asset-types/:id/sync', adminOnly, async (req, res) => {
           }
           if (next !== current) {
             const encoded = encodeValue(code, next);
-            await prisma.asset_field_values.update({ where: { id: row.id }, data: { value: encoded } });
+            updates.push(prisma.asset_field_values.update({ where: { id: row.id }, data: { value: encoded } }));
           }
         }
+      }
+      const TX_CHUNK = 500;
+      for (let i = 0; i < updates.length; i += TX_CHUNK) {
+        await prisma.$transaction(updates.slice(i, i + TX_CHUNK));
       }
     }
 
@@ -1840,8 +1893,15 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
     log(reqId, 'INFO', 'update-asset-ok', { id: assetId, ops: result.length });
     res.json({ success: true, updated: result });
   } catch (err) {
-    log(reqId, 'ERROR', 'update-asset-failed', { message: err.message });
-    errJson(res, 500, 'Failed to update asset', { details: err.message });
+    // Validation errors set err.status (e.g. 400) — surface them as such with a
+    // clear message instead of an opaque 500 the client can't act on.
+    const status = (Number.isInteger(err?.status) && err.status >= 400 && err.status < 500) ? err.status : 500;
+    log(reqId, status === 500 ? 'ERROR' : 'WARN', 'update-asset-failed', { status, message: err.message });
+    if (status === 500) {
+      errJson(res, 500, 'Failed to update asset', { details: err.message });
+    } else {
+      errJson(res, status, err.message || 'Validation failed');
+    }
   }
 });
 

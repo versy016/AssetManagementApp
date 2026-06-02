@@ -11,9 +11,9 @@ import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 
 const ACTION_META = {
-  repair:      { label: 'Repair',      header: 'Log Repair',   icon: 'build',         color: Colors.dangerFg },
-  maintenance: { label: 'Maintenance', header: 'Log Service',  icon: 'build-circle',  color: Colors.warningFg },
-  service:     { label: 'Maintenance', header: 'Log Service',  icon: 'build-circle',  color: Colors.warningFg },
+  repair:      { label: 'Repair',      header: 'Repair Required', icon: 'build',         color: Colors.dangerFg },
+  maintenance: { label: 'Maintenance', header: 'Servicing',       icon: 'build-circle',  color: Colors.warningFg },
+  service:     { label: 'Maintenance', header: 'Servicing',       icon: 'build-circle',  color: Colors.warningFg },
 };
 
 export default function QuickActionScreen() {

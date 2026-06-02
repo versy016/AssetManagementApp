@@ -12,6 +12,9 @@ import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import DropDownPicker from 'react-native-dropdown-picker';
+import FieldTypePicker from '../../components/FieldTypePicker';
+import AlertModal from '../../components/AlertModal';
+import { validateCustomField, slugifyFieldName } from '../../utils/validateCustomField';
 import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
@@ -36,6 +39,21 @@ const DEFAULT_FIELDS = [
   { slug: 'last_updated', label: 'Last Updated (system)' },
   { slug: 'last_changed_by', label: 'Last Changed By (system)' },
 ];
+
+// Human-readable label per field-type slug — shown as a small badge so users
+// know what kind of field a (renameable) preset is.
+const PRESET_TYPE_LABELS = {
+  text: 'Text',
+  textarea: 'Text area',
+  number: 'Number',
+  currency: 'Currency',
+  date: 'Date',
+  url: 'Document',
+  select: 'Select',
+  multiselect: 'Multi-select',
+  boolean: 'Yes / No',
+  email: 'Email',
+};
 
 // ---- Pick-from-library presets (2-column checklist) ------------------------
 // fieldTypeSlug must match your field_types.slug values
@@ -123,6 +141,7 @@ export default function NewAssetType() {
     PRESET_LIBRARY.reduce((acc, p) => {
       acc[p.key] = {
         selected: false, required: false,
+        name: '', // optional custom field name; falls back to preset label
         attachDoc: false, docName: '', docRequired: false,
         attachDate: false, dateName: '', dateRequired: false,
         reminderLeadDays: 0,
@@ -133,10 +152,14 @@ export default function NewAssetType() {
   const setPreset = (key, patch) =>
     setPresetState((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
 
+  // Human label for a preset's field type, shown as a badge in the list.
+  const presetTypeLabel = (slug) => PRESET_TYPE_LABELS[String(slug || '').toLowerCase()] || 'Field';
+
   // "Editor" state (only shown when adding)
   const [editingOpen, setEditingOpen] = useState(false);
   const [editing, setEditing] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '' });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [fieldAlert, setFieldAlert] = useState({ visible: false, title: '', items: [] });
   const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
   const showToast = (text, kind = 'success') => {
     setToast({ visible: true, text, kind });
@@ -353,8 +376,24 @@ export default function NewAssetType() {
   // Save editor - add to list, close editor
   const saveEditor = () => {
     const trimmed = editing.name.trim();
-    if (!trimmed || !editing.field_type_id) {
-      return Alert.alert('Missing info', 'Please select a field type and enter a field name.');
+    const meta = fieldTypes.find(ft => ft.id === editing.field_type_id);
+    // Slugs already taken on this type: always-present defaults, selected
+    // presets, and custom fields added so far. Used for duplicate detection.
+    const existingSlugs = [
+      ...DEFAULT_FIELDS.map(f => f.slug),
+      ...PRESET_LIBRARY.filter(p => presetState[p.key]?.selected).map(p => slugifyFieldName(p.label)),
+      ...fields.map(f => slugifyFieldName(f.name)),
+    ];
+    const errors = validateCustomField({
+      name: editing.name,
+      hasFieldType: !!editing.field_type_id,
+      hasOptions: !!meta?.has_options,
+      optionsCsv: editing.optionsCsv,
+      existingSlugs,
+    });
+    if (errors.length) {
+      setFieldAlert({ visible: true, title: 'Can’t add this field', items: errors });
+      return;
     }
     setFields(prev => ([
       ...prev,
@@ -413,11 +452,13 @@ export default function NewAssetType() {
         const ftSlug = (p.fieldTypeSlug || '').toLowerCase();
         const typeIdMapped = slugToTypeId(p.fieldTypeSlug);
         if (!typeIdMapped) continue;
+        // User may rename a preset; fall back to the preset's default label.
+        const presetName = (st.name || '').trim() || p.label;
 
         if (ftSlug === 'date') {
           // DATE is primary; optionally attach a document to it.
           const datePayload = {
-            name: p.label,
+            name: presetName,
             field_type_id: typeIdMapped,
             is_required: !!st.required,
             display_order: presetOrder++,
@@ -442,7 +483,7 @@ export default function NewAssetType() {
           presetPayloads.push(datePayload);
         } else if (ftSlug === 'url') {
           // DOCUMENT is primary; optionally attach a date to it (e.g. expiry).
-          const docName = p.label; // "Document"
+          const docName = presetName; // user-defined document name (default "Document")
           presetPayloads.push({
             name: docName,
             field_type_id: typeIdMapped,
@@ -468,7 +509,7 @@ export default function NewAssetType() {
         } else {
           // Plain preset (text/number/select/etc.)
           const payload = {
-            name: p.label,
+            name: presetName,
             field_type_id: typeIdMapped,
             is_required: !!st.required,
             display_order: presetOrder++,
@@ -590,6 +631,12 @@ export default function NewAssetType() {
           <Text style={s.toastText}>{toast.text}</Text>
         </View>
       )}
+      <AlertModal
+        visible={fieldAlert.visible}
+        title={fieldAlert.title}
+        items={fieldAlert.items}
+        onClose={() => setFieldAlert((a) => ({ ...a, visible: false }))}
+      />
       <ScreenHeader
         title="Create Asset Type"
         backLabel="Go back"
@@ -714,18 +761,47 @@ export default function NewAssetType() {
                   <View key={p.key} style={s.gridItem}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}
                         onPress={() => togglePresetSelected(p.key)}
                         activeOpacity={0.8}
                       >
                         <SquareCheckbox checked={checked} />
-                        <Text style={s.gridLabel}>{p.label}</Text>
+                        <Text style={s.gridLabel} numberOfLines={1}>{(state?.name || '').trim() || p.label}</Text>
+                        <View style={s.typeBadge}>
+                          <Text style={s.typeBadgeText}>{presetTypeLabel(p.fieldTypeSlug)}</Text>
+                        </View>
                       </TouchableOpacity>
                       <View style={s.reqWrap}>
                         <Text style={s.reqLabel}>Required</Text>
                         <Switch value={required} onValueChange={() => togglePresetRequired(p.key)} />
                       </View>
                     </View>
+
+                    {/* When selected: rename is hidden behind an "Edit field name" button */}
+                    {checked ? (
+                      state?.editingName ? (
+                        <View style={{ width: '100%', marginTop: 8 }}>
+                          <Text style={s.subLabel}>Field name</Text>
+                          <TextInput
+                            style={s.input}
+                            value={state?.name ?? ''}
+                            placeholder={p.label}
+                            onChangeText={(t) => setPreset(p.key, { name: t })}
+                            autoFocus
+                          />
+                          <TouchableOpacity style={s.editNameDone} onPress={() => setPreset(p.key, { editingName: false })} activeOpacity={0.85}>
+                            <MaterialIcons name="check" size={16} color="#fff" />
+                            <Text style={s.editNameDoneText}>Done</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={s.editNameBtn} onPress={() => setPreset(p.key, { editingName: true })} activeOpacity={0.85}>
+                          <MaterialIcons name="edit" size={14} color={Colors.primaryDark} />
+                          <Text style={s.editNameBtnText}>Edit field name</Text>
+                        </TouchableOpacity>
+                      )
+                    ) : null}
+
                     {/* DATE preset → optionally attach a document to this date */}
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
@@ -891,22 +967,12 @@ export default function NewAssetType() {
                 />
 
                 <Text style={s.subLabel}>Field type</Text>
-                <View style={{ zIndex: 2000, elevation: 2000 }}>
-                  <DropDownPicker
-                    open={pickerOpen}
-                    value={editing.field_type_id}
-                    items={fieldTypeItems}
-                    setOpen={setPickerOpen}
-                    setValue={(callback) => {
-                      const val = callback(editing.field_type_id);
-                      setEditing(e => ({ ...e, field_type_id: val }));
-                    }}
-                    placeholder="Select a field type"
-                    style={s.dropdown}
-                    dropDownContainerStyle={s.dropdownContainer}
-                    listMode="MODAL"
-                  />
-                </View>
+                <FieldTypePicker
+                  value={editing.field_type_id}
+                  items={fieldTypeItems}
+                  onChange={(val) => setEditing(e => ({ ...e, field_type_id: val }))}
+                  placeholder="Select a field type"
+                />
 
                 <View style={s.switchRow}>
                   <Text style={s.subLabel}>Required</Text>
@@ -1271,6 +1337,12 @@ const s = StyleSheet.create({
     alignItems: 'stretch',
   },
   gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, fontWeight: '700' },
+  typeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line, flexShrink: 0 },
+  typeBadgeText: { fontSize: sf(10), fontWeight: '800', color: Colors.sub, textTransform: 'uppercase', letterSpacing: 0.4 },
+  editNameBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingVertical: 7, paddingHorizontal: 12, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
+  editNameBtnText: { fontSize: sf(13), fontWeight: '800', color: Colors.primaryDark },
+  editNameDone: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingVertical: 8, paddingHorizontal: 16, borderRadius: Radius.sm, backgroundColor: Colors.primary },
+  editNameDoneText: { fontSize: sf(13), fontWeight: '800', color: '#fff' },
   gridBox: { width: 18, height: 18, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   gridBoxUnchecked: { borderColor: Colors.accentMuted, backgroundColor: 'transparent' },

@@ -291,18 +291,17 @@ const handleQuickTransfer = async (assetId, assetData, router, user, onSuccess, 
 };
 
 /**
- * Quick Service - Mark asset for service
+ * Quick Service - Open the Servicing menu (log a past service OR schedule one)
  */
 const handleQuickService = async (assetId, assetData, router, user, onSuccess, onError, returnTarget = '/(tabs)/dashboard') => {
     router.push({
-        pathname: '/quick-action/[assetId]',
+        pathname: '/servicing/[assetId]',
         params: {
             assetId: String(assetId),
-            action: 'maintenance',
             returnTo: returnTarget,
         },
     });
-    onSuccess?.('Log the service details');
+    onSuccess?.('Choose a servicing option');
 };
 
 /**

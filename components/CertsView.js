@@ -54,6 +54,9 @@ export default function CertsView({ visible: initialVisible }) {
   const [assetMap, setAssetMap] = useState({});
   const [refreshKey, setRefreshKey] = useState(0);
   const contentRef = useRef(null);
+  // Per-mount cache of fetched assets (id -> asset|null) so enrichment doesn't
+  // refetch the same asset across re-runs / tab switches.
+  const assetCacheRef = useRef(new Map());
   const [hContentW, setHContentW] = useState(0);
   const [hViewportW, setHViewportW] = useState(0);
   const [filterText, setFilterText] = useState('');
@@ -201,22 +204,30 @@ export default function CertsView({ visible: initialVisible }) {
     let cancelled = false;
     (async () => {
       try {
-        const results = await Promise.allSettled(ids.map(async (id) => {
-          try {
-            const r = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(id)}`);
-            if (!r.ok) return [id, null];
-            const a = await r.json();
-            return [id, a];
-          } catch { return [id, null]; }
-        }));
+        // Only fetch ids we haven't already resolved this mount — avoids
+        // refetching every asset when the items list or visibility changes.
+        const cache = assetCacheRef.current;
+        const missing = ids.filter((id) => !cache.has(id));
+        if (missing.length) {
+          const results = await Promise.allSettled(missing.map(async (id) => {
+            try {
+              const r = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(id)}`);
+              if (!r.ok) return [id, null];
+              const a = await r.json();
+              return [id, a];
+            } catch { return [id, null]; }
+          }));
+          if (cancelled) return;
+          results.forEach((res) => {
+            if (res.status === 'fulfilled') {
+              const [id, a] = res.value || [];
+              if (id) cache.set(id, a || null);
+            }
+          });
+        }
         if (cancelled) return;
         const map = {};
-        results.forEach((res) => {
-          if (res.status === 'fulfilled') {
-            const [id, a] = res.value || [];
-            if (id) map[id] = a || null;
-          }
-        });
+        ids.forEach((id) => { map[id] = cache.has(id) ? cache.get(id) : null; });
         setAssetMap(map);
       } catch { setAssetMap({}); }
     })();

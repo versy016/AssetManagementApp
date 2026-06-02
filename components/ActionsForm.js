@@ -1376,6 +1376,10 @@ function DateField({ label, value, onChange, minDate, maxDate }) {
         visible={open}
         onDismiss={() => setOpen(false)}
         date={parsed}
+        // validRange enforces the min/max the caller asked for. Previously these
+        // props were accepted but never wired in, so e.g. maxDate={today} on the
+        // action Date field did nothing.
+        validRange={(minDate || maxDate) ? { startDate: minDate || undefined, endDate: maxDate || undefined } : undefined}
         onConfirm={({ date }) => {
           setOpen(false);
           onChange(toISODate(date));

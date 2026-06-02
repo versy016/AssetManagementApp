@@ -902,6 +902,7 @@ export function useAssetDetail({ assetId, returnTo }) {
       case 'TRANSFER':     return { label: 'Transfer', description: 'Transfer between users', bg: '#EFF6FF', fg: '#1D4ED8', bd: '#BFDBFE' };
       case 'CHECK_IN':     return { label: 'Transfer to office', description: 'Returned to office', bg: '#ECFDF5', fg: '#065F46', bd: '#BBF7D0' };
       case 'CHECK_OUT':    return { label: 'Transfer out of office', description: 'Left office inventory', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
+      case 'NOTE':         return { label: 'Note', description: 'Note', bg: '#EEF2FF', fg: '#4338CA', bd: '#C7D2FE' };
       case 'STATUS_CHANGE':return { label: 'Status', description: 'Status change', bg: '#FEF3C7', fg: '#92400E', bd: '#FDE68A' };
       case 'REPAIR':       return { label: 'Repair', description: 'Repair', bg: '#FFF7ED', fg: '#9A3412', bd: '#FED7AA' };
       case 'MAINTENANCE':  return { label: 'Maintenance', description: 'Service / maintenance', bg: '#F5F3FF', fg: '#6D28D9', bd: '#DDD6FE' };
@@ -950,12 +951,19 @@ export function useAssetDetail({ assetId, returnTo }) {
         })
         .map((a) => {
           const typeUpper = String(a.type || '').toUpperCase();
+          // A STATUS_CHANGE carrying a user note (note_only / user_note_text) is
+          // really a plain Note — surface it as type NOTE so the badge reads
+          // "Note" instead of "Status change".
+          const noteText = (a?.data && typeof a.data.user_note_text === 'string') ? a.data.user_note_text.trim() : '';
+          const isUserNote = !!(noteText || a?.data?.note_only);
           const fromLabel = a.from_user?.name || a.from_user?.useremail || a.from_user_id || '';
           const toLabel   = a.to_user?.name   || a.to_user?.useremail   || a.to_user_id   || '';
           const transferToMe = typeUpper === 'TRANSFER' && transferRecipientMatchesFirebaseUser(a.to_user, authUser);
-          let text = (a.note || '').trim();
+          let text = (noteText || a.note || '').trim();
 
-          if (typeUpper === 'TRANSFER') {
+          if (isUserNote) {
+            // skip the transfer/status fallbacks below; the note text stands alone
+          } else if (typeUpper === 'TRANSFER') {
             text = transferToMe
               ? `Transfer to me (${asset?.id || ''})`
               : `Transfer (${asset?.id || ''}: ${fromLabel || '?'} → ${toLabel || '?'})`;
@@ -984,7 +992,7 @@ export function useAssetDetail({ assetId, returnTo }) {
             note: text,
             when: a.occurred_at,
             who: whoName,
-            type: a.type || '',
+            type: isUserNote ? 'NOTE' : (a.type || ''),
             transferToMe,
             images: imgs,
           });

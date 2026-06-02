@@ -33,6 +33,7 @@ const iconFor = (kind, type) => {
     case 'CHECK_IN': return 'assignment-turned-in';
     case 'CHECK_OUT': return 'assignment-return';
     case 'STATUS_CHANGE': return 'sync';
+    case 'NOTE': return 'sticky-note-2';
     case 'REPAIR': return 'build';
     case 'MAINTENANCE': return 'build-circle';
     case 'HIRE': return 'work-outline';
@@ -56,6 +57,7 @@ const colorFor = (kind, type) => {
     case 'CHECK_IN': return '#16A34A';
     case 'CHECK_OUT': return '#7C3AED';
     case 'STATUS_CHANGE': return '#EA580C';
+    case 'NOTE': return '#4338CA';
     case 'REPAIR': return '#B45309';
     case 'MAINTENANCE': return '#6D28D9';
     case 'HIRE': return '#0369A1';
@@ -96,7 +98,12 @@ const ActivityRow = React.memo(function ActivityRow({ item, firebaseUser, onOpen
     item.data &&
     Array.isArray(item.data.fields) &&
     item.data.fields.some((f) => String(f || '').toLowerCase().includes('next_service'));
-  const effectiveType = isEditNextService ? 'SERVICE_COMPLETE' : item.type;
+  // A STATUS_CHANGE carrying a user note is really a Note, not a status change.
+  const isUserNote =
+    item.kind === 'ASSET_ACTION' &&
+    String(item.type || '').toUpperCase() === 'STATUS_CHANGE' &&
+    !!(item.data && (item.data.note_only || (typeof item.data.user_note_text === 'string' && item.data.user_note_text.trim())));
+  const effectiveType = isEditNextService ? 'SERVICE_COMPLETE' : (isUserNote ? 'NOTE' : item.type);
 
   const icon = iconFor(item.kind, effectiveType);
   const stroke = colorFor(item.kind, effectiveType);
@@ -424,9 +431,12 @@ export default function ActivityScreen() {
           if (!at || !assetTypeSet.has(at)) return false;
         }
 
-        // status filter (only meaningful for STATUS_CHANGE)
+        // status filter (only meaningful for STATUS_CHANGE) — exclude plain
+        // notes, which are stored as STATUS_CHANGE but aren't status transitions.
         if (filters.status) {
           if (String(it.type || '').toUpperCase() !== 'STATUS_CHANGE') return false;
+          const itIsNote = !!(it.data && (it.data.note_only || (typeof it.data.user_note_text === 'string' && it.data.user_note_text.trim())));
+          if (itIsNote) return false;
           const newS = it?.data?.newStatus || it?.data?.status || it?.note || '';
           if (normStatus(newS) !== normStatus(filters.status)) return false;
         }
@@ -448,29 +458,31 @@ export default function ActivityScreen() {
         return true;
       });
 
-      // sorting
-      const cmp = (a, b) => {
-        const dir = sort.dir === 'asc' ? 1 : -1;
-        const field = String(sort.field || 'when');
-        const val = (x) => {
-          switch (field) {
-            case 'when': return new Date(x.when).getTime();
-            case 'type': return String(x.type || '').toLowerCase();
-            case 'assetType': return String(x?.asset?.type || '').toLowerCase();
-            case 'actor': return String(x.actor || '').toLowerCase();
-            default: return new Date(x.when).getTime();
-          }
-        };
-        const av = val(a); const bv = val(b);
-        if (av < bv) return -1 * dir;
-        if (av > bv) return 1 * dir;
+      // sorting — precompute each row's timestamp + sort key ONCE (decorate),
+      // instead of constructing several Date objects inside the comparator
+      // (which ran on every comparison, ~n·log n times).
+      const dir = sort.dir === 'asc' ? 1 : -1;
+      const field = String(sort.field || 'when');
+      const decorated = out.map((x) => {
+        const ts = new Date(x.when).getTime() || 0;
+        let key;
+        switch (field) {
+          case 'type': key = String(x.type || '').toLowerCase(); break;
+          case 'assetType': key = String(x?.asset?.type || '').toLowerCase(); break;
+          case 'actor': key = String(x.actor || '').toLowerCase(); break;
+          default: key = ts; // 'when'
+        }
+        return { x, ts, key };
+      });
+      decorated.sort((a, b) => {
+        if (a.key < b.key) return -1 * dir;
+        if (a.key > b.key) return 1 * dir;
         // tie-break by time desc
-        const ad = new Date(a.when).getTime();
-        const bd = new Date(b.when).getTime();
-        if (ad < bd) return 1; if (ad > bd) return -1; return 0;
-      };
-      out.sort(cmp);
-      return out;
+        if (a.ts < b.ts) return 1;
+        if (a.ts > b.ts) return -1;
+        return 0;
+      });
+      return decorated.map((d) => d.x);
     };
   }, [filters, sort, query]);
 

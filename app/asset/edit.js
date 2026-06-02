@@ -540,6 +540,24 @@ export default function EditAsset() {
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </View>
         );
+      case 'currency':
+        return (
+          <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
+            {Label}
+            <View style={[styles.currencyField, !!errors[slug] && styles.inputError]}>
+              <Text style={styles.currencyPrefix}>$</Text>
+              <TextInput
+                style={styles.currencyInput}
+                placeholder="0.00"
+                placeholderTextColor={Colors.sub2}
+                keyboardType="numeric"
+                value={fieldValues[slug] !== undefined && fieldValues[slug] !== null ? String(fieldValues[slug]) : ''}
+                onChangeText={(t) => updateField(slug, t.replace(/[^\d.]/g, ''))}
+              />
+            </View>
+            {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+          </View>
+        );
       case 'date':
       case 'datetime': {
         const docName = docFieldDef ? ((docFieldDef.label || docFieldDef.name) || 'Document') : 'Document';
@@ -1278,6 +1296,9 @@ const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
+  currencyField: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 12, marginVertical: 8, backgroundColor: Colors.card },
+  currencyPrefix: { fontSize: sf(16), fontWeight: '800', color: Colors.sub, marginRight: 6 },
+  currencyInput: { flex: 1, paddingVertical: 12, color: Colors.text, fontSize: sf(15) },
   // ── Grouped document+date card ──
   docGroupCard: { marginBottom: 16, padding: 14, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card, ...CardShadow },
   docGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },

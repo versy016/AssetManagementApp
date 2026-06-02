@@ -517,16 +517,29 @@ export default function SearchScreen(props = {}) {
       return !!(uid || name);
     };
 
-    filtered.sort((a, b) => {
-      const aAss = isAssigned(a);
-      const bAss = isAssigned(b);
-      if (aAss !== bAss) return aAss ? -1 : 1; // assigned first
-      const p = cmp(a, b, sort.field, sort.dir);
+    // Decorate-sort-undecorate: compute relevance + assigned-flag ONCE per item
+    // up front, instead of recomputing them inside the comparator (which ran
+    // O(n log n) times and rebuilt lowercased strings on every comparison).
+    const needRelevance = sort.field === 'relevance';
+    const decorated = filtered.map((it) => ({
+      it,
+      assigned: isAssigned(it),
+      rel: needRelevance ? computeRelevance(it) : 0,
+    }));
+    decorated.sort((A, B) => {
+      if (A.assigned !== B.assigned) return A.assigned ? -1 : 1; // assigned first
+      let p;
+      if (needRelevance) {
+        if (A.rel !== B.rel) return sort.dir === 'asc' ? A.rel - B.rel : B.rel - A.rel;
+        p = cmpCore(A.it, B.it, 'name', 'asc');
+      } else {
+        p = cmp(A.it, B.it, sort.field, sort.dir);
+      }
       if (p !== 0) return p;
-      return cmpCore(a, b, 'name', 'asc');
+      return cmpCore(A.it, B.it, 'name', 'asc');
     });
 
-    return filtered;
+    return decorated.map((d) => d.it);
   }, [debouncedQuery, filters, me.email, me.uid, sort]);
 
   useEffect(() => {
@@ -977,66 +990,51 @@ export default function SearchScreen(props = {}) {
     const failed = [];
     const today = new Date().toISOString().slice(0, 10);
 
-    for (const assetId of ids) {
+    // Apply the action to a single asset. Returns true on success.
+    const runOne = async (assetId) => {
       try {
         if (actionType === 'transferToUser' && selectedUser) {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ assigned_to_id: selectedUser.id, status: 'In Service' }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ assigned_to_id: selectedUser.id, status: 'In Service' }) });
+          return res.ok;
         } else if (actionType === 'transferToOffice') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ assign_to_admin: true, status: 'In Service' }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ assign_to_admin: true, status: 'In Service' }) });
+          return res.ok;
         } else if (actionType === 'transferToMe') {
-          if (!myDbUserId) { failed.push(assetId); continue; }
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ assigned_to_id: myDbUserId }),
-          });
-          if (!res.ok) failed.push(assetId);
+          if (!myDbUserId) return false;
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ assigned_to_id: myDbUserId }) });
+          return res.ok;
         } else if (actionType === 'repair') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ status: 'Repair' }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'Repair' }) });
+          return res.ok;
         } else if (actionType === 'service') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ status: 'Maintenance' }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'Maintenance' }) });
+          return res.ok;
         } else if (actionType === 'eol') {
-          const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-            method: 'PUT', headers,
-            body: JSON.stringify({ status: 'End of Life' }),
-          });
-          if (!putRes.ok) { failed.push(assetId); continue; }
-          await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ type: 'END_OF_LIFE', note: 'Bulk: End of Life', details: {}, occurred_at: today }),
-          });
+          const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'End of Life' }) });
+          if (!putRes.ok) return false;
+          await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, { method: 'POST', headers, body: JSON.stringify({ type: 'END_OF_LIFE', note: 'Bulk: End of Life', details: {}, occurred_at: today }) });
+          return true;
         } else if (actionType === 'lost') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ type: 'LOST', note: 'Bulk: Report Lost', details: {}, occurred_at: today }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, { method: 'POST', headers, body: JSON.stringify({ type: 'LOST', note: 'Bulk: Report Lost', details: {}, occurred_at: today }) });
+          return res.ok;
         } else if (actionType === 'stolen') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ type: 'STOLEN', note: 'Bulk: Report Stolen', details: {}, occurred_at: today }),
-          });
-          if (!res.ok) failed.push(assetId);
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, { method: 'POST', headers, body: JSON.stringify({ type: 'STOLEN', note: 'Bulk: Report Stolen', details: {}, occurred_at: today }) });
+          return res.ok;
         }
+        return true;
       } catch {
-        failed.push(assetId);
+        return false;
       }
-      setBulkProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+    };
+
+    // Process with bounded concurrency (8 at a time) instead of one-by-one,
+    // so 100 assets take ~ceil(100/8) round-trips instead of 100.
+    const CONCURRENCY = 8;
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      const chunk = ids.slice(i, i + CONCURRENCY);
+      const oks = await Promise.all(chunk.map((assetId) => runOne(assetId)));
+      oks.forEach((ok, j) => { if (!ok) failed.push(chunk[j]); });
+      setBulkProgress((prev) => ({ ...prev, done: Math.min(prev.done + chunk.length, ids.length) }));
     }
 
     setBulkLoading(false);

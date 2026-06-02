@@ -42,6 +42,9 @@ export const UserDataProvider = ({ children }) => {
   const favFetchRef = useRef(null);
   // Suppress the immediate write back to the server after loading from it.
   const favHydratedRef = useRef(false);
+  const favSaveTimerRef = useRef(null);
+  // Clear any pending favourites-save timer on unmount so it can't fire after.
+  useEffect(() => () => { if (favSaveTimerRef.current) clearTimeout(favSaveTimerRef.current); }, []);
 
   // ── Listen to Firebase auth ────────────────────────────────────────────
   useEffect(() => {
@@ -127,8 +130,8 @@ export const UserDataProvider = ({ children }) => {
     _setFavouriteTypes(arr);
     if (!uid || !favHydratedRef.current) return;
     // Debounce slightly so rapid edits collapse to one PUT.
-    if (setFavouriteTypes._t) clearTimeout(setFavouriteTypes._t);
-    setFavouriteTypes._t = setTimeout(() => {
+    if (favSaveTimerRef.current) clearTimeout(favSaveTimerRef.current);
+    favSaveTimerRef.current = setTimeout(() => {
       fetch(`${API_BASE_URL}/users/${encodeURIComponent(uid)}/favourites`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

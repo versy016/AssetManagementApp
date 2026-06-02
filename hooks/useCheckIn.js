@@ -205,15 +205,18 @@ export function useCheckIn({ id, returnTo }) {
 
   // Asset + users initial fetch
   useEffect(() => {
+    // Guard against setState-after-unmount: this effect retries with 1s sleeps
+    // (up to ~3s in flight), during which the user can navigate away.
+    let cancelled = false;
     const fetchData = async () => {
       try {
         const auth = getAuth();
         const currentUser = auth.currentUser;
         logger.log('Current user:', currentUser?.uid);
 
-        setUser(currentUser || { uid: 'guest' });
+        if (!cancelled) setUser(currentUser || { uid: 'guest' });
 
-        if (!id) { setError('Invalid asset ID'); setLoading(false); return; }
+        if (!id) { if (!cancelled) { setError('Invalid asset ID'); setLoading(false); } return; }
 
         let assetRes;
         let retries = 3;
@@ -258,11 +261,11 @@ export function useCheckIn({ id, returnTo }) {
           }
         }
         logger.log('Asset data:', assetData?.id);
-        setAsset(assetData);
+        if (!cancelled) setAsset(assetData);
       } catch (err) {
-        setError(`${err.message || 'Unknown error'}\n\nAPI URL: ${API_BASE_URL}\nAsset ID: ${id}`);
+        if (!cancelled) setError(`${err.message || 'Unknown error'}\n\nAPI URL: ${API_BASE_URL}\nAsset ID: ${id}`);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -283,13 +286,13 @@ export function useCheckIn({ id, returnTo }) {
       if (!response) { logger.error('Error fetching users:', lastError); return; }
       if (response.ok) {
         const list = await response.json();
-        setUsers(list);
-        setFilteredUsers(list);
+        if (!cancelled) { setUsers(list); setFilteredUsers(list); }
       }
     };
 
     fetchData();
     fetchUsers();
+    return () => { cancelled = true; };
   }, [id]);
 
   // Filter users by search query
@@ -633,7 +636,9 @@ export function useCheckIn({ id, returnTo }) {
       const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/actions`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ type: 'STATUS_CHANGE', note }),
+        // note_only + user_note_text mark this as a plain note (not a status
+        // transition) so it shows under Notes and is labelled "Note" in history.
+        body: JSON.stringify({ type: 'STATUS_CHANGE', note, data: { user_note_text: note, note_only: true } }),
       });
       if (!res.ok) throw new Error((await res.text()) || 'Failed to save note');
       setCreateNoteText('');

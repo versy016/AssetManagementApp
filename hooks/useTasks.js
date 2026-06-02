@@ -54,6 +54,22 @@ const addMonthsSafe = (date, months) => {
   return target;
 };
 
+// A service may be scheduled no more than this many months ahead.
+export const SERVICE_WINDOW_MONTHS = 6;
+
+// True when an ISO date (YYYY-MM-DD) is between today and today+6 months inclusive.
+export const isWithinServiceWindow = (isoDate) => {
+  if (!isoDate) return false;
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return false;
+  d.setHours(0, 0, 0, 0);
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = addMonthsSafe(start, SERVICE_WINDOW_MONTHS);
+  end.setHours(23, 59, 59, 999);
+  return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Task classification helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -659,6 +675,12 @@ export function useTasks() {
         if (signoffChoice === 'yes' && String(actionTask.actionType || '').toUpperCase() === 'MAINTENANCE') {
           if (!actionNextDate) {
             Alert.alert('Missing date', 'Please select the next service date.');
+            setActionSubmitting(false);
+            return;
+          }
+          // A service may only be booked up to 6 months ahead.
+          if (!isWithinServiceWindow(actionNextDate)) {
+            Alert.alert('Date too far ahead', 'The next service can be scheduled at most 6 months from today.');
             setActionSubmitting(false);
             return;
           }

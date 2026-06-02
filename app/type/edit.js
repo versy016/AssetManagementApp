@@ -21,6 +21,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DropDownPicker from 'react-native-dropdown-picker';
+import FieldTypePicker from '../../components/FieldTypePicker';
+import AlertModal from '../../components/AlertModal';
+import { validateCustomField, slugifyFieldName } from '../../utils/validateCustomField';
 import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { invalidateAssetTypeFields } from '../../hooks/useAssetTypeFields';
@@ -57,6 +60,22 @@ function DefaultFieldRow({ label }) {
     </View>
   );
 }
+
+// Human-readable label per field-type slug — shown as a badge so users know
+// what kind of field a (renameable) preset is. Keep in sync with type/new.js.
+const PRESET_TYPE_LABELS = {
+  text: 'Text',
+  textarea: 'Text area',
+  number: 'Number',
+  currency: 'Currency',
+  date: 'Date',
+  url: 'Document',
+  select: 'Select',
+  multiselect: 'Multi-select',
+  boolean: 'Yes / No',
+  email: 'Email',
+};
+const presetTypeLabel = (slug) => PRESET_TYPE_LABELS[String(slug || '').toLowerCase()] || 'Field';
 
 // ---- Pick-from-library presets ---------------------------------------------
 // IMPORTANT: this list must stay in lock-step with app/type/new.js's
@@ -156,6 +175,7 @@ export default function EditAssetType() {
     PRESET_LIBRARY.reduce((acc, p) => {
       acc[p.key] = {
         selected: false, required: false,
+        name: '',
         attachDoc: false, docName: '', docRequired: false,
         attachDate: false, dateName: '', dateRequired: false,
         reminderLeadDays: 0,
@@ -183,6 +203,7 @@ export default function EditAssetType() {
   const [addOpen, setAddOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [addModel, setAddModel] = useState({ name: '', field_type_id: null, is_required: false, optionsCsv: '', requiresDocSlug: '', reminderLeadDays: 0 });
+  const [fieldAlert, setFieldAlert] = useState({ visible: false, title: '', items: [] });
   const [conflictModalMessage, setConflictModalMessage] = useState(null);
   const [toast, setToast] = useState({ visible: false, text: '', kind: 'success' });
   const showToast = (text, kind = 'success') => {
@@ -323,6 +344,7 @@ export default function EditAssetType() {
         const nextPreset = PRESET_LIBRARY.reduce((acc, p) => {
           acc[p.key] = {
             selected: false, required: false,
+            name: '',
             attachDoc: false, docName: '', docRequired: false,
             attachDate: false, dateName: '', dateRequired: false,
             reminderLeadDays: 0,
@@ -355,15 +377,20 @@ export default function EditAssetType() {
         const fieldBySlug = (sl) => fields.find((ff) => slugOf(ff) === sl);
         const ftSlugOf = (f) => (ftList.find((x) => x.id === f.field_type_id)?.slug || '').toLowerCase();
 
-        // (a) Base preset match (selected / required / reminder)
+        // (a) Base preset match (selected / required / reminder).
+        // Load the field's actual stored name so the editable name input shows
+        // its current value (which may differ from the preset's default label).
         for (const f of fields) {
           const key = matchPresetKeyForField(f);
           if (key) {
+            const presetDef = PRESET_LIBRARY.find((p) => p.key === key);
+            const curName = (f.name || '').trim();
             nextPreset[key] = {
               ...nextPreset[key],
               selected: true,
               required: !!f.is_required,
               fieldId: f.id,
+              name: (curName && curName !== presetDef?.label) ? curName : '',
               reminderLeadDays: reminderOf(f),
             };
           }
@@ -604,8 +631,24 @@ export default function EditAssetType() {
       return;
     }
 
-    if (!addModel.name.trim() || !addModel.field_type_id) {
-      return Alert.alert('Missing info', 'Please select a field type and enter a field name.');
+    // Slugs already taken on this type: existing fields, selected presets,
+    // editable custom rows, and other queued additions — for duplicate checks.
+    const existingSlugs = [
+      ...(existingFields || []).map((f) => f.slug || slugifyFieldName(f.name)),
+      ...PRESET_LIBRARY.filter((p) => presetState[p.key]?.selected).map((p) => slugifyFieldName(p.label)),
+      ...editableCustom.map((r) => slugifyFieldName(r.name)),
+      ...newCustomQueue.map((q) => slugifyFieldName(q.name)),
+    ];
+    const errors = validateCustomField({
+      name: addModel.name,
+      hasFieldType: !!addModel.field_type_id,
+      hasOptions: !!getFieldTypeById(addModel.field_type_id)?.has_options,
+      optionsCsv: addModel.optionsCsv,
+      existingSlugs,
+    });
+    if (errors.length) {
+      setFieldAlert({ visible: true, title: 'Can’t add this field', items: errors });
+      return;
     }
 
     setNewCustomQueue((prev) => [
@@ -773,6 +816,8 @@ export default function EditAssetType() {
           continue;
         }
         if (!ftId) { presetErrors.push(`${p.label}: field type missing`); continue; }
+        // User may rename a preset; fall back to its default label.
+        const presetName = (state.name || '').trim() || p.label;
 
         if (ftSlug === 'date') {
           // DATE primary (+ optional attached document)
@@ -786,9 +831,9 @@ export default function EditAssetType() {
             vr.link_primary = 'date';
           }
           if (!exists) {
-            await createField({ name: p.label, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++, ...(Object.keys(vr).length ? { validation_rules: vr } : {}) }, p.label);
+            await createField({ name: presetName, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++, ...(Object.keys(vr).length ? { validation_rules: vr } : {}) }, p.label);
           } else {
-            await updateField(matched.id, { is_required: !!state.required, validation_rules: vr }, p.label);
+            await updateField(matched.id, { name: presetName, is_required: !!state.required, validation_rules: vr }, p.label);
           }
           // Ensure / rename / remove the attached document (url) field.
           if (state.attachDoc && docName) {
@@ -799,11 +844,11 @@ export default function EditAssetType() {
           }
         } else if (ftSlug === 'url') {
           // DOCUMENT primary (+ optional attached date)
-          const docName = p.label; // "Document"
+          const docName = presetName; // user-defined document name (default "Document")
           if (!exists) {
             await createField({ name: docName, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++ }, p.label);
           } else {
-            await updateField(matched.id, { is_required: !!state.required }, p.label);
+            await updateField(matched.id, { name: docName, is_required: !!state.required }, p.label);
           }
           const dateName = (state.dateName || '').trim();
           if (state.attachDate && dateName && dateTypeId) {
@@ -818,11 +863,11 @@ export default function EditAssetType() {
         } else {
           // Plain preset
           if (!exists) {
-            const payload = { name: p.label, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++ };
+            const payload = { name: presetName, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++ };
             if (p.options && slugHasOptions(p.fieldTypeSlug)) payload.options = p.options;
             await createField(payload, p.label);
-          } else if (!!matched.is_required !== !!state.required) {
-            await updateField(matched.id, { is_required: !!state.required }, p.label);
+          } else if ((matched.name || '') !== presetName || !!matched.is_required !== !!state.required) {
+            await updateField(matched.id, { name: presetName, is_required: !!state.required }, p.label);
           }
         }
       }
@@ -975,6 +1020,12 @@ export default function EditAssetType() {
           <Text style={s.toastText}>{toast.text}</Text>
         </View>
       )}
+      <AlertModal
+        visible={fieldAlert.visible}
+        title={fieldAlert.title}
+        items={fieldAlert.items}
+        onClose={() => setFieldAlert((a) => ({ ...a, visible: false }))}
+      />
       <ScreenHeader
         title="Edit Asset Type"
         backLabel="Go back"
@@ -1104,12 +1155,15 @@ export default function EditAssetType() {
                   <View key={p.key} style={s.gridItem}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 }}
                         onPress={() => togglePresetSelected(p.key)}
                         activeOpacity={0.8}
                       >
                         <Square checked={checked} />
-                        <Text style={s.gridLabel}>{p.label}</Text>
+                        <Text style={s.gridLabel} numberOfLines={1}>{(state.name || '').trim() || p.label}</Text>
+                        <View style={s.typeBadge}>
+                          <Text style={s.typeBadgeText}>{presetTypeLabel(p.fieldTypeSlug)}</Text>
+                        </View>
                       </TouchableOpacity>
                       <View style={s.reqWrap}>
                         <Text style={s.reqLabel}>Required</Text>
@@ -1135,6 +1189,32 @@ export default function EditAssetType() {
                         </View>
                       )}
                     </View>
+
+                    {/* When selected: rename is hidden behind an "Edit field name" button */}
+                    {checked ? (
+                      state.editingName ? (
+                        <View style={{ width: '100%', marginTop: 8 }}>
+                          <Text style={s.subLabel}>Field name</Text>
+                          <TextInput
+                            style={s.input}
+                            value={state.name ?? ''}
+                            placeholder={p.label}
+                            onChangeText={(t) => setPreset(p.key, { name: t })}
+                            autoFocus
+                          />
+                          <TouchableOpacity style={s.editNameDone} onPress={() => setPreset(p.key, { editingName: false })} activeOpacity={0.85}>
+                            <MaterialIcons name="check" size={16} color="#fff" />
+                            <Text style={s.editNameDoneText}>Done</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={s.editNameBtn} onPress={() => setPreset(p.key, { editingName: true })} activeOpacity={0.85}>
+                          <MaterialIcons name="edit" size={14} color={Colors.primaryDark} />
+                          <Text style={s.editNameBtnText}>Edit field name</Text>
+                        </TouchableOpacity>
+                      )
+                    ) : null}
+
                     {/* DATE preset → optionally attach a document to this date */}
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
@@ -1273,22 +1353,12 @@ export default function EditAssetType() {
                   <TextInput style={s.input} value={row.name} onChangeText={(t) => updateCustomRow(row.id, { name: t })} />
 
                   <Text style={s.subLabel}>Field type</Text>
-                  <View style={{ zIndex: 2000 }}>
-                    <DropDownPicker
-                      open={row.__open || false}
-                      value={row.field_type_id}
-                      items={fieldTypeItems}
-                      setOpen={(o) => updateCustomRow(row.id, { __open: o })}
-                      setValue={(cb) => {
-                        const newVal = cb(row.field_type_id);
-                        updateCustomRow(row.id, { field_type_id: newVal });
-                      }}
-                      placeholder="Select a field type"
-                      style={s.dropdown}
-                      dropDownContainerStyle={s.dropdownContainer}
-                      listMode="MODAL"
-                    />
-                  </View>
+                  <FieldTypePicker
+                    value={row.field_type_id}
+                    items={fieldTypeItems}
+                    onChange={(newVal) => updateCustomRow(row.id, { field_type_id: newVal })}
+                    placeholder="Select a field type"
+                  />
 
                   {isDate && (
                     <>
@@ -1388,22 +1458,12 @@ export default function EditAssetType() {
                 />
 
                 <Text style={s.subLabel}>Field type</Text>
-                <View style={{ zIndex: 3000 }}>
-                  <DropDownPicker
-                    open={pickerOpen}
-                    value={addModel.field_type_id}
-                    items={fieldTypeItems}
-                    setOpen={setPickerOpen}
-                    setValue={(cb) => {
-                      const newVal = cb(addModel.field_type_id);
-                      setAddModel((m) => ({ ...m, field_type_id: newVal }));
-                    }}
-                    placeholder="Select a field type"
-                    style={s.dropdown}
-                    dropDownContainerStyle={s.dropdownContainer}
-                    listMode="MODAL"
-                  />
-                </View>
+                <FieldTypePicker
+                  value={addModel.field_type_id}
+                  items={fieldTypeItems}
+                  onChange={(newVal) => setAddModel((m) => ({ ...m, field_type_id: newVal }))}
+                  placeholder="Select a field type"
+                />
 
                 {(() => {
                   const meta = getFieldTypeById(addModel.field_type_id);
@@ -1575,6 +1635,13 @@ export default function EditAssetType() {
                   if (!st.selected && ex) deletes.push(`${p.label}`);
                   if (st.selected && ex && (!!ex.is_required !== !!st.required)) {
                     updates.push(`\u2022 ${p.label} • Required: ${ex.is_required ? 'Yes' : 'No'} → ${st.required ? 'Yes' : 'No'}`);
+                  }
+                  // Renamed preset field
+                  if (st.selected && ex) {
+                    const newName = (st.name || '').trim() || p.label;
+                    if ((ex.name || '') !== newName) {
+                      updates.push(`• ${p.label} • Renamed to: ${newName}`);
+                    }
                   }
                   // show date doc links in summary if present
                   if (st.selected && ex && (p.fieldTypeSlug || '').toLowerCase() === 'date') {
@@ -1951,6 +2018,12 @@ const s = StyleSheet.create({
     alignItems: 'stretch',
   },
   gridLabel: { marginLeft: 10, fontSize: sf(14), color: Colors.text, flexShrink: 1, flex: 1, fontWeight: '700' },
+  typeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: Colors.chip, borderWidth: 1, borderColor: Colors.line, flexShrink: 0 },
+  typeBadgeText: { fontSize: sf(10), fontWeight: '800', color: Colors.sub, textTransform: 'uppercase', letterSpacing: 0.4 },
+  editNameBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingVertical: 7, paddingHorizontal: 12, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
+  editNameBtnText: { fontSize: sf(13), fontWeight: '800', color: Colors.primaryDark },
+  editNameDone: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingVertical: 8, paddingHorizontal: 16, borderRadius: Radius.sm, backgroundColor: Colors.primary },
+  editNameDoneText: { fontSize: sf(13), fontWeight: '800', color: '#fff' },
   gridBox: { width: 20, height: 20, borderRadius: Radius.sm, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   gridBoxChecked: { borderColor: Colors.accent, backgroundColor: Colors.accent },
   gridBoxUnchecked: { borderColor: '#64748B', backgroundColor: '#F1F5F9' },

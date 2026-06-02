@@ -102,7 +102,9 @@ export default function QuickNoteScreen() {
         body: JSON.stringify({
           type: 'STATUS_CHANGE',
           note: trimmed,
-          data: { user_note_text: trimmed },
+          // note_only marks this STATUS_CHANGE as a plain user note (not an
+          // actual status transition) so history/activity label it as "Note".
+          data: { user_note_text: trimmed, note_only: true },
         }),
       });
 

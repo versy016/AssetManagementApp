@@ -372,13 +372,14 @@ export default function TaskActionModal({
         </KeyboardAvoidingView>
       </View>
 
-      {/* Date picker */}
+      {/* Date picker — next service may be scheduled at most 6 months out */}
       <DatePickerModal
         locale="en-GB"
         mode="single"
         visible={dateOpen}
         onDismiss={() => setDateOpen(false)}
         date={new Date(actionNextDate)}
+        validRange={{ startDate: serviceWindowStart(), endDate: serviceWindowEnd() }}
         onConfirm={({ date }) => {
           setDateOpen(false);
           const y = date.getFullYear();
@@ -395,16 +396,33 @@ export default function TaskActionModal({
 // Small sub-components (private to this file)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Next service can be booked at most 6 months ahead, so the quick chips stop at 6.
 function QuickDateRow({ setNextMonths }) {
   return (
     <View style={styles.quickDateRow}>
-      {[3, 6, 12].map((months) => (
+      {[1, 3, 6].map((months) => (
         <TouchableOpacity key={months} onPress={() => setNextMonths(months)} style={styles.quickDateChip}>
-          <Text style={styles.quickDateChipText}>+{months} months</Text>
+          <Text style={styles.quickDateChipText}>+{months} month{months === 1 ? '' : 's'}</Text>
         </TouchableOpacity>
       ))}
     </View>
   );
+}
+
+// Shared service-window bounds: today .. today + 6 months. Defined once here so
+// the picker's validRange and any future callers stay consistent.
+function serviceWindowStart() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function serviceWindowEnd() {
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  const target = new Date(base.getFullYear(), base.getMonth() + 6, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(base.getDate(), last));
+  return target;
 }
 
 function DocUploadSection({ label, actionDocSlug, actionDocPicked, setActionDocPicked, containerStyle }) {

@@ -1407,6 +1407,27 @@ export default function NewAsset() {
           </View>
         );
 
+      case 'currency':
+        return (
+          <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
+            {Label}
+            <View style={[styles.currencyField, !!errors[slug] && styles.inputError]}>
+              <Text style={styles.currencyPrefix}>$</Text>
+              <TextInput
+                ref={setInputRef(slug)}
+                style={styles.currencyInput}
+                placeholder="0.00"
+                placeholderTextColor={Colors.sub2}
+                keyboardType="numeric"
+                value={fieldValues[slug] !== undefined && fieldValues[slug] !== null ? String(fieldValues[slug]) : ''}
+                // Store the raw number only — the $ is a display affordance.
+                onChangeText={(t) => updateField(slug, t.replace(/[^\d.]/g, ''))}
+              />
+            </View>
+            {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+          </View>
+        );
+
       case 'date':
       case 'datetime': {
         // Try to read a linked document slug + which side is "primary"
@@ -2057,30 +2078,6 @@ export default function NewAsset() {
           {!!errors.image && <Text style={styles.errorBelow}>{errors.image}</Text>}
         </TourTarget>
 
-        {/* Document — explicitly low zIndex so an open Status dropdown menu
-           above us paints cleanly over this section. */}
-        <View onLayout={onLayoutFor('document')} style={{ zIndex: 1 }}>
-          {document && (
-            <Text style={{ marginTop: 10, fontStyle: 'italic' }}>Attached: {document.name}</Text>
-          )}
-          {!!errors.document && <Text style={styles.errorBelow}>{errors.document}</Text>}
-          <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <TouchableOpacity style={styles.btn} onPress={pickDocument} disabled={uploading}>
-              <Text>{document ? 'Replace Document' : 'Attach Document'}</Text>
-            </TouchableOpacity>
-            {document ? (
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: Colors.dangerBg, opacity: uploading ? 0.6 : 1 }]}
-                onPress={() => { if (!uploading) setDocument(null); }}
-                disabled={uploading}
-              >
-                <Text style={{ color: Colors.dangerFg }}>Remove</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-
         {/* Submit */}
         <TourTarget id="asset-save">
           <FormButton
@@ -2302,6 +2299,11 @@ const CardShadow = { shadowColor: '#1C1917', shadowOpacity: 0.06, shadowRadius: 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 20 : 0, backgroundColor: Colors.bg },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, padding: 12, marginVertical: 8, color: Colors.text, backgroundColor: Colors.card },
+  // Currency input: a bordered row with a leading "$" adornment. The stored
+  // value stays a plain number; the symbol is display-only.
+  currencyField: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 12, marginVertical: 8, backgroundColor: Colors.card },
+  currencyPrefix: { fontSize: sf(16), fontWeight: '800', color: Colors.sub, marginRight: 6 },
+  currencyInput: { flex: 1, paddingVertical: 12, color: Colors.text, fontSize: sf(15) },
   label: { marginTop: 10, marginBottom: 6, fontWeight: '700', color: Colors.text },
   labelError: { color: Colors.dangerFg },
   inputError: { borderColor: Colors.dangerFg },

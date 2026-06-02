@@ -154,6 +154,28 @@ async function syncDocumentDateToAssetField(assetId, asset_type_field_id, relate
   });
 }
 
+// When a document is bound to a `url` (document) field, mirror the document's
+// URL into that field's value in asset_field_values. This keeps the two
+// representations in sync so the edit form (which reads the field value) and
+// the detail screen both show the document UNDER the field, instead of only in
+// the generic Documents tab. No-op when the field isn't a url-type field.
+async function syncDocumentUrlToAssetField(assetId, asset_type_field_id, url) {
+  if (!assetId || !asset_type_field_id || !url) return;
+  const field = await prisma.asset_type_fields.findUnique({
+    where: { id: String(asset_type_field_id) },
+    include: { field_type: true },
+  });
+  const code = String(field?.field_type?.slug || field?.field_type?.name || '').toLowerCase();
+  if (code !== 'url') return; // only mirror into document/url fields
+  await prisma.asset_field_values.upsert({
+    where: {
+      asset_id_asset_type_field_id: { asset_id: assetId, asset_type_field_id: String(asset_type_field_id) },
+    },
+    update: { value: String(url) },
+    create: { asset_id: assetId, asset_type_field_id: String(asset_type_field_id), value: String(url) },
+  });
+}
+
 // List documents across assets (must be before /:assetId/documents so "/documents" is not captured as assetId)
 router.get('/documents', async (req, res) => {
   try {
@@ -264,6 +286,15 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
           await syncDocumentDateToAssetField(assetId, asset_type_field_id || doc.asset_type_field_id, doc.related_date, related_date_label || doc.related_date_label);
         } catch (e) {
           // non-fatal: document is saved, only sync to asset field failed
+        }
+      }
+      // Mirror the document URL into the bound url-field's value (if any) so it
+      // shows under the field in edit/detail, not just the Documents tab.
+      if (asset_type_field_id || doc.asset_type_field_id) {
+        try {
+          await syncDocumentUrlToAssetField(assetId, asset_type_field_id || doc.asset_type_field_id, doc.url);
+        } catch (e) {
+          // non-fatal
         }
       }
       await recordDocumentCreatedAction(assetId, req, doc);

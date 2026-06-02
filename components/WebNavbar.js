@@ -86,6 +86,13 @@ export default function WebNavbar() {
   // Drawer slide animation
   const slideAnim = useRef(new Animated.Value(-280)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
+  // Stop in-flight animations on unmount and guard the close callback so it
+  // can't setState after the component is gone.
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    try { slideAnim.stopAnimation(); overlayAnim.stopAnimation(); } catch { /* ignore */ }
+  }, [slideAnim, overlayAnim]);
 
   const openDrawer = () => {
     setDrawerOpen(true);
@@ -100,6 +107,7 @@ export default function WebNavbar() {
       Animated.timing(slideAnim, { toValue: -280, duration: 220, useNativeDriver: true }),
       Animated.timing(overlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => {
+      if (!mountedRef.current) return;
       setDrawerOpen(false);
       if (callback) callback();
     });

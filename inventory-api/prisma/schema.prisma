@@ -76,6 +76,13 @@ model assets {
   asset_types       asset_types?         @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   actions           asset_actions[]
   documents         asset_documents[]
+
+  // Indexes for the common list/filter/group-by paths (status summary,
+  // inventory filters, per-user assignment lookups). FK columns are NOT
+  // auto-indexed by Postgres, so these are added explicitly.
+  @@index([type_id])
+  @@index([status])
+  @@index([assigned_to_id])
 }
 
 model asset_field_values {
@@ -219,6 +226,12 @@ model asset_actions {
 
   @@index([asset_id, occurred_at])
   @@index([type])
+  // Activity feed / task queries filter by actor and transfer participants.
+  @@index([performed_by])
+  @@index([from_user_id])
+  @@index([to_user_id])
+  // Global activity feed orders by occurred_at across all assets.
+  @@index([occurred_at])
 }
 
 // Optional structured details per action (1:1) to enable reporting

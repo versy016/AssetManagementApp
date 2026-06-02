@@ -275,6 +275,22 @@ export default function MapsTabScreen() {
     };
   }, [markers, mapsKey]);
 
+  // Unmount-only cleanup: detach the map's click listener and release the map
+  // instance. Kept separate from the per-markers effect above so we don't tear
+  // down and rebuild the whole map every time the marker set changes.
+  useEffect(() => {
+    return () => {
+      try {
+        if (googleMapRef.current && window.google?.maps?.event) {
+          window.google.maps.event.clearInstanceListeners(googleMapRef.current);
+        }
+      } catch { /* ignore */ }
+      try { googleMarkersRef.current.forEach((mk) => mk.setMap(null)); } catch { /* ignore */ }
+      googleMarkersRef.current = [];
+      googleMapRef.current = null;
+    };
+  }, []);
+
   const webViewHtml = useMemo(() => {
     if (!mapsKey) {
       return '<!DOCTYPE html><html><body style="font-family:system-ui;padding:16px">Missing maps key</body></html>';

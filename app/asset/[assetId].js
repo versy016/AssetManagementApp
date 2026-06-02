@@ -260,6 +260,20 @@ export default function AssetDetailPage() {
     formatFieldLabel,
   } = detail;
 
+  // Memoize the collapsed/expanded slices so they aren't re-sliced every render.
+  const visibleNoteItems = useMemo(
+    () => (notesExpanded ? noteItems : noteItems.slice(0, 5)),
+    [notesExpanded, noteItems]
+  );
+  const visibleWorkHistory = useMemo(
+    () => (maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 3)),
+    [maintenanceExpanded, workDetailHistory]
+  );
+  const visibleTypedNotes = useMemo(
+    () => (notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)),
+    [notesSectionExpanded, typedNotes]
+  );
+
   const displaySerial = useMemo(() => {
     if (!asset) return '';
     const fromCol = asset.serial_number != null ? String(asset.serial_number).trim() : '';
@@ -563,7 +577,7 @@ export default function AssetDetailPage() {
                   </View>
           ) : (
               <View style={{ gap: 10 }}>
-                    {(notesExpanded ? noteItems : noteItems.slice(0, 5)).map((n) => {
+                    {visibleNoteItems.map((n) => {
                       const meta = typeMeta(n.type, { transferToMe: n.transferToMe });
                       const activityDescription = meta.description || (n.type ? String(n.type).replace(/_/g, ' ') : 'Note');
                   return (
@@ -676,7 +690,7 @@ export default function AssetDetailPage() {
                   </View>
                 ) : (
                   <View style={{ gap: 12 }}>
-                    {(maintenanceExpanded ? workDetailHistory : workDetailHistory.slice(0, 3)).map((w) => {
+                    {visibleWorkHistory.map((w) => {
                       const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
                       const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
                       const isService = w.type === 'MAINTENANCE';
@@ -739,7 +753,7 @@ export default function AssetDetailPage() {
                         <Text style={styles.noteText}>{assetNote}</Text>
                       </View>
                     )}
-                    {(notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)).map((n) => (
+                    {visibleTypedNotes.map((n) => (
                       <View key={n.id} style={styles.noteCard}>
                         <View style={styles.noteHead}>
                           <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
