@@ -520,6 +520,79 @@ export function useAssetDetail({ assetId, returnTo }) {
     }
   }, [asset?.id, assetId, load]);
 
+  // ── Note edit / delete (admin: any note; user: own notes) ───────────────
+  // Whether the current user may modify a given note (server still enforces).
+  const canManageNote = useCallback((note) => {
+    if (isAdmin) return true;
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    return !!uid && note && String(note.performed_by || '') === String(uid);
+  }, [isAdmin, authUser]);
+
+  const editNote = useCallback(async (noteId, text) => {
+    const aId = asset?.id || assetId;
+    const body = String(text || '').trim();
+    if (!aId || !noteId) return false;
+    if (!body) { showError('Note text is required.'); return false; }
+    try {
+      const uid = auth.currentUser?.uid;
+      const authH = await getAuthHeaders();
+      const headers = { 'Content-Type': 'application/json', ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
+      const res = await fetch(`${API_BASE_URL}/assets/${aId}/actions/${noteId}/note`, {
+        method: 'PATCH', headers, body: JSON.stringify({ note: body }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || `Failed to edit note (${res.status})`);
+      }
+      await load();
+      return true;
+    } catch (e) {
+      showError(e?.message || 'Failed to edit note');
+      return false;
+    }
+  }, [asset?.id, assetId, load]);
+
+  // Demote the asset's priority note back to a normal note (kept, just unpinned).
+  const removeNotePriority = useCallback(async () => {
+    const aId = asset?.id || assetId;
+    if (!aId) return;
+    const ok = await confirm('Make this a normal note? It will no longer be a priority note.');
+    if (!ok) return;
+    try {
+      const uid = auth.currentUser?.uid;
+      const authH = await getAuthHeaders();
+      const headers = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
+      const res = await fetch(`${API_BASE_URL}/assets/${aId}/priority-note`, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || `Failed to update note (${res.status})`);
+      }
+      await load();
+    } catch (e) {
+      showError(e?.message || 'Failed to update note');
+    }
+  }, [asset?.id, assetId, load]);
+
+  const deleteNote = useCallback(async (noteId) => {
+    const aId = asset?.id || assetId;
+    if (!aId || !noteId) return;
+    const ok = await confirm('Delete this note? This cannot be undone.');
+    if (!ok) return;
+    try {
+      const uid = auth.currentUser?.uid;
+      const authH = await getAuthHeaders();
+      const headers = { ...authH, ...(uid ? { 'X-User-Id': uid } : {}) };
+      const res = await fetch(`${API_BASE_URL}/assets/${aId}/actions/${noteId}/note`, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || `Failed to delete note (${res.status})`);
+      }
+      await load();
+    } catch (e) {
+      showError(e?.message || 'Failed to delete note');
+    }
+  }, [asset?.id, assetId, load]);
+
   // Build dynamic data (fields + docs)
   const buildDynamicData = () => {
     const rows = [];
@@ -1046,7 +1119,15 @@ export function useAssetDetail({ assetId, returnTo }) {
           const fromLabel = a.from_user?.name || a.from_user?.useremail || a.from_user_id || '';
           const toLabel   = a.to_user?.name   || a.to_user?.useremail   || a.to_user_id   || '';
           const whoName = performer || fromLabel || toLabel || 'System';
-          return ({ id: a.id, note: a.data.user_note_text.trim(), when: a.occurred_at, who: whoName });
+          return ({
+            id: a.id,
+            note: a.data.user_note_text.trim(),
+            when: a.occurred_at,
+            who: whoName,
+            performed_by: a.performed_by || null, // for owner-based edit/delete permission
+            edited: !!a.data.edited_at,
+            important: !!a.data.important, // priority/pinned note
+          });
         });
     } catch { return []; }
   }, [actions]);
@@ -1076,6 +1157,7 @@ export function useAssetDetail({ assetId, returnTo }) {
     loading,
     err,
     isAdmin,
+    authUser,
     notesExpanded,
     setNotesExpanded,
     notesSectionExpanded,
@@ -1112,6 +1194,10 @@ export function useAssetDetail({ assetId, returnTo }) {
     isOverdue,
     // Handlers
     load,
+    canManageNote,
+    editNote,
+    deleteNote,
+    removeNotePriority,
     parseReturnTarget,
     navigateToReturnTarget,
     handleAttachReport,

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   Platform,
@@ -33,6 +34,11 @@ export default function AuthLayout({ subtitle, children }) {
         {/* ── Left: branding panel ── */}
         <View style={s.splitBrand}>
           <View style={s.splitBrandInner}>
+            <Image
+              source={require('../../assets/images/gearops-mark.png')}
+              style={s.splitHeroLogo}
+              resizeMode="contain"
+            />
             <View style={s.splitLogoWrap}>
               <Text style={s.splitLogoGear}>GEAR</Text>
               <Text style={s.splitLogoOps}>OPS</Text>
@@ -86,6 +92,11 @@ export default function AuthLayout({ subtitle, children }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={s.hero}>
+            <Image
+              source={require('../../assets/images/gearops-mark.png')}
+              style={s.heroLogo}
+              resizeMode="contain"
+            />
             <View style={s.logoWrap}>
               <Text style={s.logoGear}>GEAR</Text>
               <Text style={s.logoOps}>OPS</Text>
@@ -134,6 +145,11 @@ const s = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 48,
     paddingHorizontal: 24,
+  },
+  heroLogo: {
+    width: 104,
+    height: 104,
+    marginBottom: 14,
   },
   logoWrap: {
     flexDirection: 'row',
@@ -193,6 +209,11 @@ const s = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
     width: '100%',
+  },
+  splitHeroLogo: {
+    width: 112,
+    height: 112,
+    marginBottom: 18,
   },
   splitLogoWrap: {
     flexDirection: 'row',

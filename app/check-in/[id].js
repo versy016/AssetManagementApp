@@ -1,9 +1,10 @@
 // [id].js -- Clean Light Theme Check‑In / Transfer Screen
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
@@ -16,10 +17,16 @@ import {
   ScrollView,
   InteractionManager,
   KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import ActionsForm from '../../components/ActionsForm';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
+import PriorityNotesBanner from '../../components/PriorityNotesBanner';
+import { getAuthHeaders } from '../../utils/authHeaders';
+import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES, revokeImageUri } from '../../utils/getFormFileFromPicker';
 // NOTE: Avoid static import of expo-location to prevent SSR/import loops on web.
 // We'll require it dynamically at runtime when needed.
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,6 +63,20 @@ const badgeTone = (status) => {
   return { bg: Colors.chip, fg: Colors.sub };
 };
 
+// Short, locale-friendly "last updated" formatting (12-hour clock).
+const fmtWhen = (iso) => {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) h = 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${String(d.getDate()).padStart(2, '0')} ${m[d.getMonth()]} ${d.getFullYear()}, ${h}:${mm} ${ampm}`;
+  } catch { return ''; }
+};
+
 const Chip = ({ label, tone }) => (
   <View style={[styles.chip, { backgroundColor: tone?.bg, borderColor: Colors.line }]}>
     <Text style={[styles.chipText, { color: tone?.fg }]}>{label}</Text>
@@ -80,6 +101,135 @@ const AvatarCircle = ({ name, email }) => {
   );
 };
 
+// Asset image with an inline add/replace flow, shown inside the asset card.
+// When there is no image it shows a clear placeholder plus an Add-image button;
+// after a successful upload it offers to jump back to the scanner.
+const AssetImageBlock = ({ imageUrl, uploading, justAdded, onAdd, onScanAnother }) => (
+  <View style={ab.wrap}>
+    <View style={ab.imageBox}>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} style={ab.image} resizeMode="contain" />
+      ) : (
+        <View style={ab.noImage}>
+          <MaterialIcons name="image-not-supported" size={32} color={Colors.sub2} />
+          <Text style={ab.noImageText}>No image available</Text>
+        </View>
+      )}
+      {uploading ? (
+        <View style={ab.overlay} pointerEvents="none">
+          <ActivityIndicator color="#fff" />
+          <Text style={ab.overlayText}>Uploading…</Text>
+        </View>
+      ) : null}
+    </View>
+
+    {justAdded ? (
+      <View style={ab.addedRow}>
+        <View style={ab.addedBanner}>
+          <MaterialIcons name="check-circle" size={15} color={Colors.successFg} />
+          <Text style={ab.addedText}>Image added</Text>
+        </View>
+        <TouchableOpacity style={ab.scanBtn} onPress={onScanAnother} activeOpacity={0.85}>
+          <MaterialIcons name="qr-code-scanner" size={15} color={Colors.primary} />
+          <Text style={ab.scanText}>Scan another</Text>
+        </TouchableOpacity>
+      </View>
+    ) : !imageUrl ? (
+      // Only offer Add when there is no image — no replace control once set.
+      <TouchableOpacity
+        style={[ab.addBtn, uploading && { opacity: 0.6 }]}
+        onPress={onAdd}
+        disabled={uploading}
+        activeOpacity={0.85}
+      >
+        <MaterialIcons name="add-a-photo" size={16} color="#fff" />
+        <Text style={ab.addText}>Add image</Text>
+      </TouchableOpacity>
+    ) : null}
+  </View>
+);
+
+// Priority-note toggle styling (banner itself is the shared PriorityNotesBanner).
+const pn = StyleSheet.create({
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card },
+  toggleRowOn: { borderColor: Colors.dangerFg, backgroundColor: Colors.dangerBg },
+  toggleLabel: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  toggleHint: { fontSize: sf(12), color: Colors.sub, marginTop: 2, lineHeight: sf(16) },
+});
+
+// A single label / value detail row — icon, muted uppercase label, bold value.
+// `highlight` gives the row an accent-tinted band (used for Assigned).
+const DetailRow = ({ icon, label, value, last, highlight, valueLines = 3 }) => {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  return (
+    <View style={[dl.row, highlight && dl.rowHi, last && !highlight && { borderBottomWidth: 0 }]}>
+      <MaterialIcons name={icon} size={15} color={highlight ? Colors.accent : Colors.sub2} style={dl.rowIcon} />
+      <Text style={[dl.label, highlight && { color: Colors.accentDark }]}>{label}</Text>
+      <Text style={[dl.value, highlight && dl.valueHi]} numberOfLines={valueLines}>{String(value)}</Text>
+    </View>
+  );
+};
+
+// Description row with a "See more / See less" toggle for long text.
+const DescriptionRow = ({ value }) => {
+  const [expanded, setExpanded] = useState(false);
+  const v = value == null ? '' : String(value).trim();
+  if (!v) return null;
+  const longish = v.length > 100; // roughly more than ~2 lines
+  return (
+    <View style={dl.row}>
+      <MaterialIcons name="notes" size={15} color={Colors.sub2} style={dl.rowIcon} />
+      <Text style={dl.label}>Description</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={dl.value} numberOfLines={expanded ? undefined : 2}>{v}</Text>
+        {longish ? (
+          <TouchableOpacity onPress={() => setExpanded((x) => !x)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Text style={dl.seeMore}>{expanded ? 'See less' : 'See more'}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+};
+
+const dl = StyleSheet.create({
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
+  titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  seeMore: { color: Colors.accent, fontWeight: '800', fontSize: sf(12), marginTop: 3 },
+  title: { fontSize: sf(17), fontWeight: '900', color: Colors.text },
+  idChip: { backgroundColor: Colors.primary, paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.sm },
+  idChipText: { color: '#fff', fontSize: sf(10), fontWeight: '800', letterSpacing: 0.5 },
+  list: { marginTop: 6, borderTopWidth: 1, borderTopColor: Colors.line },
+  row: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 5, gap: 10, borderBottomWidth: 1, borderBottomColor: Colors.line },
+  rowHi: { backgroundColor: Colors.accentMuted, borderBottomWidth: 0, borderRadius: 8, paddingHorizontal: 8, marginVertical: 3 },
+  rowIcon: { width: 19, marginTop: 1 },
+  label: { width: 86, fontSize: sf(10), fontWeight: '800', color: Colors.sub2, textTransform: 'uppercase', letterSpacing: 0.4, paddingTop: 1 },
+  value: { flex: 1, fontSize: sf(14), fontWeight: '700', color: Colors.text, lineHeight: sf(18) },
+  valueHi: { color: Colors.accentDark, fontWeight: '900' },
+});
+
+const ab = StyleSheet.create({
+  wrap: { marginBottom: 8, gap: 7 },
+  imageBox: {
+    height: 200, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line,
+    backgroundColor: Colors.card, overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
+  },
+  image: { width: '100%', height: '100%' },
+  noImage: { alignItems: 'center', justifyContent: 'center', gap: 6 },
+  noImageText: { color: Colors.sub2, fontWeight: '700', fontSize: sf(13) },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  overlayText: { color: '#fff', fontWeight: '700' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: Radius.md, backgroundColor: Colors.accent },
+  addText: { color: '#fff', fontWeight: '800', fontSize: sf(14) },
+  replaceBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.chip },
+  replaceText: { color: Colors.text, fontWeight: '800', fontSize: sf(13) },
+  addedRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addedBanner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 10, borderRadius: Radius.md, backgroundColor: Colors.successBg, borderWidth: 1, borderColor: Colors.successFg },
+  addedText: { color: Colors.successFg, fontWeight: '800', fontSize: sf(13) },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.primary, backgroundColor: Colors.card },
+  scanText: { color: Colors.primary, fontWeight: '800', fontSize: sf(13) },
+});
+
 // ---------- Main Screen ----------
 export default function CheckInScreen() {
   const { id, returnTo } = useLocalSearchParams(); // Get asset ID and return URL from route params
@@ -92,6 +242,9 @@ export default function CheckInScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   // State for asset details
   const [asset, setAsset] = useState(null);
+  // Inline asset-image add/replace state
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageJustAdded, setImageJustAdded] = useState(false);
   // State for error messages
   const [error, setError] = useState(null);
   // State for user selection modal
@@ -103,6 +256,77 @@ export default function CheckInScreen() {
   const nameForUser = (dbUserId) => {
     const u = users.find(x => x.id === dbUserId);
     return (u?.name || u?.useremail || (dbUserId ? `User ${dbUserId}` : 'Unassigned'));
+  };
+
+  // ── Inline asset-image add / replace ───────────────────────────────────
+  const uploadAssetImage = async (picked) => {
+    const aid = asset?.id || id;
+    if (!picked || !aid) return;
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      if (picked.file && typeof File !== 'undefined' && picked.file instanceof File) {
+        fd.append('image', picked.file, picked.file.name || 'upload.jpg');
+      } else if (picked.uri) {
+        fd.append('image', { uri: picked.uri, name: picked.name || 'upload.jpg', type: picked.type || 'image/jpeg' });
+      } else {
+        throw new Error('Could not read the selected image.');
+      }
+      const headers = await getAuthHeaders(); // no Content-Type → multipart boundary auto-set
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(aid)}/files`, { method: 'PUT', headers, body: fd });
+      if (!res.ok) throw new Error((await res.text()) || `Upload failed (HTTP ${res.status}).`);
+      try {
+        const r = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(aid)}`);
+        if (r.ok) {
+          const fresh = await r.json();
+          setAsset((prev) => ({ ...(prev || {}), ...fresh }));
+        }
+      } catch { /* upload already succeeded */ }
+      setImageJustAdded(true);
+    } catch (e) {
+      Alert.alert('Could not add image', e?.message || 'Please try again.');
+    } finally {
+      try { revokeImageUri(picked?.uri); } catch { /* ignore */ }
+      setUploadingImage(false);
+    }
+  };
+
+  const addAssetImage = async () => {
+    if (uploadingImage) return;
+    try {
+      if (Platform.OS === 'web') {
+        const result = await getImageFileFromPicker();
+        if (result) await uploadAssetImage(result);
+        return;
+      }
+      Alert.alert('Add asset image', 'Choose how to add a photo of this asset.', [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') { Alert.alert('Permission required', 'Camera permission is required to take photos.'); return; }
+            const { assets, canceled } = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.7 });
+            if (canceled || !assets?.length) return;
+            const a = assets[0];
+            const type = (a.mimeType || 'image/jpeg').replace(/jpg/i, 'jpeg');
+            if (!ALLOWED_IMAGE_MIME_TYPES.includes(type)) { Alert.alert('Unsupported image', 'Please use a JPG, PNG or WEBP image.'); return; }
+            const name = a.fileName || `photo_${Date.now()}.jpg`;
+            await uploadAssetImage({ uri: a.uri, file: { uri: a.uri, name, type }, name, type });
+          },
+        },
+        {
+          text: 'Choose from Library',
+          onPress: async () => { const result = await getImageFileFromPicker(); if (result) await uploadAssetImage(result); },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ], { cancelable: true });
+    } catch (e) {
+      Alert.alert('Could not add image', e?.message || 'Please try again.');
+    }
+  };
+
+  const goToScanner = () => {
+    try { router.replace('/qr-scanner'); } catch { router.push('/qr-scanner'); }
   };
   const [postActionUi, setPostActionUi] = useState(null); // { title, message, onGo, onStay }
   const [showOtherModal, setShowOtherModal] = useState(false);
@@ -139,7 +363,65 @@ export default function CheckInScreen() {
   // Create note only (no transfer): show input and submit to POST /assets/:id/actions
   const [showCreateNoteInput, setShowCreateNoteInput] = useState(false);
   const [createNoteText, setCreateNoteText] = useState('');
+  const [createNoteImportant, setCreateNoteImportant] = useState(false);
   const [createNoteSubmitting, setCreateNoteSubmitting] = useState(false);
+  // Priority (pinned) notes shown prominently on this asset.
+  const [priorityNotes, setPriorityNotes] = useState([]);
+  const loadPriorityNotes = useCallback(async () => {
+    const aid = asset?.id || id;
+    if (!aid) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(aid)}/actions`);
+      if (!res.ok) return;
+      const j = await res.json();
+      const arr = Array.isArray(j?.actions) ? j.actions : [];
+      const notes = arr
+        .filter((a) => a?.data?.important && typeof a?.data?.user_note_text === 'string' && a.data.user_note_text.trim())
+        .map((a) => ({
+          id: a.id,
+          note: a.data.user_note_text.trim(),
+          who: a.performer?.name || a.performer?.useremail || a.performed_by || 'System',
+        }));
+      setPriorityNotes(notes);
+    } catch { /* non-fatal */ }
+  }, [asset?.id, id]);
+  useEffect(() => { loadPriorityNotes(); }, [loadPriorityNotes]);
+
+  // Demote a priority note back to a normal note (kept, just unpinned).
+  const removePriorityNote = useCallback(() => {
+    const aid = asset?.id || id;
+    if (!aid) return;
+    Alert.alert(
+      'Make this a normal note?',
+      'It will no longer be a priority note.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Make normal',
+          onPress: async () => {
+            try {
+              const auth = getAuth();
+              const headers = {};
+              const u = auth?.currentUser;
+              if (u?.uid) headers['X-User-Id'] = u.uid;
+              try {
+                if (u && typeof u.getIdToken === 'function') {
+                  const token = await u.getIdToken();
+                  if (token) headers.Authorization = `Bearer ${token}`;
+                }
+              } catch {}
+              const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(aid)}/priority-note`, { method: 'DELETE', headers });
+              if (!res.ok) throw new Error(await res.text());
+              loadPriorityNotes();
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to update note');
+            }
+          },
+        },
+      ]
+    );
+  }, [asset?.id, id, loadPriorityNotes]);
+
   // EOL detection: hide actions for decommissioned QRs
   const isEOL = React.useMemo(() => {
     const s = String(asset?.status || '').toLowerCase();
@@ -991,7 +1273,75 @@ export default function CheckInScreen() {
     setActionsFormOpen(true);
   };
 
-  // Submit note only (no transfer) via POST /assets/:id/actions
+  // Build auth headers for note requests.
+  const buildNoteHeaders = async () => {
+    const auth = getAuth();
+    const currentUser = auth?.currentUser;
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+    try {
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await currentUser.getIdToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (e) { console.warn('Token error:', e); }
+    return headers;
+  };
+
+  const finishNoteSaved = () => {
+    setCreateNoteText('');
+    setShowCreateNoteInput(false);
+    setCreateNoteImportant(false);
+    loadPriorityNotes(); // refresh the pinned-note banner
+    Alert.alert('Success', 'Note saved.');
+  };
+
+  // Claim the single priority slot. Handles the "priority note already exists"
+  // confirmation: 409 -> prompt overwrite/cancel -> retry with overwrite:true.
+  const submitPriorityNote = async (note, headers, overwrite) => {
+    const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/priority-note`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ note, overwrite: !!overwrite }),
+    });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      const existing = body?.existing;
+      setCreateNoteSubmitting(false);
+      Alert.alert(
+        'Priority note already exists',
+        `This asset already has a priority note:\n\n"${existing?.note || ''}"${existing?.who ? `\n— ${existing.who}` : ''}\n\nOverwrite it with your new note?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Overwrite',
+            style: 'destructive',
+            onPress: async () => {
+              setCreateNoteSubmitting(true);
+              try {
+                await submitPriorityNote(note, headers, true);
+              } catch (e) {
+                Alert.alert('Error', e.message || 'Failed to save note');
+              } finally {
+                setCreateNoteSubmitting(false);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(t || 'Failed to save note');
+    }
+    finishNoteSaved();
+  };
+
+  // Submit note only (no transfer). Priority notes go through /priority-note
+  // (single-slot, prompts on overwrite); normal notes via POST /actions.
   const submitCreateNote = async () => {
     const note = (createNoteText || '').trim();
     if (!note) {
@@ -1001,30 +1351,23 @@ export default function CheckInScreen() {
     if (!asset?.id) return;
     setCreateNoteSubmitting(true);
     try {
-      const auth = getAuth();
-      const currentUser = auth?.currentUser;
-      const headers = { 'Content-Type': 'application/json' };
-      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
-      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
-      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
-      try {
-        if (currentUser && typeof currentUser.getIdToken === 'function') {
-          const token = await currentUser.getIdToken();
-          if (token) headers.Authorization = `Bearer ${token}`;
-        }
-      } catch (e) { console.warn('Token error:', e); }
+      const headers = await buildNoteHeaders();
+      if (createNoteImportant) {
+        await submitPriorityNote(note, headers, false);
+        return;
+      }
       const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/actions`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ type: 'STATUS_CHANGE', note }),
+        // note_only + user_note_text mark this as a real Note (matches the Quick
+        // Note shortcut) so it shows under Notes and is labelled "Note" in history.
+        body: JSON.stringify({ type: 'STATUS_CHANGE', note, data: { user_note_text: note, note_only: true } }),
       });
       if (!res.ok) {
         const t = await res.text();
         throw new Error(t || 'Failed to save note');
       }
-      setCreateNoteText('');
-      setShowCreateNoteInput(false);
-      Alert.alert('Success', 'Note saved.');
+      finishNoteSaved();
     } catch (e) {
       console.error('submitCreateNote error', e);
       Alert.alert('Error', e.message || 'Failed to save note');
@@ -1283,6 +1626,17 @@ export default function CheckInScreen() {
                 maxLength={FIELD_LIMITS.NOTES}
                 editable={!createNoteSubmitting}
               />
+
+              {/* Priority toggle — pins the note + shows it on scan */}
+              <View style={[pn.toggleRow, createNoteImportant && pn.toggleRowOn]}>
+                <MaterialIcons name="priority-high" size={20} color={createNoteImportant ? Colors.dangerFg : Colors.sub} />
+                <View style={{ flex: 1 }}>
+                  <Text style={pn.toggleLabel}>Priority note</Text>
+                  <Text style={pn.toggleHint}>Pin to the top and show it when this asset is scanned.</Text>
+                </View>
+                <Switch value={createNoteImportant} onValueChange={setCreateNoteImportant} disabled={createNoteSubmitting} />
+              </View>
+
               <TouchableOpacity
                 style={[styles.btnPrimary, styles.createNoteSubmitBtn, createNoteSubmitting && { opacity: 0.7 }]}
                 onPress={submitCreateNote}
@@ -1405,40 +1759,46 @@ export default function CheckInScreen() {
               </View>
             </View>
 
+            {/* Priority (pinned) notes */}
+            <PriorityNotesBanner notes={priorityNotes} onRemovePriority={removePriorityNote} />
+
             {/* Two-column body */}
             <View style={styles.webBody}>
               {/* ── Left: Asset info panel ── */}
               <View style={styles.webInfoPanel}>
                 <Text style={styles.webSectionLabel}>ASSET DETAILS</Text>
                 <View style={styles.webInfoCard}>
-                  <Text style={styles.webAssetType}>
-                    {asset.asset_types?.name || asset.asset_type || 'Asset'}
-                  </Text>
-                  <Text style={styles.webAssetId}>ID: {asset.id}</Text>
+                  {/* Asset image (or add-image when missing) */}
+                  <AssetImageBlock
+                    imageUrl={asset.image_url}
+                    uploading={uploadingImage}
+                    justAdded={imageJustAdded}
+                    onAdd={addAssetImage}
+                    onScanAnother={goToScanner}
+                  />
+                  {/* Header — type + ID inline, status */}
+                  <View style={dl.headerRow}>
+                    <View style={dl.titleWrap}>
+                      <Text style={dl.title} numberOfLines={2}>
+                        {asset.asset_types?.name || asset.asset_type || 'Asset'}
+                      </Text>
+                      <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
+                    </View>
+                    <StatusBadge status={normalizeStatus(asset.status)} />
+                  </View>
                   {isAwaitingQr ? (
-                    <Text style={{ color: Colors.subtle, fontSize: sf(12), marginTop: 6, fontWeight: '600' }}>
+                    <Text style={{ color: Colors.subtle, fontSize: sf(12), marginTop: 4, fontWeight: '600' }}>
                       Awaiting physical QR
                     </Text>
                   ) : null}
-                  {asset.serial_number ? (
-                    <Text style={styles.webAssetSerial}>Serial: {asset.serial_number}</Text>
-                  ) : null}
 
-                  <View style={styles.webInfoDivider} />
-
-                  <Text style={styles.webInfoLabel}>Assigned to</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
-                    <AvatarCircle name={asset.assigned_user_name} email={asset.assigned_user_email} />
-                    <Text style={styles.webInfoValue} numberOfLines={2}>
-                      {asset.assigned_user_name || 'Unassigned'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.webInfoDivider} />
-
-                  <Text style={styles.webInfoLabel}>Current Status</Text>
-                  <View style={{ marginTop: 8 }}>
-                    <Chip label={asset.status || 'N/A'} tone={badgeTone(asset.status)} />
+                  {/* Detail list */}
+                  <View style={dl.list}>
+                    <DetailRow icon="confirmation-number" label="Serial" value={asset.serial_number || 'N/A'} />
+                    <DetailRow icon="devices-other" label="Model" value={asset.model} />
+                    <DescriptionRow value={asset.description} />
+                    <DetailRow icon="schedule" label="Updated" value={fmtWhen(asset.last_updated)} />
+                    <DetailRow icon="person" label="Assigned" value={asset.assigned_user_name || 'Unassigned'} highlight />
                   </View>
                 </View>
               </View>
@@ -1841,33 +2201,37 @@ export default function CheckInScreen() {
             </View>
           ) : null}
 
+          {/* Priority (pinned) notes */}
+          <PriorityNotesBanner notes={priorityNotes} onRemovePriority={removePriorityNote} />
+
           {/* Asset Overview */}
           <View style={styles.card}>
-            <Text style={styles.assetTitle}>
-              {asset.asset_types?.name || asset.asset_type || 'Asset'} · ID: {asset.id}
-            </Text>
-            <Text style={styles.assetSerial}>
-              Serial: {asset.serial_number || 'N/A'}
-            </Text>
-            <View style={styles.infoRow}>
-              {/* Assigned to (left) */}
-              <View style={styles.infoCell}>
-                <Text style={styles.infoLabel}>Assigned to</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                  <AvatarCircle name={asset.assigned_user_name} email={asset.assigned_user_email} />
-                  <Text style={styles.infoValue} numberOfLines={1}>
-                    {asset.assigned_user_name || 'Unassigned'}
-                  </Text>
-                </View>
+            {/* Asset image (or add-image when missing) */}
+            <AssetImageBlock
+              imageUrl={asset.image_url}
+              uploading={uploadingImage}
+              justAdded={imageJustAdded}
+              onAdd={addAssetImage}
+              onScanAnother={goToScanner}
+            />
+            {/* Header — type + ID inline, status */}
+            <View style={dl.headerRow}>
+              <View style={dl.titleWrap}>
+                <Text style={dl.title} numberOfLines={2}>
+                  {asset.asset_types?.name || asset.asset_type || 'Asset'}
+                </Text>
+                <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
               </View>
+              <StatusBadge status={normalizeStatus(asset.status)} />
+            </View>
 
-              {/* Current Status (right) */}
-              <View style={[styles.infoCell, styles.infoCellRight]}>
-                <Text style={[styles.infoLabel, styles.textRight]}>Current Status</Text>
-                <View style={{ marginTop: 6, alignSelf: 'flex-end' }}>
-                  <Chip label={asset.status || 'N/A'} tone={badgeTone(asset.status)} />
-                </View>
-              </View>
+            {/* Detail list */}
+            <View style={dl.list}>
+              <DetailRow icon="confirmation-number" label="Serial" value={asset.serial_number || 'N/A'} />
+              <DetailRow icon="devices-other" label="Model" value={asset.model} />
+              <DescriptionRow value={asset.description} />
+              <DetailRow icon="schedule" label="Updated" value={fmtWhen(asset.last_updated)} />
+              <DetailRow icon="person" label="Assigned" value={asset.assigned_user_name || 'Unassigned'} highlight />
             </View>
           </View>
 
@@ -2775,7 +3139,7 @@ const styles = StyleSheet.create({
   createNoteSheet: {
     borderRadius: 18,
     width: '100%',
-    minHeight: 220,
+    minHeight: 317,
     maxHeight: '90%',
     overflow: 'hidden',
   },

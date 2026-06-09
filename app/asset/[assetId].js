@@ -1,5 +1,5 @@
 // app/asset/[assetId].js
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import {
@@ -13,11 +13,14 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge from '../../components/ui/StatusBadge';
+import PriorityNotesBanner from '../../components/PriorityNotesBanner';
 import ScreenState from '../../components/ui/ScreenState';
 import { Row, DetailsGrid } from '../../components/asset/AssetRows';
 import AssetQRModal from '../../components/asset/AssetQRModal';
@@ -116,6 +119,8 @@ function WebAssetHeader({
   copyDeepLink,
   openMaps,
   setQrOpen,
+  importantNotes,
+  onRemovePriority,
 }) {
   const infoFields = [
     { label: 'Serial Number', value: displaySerial || null },
@@ -148,6 +153,15 @@ function WebAssetHeader({
         <Text style={whs.assetName} numberOfLines={2}>
           {asset.asset_types?.name || 'Asset'}
         </Text>
+
+        {/* Priority (pinned) notes — prominent inside the web details card */}
+        {Array.isArray(importantNotes) && importantNotes.length > 0 && (
+          <PriorityNotesBanner
+            notes={importantNotes}
+            style={{ marginTop: 12 }}
+            onRemovePriority={onRemovePriority}
+          />
+        )}
 
         {/* Status badge + action chips */}
         <View style={whs.statusRow}>
@@ -244,6 +258,10 @@ export default function AssetDetailPage() {
     handleDelete,
     executeDelete,
     handleDeleteDocument,
+    canManageNote,
+    editNote,
+    deleteNote,
+    removeNotePriority,
     buildDynamicData,
     copyId,
     copyDeepLink,
@@ -273,6 +291,26 @@ export default function AssetDetailPage() {
     () => (notesSectionExpanded ? typedNotes : typedNotes.slice(0, 4)),
     [notesSectionExpanded, typedNotes]
   );
+
+  // Priority (pinned) notes — surfaced prominently at the top of the asset.
+  const importantNotes = useMemo(
+    () =>
+      typedNotes
+        .filter((n) => n.important)
+        .map((n) => ({ id: n.id, note: n.note, who: n.who })),
+    [typedNotes]
+  );
+
+  // Inline note editor state: { id, text } when editing, null otherwise.
+  const [noteEditor, setNoteEditor] = useState(null);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const submitNoteEdit = useCallback(async () => {
+    if (!noteEditor || noteSaving) return;
+    setNoteSaving(true);
+    const ok = await editNote(noteEditor.id, noteEditor.text);
+    setNoteSaving(false);
+    if (ok) setNoteEditor(null);
+  }, [noteEditor, noteSaving, editNote]);
 
   const displaySerial = useMemo(() => {
     if (!asset) return '';
@@ -341,6 +379,16 @@ export default function AssetDetailPage() {
         {/* ── Outer page wrap: centres + caps width on web ── */}
         <View style={isWebWide ? whs.pageWrap : null}>
 
+          {/* Priority (pinned) notes — mobile: at the very top; web: inside the
+              header card (rendered by WebAssetHeader below) */}
+          {!isWebWide && importantNotes.length > 0 && (
+            <PriorityNotesBanner
+              notes={importantNotes}
+              style={{ marginHorizontal: 16, marginTop: 12 }}
+              onRemovePriority={() => removeNotePriority()}
+            />
+          )}
+
           {/* Mobile only: full-width hero image */}
           {!isWebWide && (
             <View style={styles.heroImageWrap}>
@@ -363,6 +411,8 @@ export default function AssetDetailPage() {
               copyDeepLink={copyDeepLink}
               openMaps={openMaps}
               setQrOpen={setQrOpen}
+              importantNotes={importantNotes}
+              onRemovePriority={() => removeNotePriority()}
             />
           )}
 
@@ -759,8 +809,26 @@ export default function AssetDetailPage() {
                           <View style={styles.noteAvatar}><Text style={styles.noteAvatarText}>{initials(n.who)}</Text></View>
                           <View style={{ flex: 1, paddingRight: 8 }}>
                             <Text style={styles.noteWho} numberOfLines={1}>{n.who || 'System'}</Text>
-                            <Text style={styles.noteWhen}>{prettyDateTime(n.when)}</Text>
+                            <Text style={styles.noteWhen}>{prettyDateTime(n.when)}{n.edited ? ' · edited' : ''}</Text>
                           </View>
+                          {canManageNote(n) ? (
+                            <View style={styles.noteActions}>
+                              <TouchableOpacity
+                                onPress={() => setNoteEditor({ id: n.id, text: n.note })}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityLabel="Edit note"
+                              >
+                                <MaterialIcons name="edit" size={18} color={Colors.sub} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => deleteNote(n.id)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityLabel="Delete note"
+                              >
+                                <MaterialIcons name="delete-outline" size={18} color={Colors.dangerFg} />
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
                         </View>
                         <Text style={styles.noteText}>{n.note}</Text>
                       </View>
@@ -842,6 +910,38 @@ export default function AssetDetailPage() {
         qrValue={qrPayload()}
         assetId={asset?.id || assetId}
       />
+
+      {/* Edit note modal */}
+      <Modal visible={!!noteEditor} transparent animationType="fade" onRequestClose={() => !noteSaving && setNoteEditor(null)}>
+        <View style={styles.noteEditBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => !noteSaving && setNoteEditor(null)} />
+          <View style={styles.noteEditCard}>
+            <Text style={styles.noteEditTitle}>Edit note</Text>
+            <TextInput
+              style={styles.noteEditInput}
+              value={noteEditor?.text || ''}
+              onChangeText={(t) => setNoteEditor((prev) => (prev ? { ...prev, text: t } : prev))}
+              multiline
+              autoFocus
+              maxLength={2000}
+              placeholder="Note…"
+              placeholderTextColor={Colors.sub2}
+            />
+            <View style={styles.noteEditActions}>
+              <TouchableOpacity style={styles.noteEditCancel} onPress={() => setNoteEditor(null)} disabled={noteSaving}>
+                <Text style={styles.noteEditCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.noteEditSave, (noteSaving || !(noteEditor?.text || '').trim()) && { opacity: 0.6 }]}
+                onPress={submitNoteEdit}
+                disabled={noteSaving || !(noteEditor?.text || '').trim()}
+              >
+                {noteSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.noteEditSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1083,6 +1183,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  noteActions: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingLeft: 4 },
+  noteEditBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  noteEditCard: { width: '100%', maxWidth: 460, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 2, borderColor: Colors.line, padding: 18, ...Shadows.card },
+  noteEditTitle: { fontSize: sf(17), fontWeight: '900', color: Colors.text, marginBottom: 12 },
+  noteEditInput: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, minHeight: 110, textAlignVertical: 'top', color: Colors.text, backgroundColor: Colors.bg, fontSize: sf(14) },
+  noteEditActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
+  noteEditCancel: { paddingVertical: 11, paddingHorizontal: 18, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.chip },
+  noteEditCancelText: { color: Colors.text, fontWeight: '800' },
+  noteEditSave: { paddingVertical: 11, paddingHorizontal: 22, borderRadius: Radius.md, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', minWidth: 84 },
+  noteEditSaveText: { color: '#fff', fontWeight: '800' },
   noteAvatar: {
     width: 28,
     height: 28,

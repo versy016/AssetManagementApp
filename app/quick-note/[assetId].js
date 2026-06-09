@@ -10,9 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
 
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -31,6 +33,7 @@ export default function QuickNoteScreen() {
   const [asset, setAsset] = useState(null);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState('');
+  const [important, setImportant] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const backToTarget = useCallback(() => {
@@ -71,6 +74,78 @@ export default function QuickNoteScreen() {
     };
   }, [assetId, backToTarget]);
 
+  const buildHeaders = async () => {
+    const auth = getAuth();
+    const currentUser = auth?.currentUser;
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+    if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+    if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+    try {
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await currentUser.getIdToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (e) {
+      logger.warn('Token error:', e);
+    }
+    return headers;
+  };
+
+  const onNoteSaved = () => {
+    setNote('');
+    Alert.alert('Note saved', 'Your note has been added to this asset.', [
+      { text: 'Done', onPress: () => backToTarget() },
+      {
+        text: 'View asset',
+        onPress: () =>
+          router.replace({ pathname: '/asset/[assetId]', params: { assetId } }),
+      },
+    ]);
+  };
+
+  // Claim the single priority slot. On 409 (one already exists) prompt the user
+  // to overwrite or cancel, then retry with overwrite:true.
+  const submitPriorityNote = async (trimmed, headers, overwrite) => {
+    const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/priority-note`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ note: trimmed, overwrite: !!overwrite }),
+    });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      const existing = body?.existing;
+      setSubmitting(false);
+      Alert.alert(
+        'Priority note already exists',
+        `This asset already has a priority note:\n\n"${existing?.note || ''}"${existing?.who ? `\n— ${existing.who}` : ''}\n\nOverwrite it with your new note?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Overwrite',
+            style: 'destructive',
+            onPress: async () => {
+              setSubmitting(true);
+              try {
+                await submitPriorityNote(trimmed, headers, true);
+              } catch (e) {
+                Alert.alert('Error', e.message || 'Failed to save note');
+              } finally {
+                setSubmitting(false);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(t || 'Failed to save note');
+    }
+    onNoteSaved();
+  };
+
   const handleSubmit = async () => {
     const trimmed = (note || '').trim();
     if (!trimmed) {
@@ -81,19 +156,10 @@ export default function QuickNoteScreen() {
 
     setSubmitting(true);
     try {
-      const auth = getAuth();
-      const currentUser = auth?.currentUser;
-      const headers = { 'Content-Type': 'application/json' };
-      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
-      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
-      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
-      try {
-        if (currentUser && typeof currentUser.getIdToken === 'function') {
-          const token = await currentUser.getIdToken();
-          if (token) headers.Authorization = `Bearer ${token}`;
-        }
-      } catch (e) {
-        logger.warn('Token error:', e);
+      const headers = await buildHeaders();
+      if (important) {
+        await submitPriorityNote(trimmed, headers, false);
+        return;
       }
 
       const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(asset.id)}/actions`, {
@@ -113,15 +179,7 @@ export default function QuickNoteScreen() {
         throw new Error(t || 'Failed to save note');
       }
 
-      setNote('');
-      Alert.alert('Note saved', 'Your note has been added to this asset.', [
-        { text: 'Done', onPress: () => backToTarget() },
-        {
-          text: 'View asset',
-          onPress: () =>
-            router.replace({ pathname: '/asset/[assetId]', params: { assetId } }),
-        },
-      ]);
+      onNoteSaved();
     } catch (e) {
       logger.error('QuickNote submit error', e);
       Alert.alert('Error', e.message || 'Failed to save note');
@@ -172,6 +230,17 @@ export default function QuickNoteScreen() {
               numberOfLines={4}
               maxLength={FIELD_LIMITS.NOTES}
             />
+
+            {/* Priority toggle — pins the note + shows it on scan */}
+            <View style={[styles.priorityRow, important && styles.priorityRowOn]}>
+              <MaterialIcons name="priority-high" size={20} color={important ? Colors.dangerFg : Colors.sub} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.priorityLabel}>Priority note</Text>
+                <Text style={styles.priorityHint}>Pin to the top of this asset and show it when the asset is scanned.</Text>
+              </View>
+              <Switch value={important} onValueChange={setImportant} />
+            </View>
+
             <TouchableOpacity
               style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
               onPress={handleSubmit}
@@ -252,6 +321,14 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     backgroundColor: Colors.card,
   },
+  priorityRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14,
+    paddingVertical: 10, paddingHorizontal: 12, borderRadius: Radius.md,
+    borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card,
+  },
+  priorityRowOn: { borderColor: Colors.dangerFg, backgroundColor: Colors.dangerBg },
+  priorityLabel: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  priorityHint: { fontSize: sf(12), color: Colors.sub, marginTop: 2, lineHeight: sf(16) },
   submitBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.md,

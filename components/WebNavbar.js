@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Platform,
   TouchableOpacity,
@@ -298,7 +299,12 @@ export default function WebNavbar() {
     <TourTarget id="web-navbar">
       <View style={s.topbar}>
         {/* Brand */}
-        <View style={s.brandWrap}>
+        <View style={[s.brandWrap, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+          <Image
+            source={require('../assets/images/gearops-logo.png')}
+            style={{ width: 28, height: 28, borderRadius: 7 }}
+            resizeMode="contain"
+          />
           <Text style={s.brand}>
             <Text style={s.brandAccent}>Gear</Text>Ops
           </Text>

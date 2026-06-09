@@ -4,6 +4,7 @@
     "slug": "gearops",
     "version": "1.0.5",
     "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
     "scheme": "gearops",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -37,8 +38,8 @@
     "android": {
       "package": "com.engsurveys.assetmanager",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#192231"
       },
       "intentFilters": [
         {
@@ -81,7 +82,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#1E293B"
+          "backgroundColor": "#192231"
         }
       ],
       [

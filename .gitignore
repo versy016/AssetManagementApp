@@ -61,6 +61,9 @@ logs
 .vercel/
 .next/
 
+# Audit / analysis deliverables (kept out of version control)
+audit-reports/
+
 # Prisma
 prisma/migrations/
 !prisma/migrations/.gitkeep

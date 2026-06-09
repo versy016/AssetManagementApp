@@ -2279,6 +2279,199 @@ router.post('/:id/actions/:actionId/signoff', async (req, res) => {
 });
 
 // ---------------------------------------------
+// Note editing / deletion.
+// A "note" is a STATUS_CHANGE action carrying a user-entered note
+// (data.user_note_text / data.note_only). Only those are editable/deletable
+// here — never transfers, repairs, or other audit actions.
+// Authorization: an ADMIN may edit/delete ANY note; a normal user may
+// edit/delete only notes they authored (performed_by === their uid).
+// ---------------------------------------------
+const isUserNoteAction = (action) => {
+  const d = (action && action.data) || {};
+  return !!(d.note_only || (typeof d.user_note_text === 'string' && d.user_note_text.trim()));
+};
+const actorIsAdmin = async (actorId) => {
+  if (!actorId) return false;
+  try {
+    const u = await prisma.users.findUnique({ where: { id: actorId }, select: { role: true } });
+    return String(u?.role || '').toUpperCase() === 'ADMIN';
+  } catch { return false; }
+};
+
+// PATCH /assets/:id/actions/:actionId/note -- edit a note's text
+router.patch('/:id/actions/:actionId/note', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  const actionId = req.params.actionId;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    if (!isUUID(actionId)) return errJson(res, 400, 'Invalid action id');
+    const text = String(req.body?.note ?? req.body?.text ?? '').trim();
+    if (!text) return errJson(res, 400, 'Note text is required');
+    if (text.length > 2000) return errJson(res, 400, 'Note is too long (max 2000 characters)');
+
+    const action = await prisma.asset_actions.findUnique({ where: { id: actionId } });
+    if (!action || action.asset_id !== assetId) return errJson(res, 404, 'Note not found');
+    if (!isUserNoteAction(action)) return errJson(res, 400, 'This entry is not an editable note');
+
+    const actorInfo = getActorInfo(req);
+    const actorId = actorInfo.id || null;
+    const isAdmin = await actorIsAdmin(actorId);
+    const isOwner = !!actorId && String(action.performed_by || '') === String(actorId);
+    if (!isAdmin && !isOwner) return errJson(res, 403, 'You can only edit your own notes');
+
+    const merged = {
+      ...(action.data || {}),
+      user_note_text: text,
+      note_only: true,
+      edited_at: new Date().toISOString(),
+      edited_by: actorId,
+    };
+    const updated = await prisma.asset_actions.update({ where: { id: actionId }, data: { data: merged, note: text } });
+    log(reqId, 'INFO', 'note-edit-ok', { assetId, actionId, admin: isAdmin });
+    res.json({ ok: true, id: updated.id, note: text });
+  } catch (e) {
+    log(reqId, 'ERROR', 'note-edit-failed', { assetId, actionId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to edit note');
+  }
+});
+
+// DELETE /assets/:id/actions/:actionId/note -- delete a note
+router.delete('/:id/actions/:actionId/note', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  const actionId = req.params.actionId;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    if (!isUUID(actionId)) return errJson(res, 400, 'Invalid action id');
+
+    const action = await prisma.asset_actions.findUnique({ where: { id: actionId } });
+    if (!action || action.asset_id !== assetId) return errJson(res, 404, 'Note not found');
+    if (!isUserNoteAction(action)) return errJson(res, 400, 'This entry is not a deletable note');
+
+    const actorInfo = getActorInfo(req);
+    const actorId = actorInfo.id || null;
+    const isAdmin = await actorIsAdmin(actorId);
+    const isOwner = !!actorId && String(action.performed_by || '') === String(actorId);
+    if (!isAdmin && !isOwner) return errJson(res, 403, 'You can only delete your own notes');
+
+    await prisma.asset_actions.delete({ where: { id: actionId } }); // asset_action_details cascade
+    log(reqId, 'INFO', 'note-delete-ok', { assetId, actionId, admin: isAdmin });
+    res.json({ ok: true, id: actionId });
+  } catch (e) {
+    log(reqId, 'ERROR', 'note-delete-failed', { assetId, actionId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to delete note');
+  }
+});
+
+// Find the current priority (pinned) note for an asset, or null. There is at
+// most one — claiming the slot demotes any previous one.
+const findPriorityNote = async (assetId) => {
+  const rows = await prisma.asset_actions.findMany({
+    where: { asset_id: assetId, data: { path: ['important'], equals: true } },
+    orderBy: { occurred_at: 'desc' },
+    include: { performer: { select: { id: true, name: true, useremail: true } } },
+  });
+  const valid = rows.find((a) => isUserNoteAction(a));
+  if (!valid) return null;
+  return {
+    id: valid.id,
+    note: (valid.data && valid.data.user_note_text) || valid.note || '',
+    who: valid.performer ? (valid.performer.name || valid.performer.useremail) : null,
+    when: valid.occurred_at,
+  };
+};
+
+// GET /assets/:id/priority-note -- the current priority note (or null)
+router.get('/:id/priority-note', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const priority = await findPriorityNote(assetId);
+    res.json({ ok: true, priority });
+  } catch (e) {
+    log(reqId, 'ERROR', 'priority-note-get-failed', { assetId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to load priority note');
+  }
+});
+
+// POST /assets/:id/priority-note -- claim the single priority slot.
+// Each asset has at most one priority note. If one already exists and the
+// caller did not pass overwrite:true, returns 409 with the existing note so
+// the client can prompt to overwrite or cancel. On overwrite, the previous
+// priority note is demoted to a normal note before the new one is created.
+router.post('/:id/priority-note', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const assetExists = await prisma.assets.findUnique({ where: { id: assetId }, select: { id: true } });
+    if (!assetExists) return errJson(res, 404, 'Asset not found');
+
+    const text = String(req.body?.note ?? req.body?.text ?? '').trim();
+    if (!text) return errJson(res, 400, 'Note text is required');
+    if (text.length > 2000) return errJson(res, 400, 'Note is too long (max 2000 characters)');
+    const overwrite = !!req.body?.overwrite;
+
+    const existing = await findPriorityNote(assetId);
+    if (existing && !overwrite) {
+      return res.status(409).json({ ok: false, code: 'PRIORITY_EXISTS', existing });
+    }
+
+    const actorInfo = getActorInfo(req);
+    const actor = req.body?.performed_by || actorInfo.id || null;
+    if (actor) await ensureUserKnown(actor, actorInfo.name, actorInfo.email);
+
+    // Demote any existing priority notes (kept as normal notes).
+    const current = await prisma.asset_actions.findMany({
+      where: { asset_id: assetId, data: { path: ['important'], equals: true } },
+    });
+    for (const n of current) {
+      await prisma.asset_actions.update({
+        where: { id: n.id },
+        data: { data: { ...(n.data || {}), important: false } },
+      });
+    }
+
+    const action = await recordAction(reqId, assetId, 'STATUS_CHANGE', {
+      note: text,
+      data: { user_note_text: text, note_only: true, important: true },
+      performed_by: actor,
+    });
+    log(reqId, 'INFO', 'priority-note-set', { assetId, actionId: action.id, replaced: !!existing });
+    res.json({ ok: true, id: action.id, note: text });
+  } catch (e) {
+    log(reqId, 'ERROR', 'priority-note-set-failed', { assetId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to set priority note');
+  }
+});
+
+// DELETE /assets/:id/priority-note -- clear the priority flag. The note is NOT
+// deleted; it stays as a normal note. Demotes any priority note for the asset.
+router.delete('/:id/priority-note', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    const current = await prisma.asset_actions.findMany({
+      where: { asset_id: assetId, data: { path: ['important'], equals: true } },
+    });
+    for (const n of current) {
+      await prisma.asset_actions.update({
+        where: { id: n.id },
+        data: { data: { ...(n.data || {}), important: false } },
+      });
+    }
+    log(reqId, 'INFO', 'priority-note-cleared', { assetId, count: current.length });
+    res.json({ ok: true, cleared: current.length });
+  } catch (e) {
+    log(reqId, 'ERROR', 'priority-note-clear-failed', { assetId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to clear priority note');
+  }
+});
+
+// ---------------------------------------------
 // PUT /assets/:id/files â€" update image/document
 // ---------------------------------------------
 router.put('/:id/files', (req, res) => {
