@@ -1083,8 +1083,9 @@ export default function CheckInScreen() {
         method: 'PUT',
         headers,
         body: JSON.stringify({
+          // Transfers must NOT change the asset's status (a Maintenance/Repair
+          // asset stays in that status when reassigned).
           assigned_to_id: selectedUser.id,
-          status: 'In Service', // allowed value
           action_note: actionNote || undefined,
         }),
       });
@@ -1095,7 +1096,7 @@ export default function CheckInScreen() {
       }
 
       // Optimistic local update
-      applyAssetPatch({ assigned_to_id: selectedUser.id, status: 'In Service' });
+      applyAssetPatch({ assigned_to_id: selectedUser.id });
       setShowUserModal(false);
       setForceUserAssign(false);
       setLoading(false);
@@ -1157,15 +1158,22 @@ export default function CheckInScreen() {
     try {
       setLoading(true);
 
+      let optimisticAssignedToId = null;
       if (type === 'checkin') {
         // assign to office admin via server flag and mark usable
         payload = {
+          // Returning to office is a transfer — keep the current status (don't
+          // reset a Maintenance/Repair asset to In Service).
           assign_to_admin: true,
-          status: 'In Service', // was "Available"
           action_note: actionNote || undefined,
         };
         const loc = await getLastScannedLocation();
         if (loc) payload.location = loc;
+        // The server resolves the office user from assign_to_admin (so the
+        // payload has no assigned_to_id). Mirror that locally so the assignee,
+        // isAssignedToOffice and the action buttons update live without a refresh.
+        const officeUser = pickOfficeInventoryAssignee(users);
+        if (officeUser?.id) optimisticAssignedToId = officeUser.id;
         successMessage = 'Asset Transferred';
       } else if (type === 'transferToMe') {
         if (!myUserId) throw new Error('Your user record was not found');
@@ -1218,8 +1226,12 @@ export default function CheckInScreen() {
         throw new Error(t || 'Failed to update asset');
       }
 
-      // Optimistic local update so UI reflects immediately
-      applyAssetPatch(payload);
+      // Optimistic local update so UI reflects immediately. Strip the server-only
+      // flag and apply the resolved assignee so the assignment shows live.
+      const optimisticPatch = { ...payload };
+      delete optimisticPatch.assign_to_admin;
+      if (optimisticAssignedToId) optimisticPatch.assigned_to_id = optimisticAssignedToId;
+      applyAssetPatch(optimisticPatch);
       // Optional: tiny success hint
       setLoading(false); // stop spinner first
       postActionAlert({ message: successMessage });

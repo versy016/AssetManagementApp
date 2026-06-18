@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import NewButton from '../../components/ui/NewButton';
 
 export default function TypeIndexScreen() {
   const router = useRouter();
@@ -68,9 +69,7 @@ export default function TypeIndexScreen() {
           <Text style={styles.subtitle}>
             Use the shortcuts below to manage asset types.
           </Text>
-          <TouchableOpacity style={styles.button} onPress={() => router.push('/type/new')}>
-            <Text style={styles.buttonText}>Create New Type</Text>
-          </TouchableOpacity>
+          <NewButton label="Create New Type" onPress={() => router.push('/type/new')} style={{ alignSelf: 'flex-start', marginBottom: 12 }} />
           <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={() => router.push('/(tabs)/Inventory')}>
             <Text style={[styles.buttonText, styles.secondaryButtonText]}>Back to Inventory</Text>
           </TouchableOpacity>

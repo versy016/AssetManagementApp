@@ -84,6 +84,41 @@ const getTaskDueTime = (item) => {
 const getTaskTitle = (item) => String(item?.title || '').toLowerCase();
 const getTaskActionType = (item) => String(item?.actionType || '').toUpperCase();
 
+// Map a manual task's category onto the action-type buckets the filter chips
+// use, so manual tasks classify under Service / Repair correctly.
+const categoryToActionType = (category) => {
+  const c = String(category || '').toUpperCase();
+  if (c === 'SERVICE' || c === 'MAINTENANCE') return 'MAINTENANCE';
+  if (c === 'REPAIR') return 'REPAIR';
+  return '';
+};
+
+// Adapt a server task row (from GET /tasks) into the shape the Tasks UI renders.
+const adaptManualTask = (t) => ({
+  kind: 'manual',
+  taskId: t.id,
+  key: `manual:${t.id}`,
+  title: t.title,
+  description: t.description || '',
+  subtitle: t.assetTypeName || t.assetModel || null,
+  model: t.assetModel || null,
+  assetTypeName: t.assetTypeName || null,
+  serialNumber: t.assetSerial || null,
+  imageUrl: t.assetImageUrl || null,
+  assetId: t.asset_id || null,
+  assetTypeId: t.assetTypeId || null,
+  due: t.due_date ? new Date(t.due_date) : null,
+  priority: t.priority,
+  category: t.category,
+  certType: t.cert_type || null,
+  actionType: categoryToActionType(t.category),
+  status: t.status,
+  assignedToId: t.assigned_to_id || null,
+  assigneeName: t.assigneeName || null,
+  creatorName: t.creatorName || null,
+  createdBy: t.created_by || null,
+});
+
 export const isRepairTask = (item) => {
   const type = getTaskActionType(item);
   const title = getTaskTitle(item);
@@ -379,8 +414,10 @@ export function useTasks() {
         if (!cancelled) {
           setTasks((prev) => {
             const existing = Array.isArray(prev.items) ? prev.items : [];
-            const existingSignoffs = existing.filter((it) => it && it.kind === 'signoff');
-            const merged = [...items, ...existingSignoffs];
+            // Preserve items owned by the other fetch effects (sign-offs + manual
+            // tasks) so re-running the asset build doesn't wipe them.
+            const existingExtra = existing.filter((it) => it && (it.kind === 'signoff' || it.kind === 'manual'));
+            const merged = [...items, ...existingExtra];
             const seen = new Set();
             const deduped = merged
               .filter((it) => {
@@ -486,6 +523,157 @@ export function useTasks() {
     })();
     return () => { cancelled = true; };
   }, [user?.uid]);
+
+  // ── Manual (user-created) tasks ──────────────────────────────────────────
+  const authHeaders = React.useCallback(async (json = true) => {
+    const headers = json ? { 'Content-Type': 'application/json' } : {};
+    const u = auth?.currentUser;
+    if (u?.uid) headers['X-User-Id'] = u.uid;
+    if (u?.displayName) headers['X-User-Name'] = u.displayName;
+    if (u?.email) headers['X-User-Email'] = u.email;
+    try {
+      if (u && typeof u.getIdToken === 'function') {
+        const token = await u.getIdToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
+    } catch { /* non-fatal */ }
+    return headers;
+  }, []);
+
+  const mergeManualItems = React.useCallback((adapted) => {
+    setTasks((prev) => {
+      const nonManual = (prev.items || []).filter((it) => it.kind !== 'manual');
+      const merged = [...nonManual, ...adapted];
+      const seen = new Set();
+      const deduped = merged
+        .filter((it) => {
+          const baseKey = it.actionId
+            ? `action:${it.actionId}`
+            : it.key || `${it.assetId || ''}|${it.title || ''}|${it.due ? +new Date(it.due) : ''}`;
+          if (seen.has(baseKey)) return false;
+          seen.add(baseKey);
+          return true;
+        })
+        .sort((a, b) => {
+          const da = a.due ? +new Date(a.due) : 0;
+          const db = b.due ? +new Date(b.due) : 0;
+          return da - db;
+        });
+      return { ...prev, items: deduped };
+    });
+  }, []);
+
+  const loadManualTasks = React.useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const headers = await authHeaders(false);
+      const res = await fetch(`${API_BASE_URL}/tasks?status=OPEN`, { headers });
+      if (!res.ok) return;
+      const json = await res.json();
+      const arr = Array.isArray(json?.items) ? json.items : [];
+      mergeManualItems(arr.map(adaptManualTask));
+    } catch (e) {
+      logger.error('useTasks: manual tasks fetch failed', e?.message || e);
+    }
+  }, [user?.uid, authHeaders, mergeManualItems]);
+
+  useEffect(() => { loadManualTasks(); }, [loadManualTasks]);
+
+  // Create a manual task; returns true on success.
+  const createManualTask = React.useCallback(async (payload) => {
+    try {
+      const headers = await authHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/tasks`, {
+        method: 'POST', headers, body: JSON.stringify(payload || {}),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || 'Failed to create task');
+      }
+      await loadManualTasks();
+      showSuccess('Task created.');
+      return true;
+    } catch (e) {
+      showError(e?.message || 'Failed to create task');
+      return false;
+    }
+  }, [authHeaders, loadManualTasks]);
+
+  // Close a manual task (complete | dismiss); optimistically drops it from the
+  // list. Completion sends a sign-off note describing the work done.
+  const closeManualTask = React.useCallback(async (taskId, kind, note, photo, assetId) => {
+    if (!taskId) return false;
+    const sendingBody = kind === 'complete';
+    try {
+      // Upload the optional completion photo FIRST so its URL can be attached to
+      // the maintenance entry (and it also lands in the asset's documents).
+      let imageUrl = null;
+      if (kind === 'complete' && photo?.uri && assetId) {
+        try {
+          const upHeaders = await authHeaders(false);
+          const fd = new FormData();
+          if (Platform.OS === 'web') {
+            const blob = await (await fetch(photo.uri)).blob();
+            const file = new File([blob], photo.name || 'completion.jpg', { type: photo.mimeType || blob.type || 'image/jpeg' });
+            fd.append('file', file, file.name);
+          } else {
+            fd.append('file', { uri: photo.uri, name: photo.name || 'completion.jpg', type: photo.mimeType || 'image/jpeg' });
+          }
+          fd.append('title', 'Task completion');
+          fd.append('kind', 'Task completion');
+          const upRes = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/documents/upload`, { method: 'POST', headers: upHeaders, body: fd });
+          if (upRes.ok) { const j = await upRes.json().catch(() => null); imageUrl = j?.document?.url || null; }
+        } catch (e) {
+          logger.warn('useTasks: completion photo upload failed', e?.message || e);
+        }
+      }
+
+      const headers = await authHeaders(sendingBody);
+      const res = await fetch(`${API_BASE_URL}/tasks/${encodeURIComponent(taskId)}/${kind}`, {
+        method: 'POST',
+        headers,
+        body: sendingBody ? JSON.stringify({ note: note || '', image_url: imageUrl || undefined }) : undefined,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || 'Failed to update task');
+      }
+
+      setTasks((prev) => ({
+        ...prev,
+        items: (prev.items || []).filter((it) => !(it.kind === 'manual' && it.taskId === taskId)),
+      }));
+      showSuccess(kind === 'complete' ? 'Task completed.' : 'Task dismissed.');
+      return true;
+    } catch (e) {
+      showError(e?.message || 'Failed to update task');
+      return false;
+    }
+  }, [authHeaders]);
+
+  const completeManualTask = React.useCallback((taskId, note, photo, assetId) => closeManualTask(taskId, 'complete', note, photo, assetId), [closeManualTask]);
+  const dismissManualTask = React.useCallback((taskId) => closeManualTask(taskId, 'dismiss'), [closeManualTask]);
+
+  // Edit an existing manual task.
+  const updateManualTask = React.useCallback(async (taskId, payload) => {
+    if (!taskId) return false;
+    try {
+      const headers = await authHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'PATCH', headers, body: JSON.stringify(payload || {}),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || 'Failed to update task');
+      }
+      await loadManualTasks();
+      showSuccess('Task updated.');
+      return true;
+    } catch (e) {
+      showError(e?.message || 'Failed to update task');
+      return false;
+    }
+  }, [authHeaders, loadManualTasks]);
 
   // ── Sync task count to context/badge ─────────────────────────────────────
   useEffect(() => {
@@ -1046,5 +1234,12 @@ export function useTasks() {
     openTaskAction,
     handleSubmitTaskAction,
     setNextMonths,
+
+    // Manual (user-created) tasks
+    createManualTask,
+    updateManualTask,
+    completeManualTask,
+    dismissManualTask,
+    reloadManualTasks: loadManualTasks,
   };
 }

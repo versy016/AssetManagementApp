@@ -23,6 +23,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import NewButton from '../../components/ui/NewButton';
 import logger from '../../utils/logger';
 import { TourTarget } from '../../components/TourGuide';
 
@@ -515,10 +516,7 @@ export default function AdminUsers() {
           </TouchableOpacity>
         </TourTarget>
 
-        <TouchableOpacity onPress={() => setShowInvite(true)} style={s.invBtn}>
-          <MaterialIcons name="person-add" size={16} color="#fff" />
-          {isWeb && <Text style={s.invTxt}>Invite User</Text>}
-        </TouchableOpacity>
+        <NewButton icon="person-add" label={isWeb ? 'Invite User' : undefined} onPress={() => setShowInvite(true)} />
       </View>
       </TourTarget>
 
@@ -593,10 +591,7 @@ export default function AdminUsers() {
                       : 'Invite your first team member to get started.'}
                   </Text>
                   {!search && !sfilt && !rfilt && (
-                    <TouchableOpacity onPress={() => setShowInvite(true)} style={s.emptyBtn}>
-                      <MaterialIcons name="person-add" size={15} color="#fff" />
-                      <Text style={s.emptyBtnTxt}>Invite User</Text>
-                    </TouchableOpacity>
+                    <NewButton icon="person-add" label="Invite User" onPress={() => setShowInvite(true)} style={{ marginTop: 10 }} />
                   )}
                 </>
             }

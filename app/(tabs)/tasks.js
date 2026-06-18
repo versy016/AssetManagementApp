@@ -2,7 +2,7 @@
 // Thin orchestrator — all logic lives in hooks/useTasks.js.
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -15,12 +15,16 @@ import { useTasks } from '../../hooks/useTasks';
 import TaskCard from '../../components/tasks/TaskCard';
 import HireCard from '../../components/tasks/HireCard';
 import TaskActionModal from '../../components/tasks/TaskActionModal';
+import CreateTaskModal from '../../components/tasks/CreateTaskModal';
+import CompleteTaskModal from '../../components/tasks/CompleteTaskModal';
+import NewButton from '../../components/ui/NewButton';
 
 export default function TasksScreen() {
   const {
     // Core
     loading,
     tasks,
+    canAdmin,
     activeTab,
     setActiveTab,
     hires,
@@ -66,9 +70,23 @@ export default function TasksScreen() {
     relevantDocName,
     setRelevantDocName,
     handleSubmitTaskAction,
+
+    // Manual tasks
+    createManualTask,
+    updateManualTask,
+    completeManualTask,
+    dismissManualTask,
   } = useTasks();
 
   const [query, setQuery] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);     // manual task being edited
+  const [completeTarget, setCompleteTarget] = useState(null); // manual task being signed off
+
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  // Responsive columns: desktop web gets a denser multi-column grid.
+  const cols = isWeb ? (width >= 1280 ? 3 : width >= 820 ? 2 : 1) : 1;
 
   const searchedTaskItems = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -78,6 +96,16 @@ export default function TasksScreen() {
         .some((v) => v && String(v).toLowerCase().includes(q))
     );
   }, [filteredTaskItems, query]);
+
+  // Pad the grid with invisible placeholders so the last row keeps card widths
+  // consistent (otherwise a lone trailing card stretches full width).
+  const gridData = useMemo(() => {
+    if (cols <= 1) return searchedTaskItems;
+    const arr = [...searchedTaskItems];
+    const rem = arr.length % cols;
+    if (rem) for (let i = 0; i < cols - rem; i++) arr.push({ _ph: true, key: `ph-${i}` });
+    return arr;
+  }, [searchedTaskItems, cols]);
 
   if (loading) {
     return (
@@ -154,7 +182,8 @@ export default function TasksScreen() {
       {/* ── Tasks list (always on web; tab-gated on native) ── */}
       {(Platform.OS === 'web' || activeTab === 'tasks') && (
         <FlatList
-          data={tasks.loading ? [] : searchedTaskItems}
+          key={`tasks-cols-${cols}`}
+          data={tasks.loading ? [] : gridData}
                   keyExtractor={(t, idx) => {
                     if (t.key) return String(t.key);
                     if (t.actionId) return `action-${t.actionId}`;
@@ -163,24 +192,29 @@ export default function TasksScreen() {
                     const duePart = t.due ? +new Date(t.due) : 'nodue';
                     return `${aid}-${duePart}-${idx}`;
                   }}
-          contentContainerStyle={styles.listContent}
+          numColumns={cols}
+          columnWrapperStyle={cols > 1 ? styles.colWrap : undefined}
+          contentContainerStyle={[styles.listContent, isWeb && styles.listContentWeb]}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ItemSeparatorComponent={cols > 1 ? null : () => <View style={{ height: 10 }} />}
           ListHeaderComponent={() => (
             <View style={styles.tasksHeader}>
-              {/* Heading row first — title + count chip */}
+              {/* Heading row first — title + count chip + New task */}
               <View style={styles.tasksHeaderRow}>
                 <Text style={styles.sectionTitle}>Tasks &amp; Reminders</Text>
-                {totalTasks > 0 && (
-                  <View style={styles.tasksHeaderChip}>
-                    <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
-                    <Text style={styles.tasksHeaderChipText}>
-                      {searchedTaskItems.length !== totalTasks
-                        ? `${searchedTaskItems.length} of ${totalTasks}`
-                        : `${totalTasks} open`}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.tasksHeaderRight}>
+                  {totalTasks > 0 && (
+                    <View style={styles.tasksHeaderChip}>
+                      <MaterialIcons name="assignment-turned-in" size={14} color={Colors.primary} />
+                      <Text style={styles.tasksHeaderChipText}>
+                        {searchedTaskItems.length !== totalTasks
+                          ? `${searchedTaskItems.length} of ${totalTasks}`
+                          : `${totalTasks} open`}
+                      </Text>
+                    </View>
+                  )}
+                  <NewButton label="New task" onPress={() => setCreateOpen(true)} />
+                </View>
               </View>
               {/* Search below the heading */}
               <SearchInput
@@ -210,13 +244,15 @@ export default function TasksScreen() {
             )
           }
           renderItem={({ item }) => {
+            // Invisible spacer to keep the last grid row's card widths even.
+            if (item._ph) return <View style={cols > 1 ? styles.gridCell : undefined} />;
             const isOverdue   = isOverdueTask(item);
             const isReminder  = isReminderTask(item);
             const isRepair    = isRepairTask(item);
             const isService   = isServiceTask(item) && !isRepair;
             const isSignoff   = item.kind === 'signoff';
 
-                      return (
+            const card = (
               <TaskCard
                 item={item}
                 isOverdue={isOverdue}
@@ -225,8 +261,12 @@ export default function TasksScreen() {
                 isService={isService}
                 isSignoff={isSignoff}
                 onAction={() => openTaskAction(item)}
+                onComplete={() => setCompleteTarget(item)}
+                onEdit={() => setEditTarget(item)}
+                onDismiss={() => dismissManualTask(item.taskId)}
               />
             );
+            return cols > 1 ? <View style={styles.gridCell}>{card}</View> : card;
           }}
         />
       )}
@@ -258,6 +298,24 @@ export default function TasksScreen() {
         handleSubmitTaskAction={handleSubmitTaskAction}
         actionScrollRef={actionScrollRef}
       />
+
+      {/* ── Create / edit task modal ── */}
+      <CreateTaskModal
+        visible={createOpen || !!editTarget}
+        editTask={editTarget}
+        onClose={() => { setCreateOpen(false); setEditTarget(null); }}
+        onCreate={createManualTask}
+        onUpdate={updateManualTask}
+        isAdmin={canAdmin}
+      />
+
+      {/* ── Complete (sign-off) modal ── */}
+      <CompleteTaskModal
+        visible={!!completeTarget}
+        task={completeTarget}
+        onClose={() => setCompleteTarget(null)}
+        onComplete={completeManualTask}
+      />
     </ScreenWrapper>
   );
 }
@@ -266,6 +324,10 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
   listContent: { padding: 14, paddingBottom: 24 },
+  // Web: centre + cap width, and give the grid a touch more breathing room.
+  listContentWeb: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 8 },
+  colWrap: { gap: 14, marginBottom: 14 },
+  gridCell: { flex: 1 },
   emptyWrap: { alignItems: 'center', paddingVertical: 40 },
 
   // ── Header ──────────────────────────────────────────────────────────────
@@ -296,6 +358,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   tasksHeaderChipText: { fontSize: sf(12), fontWeight: '800', color: Colors.primary },
+  tasksHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  newTaskBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: Colors.primary,
+  },
+  newTaskBtnText: { fontSize: sf(12), fontWeight: '900', color: '#fff' },
 
   // ── Sub-tab bar ──────────────────────────────────────────────────────────
   subTabBar: {

@@ -22,6 +22,7 @@ import { Colors, Radius, Shadows, sf } from '../constants/uiTheme';
 import { auth } from '../firebaseConfig';
 import Chip from './ui/Chip';
 import InlineButton from './ui/InlineButton';
+import NewButton from './ui/NewButton';
 import SearchInput from './ui/SearchInput';
 import ScreenHeader from './ui/ScreenHeader';
 import TableIconButton from './ui/TableIconButton';
@@ -1344,8 +1345,8 @@ export default function CertsView({ visible: initialVisible }) {
             <Chip label="Expiring soon" tone="warning" active={filterExp === 'soon'} onPress={() => setFilterExp((prev) => (prev === 'soon' ? '' : 'soon'))} />
             <Chip label="Expired" tone="danger" active={filterExp === 'expired'} onPress={() => setFilterExp((prev) => (prev === 'expired' ? '' : 'expired'))} />
           </View>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+          <NewButton
+            label="New document"
             onPress={() => {
               setCreateOpen(true);
               setCreateStep(1);
@@ -1358,10 +1359,7 @@ export default function CertsView({ visible: initialVisible }) {
               setCreateDateLabel('');
               setCreateDatePickerOpen(false);
             }}
-          >
-            <MaterialIcons name="add" size={20} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '700' }}>New document</Text>
-          </TouchableOpacity>
+          />
         </View>
         </TourTarget>
       </View>

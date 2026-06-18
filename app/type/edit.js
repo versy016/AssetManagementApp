@@ -33,6 +33,7 @@ import { getAuthHeaders } from '../../utils/authHeaders';
 import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import NewButton from '../../components/ui/NewButton';
 
 // ---- System-managed default fields (always present on every asset type) ----
 // Mirrors the list rendered on the New Asset Type screen so users see the same
@@ -512,8 +513,10 @@ export default function EditAssetType() {
       };
       const meta = getFieldTypeById(row.field_type_id);
       if ((meta?.slug || '').toLowerCase() === 'date') {
-        const docSlug = (row.requiresDocSlug || '').trim();
-        payload.validation_rules = docSlug ? { requires_document_slug: docSlug } : {};
+        const lead = Number(row.reminderLeadDays) || 0;
+        const vr = {};
+        if (lead > 0) vr.reminder_lead_days = lead;
+        payload.validation_rules = vr;
       }
       if (meta?.has_options) {
         payload.options = (row.optionsCsv || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -820,27 +823,15 @@ export default function EditAssetType() {
         const presetName = (state.name || '').trim() || p.label;
 
         if (ftSlug === 'date') {
-          // DATE primary (+ optional attached document)
+          // DATE is a plain date field (reminder lead time only). Attaching a
+          // document to a date is no longer supported.
           const lead = Number(state.reminderLeadDays) || 0;
-          const docName = (state.docName || '').trim();
           const vr = {};
           if (lead > 0) vr.reminder_lead_days = lead;
-          if (state.attachDoc && docName) {
-            vr.requires_document_slug = slugifyName(docName);
-            vr.requires_document_required = !!state.docRequired;
-            vr.link_primary = 'date';
-          }
           if (!exists) {
             await createField({ name: presetName, field_type_id: ftId, is_required: !!state.required, display_order: extraOrder++, ...(Object.keys(vr).length ? { validation_rules: vr } : {}) }, p.label);
           } else {
             await updateField(matched.id, { name: presetName, is_required: !!state.required, validation_rules: vr }, p.label);
-          }
-          // Ensure / rename / remove the attached document (url) field.
-          if (state.attachDoc && docName) {
-            if (state.docFieldId) await updateField(state.docFieldId, { name: docName, is_required: !!state.docRequired }, `${p.label} document`);
-            else if (urlTypeId) await createField({ name: docName, field_type_id: urlTypeId, is_required: !!state.docRequired, display_order: extraOrder++ }, `${p.label} document`);
-          } else if (state.docFieldId) {
-            await deleteField(state.docFieldId, `${p.label} document`);
           }
         } else if (ftSlug === 'url') {
           // DOCUMENT primary (+ optional attached date)
@@ -883,13 +874,9 @@ export default function EditAssetType() {
         };
         const meta = getFieldTypeById(row.field_type_id);
         if ((meta?.slug || '').toLowerCase() === 'date') {
-          const docSlug = (row.requiresDocSlug || '').trim();
           const lead = Number(row.reminderLeadDays) || 0;
-          const docReq = !!row.documentRequired;
           const vr = {};
-          if (docSlug) vr.requires_document_slug = docSlug;
           if (lead > 0) vr.reminder_lead_days = lead;
-          if (docSlug) vr.requires_document_required = docReq;
           payload.validation_rules = vr;
         }
         if (meta?.has_options) {
@@ -916,10 +903,8 @@ export default function EditAssetType() {
           display_order: (existingFields?.length || 0) + 100,
         };
         if ((meta?.slug || '').toLowerCase() === 'date') {
-          const docSlug = (q.requiresDocSlug || '').trim();
           const lead = Number(q.reminderLeadDays) || 0;
           const vr = {};
-          if (docSlug) vr.requires_document_slug = docSlug;
           if (lead > 0) vr.reminder_lead_days = lead;
           payload.validation_rules = vr;
         }
@@ -1215,29 +1200,9 @@ export default function EditAssetType() {
                       )
                     ) : null}
 
-                    {/* DATE preset → optionally attach a document to this date */}
+                    {/* DATE preset → optional reminder lead time */}
                     {checked && (p.fieldTypeSlug || '').toLowerCase() === 'date' ? (
                       <View style={{ width: '100%', marginTop: 8 }}>
-                        <View style={s.switchRow}>
-                          <Text style={s.subLabel}>Attach a document to this date</Text>
-                          <Switch value={!!state.attachDoc} onValueChange={(v) => setPreset(p.key, { attachDoc: v })} />
-                        </View>
-                        {state.attachDoc ? (
-                          <View style={s.linkBox}>
-                            <Text style={s.subLabel}>Document name</Text>
-                            <TextInput
-                              style={s.input}
-                              value={state.docName || ''}
-                              onChangeText={(t) => setPreset(p.key, { docName: t })}
-                              placeholder="e.g. Service Report"
-                            />
-                            <View style={s.switchRow}>
-                              <Text style={s.subLabel}>Document required</Text>
-                              <Switch value={!!state.docRequired} onValueChange={(v) => setPreset(p.key, { docRequired: v })} />
-                            </View>
-                          </View>
-                        ) : null}
-
                         <Text style={[s.subLabel, { marginTop: 8 }]}>Reminder lead time (days, optional)</Text>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           {[7, 14, 30].map((d) => (
@@ -1362,24 +1327,6 @@ export default function EditAssetType() {
 
                   {isDate && (
                     <>
-                      <Text style={s.subLabel}>
-                        Link a document with {row.name?.trim() ? `"${row.name.trim()}"` : 'this date'} (optional)
-                      </Text>
-                      <Text style={s.helpMuted}>{documentLinkExamplesLine(row.name)}</Text>
-                      <TextInput
-                        style={s.input}
-                        value={row.requiresDocSlug || ''}
-                        onChangeText={(t) => updateCustomRow(row.id, { requiresDocSlug: t })}
-                        placeholder={documentLinkPlaceholder(row.name)}
-                        autoCapitalize="none"
-                      />
-                      <View style={s.switchRow}>
-                        <Text style={s.subLabel}>Document required</Text>
-                        <Switch
-                          value={!!row.documentRequired}
-                          onValueChange={(v) => updateCustomRow(row.id, { documentRequired: v })}
-                        />
-                      </View>
                       <Text style={s.subLabel}>Reminder lead time (days, optional)</Text>
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                         {[7,14,30].map((d) => (
@@ -1471,18 +1418,6 @@ export default function EditAssetType() {
                   if (!isDate) return null;
                   return (
                     <>
-                      <Text style={s.subLabel}>
-                        Link a document with{' '}
-                        {addModel.name?.trim() ? `"${addModel.name.trim()}"` : 'this date'} (optional)
-                      </Text>
-                      <Text style={s.helpMuted}>{documentLinkExamplesLine(addModel.name)}</Text>
-                      <TextInput
-                        style={s.input}
-                        value={addModel.requiresDocSlug || ''}
-                        onChangeText={(t) => setAddModel((m) => ({ ...m, requiresDocSlug: t }))}
-                        placeholder={documentLinkPlaceholder(addModel.name)}
-                        autoCapitalize="none"
-                      />
                       <Text style={s.subLabel}>Reminder lead time (days, optional)</Text>
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                         {[7,14,30].map((d) => (
@@ -1546,9 +1481,7 @@ export default function EditAssetType() {
                 </View>
               </View>
             ) : (
-              <TouchableOpacity style={[s.btn, { marginTop: 10 }]} onPress={() => setAddOpen(true)}>
-                <Text>+ Add Field</Text>
-              </TouchableOpacity>
+              <NewButton label="Add Field" onPress={() => setAddOpen(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
             )}
 
             {/* New fields (saved when you tap Save) */}

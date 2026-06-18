@@ -30,6 +30,7 @@ import { TourTarget } from '../../components/TourGuide';
 import { useTheme } from 'react-native-paper';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import SearchInput from '../../components/ui/SearchInput';
+import NewButton from '../../components/ui/NewButton';
 import EmptyState from '../../components/ui/EmptyState';
 import StatusBadge, {
   STATUS_CONFIG,
@@ -1180,14 +1181,10 @@ const Inventory = () => {
             )}
 
             {isAdmin && (
-              <TouchableOpacity
-                style={wS.webAddBtn}
+              <NewButton
+                label={isTypesTab ? 'New Asset Type' : 'New Asset'}
                 onPress={() => (isTypesTab ? router.push('/type/new') : router.push('/asset/new'))}
-                activeOpacity={0.9}
-              >
-                <MaterialIcons name="add" size={18} color="#fff" />
-                <Text style={wS.webAddBtnText}>{isTypesTab ? 'New Asset Type' : 'New Asset'}</Text>
-              </TouchableOpacity>
+              />
             )}
           </View>
         </View>

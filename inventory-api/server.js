@@ -141,6 +141,7 @@ const hireDisclaimerRoutes = require('./routes/hireDisclaimer');
 const publicAssetsRoutes   = require('./routes/publicAssets');
 const adminUsersRoutes     = require('./routes/adminUsers');
 const assetScanRoutes      = require('./routes/assetScan');
+const tasksRoutes          = require('./routes/tasks');
 
 // Mount the vision scan route BEFORE the catch-all assetRoutes so the more
 // specific `/assets/scan-image` path wins.
@@ -158,6 +159,7 @@ app.use('/asset-documents', assetDocumentsRoutes);
 app.use('/hire-disclaimer', hireDisclaimerRoutes);
 app.use('/public', publicAssetsRoutes);
 app.use('/admin/users', adminUsersRoutes);
+app.use('/tasks', tasksRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)

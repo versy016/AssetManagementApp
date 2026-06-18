@@ -5,8 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
+import AppDatePicker from '../../components/ui/AppDatePicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { fetchFields } from '../../hooks/useAssetTypeFields';
@@ -79,6 +79,15 @@ export default function EditAsset() {
   const [nextServiceDate, setNextServiceDate] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
   const [notes, setNotes] = useState('');
+  // Action-based notes (the full notes history) + add-a-note composer.
+  const [noteItems, setNoteItems] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [newNote, setNewNote] = useState('');
+  const [newNoteImportant, setNewNoteImportant] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [noteBusyId, setNoteBusyId] = useState(null);
   const [assetDocUrl, setAssetDocUrl] = useState(''); // top-level documentation_url
   const [assetDocs, setAssetDocs] = useState([]);     // DB-backed documents for this asset
   const [image, setImage] = useState(null);       // { uri, file }
@@ -110,6 +119,158 @@ export default function EditAsset() {
     if (scrollRef.current?.scrollToPosition) scrollRef.current.scrollToPosition(0, targetY, true);
     else if (scrollRef.current?.scrollTo) scrollRef.current.scrollTo({ x: 0, y: targetY, animated: true });
   };
+
+  const fmtNoteWhen = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(+d)) return '';
+    try {
+      return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(d);
+    } catch { return d.toLocaleString(); }
+  };
+
+  // Load the full notes history (asset_actions carrying a user note).
+  const loadNotes = useCallback(async () => {
+    if (!assetId) return;
+    setNotesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions`);
+      if (!res.ok) throw new Error('Failed to load notes');
+      const j = await res.json();
+      const arr = Array.isArray(j?.actions) ? j.actions : [];
+      const items = arr
+        .filter((a) => a?.data && typeof a.data.user_note_text === 'string' && a.data.user_note_text.trim())
+        .map((a) => ({
+          id: a.id,
+          text: a.data.user_note_text.trim(),
+          who: a.performer?.name || a.performer?.useremail || a.performed_by || 'System',
+          when: a.occurred_at,
+          important: !!a.data.important,
+          performed_by: a.performed_by || null,
+        }));
+      setNoteItems(items);
+    } catch { /* non-fatal */ } finally {
+      setNotesLoading(false);
+    }
+  }, [assetId]);
+
+  useEffect(() => { loadNotes(); }, [loadNotes]);
+
+  const buildNoteHeaders = useCallback(async (json = true) => {
+    const authH = await getAuthHeaders();
+    const u = auth.currentUser;
+    return {
+      ...(json ? { 'Content-Type': 'application/json' } : {}),
+      ...authH,
+      ...(u?.uid ? { 'X-User-Id': u.uid } : {}),
+      ...(u?.displayName ? { 'X-User-Name': u.displayName } : {}),
+      ...(u?.email ? { 'X-User-Email': u.email } : {}),
+    };
+  }, []);
+
+  // Admin may manage any note; a user may manage their own.
+  const canManageNote = useCallback((n) => {
+    if (isAdmin) return true;
+    const uid = auth.currentUser?.uid;
+    return !!uid && n && String(n.performed_by || '') === String(uid);
+  }, [isAdmin]);
+
+  // Add a note via the note-creation API (separate from "Save changes").
+  const saveNote = useCallback(async () => {
+    const text = (newNote || '').trim();
+    if (!text || !assetId) return;
+    setSavingNote(true);
+    try {
+      const headers = await buildNoteHeaders(true);
+      // A priority note claims the single priority slot (auto-demoting any
+      // previous one); a normal note is a plain action note.
+      const res = newNoteImportant
+        ? await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/priority-note`, {
+            method: 'POST', headers, body: JSON.stringify({ note: text, overwrite: true }),
+          })
+        : await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions`, {
+            method: 'POST', headers, body: JSON.stringify({ type: 'STATUS_CHANGE', note: text, data: { user_note_text: text, note_only: true } }),
+          });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to save note');
+      setNewNote('');
+      setNewNoteImportant(false);
+      await loadNotes();
+      showToast(newNoteImportant ? 'Priority note added' : 'Note added');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to save note');
+    } finally {
+      setSavingNote(false);
+    }
+  }, [newNote, newNoteImportant, assetId, loadNotes, buildNoteHeaders]);
+
+  // Inline edit of an existing note.
+  const submitEditNote = useCallback(async () => {
+    const text = (editingNoteText || '').trim();
+    if (!editingNoteId || !assetId) return;
+    if (!text) { Alert.alert('Note required', 'Please enter the note text.'); return; }
+    setNoteBusyId(editingNoteId);
+    try {
+      const headers = await buildNoteHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions/${encodeURIComponent(editingNoteId)}/note`, {
+        method: 'PATCH', headers, body: JSON.stringify({ note: text }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to update note');
+      setEditingNoteId(null); setEditingNoteText('');
+      await loadNotes();
+      showToast('Note updated');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to update note');
+    } finally {
+      setNoteBusyId(null);
+    }
+  }, [editingNoteId, editingNoteText, assetId, loadNotes, buildNoteHeaders]);
+
+  const deleteNote = useCallback((noteId) => {
+    if (!noteId || !assetId) return;
+    const doDelete = async () => {
+      setNoteBusyId(noteId);
+      try {
+        const headers = await buildNoteHeaders(false);
+        const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions/${encodeURIComponent(noteId)}/note`, { method: 'DELETE', headers });
+        if (!res.ok) throw new Error((await res.text()) || 'Failed to delete note');
+        if (editingNoteId === noteId) { setEditingNoteId(null); setEditingNoteText(''); }
+        await loadNotes();
+        showToast('Note deleted');
+      } catch (e) {
+        Alert.alert('Error', e.message || 'Failed to delete note');
+      } finally {
+        setNoteBusyId(null);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && !window.confirm('Delete this note? This cannot be undone.')) return;
+      doDelete();
+    } else {
+      Alert.alert('Delete note', 'Delete this note? This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ]);
+    }
+  }, [assetId, editingNoteId, loadNotes, buildNoteHeaders]);
+
+  // Toggle the single priority slot for an existing note.
+  const toggleNotePriority = useCallback(async (n) => {
+    if (!n?.id || !assetId) return;
+    setNoteBusyId(n.id);
+    try {
+      const headers = await buildNoteHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions/${encodeURIComponent(n.id)}/priority`, {
+        method: 'POST', headers, body: JSON.stringify({ important: !n.important }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to update priority');
+      await loadNotes();
+      showToast(!n.important ? 'Marked as priority' : 'Priority removed');
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to update priority');
+    } finally {
+      setNoteBusyId(null);
+    }
+  }, [assetId, loadNotes, buildNoteHeaders]);
 
   useEffect(() => {
     let cancelled = false;
@@ -384,6 +545,7 @@ export default function EditAsset() {
       const tc = (f.field_type?.code || f.field_type?.slug || '').toLowerCase();
       if (tc !== 'date' && tc !== 'datetime') return;
       let link = '';
+      let linkPrimary = '';
       try {
         const vr = f.validation_rules && typeof f.validation_rules === 'object'
           ? f.validation_rules
@@ -392,8 +554,10 @@ export default function EditAsset() {
         const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
         link = Array.isArray(l) ? (l[0] || '') : (l || '');
         link = String(link || '').trim();
+        linkPrimary = String((vr && vr.link_primary) || '').toLowerCase();
       } catch { /* ignore */ }
-      if (link) set.add(normSlug(link));
+      // Only document-primary links group a document inside a date card.
+      if (link && linkPrimary === 'document') set.add(normSlug(link));
     });
     return set;
   }, [fieldsSchema]);
@@ -581,8 +745,9 @@ export default function EditAsset() {
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </>
         );
-        // Plain date (no linked document)
-        if (!requiredDocSlug) {
+        // Plain date when there's no linked document, OR for the removed
+        // date→document direction. Only document-primary keeps the grouped card.
+        if (!requiredDocSlug || linkPrimary !== 'document') {
           return (
             <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
               {DateRow}
@@ -1052,7 +1217,103 @@ export default function EditAsset() {
         <Text style={whs.sectionHeader}>Assignment & Notes</Text>
         <View onLayout={onLayoutFor('notes')}>
           <Text style={styles.label}>Notes</Text>
-          <TextInput style={[styles.input, { height: 80 }]} value={notes} onChangeText={setNotes} placeholder="Notes" multiline maxLength={FIELD_LIMITS.NOTES} />
+
+          {/* Legacy single note (kept visible so nothing is hidden) */}
+          {notes?.trim() ? (
+            <View style={styles.noteItem}>
+              <Text style={styles.noteText}>{notes.trim()}</Text>
+              <Text style={styles.noteMeta}>Original note</Text>
+            </View>
+          ) : null}
+
+          {/* Full notes history */}
+          {notesLoading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginVertical: 10 }} />
+          ) : (noteItems.length === 0 && !notes?.trim()) ? (
+            <Text style={styles.noteEmpty}>No notes yet.</Text>
+          ) : (
+            noteItems.map((n) => (
+              <View key={n.id} style={[styles.noteItem, n.important && styles.noteItemImportant]}>
+                {editingNoteId === n.id ? (
+                  <>
+                    <TextInput
+                      style={[styles.input, { minHeight: 70, marginVertical: 0 }]}
+                      value={editingNoteText}
+                      onChangeText={setEditingNoteText}
+                      placeholderTextColor={Colors.sub2}
+                      multiline
+                      autoFocus
+                      maxLength={FIELD_LIMITS.NOTES}
+                    />
+                    <View style={styles.noteEditBtnRow}>
+                      <TouchableOpacity style={styles.noteEditCancel} onPress={() => { setEditingNoteId(null); setEditingNoteText(''); }} disabled={noteBusyId === n.id}>
+                        <Text style={styles.noteEditCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.noteEditSave, (noteBusyId === n.id || !editingNoteText.trim()) && { opacity: 0.6 }]} onPress={submitEditNote} disabled={noteBusyId === n.id || !editingNoteText.trim()}>
+                        {noteBusyId === n.id ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.noteEditSaveText}>Save</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.noteText}>{n.text}</Text>
+                    <View style={styles.noteFooterRow}>
+                      <Text style={styles.noteMeta} numberOfLines={2}>
+                        {n.who}{n.when ? ` · ${fmtNoteWhen(n.when)}` : ''}{n.important ? '  •  Priority' : ''}
+                      </Text>
+                      {canManageNote(n) && (
+                        <View style={styles.noteActions}>
+                          <TouchableOpacity onPress={() => toggleNotePriority(n)} disabled={noteBusyId === n.id} style={styles.noteIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <MaterialIcons name={n.important ? 'star' : 'star-border'} size={19} color={n.important ? Colors.dangerFg : Colors.sub} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => { setEditingNoteId(n.id); setEditingNoteText(n.text); }} disabled={noteBusyId === n.id} style={styles.noteIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <MaterialIcons name="edit" size={17} color={Colors.sub} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteNote(n.id)} disabled={noteBusyId === n.id} style={styles.noteIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                            <MaterialIcons name="delete-outline" size={18} color={Colors.dangerFg} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </>
+                )}
+              </View>
+            ))
+          )}
+
+          {/* Add a note — saved via the note API, not "Save changes" */}
+          <Text style={[styles.label, { marginTop: 14 }]}>Add a note</Text>
+          <TextInput
+            style={[styles.input, { height: 80 }]}
+            value={newNote}
+            onChangeText={setNewNote}
+            placeholder="Write a note…"
+            placeholderTextColor={Colors.sub2}
+            multiline
+            maxLength={FIELD_LIMITS.NOTES}
+          />
+          <View style={[styles.notePriorityRow, newNoteImportant && styles.notePriorityRowOn]}>
+            <MaterialIcons name="star" size={18} color={newNoteImportant ? Colors.dangerFg : Colors.sub} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.notePriorityLabel}>Priority note</Text>
+              <Text style={styles.notePriorityHint}>Pin to the top of this asset and show it when scanned.</Text>
+            </View>
+            <Switch value={newNoteImportant} onValueChange={setNewNoteImportant} />
+          </View>
+          <TouchableOpacity
+            style={[styles.saveNoteBtn, (savingNote || !newNote.trim()) && { opacity: 0.6 }]}
+            onPress={saveNote}
+            disabled={savingNote || !newNote.trim()}
+          >
+            {savingNote ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <MaterialIcons name="add-comment" size={16} color="#fff" />
+                <Text style={styles.saveNoteBtnText}>Save note</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
@@ -1164,14 +1425,17 @@ export default function EditAsset() {
         </WebOverlayPortal>
       )}
 
-      <DatePickerModal
-        locale="en"
-        mode="single"
+      <AppDatePicker
         visible={datePicker.open}
+        label={datePicker.slug === '__next_service_date' ? 'Next Service Date' : (datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Select date')}
+        value={
+          datePicker.slug === '__next_service_date' ? nextServiceDate
+          : datePicker.slug === '__date_purchased' ? datePurchased
+          : (datePicker.slug ? fieldValues[datePicker.slug] : null)
+        }
         onDismiss={() => setDatePicker({ open: false, slug: null })}
-        onConfirm={({ date }) => {
+        onConfirm={(iso) => {
           if (datePicker.slug) {
-            const iso = date.toISOString().split('T')[0];
             if (datePicker.slug === '__next_service_date') setNextServiceDate(iso);
             else if (datePicker.slug === '__date_purchased') setDatePurchased(iso);
             else setFieldValues((p) => ({ ...p, [datePicker.slug]: iso }));
@@ -1311,6 +1575,26 @@ const styles = StyleSheet.create({
   uploadHint: { fontSize: 12, color: Colors.sub, lineHeight: 18, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   btn: { backgroundColor: Colors.chip, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', borderRadius: Radius.sm, marginVertical: 8, justifyContent: 'center', borderWidth: 2, borderColor: Colors.line },
+  // ── Notes ──
+  noteItem: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, backgroundColor: Colors.card, padding: 12, marginTop: 8 },
+  noteItemImportant: { borderColor: Colors.dangerFg, backgroundColor: Colors.dangerBg },
+  noteText: { fontSize: sf(14), color: Colors.text, fontWeight: '600', lineHeight: sf(20) },
+  noteFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, gap: 8 },
+  noteMeta: { fontSize: sf(11), color: Colors.sub, fontWeight: '600', flex: 1 },
+  noteActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  noteIconBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.card },
+  noteEditBtnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
+  noteEditCancel: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: Radius.sm, borderWidth: 2, borderColor: Colors.line },
+  noteEditCancelText: { fontSize: sf(13), fontWeight: '800', color: Colors.sub2 },
+  noteEditSave: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: Radius.sm, backgroundColor: Colors.primary },
+  noteEditSaveText: { fontSize: sf(13), fontWeight: '900', color: '#fff' },
+  noteEmpty: { fontSize: sf(13), color: Colors.sub, marginTop: 8, fontStyle: 'italic' },
+  notePriorityRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card },
+  notePriorityRowOn: { borderColor: Colors.dangerFg, backgroundColor: Colors.dangerBg },
+  notePriorityLabel: { fontSize: sf(14), fontWeight: '800', color: Colors.text },
+  notePriorityHint: { fontSize: sf(11), color: Colors.sub, marginTop: 2 },
+  saveNoteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 18, borderRadius: Radius.sm, marginTop: 8 },
+  saveNoteBtnText: { color: '#fff', fontWeight: '900', fontSize: sf(14) },
   btnLg: { minHeight: 48, borderRadius: Radius.lg, paddingVertical: 14 },
   submit: { backgroundColor: Colors.primary },
   submitDisabled: { opacity: 0.7, ...(Platform.OS === 'web' ? { cursor: 'not-allowed' } : null) },

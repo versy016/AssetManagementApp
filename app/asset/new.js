@@ -4,8 +4,8 @@ import React, { useEffect, useState, useCallback, useMemo, useRef, useContext } 
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, Platform, Switch, ActivityIndicator, Modal, useWindowDimensions
 } from 'react-native';
-import { DatePickerModal } from 'react-native-paper-dates';
 import { en, registerTranslation } from 'react-native-paper-dates';
+import AppDatePicker from '../../components/ui/AppDatePicker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
@@ -759,6 +759,15 @@ export default function NewAsset() {
   };
 
   // ---------- pickers with validation ----------
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // keep in sync with the API (10MB)
+  const tooLargeImage = (bytes) => typeof bytes === 'number' && bytes > MAX_IMAGE_BYTES;
+  const reportImageTooLarge = () => {
+    const msg = 'Image is too large (max 10MB). Please choose a smaller image.';
+    setFieldError('image', msg);
+    scrollToFirstError({ image: msg });
+    Alert.alert('Image too large', msg);
+  };
+
   const pickImage = async () => {
     try {
       // On mobile, show options to take photo or choose from library
@@ -786,6 +795,8 @@ export default function NewAsset() {
 
                 if (canceled || !assets?.length) return;
                 const asset = assets[0];
+
+                if (tooLargeImage(asset.fileSize)) { reportImageTooLarge(); return; }
 
                 // Process the camera result similar to getImageFileFromPicker
                 const contentType = (asset.mimeType || 'image/jpeg').replace(/jpg/i, 'jpeg');
@@ -815,6 +826,7 @@ export default function NewAsset() {
               onPress: async () => {
                 const result = await getImageFileFromPicker();
                 if (!result) return;
+                if (tooLargeImage(result.size)) { reportImageTooLarge(); return; }
                 const t = String(result.type || '')
                   .replace(/^image\/jpg$/i, 'image/jpeg')
                   .toLowerCase();
@@ -840,6 +852,7 @@ export default function NewAsset() {
         // Web: just use the library picker
         const result = await getImageFileFromPicker();
         if (!result) return;
+        if (tooLargeImage(result.size)) { reportImageTooLarge(); return; }
         const t = String(result.type || '')
           .replace(/^image\/jpg$/i, 'image/jpeg')
           .toLowerCase();
@@ -913,9 +926,11 @@ export default function NewAsset() {
         }
         if (empty) newErrors[slug] = 'Required';
       }
-      // If a date field links to a document slug, and the date is set, ensure the doc exists or is attached
+      // Only document-primary links (attach a date to a document) enforce the
+      // document when the date is set. The date→document direction was removed.
       if (['date', 'datetime'].includes(((f.field_type?.slug || f.field_type?.name || '')).toLowerCase())) {
         let linkSlug = '';
+        let linkPrimary = '';
         try {
           const vr = f.validation_rules && typeof f.validation_rules === 'object'
             ? f.validation_rules
@@ -924,7 +939,9 @@ export default function NewAsset() {
           const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
           linkSlug = Array.isArray(l) ? (l[0] || '') : (l || '');
           linkSlug = String(linkSlug || '').trim();
+          linkPrimary = String((vr && vr.link_primary) || '').toLowerCase();
         } catch { }
+        if (linkPrimary !== 'document') linkSlug = ''; // skip removed date→document enforcement
         // Read optional requirement flag
         let requireDoc = true;
         try {
@@ -1114,6 +1131,8 @@ export default function NewAsset() {
             if (typeCode === 'date' || typeCode === 'datetime') {
               const vr = parseJsonMaybe(df.validation_rules) || {};
               const opts = parseJsonMaybe(df.options) || {};
+              // Only document-primary links carry the date onto the document.
+              if (String(vr.link_primary || '').toLowerCase() !== 'document') continue;
               const link = vr.requires_document_slug || vr.require_document_slug || opts.requires_document_slug || opts.require_document_slug;
               let docSlug = Array.isArray(link) ? (link[0] || '') : (link || '');
               docSlug = norm(docSlug);
@@ -1276,6 +1295,7 @@ export default function NewAsset() {
       const tc = ((f.field_type?.slug || f.field_type?.name || '')).toLowerCase();
       if (tc !== 'date' && tc !== 'datetime') return;
       let link = '';
+      let linkPrimary = '';
       try {
         const vr = f.validation_rules && typeof f.validation_rules === 'object'
           ? f.validation_rules
@@ -1284,8 +1304,12 @@ export default function NewAsset() {
         const l = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
         link = Array.isArray(l) ? (l[0] || '') : (l || '');
         link = String(link || '').trim();
+        linkPrimary = String((vr && vr.link_primary) || '').toLowerCase();
       } catch { /* ignore */ }
-      if (link) {
+      // Only document-primary links group the document inside the date card
+      // (attach date → document). The reverse (document attached to a date) is
+      // no longer supported, so its url field renders standalone.
+      if (link && linkPrimary === 'document') {
         const ds = normSlug(link);
         linkedDocSlugs.add(ds);
         dateForDoc[ds] = f;
@@ -1453,8 +1477,10 @@ export default function NewAsset() {
         const docRequired = !!docField?.is_required;
         const dateName = (f.label || f.name);
 
-        // No linked document → plain date picker.
-        if (!docSlug) {
+        // Plain date picker when there is no linked document, OR for the removed
+        // date→document direction. Only document-primary links keep the grouped
+        // card (attach a date to a document).
+        if (!docSlug || linkPrimary !== 'document') {
           return (
             <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
               {Label}
@@ -1665,8 +1691,8 @@ export default function NewAsset() {
         extraScrollHeight={80}
         enableOnAndroid
       >
-        {/* Web-only form header — image + heading + upload controls all in one card. */}
-        {isWebWide && (
+        {/* Web-only form header — only after an Asset ID is chosen. */}
+        {isWebWide && id && (
           <WebNewAssetFormHeader
             pickedImageUri={image?.uri}
             assetTypeName={(options.assetTypes || []).find(t => t.id === typeId)?.name || ''}
@@ -1686,58 +1712,6 @@ export default function NewAsset() {
           ) : null}
         </View>
 
-        {/* Mobile-only image picker (web hero card carries the controls). */}
-        {!isWebWide && (
-          <View onLayout={onLayoutFor('image')}>
-            <Text style={styles.label}>Asset image (optional)</Text>
-            <View style={styles.imagePreviewBox}>
-              {image?.uri ? (
-                uploading ? (
-                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                    <ActivityIndicator size="large" color="#1E90FF" />
-                    <Text style={{ marginTop: 8, color: '#5374a6' }}>
-                      Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
-                    </Text>
-                  </View>
-                ) : (
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="contain" />
-                )
-              ) : (
-                <Text style={styles.imagePreviewPlaceholder}>No image yet.</Text>
-              )}
-            </View>
-            <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
-            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-              {image?.uri ? (
-                <>
-                  <TouchableOpacity
-                    style={[styles.btn, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
-                    onPress={pickImage}
-                    disabled={uploading}
-                  >
-                    <Text>Replace image</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
-                    onPress={() => { if (!uploading) { revokeImageUri(image?.uri); setImage(null); setErrors((prev) => ({ ...prev, image: undefined })); } }}
-                    disabled={uploading}
-                  >
-                    <Text style={styles.btnDangerOutlineText}>Remove image</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.btn, { flex: 1, minWidth: 140, opacity: uploading ? 0.6 : 1 }]}
-                  onPress={pickImage}
-                  disabled={uploading}
-                >
-                  <Text>Pick image</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )}
-
         {/* QR / Asset ID */}
         <View onLayout={onLayoutFor('id')}>
           <Text style={[styles.label, !!errors.id && styles.labelError]}>Select Asset ID</Text>
@@ -1755,7 +1729,7 @@ export default function NewAsset() {
                       router.push({ pathname: '/qr-scanner', params: { intent: 'pick-id', returnTo: '/asset/new', returnParams: rp } });
                     }}
                   >
-                    <Text>Scan QR to Assign</Text>
+                    <Text>Scan QR to select ID</Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={{ width: '100%', alignItems: 'center' }}>
@@ -1777,6 +1751,9 @@ export default function NewAsset() {
                       style={[styles.btn, { backgroundColor: Colors.dangerBg, minWidth: 180 }]}
                       onPress={() => {
                         setId('');
+                        setSearchTerm('');
+                        setShowQRs(false);
+                        setFilteredAssetIds(options.assetIds || []);
                         setErrors(prev => ({ ...prev, id: undefined }));
                       }}
                     >
@@ -1801,7 +1778,7 @@ export default function NewAsset() {
                     <Text style={{ fontSize: sf(12), color: Colors.sub, marginBottom: 4 }}>Selected Asset ID</Text>
                     <Text style={{ fontSize: sf(20), fontWeight: 'bold', color: Colors.accent, letterSpacing: 1, fontWeight: '900' }}>{id}</Text>
                     <TouchableOpacity
-                      onPress={() => { setId(''); setSearchTerm(''); setErrors(prev => ({ ...prev, id: undefined })); }}
+                      onPress={() => { setId(''); setSearchTerm(''); setShowQRs(false); setFilteredAssetIds(options.assetIds || []); setErrors(prev => ({ ...prev, id: undefined })); }}
                       style={{ marginTop: 8, alignSelf: 'flex-start' }}
                     >
                       <Text style={{ color: Colors.dangerFg, fontWeight: '600', fontSize: sf(14) }}>Clear selection</Text>
@@ -1857,6 +1834,69 @@ export default function NewAsset() {
                 <Text style={styles.qrLabel}>{qrId}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+        )}
+
+        {/* Everything below appears only once an Asset ID is selected. */}
+        {id && (
+          <>
+        {/* Mobile-only image picker — placed AFTER the QR/Asset ID step. On
+            native, scanning a QR navigates away and back, which would discard an
+            already-picked image; pick the QR first, then the image persists. */}
+        {!isWebWide && (
+          <View onLayout={onLayoutFor('image')}>
+            <Text style={styles.label}>Asset image (optional)</Text>
+            {!id ? (
+              <Text style={styles.uploadHint}>Select an Asset ID above first, then add an image.</Text>
+            ) : (
+              <>
+                <View style={styles.imagePreviewBox}>
+                  {image?.uri ? (
+                    uploading ? (
+                      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                        <ActivityIndicator size="large" color="#1E90FF" />
+                        <Text style={{ marginTop: 8, color: '#5374a6' }}>
+                          Uploading image… {uploadProgress ? `${uploadProgress}%` : ''}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="contain" />
+                    )
+                  ) : (
+                    <Text style={styles.imagePreviewPlaceholder}>No image yet.</Text>
+                  )}
+                </View>
+                <Text style={styles.uploadHint}>{IMAGE_UPLOAD_HINT}</Text>
+                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                  {image?.uri ? (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.btn, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
+                        onPress={pickImage}
+                        disabled={uploading}
+                      >
+                        <Text>Replace image</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.btn, styles.btnDangerOutline, { flex: 1, minWidth: 120, opacity: uploading ? 0.6 : 1 }]}
+                        onPress={() => { if (!uploading) { revokeImageUri(image?.uri); setImage(null); setErrors((prev) => ({ ...prev, image: undefined })); } }}
+                        disabled={uploading}
+                      >
+                        <Text style={styles.btnDangerOutlineText}>Remove image</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.btn, { flex: 1, minWidth: 140, opacity: uploading ? 0.6 : 1 }]}
+                      onPress={pickImage}
+                      disabled={uploading}
+                    >
+                      <Text>Pick image</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -2106,24 +2146,18 @@ export default function NewAsset() {
         ) : null}
 
         <View style={{ height: 120 }} />
+          </>
+        )}
       </KeyboardAwareScrollView>
 
       {/* One DatePicker for everything */}
-      <DatePickerModal
-        locale="en"
-        mode="single"
+      <AppDatePicker
         visible={datePicker.open}
+        label={datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Select date'}
+        value={datePicker.slug === '__date_purchased' ? datePurchased : (datePicker.slug ? fieldValues[datePicker.slug] : null)}
         onDismiss={() => setDatePicker({ open: false, slug: null })}
-        onConfirm={({ date }) => {
-          if (!date || isNaN(new Date(date).getTime())) {
-            // keep the modal open so they can pick; just warn them
-            const label =
-              datePicker.slug === '__date_purchased' ? 'Date Purchased' : 'Date';
-            warn(`Please choose a valid ${label} before confirming.`);
-            return;
-          }
+        onConfirm={(iso) => {
           if (datePicker.slug) {
-            const iso = new Date(date).toISOString().split('T')[0];
             if (datePicker.slug === '__date_purchased') setDatePurchased(iso);
             else updateField(datePicker.slug, iso);
           }

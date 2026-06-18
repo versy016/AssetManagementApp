@@ -142,7 +142,7 @@ async function recordDocumentCreatedActivity(assetId, req, docRow) {
 // ------------------------------------------------------
 // Multer config with limits + field-aware file filtering
 // ------------------------------------------------------
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;   // 5MB
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;  // 10MB
 const MAX_DOC_BYTES = 10 * 1024 * 1024;  // 10MB
 
 const storage = multer.memoryStorage();
@@ -534,6 +534,9 @@ async function validateDynamicFields(reqId, typeId, fieldsObj, options = {}) {
                 : null);
             const opts = def.options && typeof def.options === 'object' ? def.options : null;
             const linkSlug = (vr && (vr.requires_document_slug || vr.require_document_slug)) || (opts && (opts.requires_document_slug || opts.require_document_slug));
+            // The date→document direction was removed; only enforce the document
+            // for document-primary links (a date attached to a document).
+            const linkPrimary = String((vr && vr.link_primary) || '').toLowerCase();
             // Allow optional document by flag; default to required (true) for back-compat
             const requireDocFlag = (() => {
               if (!vr) return true;
@@ -542,7 +545,7 @@ async function validateDynamicFields(reqId, typeId, fieldsObj, options = {}) {
               if (typeof v === 'string') return v.toLowerCase() === 'true';
               return true;
             })();
-            if (linkSlug && requireDocFlag && !skipRequiredLinkedDocuments) {
+            if (linkSlug && requireDocFlag && linkPrimary === 'document' && !skipRequiredLinkedDocuments) {
               const requiredSlugs = Array.isArray(linkSlug) ? linkSlug : [linkSlug];
               for (const s of requiredSlugs) {
                 // Only enforce when the linked document field actually exists on
@@ -1124,7 +1127,7 @@ router.post('/', authRequired, adminOnly, upload, validate(schemas.createAsset),
     // Per-file size limits (multer can't do per-field sizes by default)
     const img = req.files?.image?.[0];
     const doc = req.files?.document?.[0];
-    if (img && img.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 5MB)');
+    if (img && img.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 10MB)');
     if (doc && doc.size > MAX_DOC_BYTES) return errJson(res, 400, 'Document too large (max 10MB)');
 
     const data = req.body;
@@ -2364,6 +2367,49 @@ router.delete('/:id/actions/:actionId/note', async (req, res) => {
   }
 });
 
+// POST /assets/:id/actions/:actionId/priority -- mark an existing note as the
+// asset's priority note (single slot: demotes any other), or clear it with
+// { important: false }. Admin or the note's owner.
+router.post('/:id/actions/:actionId/priority', async (req, res) => {
+  const reqId = rid();
+  const assetId = req.params.id;
+  const actionId = req.params.actionId;
+  try {
+    if (!isUUID(assetId) && !isQRId(assetId)) return errJson(res, 400, 'Invalid asset id');
+    if (!isUUID(actionId)) return errJson(res, 400, 'Invalid action id');
+
+    const action = await prisma.asset_actions.findUnique({ where: { id: actionId } });
+    if (!action || action.asset_id !== assetId) return errJson(res, 404, 'Note not found');
+    if (!isUserNoteAction(action)) return errJson(res, 400, 'This entry is not a note');
+
+    const actorInfo = getActorInfo(req);
+    const actorId = actorInfo.id || null;
+    const isAdmin = await actorIsAdmin(actorId);
+    const isOwner = !!actorId && String(action.performed_by || '') === String(actorId);
+    if (!isAdmin && !isOwner) return errJson(res, 403, 'You can only change your own notes');
+
+    const important = req.body?.important !== false; // default true
+    if (important) {
+      // Single priority slot: demote any other priority notes first.
+      const current = await prisma.asset_actions.findMany({
+        where: { asset_id: assetId, data: { path: ['important'], equals: true }, NOT: { id: actionId } },
+      });
+      for (const n of current) {
+        await prisma.asset_actions.update({ where: { id: n.id }, data: { data: { ...(n.data || {}), important: false } } });
+      }
+    }
+    const updated = await prisma.asset_actions.update({
+      where: { id: actionId },
+      data: { data: { ...(action.data || {}), important: !!important } },
+    });
+    log(reqId, 'INFO', 'note-priority-set', { assetId, actionId, important: !!important });
+    res.json({ ok: true, id: updated.id, important: !!important });
+  } catch (e) {
+    log(reqId, 'ERROR', 'note-priority-failed', { assetId, actionId, message: e.message });
+    errJson(res, 500, e.message || 'Failed to update note priority');
+  }
+});
+
 // Find the current priority (pinned) note for an asset, or null. There is at
 // most one — claiming the slot demotes any previous one.
 const findPriorityNote = async (assetId) => {
@@ -2483,7 +2529,7 @@ router.put('/:id/files', (req, res) => {
     const img = req.files?.image?.[0];
     const doc = req.files?.document?.[0];
     if (!img && !doc) return errJson(res, 400, 'No files uploaded');
-    if (img && img.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 5MB)');
+    if (img && img.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 10MB)');
     if (doc && doc.size > MAX_DOC_BYTES) return errJson(res, 400, 'Document too large (max 10MB)');
 
     try {
@@ -2578,7 +2624,7 @@ router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'
     const imageFile = req.file;
 
     if (!name || !imageFile) return errJson(res, 400, 'Name and image are required');
-    if (imageFile.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 5MB)');
+    if (imageFile.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large (max 10MB)');
 
     let typeImage = imageFile;
     try {
@@ -2586,7 +2632,7 @@ router.post('/asset-types', authRequired, adminOnly, multerSingle.single('image'
     } catch (convErr) {
       return errJson(res, 400, convErr.message || 'Image conversion failed');
     }
-    if (typeImage.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large after conversion (max 5MB)');
+    if (typeImage.size > MAX_IMAGE_BYTES) return errJson(res, 400, 'Image too large after conversion (max 10MB)');
 
     const uploadResult = await uploadToS3(typeImage, 'asset-type-images');
 

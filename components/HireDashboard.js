@@ -19,6 +19,7 @@ import ConfirmModal from './ui/ConfirmModal';
 import TableIconButton from './ui/TableIconButton';
 import TablePagination from './ui/TablePagination';
 import SearchInput from './ui/SearchInput';
+import NewButton from './ui/NewButton';
 
 // Column flex weights for data columns (action column is fixed width — see ACTION_COL_WIDTH)
 const COL_FLEX = {
@@ -375,14 +376,7 @@ export default function HireDashboard({ onViewForm, onEditHire, onCopyHire, high
       </View>
       {onViewForm ? (
         <View style={[styles.quickRow, { marginTop: 8, justifyContent: 'flex-end' }]}>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}
-            onPress={onViewForm}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="add" size={20} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '700' }}>New hire</Text>
-          </TouchableOpacity>
+          <NewButton label="New hire" onPress={onViewForm} />
         </View>
       ) : null}
     </View>

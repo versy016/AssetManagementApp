@@ -108,7 +108,7 @@ function pickImageFileWeb() {
       const file = f.type === contentType ? f : new File([f], f.name || 'upload.jpg', { type: contentType });
       const uri = URL.createObjectURL(file);
       const name = file.name || `upload.${contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg')}`;
-      resolve({ uri, file, name, type: contentType });
+      resolve({ uri, file, name, type: contentType, size: file.size ?? null });
     });
     document.body.appendChild(input);
     input.click();
@@ -156,6 +156,7 @@ export async function getImageFileFromPicker() {
     file: { uri: asset.uri, name, type: contentType },
     name,
     type: contentType,
+    size: typeof asset.fileSize === 'number' ? asset.fileSize : null,
   };
 }
 

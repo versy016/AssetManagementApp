@@ -17,7 +17,101 @@ import { prettyDate } from '../../hooks/useTasks';
  *   isSignoff       – boolean
  *   onAction        – () => void  — called when the Action / Review button is pressed
  */
-export default function TaskCard({ item, isOverdue, isReminder, isRepair, isService, isSignoff, onAction }) {
+const cap = (str) => (str ? str.charAt(0) + str.slice(1).toLowerCase() : str);
+
+// Manual (user-created) task card — Complete / Dismiss lifecycle.
+function ManualTaskCard({ item, isOverdue, onComplete, onDismiss, onEdit }) {
+  const hasDue = !!item.due;
+  const dueText = hasDue ? prettyDate(new Date(item.due)) : 'No due date';
+  const isHigh = String(item.priority || '').toUpperCase() === 'HIGH';
+  const hasAsset = !!item.assetId;
+
+  return (
+    <View style={styles.taskCard}>
+      <View style={[styles.taskCardAccent, { backgroundColor: isHigh ? Colors.dangerFg : Colors.primary }]} />
+
+      {/* Header */}
+      <View style={styles.taskCardHeaderRow}>
+        <View style={[styles.statusChip, isOverdue
+          ? { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder }
+          : { backgroundColor: Colors.primaryLight, borderColor: Colors.line }]}>
+          <MaterialIcons name={isOverdue ? 'error-outline' : 'check-circle-outline'} size={13} color={isOverdue ? Colors.dangerFg : Colors.primary} />
+          <Text style={[styles.statusChipText, { color: isOverdue ? Colors.dangerFg : Colors.primary }]} numberOfLines={1}>
+            {isOverdue ? 'Overdue' : 'Task'}
+          </Text>
+        </View>
+        <View style={styles.manualHeaderRight}>
+          {hasDue && (
+            <View style={styles.duePill}>
+              <MaterialIcons name="event" size={13} color={Colors.text} />
+              <Text style={styles.duePillText} numberOfLines={1}>{dueText}</Text>
+            </View>
+          )}
+          {onEdit && (
+            <TouchableOpacity onPress={onEdit} style={styles.manualEditBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialIcons name="edit" size={16} color={Colors.sub} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Title + description */}
+      <View style={styles.taskMainRow}>
+        <View style={styles.taskAssetThumbPlaceholder}>
+          <MaterialIcons name="task-alt" size={22} color={Colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.manualTitle} numberOfLines={2}>{item.title}</Text>
+          {item.description ? (
+            <Text style={styles.manualDesc} numberOfLines={2}>{item.description}</Text>
+          ) : null}
+          {hasAsset ? (
+            <Text style={styles.manualAsset} numberOfLines={1}>
+              <MaterialIcons name="link" size={12} color={Colors.sub} />
+              {' '}{[item.assetTypeName || item.model || 'Asset', `ID: ${item.assetId}`].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Footer */}
+      <View style={styles.taskFooterRow}>
+        <View style={styles.taskTagRow}>
+          <View style={[styles.smallTag, isHigh
+            ? { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder }
+            : { backgroundColor: Colors.chip, borderColor: Colors.line }]}>
+            <MaterialIcons name="flag" size={11} color={isHigh ? Colors.dangerFg : Colors.sub} />
+            <Text style={[styles.smallTagText, { color: isHigh ? Colors.dangerFg : Colors.sub }]}>{cap(item.priority)} priority</Text>
+          </View>
+          {item.category && item.category !== 'GENERAL' && (
+            <View style={[styles.smallTag, { backgroundColor: Colors.infoBg, borderColor: Colors.infoBorder }]}>
+              <Text style={[styles.smallTagText, { color: Colors.infoFg }]}>
+                {cap(item.category)}{item.certType ? ` · ${item.certType}` : ''}
+              </Text>
+            </View>
+          )}
+          {item.assigneeName ? (
+            <View style={[styles.smallTag, { backgroundColor: Colors.chip, borderColor: Colors.line }]}>
+              <MaterialIcons name="person" size={11} color={Colors.sub} />
+              <Text style={[styles.smallTagText, { color: Colors.sub }]}>{item.assigneeName}</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.manualBtnRow}>
+          <TouchableOpacity style={styles.completeBtn} onPress={onComplete}>
+            <MaterialIcons name="check" size={15} color="#fff" />
+            <Text style={styles.completeBtnText}>Complete</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export default function TaskCard({ item, isOverdue, isReminder, isRepair, isService, isSignoff, onAction, onComplete, onDismiss, onEdit }) {
+  if (item.kind === 'manual') {
+    return <ManualTaskCard item={item} isOverdue={isOverdue} onComplete={onComplete} onDismiss={onDismiss} onEdit={onEdit} />;
+  }
   const hasDue = !!item.due;
 
   let statusLabel    = 'Upcoming';
@@ -243,4 +337,26 @@ const styles = StyleSheet.create({
   },
   toDoButtonSignoff: { backgroundColor: Colors.primary },
   toDoButtonText: { color: '#fff', fontWeight: '800', fontSize: sf(13) },
+
+  // ── Manual task card ──────────────────────────────────────────────────────
+  manualHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  manualEditBtn: {
+    width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card,
+  },
+  manualTitle: { fontSize: sf(15), fontWeight: '800', color: Colors.text },
+  manualDesc: { fontSize: sf(13), color: Colors.sub, marginTop: 3, lineHeight: sf(18) },
+  manualAsset: { fontSize: sf(12), color: Colors.sub, marginTop: 5, fontWeight: '600' },
+  manualBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dismissBtn: {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: Radius.md,
+    borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card,
+  },
+  dismissBtnText: { color: Colors.sub2, fontWeight: '800', fontSize: sf(13) },
+  completeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: Radius.md,
+    backgroundColor: '#15803D',
+  },
+  completeBtnText: { color: '#fff', fontWeight: '800', fontSize: sf(13) },
 });
