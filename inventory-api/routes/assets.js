@@ -1889,12 +1889,14 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
       );
     }
 
-    if (postOps.length) {
-      try { await Promise.all(postOps); } catch (e) { /* already logged */ }
-    }
-
     log(reqId, 'INFO', 'update-asset-ok', { id: assetId, ops: result.length });
     res.json({ success: true, updated: result });
+
+    // Activity logging (edit/assignment/status history) is non-critical to the
+    // response — run it AFTER responding so the save returns promptly.
+    if (postOps.length) {
+      Promise.all(postOps).catch((e) => log(reqId, 'WARN', 'post-update-activity-failed', { message: e?.message || String(e) }));
+    }
   } catch (err) {
     // Validation errors set err.status (e.g. 400) — surface them as such with a
     // clear message instead of an opaque 500 the client can't act on.

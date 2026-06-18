@@ -606,7 +606,8 @@ export default function NewAsset() {
           // Top-level fields (copy everything except the target asset id)
           setTypeId(data.type_id || '');
           setAssignedToId(data.assigned_to_id || '');
-          setStatus(data.status || '');
+          // Never start a new asset as End of Life (even when copying one).
+          setStatus(String(data.status || '').toLowerCase() === 'end of life' ? 'In Service' : (data.status || ''));
           setLocation(data.location || '');
           setLocQuery(data.location || '');
           setModel(data.model || '');
@@ -620,6 +621,16 @@ export default function NewAsset() {
           if (data.fields && typeof data.fields === 'object') setFieldValues(data.fields);
         })
         .catch((e) => logger.error('Preselect asset fetch error', e));
+    }
+  }, [preselectId]);
+
+  // Apply a preselected QR id immediately (don't wait for the asset-options
+  // fetch) so the rest of the form reveals as soon as the scan returns.
+  useEffect(() => {
+    if (preselectId) {
+      const sid = String(preselectId);
+      setId(sid);
+      setSearchTerm(sid);
     }
   }, [preselectId]);
 
@@ -643,10 +654,11 @@ export default function NewAsset() {
         if (!res.ok) {
           let msg = '';
           try { const j = await res.json(); msg = j?.error || j?.message || ''; } catch { }
-          // If server reports missing API key, permanently disable suggestions for this session
-          if (res.status === 400 && /GOOGLE_PLACES_API_KEY/i.test(msg)) {
+          // A 400 means a server/Google config problem (missing key, Places API
+          // not enabled, key restricted). Surface it and stop retrying.
+          if (res.status === 400) {
             setLocSuggestEnabled(false);
-            setLocSuggestError('Location suggestions unavailable (API key not configured).');
+            setLocSuggestError(msg ? `Location suggestions unavailable (${msg}).` : 'Location suggestions unavailable.');
             setLocSuggestions([]);
             return;
           }
@@ -1398,7 +1410,49 @@ export default function NewAsset() {
 
       case 'text':
       case 'textarea':
-      case 'email':
+      case 'email': {
+        // Location fields get Google Places address autocomplete.
+        const isLocationField = typeCode !== 'textarea' && (slug === 'location' || /\blocation\b/i.test(String(f.name || '')));
+        if (isLocationField) {
+          return (
+            <View key={slug} style={{ marginBottom: 12, zIndex: locOpen ? 60 : 1 }} onLayout={onLayoutFor(slug)}>
+              {Label}
+              <TextInput
+                ref={setInputRef(slug)}
+                style={[styles.input, !!errors[slug] && styles.inputError]}
+                placeholder={`Search address — ${f.label || f.name}`}
+                value={String(fieldValues[slug] ?? '')}
+                onChangeText={(t) => { updateField(slug, t); setLocQuery(t); setLocOpen(true); }}
+                onFocus={() => setLocOpen(true)}
+                onBlur={() => setTimeout(() => setLocOpen(false), 200)}
+                autoCapitalize="words"
+                maxLength={FIELD_LIMITS.FIELD_VALUE}
+              />
+              {locOpen && (locLoading || locSuggestions.length > 0 || !!locSuggestError) ? (
+                <View style={ds.dropdownPanel}>
+                  {locLoading ? (
+                    <View style={ds.dropdownRow}><Text style={ds.dropdownRowText}>Searching…</Text></View>
+                  ) : locSuggestError ? (
+                    <View style={ds.dropdownRow}><Text style={ds.dropdownRowText}>{locSuggestError}</Text></View>
+                  ) : (
+                    locSuggestions.slice(0, 6).map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={ds.dropdownRow}
+                        onPressIn={() => { updateField(slug, s.description); setLocQuery(s.description); setLocSuggestions([]); setLocOpen(false); }}
+                        onMouseDown={Platform.OS === 'web' ? (e) => { try { e?.preventDefault?.(); } catch { /* ignore */ } } : undefined}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={ds.dropdownRowText} numberOfLines={2}>{s.description}</Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              ) : null}
+              {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
+            </View>
+          );
+        }
         return (
           <View key={slug} style={{ marginBottom: 12 }} onLayout={onLayoutFor(slug)}>
             {Label}
@@ -1414,6 +1468,7 @@ export default function NewAsset() {
             {!!errors[slug] && <Text style={styles.errorBelow}>{errors[slug]}</Text>}
           </View>
         );
+      }
 
       case 'number':
         return (
@@ -1690,6 +1745,7 @@ export default function NewAsset() {
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={80}
         enableOnAndroid
+        enableResetScrollToCoords={false}
       >
         {/* Web-only form header — only after an Asset ID is chosen. */}
         {isWebWide && id && (
@@ -1902,7 +1958,7 @@ export default function NewAsset() {
 
         {/* Asset Type — the field label below carries the section name,
            so no separate uppercase whs.sectionHeader (was duplicating it). */}
-        <View style={{ zIndex: 4000 }} onLayout={onLayoutFor('typeId')}>
+        <View style={{ zIndex: typeOpen ? 7000 : 4000 }} onLayout={onLayoutFor('typeId')}>
           <Text style={[styles.label, !!errors.typeId && styles.labelError]}>Asset Type *</Text>
           <TourTarget id="asset-type">
             <DropDownPicker
@@ -1916,7 +1972,7 @@ export default function NewAsset() {
               searchPlaceholder="Search asset type"
               listMode="SCROLLVIEW"
               searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
-              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
+              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 12, minHeight: 46, fontSize: sf(15) }}
               style={[styles.dropdown, !!errors.typeId && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
@@ -1925,6 +1981,9 @@ export default function NewAsset() {
           {!!errors.typeId && <Text style={styles.errorBelow}>{errors.typeId}</Text>}
         </View>
 
+        {/* Asset details + scan-from-photo appear once an asset type is chosen. */}
+        {typeId ? (
+          <>
         {/* ── Scan-from-photo card (iOS/Android only) ──────────────────
             Dedicated picker that ONLY extracts asset metadata via vision —
             the photo is never persisted as the asset's image. Hidden on
@@ -2075,7 +2134,7 @@ export default function NewAsset() {
             </TouchableOpacity>
             {!!errors.date_purchased && <Text style={styles.errorBelow}>{errors.date_purchased}</Text>}
           </View>
-          <View style={{ zIndex: 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
+          <View style={{ zIndex: userOpen ? 7000 : 2000 }} onLayout={onLayoutFor('assigned_to_id')}>
             <Text style={[styles.label, !!errors.assigned_to_id && styles.labelError]}>User Assigned</Text>
             <DropDownPicker
               open={userOpen}
@@ -2088,7 +2147,7 @@ export default function NewAsset() {
               searchPlaceholder="Search user"
               listMode="SCROLLVIEW"
               searchContainerStyle={{ borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent' }}
-              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 8 }}
+              searchTextInputStyle={{ borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 12, minHeight: 46, fontSize: sf(15) }}
               style={[styles.dropdown, !!errors.assigned_to_id && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
@@ -2096,15 +2155,20 @@ export default function NewAsset() {
             {!!errors.assigned_to_id && <Text style={styles.errorBelow}>{errors.assigned_to_id}</Text>}
           </View>
 
-          <View style={{ zIndex: 1000 }} onLayout={onLayoutFor('status')}>
+          <View style={{ zIndex: statusOpen ? 7000 : 1000 }} onLayout={onLayoutFor('status')}>
             <Text style={[styles.label, !!errors.status && styles.labelError]}>Status</Text>
             <DropDownPicker
               open={statusOpen}
               setOpen={setStatusOpen}
               value={status}
               setValue={(fn) => setStatus(fn())}
-              items={(options.statuses || []).map(s => ({ label: s, value: s }))}
+              // End of Life can't be set while creating an asset.
+              items={(options.statuses || [])
+                .filter((s) => String(s).toLowerCase() !== 'end of life')
+                .map(s => ({ label: s, value: s }))}
               placeholder="Select Status"
+              listMode="SCROLLVIEW"
+              dropDownDirection="TOP"
               style={[styles.dropdown, !!errors.status && styles.dropdownError]}
               dropDownContainerStyle={styles.dropdownContainer}
               nestedScrollEnabled
@@ -2144,6 +2208,10 @@ export default function NewAsset() {
             </Text>
           </View>
         ) : null}
+          </>
+        ) : (
+          <Text style={[styles.uploadHint, { marginTop: 10 }]}>Select an asset type above to fill in the asset details.</Text>
+        )}
 
         <View style={{ height: 120 }} />
           </>

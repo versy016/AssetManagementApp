@@ -273,6 +273,40 @@ export default function QRScannerScreen() {
         } else if (intent === 'swap-target' && placeholderId) {
           // Confirm and perform swap: move scanned asset onto placeholderId's QR
           try {
+            // ── Validate the scanned (source) asset before swapping ──
+            if (String(assetId).toUpperCase() === String(placeholderId).toUpperCase()) {
+              Alert.alert('Same QR', 'You scanned the same QR. Scan a different existing asset to swap.');
+              setIsProcessing(false);
+              return;
+            }
+            try {
+              const srcRes = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}`);
+              if (!srcRes.ok) {
+                Alert.alert('Asset not found', 'That QR has no asset record. Scan an existing asset to swap.');
+                setIsProcessing(false);
+                return;
+              }
+              const src = await srcRes.json();
+              const srcHasDyn = src && src.fields && Object.keys(src.fields || {}).length > 0;
+              const srcStatus = String(src?.status || '').toLowerCase();
+              const srcReserved = String(src?.description || '').trim().toLowerCase() === 'qr reserved asset';
+              const srcEmpty = !src?.serial_number && !src?.model && !src?.assigned_to_id && !src?.type_id && !src?.documentation_url && !src?.image_url && !src?.other_id && !srcHasDyn;
+              if (srcStatus === 'end of life') {
+                Alert.alert('Decommissioned asset', 'The scanned asset is End of Life and cannot be swapped.');
+                setIsProcessing(false);
+                return;
+              }
+              if (srcEmpty || srcReserved) {
+                Alert.alert('No asset assigned', 'The scanned QR has no asset assigned to it. Scan an existing, assigned asset to swap onto this QR.');
+                setIsProcessing(false);
+                return;
+              }
+            } catch (e) {
+              Alert.alert('Error', e?.message || 'Failed to verify the scanned asset');
+              setIsProcessing(false);
+              return;
+            }
+
             // Build auth headers
             const auth = getAuth && getAuth();
             const u = auth?.currentUser || null;

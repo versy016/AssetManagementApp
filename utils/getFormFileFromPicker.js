@@ -1,6 +1,6 @@
 // utils/getFormFileFromPicker.js
 import * as ImagePicker from 'expo-image-picker';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 
 /** MIME types accepted by API for image fields (keep in sync with inventory-api/routes/assets.js). */
 export const ALLOWED_IMAGE_MIME_TYPES = [
@@ -124,9 +124,11 @@ export async function getImageFileFromPicker() {
     return pickImageFileWeb();
   }
 
+  // allowsEditing:false keeps iOS on the fast PHPicker (the legacy editor-based
+  // picker can take several seconds to open and needs full-library permission).
   const { assets, canceled } = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: true,
+    allowsEditing: false,
     quality: 0.7,
     base64: false,
   });
@@ -158,6 +160,63 @@ export async function getImageFileFromPicker() {
     type: contentType,
     size: typeof asset.fileSize === 'number' ? asset.fileSize : null,
   };
+}
+
+/** Turn a native ImagePicker asset into the standard { uri, file, name, type, size } shape. */
+function assetToResult(asset) {
+  const contentType = deriveImageMime({ uri: asset.uri, mimeType: asset.mimeType, fileName: asset.fileName });
+  const allowed = new Set(ALLOWED_IMAGE_MIME_TYPES);
+  if (!allowed.has(contentType)) {
+    throw new Error(`Unsupported file type. Please choose: ${Object.keys(EXT_TO_MIME).join(', ')}`);
+  }
+  const ext = contentType.split('/')[1] || 'jpg';
+  const name = asset.fileName || `upload.${ext === 'jpeg' ? 'jpg' : ext}`;
+  return {
+    uri: asset.uri,
+    file: { uri: asset.uri, name, type: contentType },
+    name,
+    type: contentType,
+    size: typeof asset.fileSize === 'number' ? asset.fileSize : null,
+  };
+}
+
+/**
+ * Pick an image, letting the user choose Camera or Library (native) — web falls
+ * back to the file picker. Returns { uri, file, name, type, size } or null.
+ */
+export async function pickAssetImage() {
+  if (Platform.OS === 'web') return pickImageFileWeb();
+
+  const choice = await new Promise((resolve) => {
+    Alert.alert(
+      'Add image',
+      'Choose an option',
+      [
+        { text: 'Take Photo', onPress: () => resolve('camera') },
+        { text: 'Choose from Library', onPress: () => resolve('library') },
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(null) },
+    );
+  });
+  if (!choice) return null;
+
+  if (choice === 'camera') {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') throw new Error('Camera permission is required to take a photo.');
+    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+    if (res.canceled || !res.assets?.length) return null;
+    return assetToResult(res.assets[0]);
+  }
+
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: false,
+    quality: 0.7,
+    base64: false,
+  });
+  if (res.canceled || !res.assets?.length) return null;
+  return assetToResult(res.assets[0]);
 }
 
 /**

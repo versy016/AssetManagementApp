@@ -104,7 +104,7 @@ const AvatarCircle = ({ name, email }) => {
 // Asset image with an inline add/replace flow, shown inside the asset card.
 // When there is no image it shows a clear placeholder plus an Add-image button;
 // after a successful upload it offers to jump back to the scanner.
-const AssetImageBlock = ({ imageUrl, uploading, justAdded, onAdd, onScanAnother }) => (
+const AssetImageBlock = ({ imageUrl, uploading, justAdded, onAdd, onScanAnother, canAdd = true }) => (
   <View style={ab.wrap}>
     <View style={ab.imageBox}>
       {imageUrl ? (
@@ -134,7 +134,7 @@ const AssetImageBlock = ({ imageUrl, uploading, justAdded, onAdd, onScanAnother 
           <Text style={ab.scanText}>Scan another</Text>
         </TouchableOpacity>
       </View>
-    ) : !imageUrl ? (
+    ) : (!imageUrl && canAdd) ? (
       // Only offer Add when there is no image — no replace control once set.
       <TouchableOpacity
         style={[ab.addBtn, uploading && { opacity: 0.6 }]}
@@ -334,7 +334,7 @@ export default function CheckInScreen() {
   const [actionsFormType, setActionsFormType] = useState(null);
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapIdInput, setSwapIdInput] = useState('');
-  const [lookup, setLookup] = useState({ model: '', type: '', assigned: '' });
+  const [lookupQuery, setLookupQuery] = useState('');
   const [lookupResults, setLookupResults] = useState([]);
   const [lookupSelected, setLookupSelected] = useState(null);
   const [allAssets, setAllAssets] = useState([]);
@@ -465,7 +465,7 @@ export default function CheckInScreen() {
 
   // Reset lookup results whenever the swap sheet is opened
   useEffect(() => {
-    if (swapOpen) { setLookupResults([]); setLookupSelected(null); }
+    if (swapOpen) { setLookupResults([]); setLookupSelected(null); setLookupQuery(''); }
   }, [swapOpen]);
 
   // Preload assets list when opening the swap sheet (for live suggestions)
@@ -486,13 +486,8 @@ export default function CheckInScreen() {
   // Live filter suggestions as user types
   useEffect(() => {
     if (!swapOpen) return;
-    const hasAny = [lookup.model, lookup.type, lookup.assigned].some(v => String(v || '').trim().length >= 2);
-    if (!hasAny) { setLookupResults([]); setLookupSelected(null); return; }
-    const q = {
-      model: String(lookup.model || '').trim().toLowerCase(),
-      type: String(lookup.type || '').trim().toLowerCase(),
-      assigned: String(lookup.assigned || '').trim().toLowerCase(),
-    };
+    const q = String(lookupQuery || '').trim().toLowerCase();
+    if (q.length < 2) { setLookupResults([]); setLookupSelected(null); return; }
     const idIsQR = (s) => /^[A-Z0-9]{8}$/i.test(String(s || ''));
     const isPlaceholder = (it) => {
       const hasDyn = it && it.fields && Object.keys(it.fields || {}).length > 0;
@@ -505,16 +500,19 @@ export default function CheckInScreen() {
         if (!it?.type_id) return false;                  // must be a real asset type
         if (!it?.model && !it?.serial_number) return false; // require some concrete identity
         if (isPlaceholder(it)) return false;             // defensive guard
-        const model = String(it?.model || '').toLowerCase();
-        const type = String(it?.asset_types?.name || it?.type || '').toLowerCase();
-        const assigned = String(it?.users?.name || it?.users?.useremail || '').toLowerCase();
-        return (!q.model || model.includes(q.model)) && (!q.type || type.includes(q.type)) && (!q.assigned || assigned.includes(q.assigned));
+        // Common search across all relevant fields (like the main search).
+        const hay = [
+          it?.id, it?.model, it?.serial_number, it?.other_id,
+          it?.asset_types?.name, it?.type, it?.description,
+          it?.users?.name, it?.users?.useremail,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(q);
       })
       .slice(0, 10);
     setLookupResults(matches);
     // clear any selected if it no longer appears
     if (lookupSelected && !matches.find(m => m.id === lookupSelected.id)) setLookupSelected(null);
-  }, [lookup, allAssets, swapOpen]);
+  }, [lookupQuery, allAssets, swapOpen]);
 
   const scrollToLookup = () => {
     try {
@@ -1787,6 +1785,7 @@ export default function CheckInScreen() {
                     justAdded={imageJustAdded}
                     onAdd={addAssetImage}
                     onScanAnother={goToScanner}
+                    canAdd={!isQRReserved}
                   />
                   {/* Header — type + ID inline, status */}
                   <View style={dl.headerRow}>
@@ -2225,6 +2224,7 @@ export default function CheckInScreen() {
               justAdded={imageJustAdded}
               onAdd={addAssetImage}
               onScanAnother={goToScanner}
+              canAdd={!isQRReserved}
             />
             {/* Header — type + ID inline, status */}
             <View style={dl.headerRow}>
@@ -2254,13 +2254,34 @@ export default function CheckInScreen() {
 
             {isEOL ? (
               <View style={styles.quickActionBar}>
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
+                    onPress={() => {
+                      Alert.alert(
+                        'Bring back in service',
+                        'Restore this asset to In Service? It will no longer be marked End of Life.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Restore', onPress: () => updateStatus('In Service') },
+                        ]
+                      );
+                    }}
+                    disabled={loading}
+                  >
+                    <MaterialIcons name="restart-alt" size={18} color="#fff" />
+                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
+                      {loading ? 'Loading…' : 'Bring back in service'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                   disabled={loading}
                 >
                   <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
+                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
@@ -2296,18 +2317,6 @@ export default function CheckInScreen() {
               </View>
             ) : isQRReserved ? (
               <View style={styles.quickActionBar}>
-                {!!asset?.id && (
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                    onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="assignment" size={18} color={Colors.accent} />
-                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
-                      Assign Imported Asset
-                    </Text>
-                  </TouchableOpacity>
-                )}
                 <TouchableOpacity
                   style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
                   onPress={() => setSwapOpen(true)}
@@ -2318,6 +2327,18 @@ export default function CheckInScreen() {
                     Swap
                   </Text>
                 </TouchableOpacity>
+                {!!asset?.id && (
+                  <TouchableOpacity
+                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
+                    onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
+                    disabled={loading}
+                  >
+                    <MaterialIcons name="assignment" size={18} color={Colors.accent} />
+                    <Text style={[styles.quickActionBtnTextSecondary, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                      Assign Imported Asset
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {!!asset?.id && (
                   <TouchableOpacity
                     style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
@@ -2331,11 +2352,11 @@ export default function CheckInScreen() {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
+                  style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
                   onPress={() => router.replace('/(tabs)/dashboard')}
                 >
-                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
+                  <MaterialIcons name="home" size={16} color={Colors.accent} />
+                  <Text style={styles.quickActionBtnTextSecondary} numberOfLines={1}>
                     Back to Dashboard
                   </Text>
                 </TouchableOpacity>
@@ -2595,7 +2616,27 @@ export default function CheckInScreen() {
                 </View>
 
                 <ScrollView ref={swapScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 240, gap: 14 }}>
-                  {/* Option 1: Asset ID */}
+                  {/* Common search — find an asset by anything */}
+                  <View style={styles.optionCard} onLayout={(e) => { lookupSectionYRef.current = e.nativeEvent.layout.y; }}>
+                    <View style={styles.optionHeaderRow}>
+                      <MaterialIcons name="search" size={18} color={Colors.blue} />
+                      <Text style={styles.optionTitle}>Search for an asset</Text>
+                    </View>
+                    <Text style={styles.optionDesc}>Search by name, type, model, serial, ID or assignee — top 10 matches.</Text>
+                    <TextInput
+                      placeholder="Search assets…"
+                      value={lookupQuery}
+                      onChangeText={setLookupQuery}
+                      onFocus={scrollToLookup}
+                      style={styles.input}
+                      placeholderTextColor={Colors.subtle}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {lookupResults.length > 0 ? renderLookupSuggestions() : null}
+                  </View>
+
+                  {/* Option: Asset ID */}
                   <View style={styles.optionCard}>
                     <View style={styles.optionHeaderRow}>
                       <MaterialIcons name="tag" size={18} color={Colors.blue} />
@@ -2662,53 +2703,6 @@ export default function CheckInScreen() {
                         <Text style={styles.btnGhostText}>Open Scanner</Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
-
-                  {/* Option 3: Lookup */}
-                  <View style={styles.optionCard} onLayout={(e) => { lookupSectionYRef.current = e.nativeEvent.layout.y; }}>
-                    <View style={styles.optionHeaderRow}>
-                      <MaterialIcons name="search" size={18} color={Colors.blue} />
-                      <Text style={styles.optionTitle}>Lookup by Details</Text>
-                    </View>
-                    <Text style={styles.optionDesc}>Use any combination. We'll use the first close match (top 10).</Text>
-                    <Text style={styles.fieldLabel}>Model</Text>
-                    <View onLayout={(e) => { modelYRef.current = e.nativeEvent.layout.y; }}>
-                      <TextInput
-                        placeholder="e.g. DJI Mavic 3"
-                        value={lookup.model}
-                        onFocus={() => { setLookupFocus('model'); scrollToLookupField('model'); }}
-                        onChangeText={(t) => setLookup(prev => ({ ...prev, model: t }))}
-                        style={styles.input}
-                        placeholderTextColor={Colors.subtle}
-                      />
-                    </View>
-                    {lookupResults.length > 0 && lookupFocus === 'model' && renderLookupSuggestions()}
-                    <Text style={styles.fieldLabel}>Type</Text>
-                    <View onLayout={(e) => { typeYRef.current = e.nativeEvent.layout.y; }}>
-                      <TextInput
-                        placeholder="e.g. Drone"
-                        value={lookup.type}
-                        onFocus={() => { setLookupFocus('type'); scrollToLookupField('type'); }}
-                        onChangeText={(t) => setLookup(prev => ({ ...prev, type: t }))}
-                        style={styles.input}
-                        placeholderTextColor={Colors.subtle}
-                      />
-                    </View>
-                    {lookupResults.length > 0 && lookupFocus === 'type' && renderLookupSuggestions()}
-                    <Text style={styles.fieldLabel}>Assigned (email or name)</Text>
-                    <View onLayout={(e) => { assignedYRef.current = e.nativeEvent.layout.y; }}>
-                      <TextInput
-                        placeholder="e.g. alex@company.com or Alex"
-                        value={lookup.assigned}
-                        onFocus={() => { setLookupFocus('assigned'); scrollToLookupField('assigned'); }}
-                        onChangeText={(t) => setLookup(prev => ({ ...prev, assigned: t }))}
-                        style={styles.input}
-                        placeholderTextColor={Colors.subtle}
-                      />
-                    </View>
-                    {lookupResults.length > 0 && lookupFocus === 'assigned' && renderLookupSuggestions()}
-                    <Text style={styles.fieldHint}>Example: Model "ThinkPad", Type "Laptop", Assigned "sam@company.com".</Text>
-                    {/* Suggestions are now rendered inline under the focused field via renderLookupSuggestions() */}
                   </View>
 
                   <View style={{ height: 8 }} />
@@ -3039,12 +3033,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  quickActionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: sf(14) },
-  quickActionBtnTextSecondary: { color: Colors.accent, fontWeight: '800', fontSize: sf(14), letterSpacing: 0.2 },
+  quickActionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: sf(14), flexShrink: 1, textAlign: 'center' },
+  quickActionBtnTextSecondary: { color: Colors.accent, fontWeight: '800', fontSize: sf(14), letterSpacing: 0.2, flexShrink: 1, textAlign: 'center' },
   quickActionBtnTextNeutral: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: sf(14),
+    flexShrink: 1,
+    textAlign: 'center',
     flexShrink: 1,
     minWidth: 0,
   },

@@ -79,8 +79,10 @@ export default function AppDatePicker({ visible, value, onConfirm, onDismiss, la
             value={temp}
             mode="date"
             display="spinner"
+            themeVariant="light"
+            textColor={Colors.text}
             onChange={(_e, date) => { if (date) setTemp(date); }}
-            style={{ alignSelf: 'stretch' }}
+            style={{ alignSelf: 'stretch', backgroundColor: Colors.bg }}
           />
         </View>
       </View>

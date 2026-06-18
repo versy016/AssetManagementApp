@@ -16,7 +16,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import * as DocumentPicker from 'expo-document-picker';
-import { getImageFileFromPicker, revokeImageUri } from '../../utils/getFormFileFromPicker';
+import { pickAssetImage, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
@@ -192,10 +192,23 @@ export default function EditAsset() {
             method: 'POST', headers, body: JSON.stringify({ type: 'STATUS_CHANGE', note: text, data: { user_note_text: text, note_only: true } }),
           });
       if (!res.ok) throw new Error((await res.text()) || 'Failed to save note');
+      const wasImportant = newNoteImportant;
+      // Optimistic: show the note immediately and reconcile in the background,
+      // instead of blocking on a full re-fetch of the asset's action history.
+      const u = auth.currentUser;
+      const optimistic = {
+        id: `temp-${Date.now()}`,
+        text,
+        who: u?.displayName || u?.email || 'You',
+        when: new Date().toISOString(),
+        important: wasImportant,
+        performed_by: u?.uid || null,
+      };
+      setNoteItems((prev) => [optimistic, ...(wasImportant ? prev.map((n) => ({ ...n, important: false })) : prev)]);
       setNewNote('');
       setNewNoteImportant(false);
-      await loadNotes();
-      showToast(newNoteImportant ? 'Priority note added' : 'Note added');
+      showToast(wasImportant ? 'Priority note added' : 'Note added');
+      loadNotes(); // reconcile with the server (real id/order) in the background
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to save note');
     } finally {
@@ -215,9 +228,11 @@ export default function EditAsset() {
         method: 'PATCH', headers, body: JSON.stringify({ note: text }),
       });
       if (!res.ok) throw new Error((await res.text()) || 'Failed to update note');
+      const editedId = editingNoteId;
+      setNoteItems((prev) => prev.map((n) => (n.id === editedId ? { ...n, text } : n)));
       setEditingNoteId(null); setEditingNoteText('');
-      await loadNotes();
       showToast('Note updated');
+      loadNotes(); // background reconcile
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update note');
     } finally {
@@ -234,8 +249,9 @@ export default function EditAsset() {
         const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}/actions/${encodeURIComponent(noteId)}/note`, { method: 'DELETE', headers });
         if (!res.ok) throw new Error((await res.text()) || 'Failed to delete note');
         if (editingNoteId === noteId) { setEditingNoteId(null); setEditingNoteText(''); }
-        await loadNotes();
+        setNoteItems((prev) => prev.filter((n) => n.id !== noteId));
         showToast('Note deleted');
+        loadNotes(); // background reconcile
       } catch (e) {
         Alert.alert('Error', e.message || 'Failed to delete note');
       } finally {
@@ -263,8 +279,10 @@ export default function EditAsset() {
         method: 'POST', headers, body: JSON.stringify({ important: !n.important }),
       });
       if (!res.ok) throw new Error((await res.text()) || 'Failed to update priority');
-      await loadNotes();
-      showToast(!n.important ? 'Marked as priority' : 'Priority removed');
+      const turnOn = !n.important;
+      setNoteItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, important: turnOn } : (turnOn ? { ...it, important: false } : it))));
+      showToast(turnOn ? 'Marked as priority' : 'Priority removed');
+      loadNotes(); // background reconcile
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update priority');
     } finally {
@@ -412,15 +430,28 @@ export default function EditAsset() {
 
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Client-Context': 'asset-edit',
-          ...(await getAuthHeaders()),
-        },
-        body: JSON.stringify(payload),
-      });
+      // Guard against a hung request so the Save spinner can never get stuck.
+      const authHeaders = await getAuthHeaders();
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 25000);
+      let res;
+      try {
+        res = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Context': 'asset-edit',
+            ...authHeaders,
+          },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
+        });
+      } catch (netErr) {
+        if (netErr?.name === 'AbortError') throw new Error('Save timed out. Please check your connection and try again.');
+        throw netErr;
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || body?.message || 'Failed to update');
@@ -500,6 +531,7 @@ export default function EditAsset() {
       }
       showToast('Asset saved');
       setTimeout(() => {
+        // (kept short — just long enough to flash the toast)
         const returnToIsOnlyThisDetail =
           !normalizedReturnTo || isReturnToThisAssetDetail(normalizedReturnTo, assetId);
         if (normalizedReturnTo && !returnToIsOnlyThisDetail) {
@@ -514,7 +546,7 @@ export default function EditAsset() {
           }
         } catch { /* fall through */ }
         router.replace({ pathname: '/asset/[assetId]', params: { assetId } });
-      }, 600);
+      }, 200);
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update');
     } finally {
@@ -1036,7 +1068,7 @@ export default function EditAsset() {
             busyLabel="Saving…"
             onPickImage={async () => {
               try {
-                const res = await getImageFileFromPicker();
+                const res = await pickAssetImage();
                 if (res) {
                   // Free the previous blob: URL before swapping it out
                   revokeImageUri(image?.uri);
@@ -1086,7 +1118,7 @@ export default function EditAsset() {
                     style={[styles.btn, { flex: 1, minWidth: 120 }]}
                     onPress={async () => {
                       try {
-                        const res = await getImageFileFromPicker();
+                        const res = await pickAssetImage();
                         if (res) { revokeImageUri(image?.uri); setImage(res); }
                       } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); }
                     }}
@@ -1108,7 +1140,7 @@ export default function EditAsset() {
                   style={[styles.btn, { flex: 1, minWidth: 140 }]}
                   onPress={async () => {
                     try {
-                      const res = await getImageFileFromPicker();
+                      const res = await pickAssetImage();
                       if (res) { revokeImageUri(image?.uri); setImage(res); }
                     } catch (e) { Alert.alert('Unsupported File', e.message || 'Please choose a PNG, JPG, or WEBP image.'); }
                   }}
@@ -1347,40 +1379,6 @@ export default function EditAsset() {
             <MaterialIcons name="lock" size={14} color="#9CA3AF" />
             <Text style={styles.lockText}>Status is set by workflows (check-in, hire, repairs, etc.), not on this screen.</Text>
           </View>
-        </View>
-
-        {/* Image picker moved to the top of the form — only the Documents
-           section remains in this position. */}
-        <Text style={whs.sectionHeader}>Documents</Text>
-
-        <View onLayout={onLayoutFor('document')}>
-          <Text style={styles.label}>Document</Text>
-          <Text style={styles.uploadHint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
-          <TouchableOpacity style={styles.btn} onPress={async () => {
-            try {
-              const pick = await DocumentPicker.getDocumentAsync({
-                multiple: false,
-                type: [
-                  'application/pdf',
-                  'application/msword',
-                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                ],
-              });
-              if (pick.canceled || !pick.assets?.length) return;
-              const a = pick.assets[0];
-              setDocument({
-                uri: a.uri,
-                name: a.name || 'document',
-                mimeType: a.mimeType || 'application/pdf',
-                file: a.file,
-              });
-            } catch (e) {
-              Alert.alert('Document', e?.message || 'Could not select a file.');
-            }
-          }}>
-            <Text>{document ? 'Change Document' : 'Attach Document'}</Text>
-          </TouchableOpacity>
-          {document && <Text style={{ marginTop: 6, fontStyle: 'italic' }}>Attached: {document.name}</Text>}
         </View>
 
         <TouchableOpacity

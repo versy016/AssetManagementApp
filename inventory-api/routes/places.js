@@ -47,6 +47,11 @@ router.get('/autocomplete', async (req, res) => {
     }
     const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
     const json = await getJSON(url);
+    // Surface real Google errors (e.g. REQUEST_DENIED when the Places API is not
+    // enabled / the key is restricted) instead of silently returning nothing.
+    if (json.status && json.status !== 'OK' && json.status !== 'ZERO_RESULTS') {
+      return res.status(400).json({ error: json.status, message: json.error_message || 'Places autocomplete request failed' });
+    }
     const predictions = Array.isArray(json.predictions)
       ? json.predictions.map((p) => ({
           id: p.place_id,
