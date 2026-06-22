@@ -1444,7 +1444,11 @@ export default function CertsView({ visible: initialVisible }) {
                 </View>
               </View>
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                <InlineButton label="Clear" onPress={() => { setFilterDoc(''); setFilterRange({ start: '', end: '' }); setFilterExp(''); setShowHistory(false); }} />
+                <InlineButton
+                  label="Clear all"
+                  disabled={!filterDoc && !filterRange.start && !filterRange.end && !filterExp && !showHistory}
+                  onPress={() => { setFilterDoc(''); setFilterRange({ start: '', end: '' }); setFilterExp(''); setShowHistory(false); }}
+                />
                 <InlineButton label="Done" onPress={() => setFilterOpen(false)} />
               </View>
             </View>

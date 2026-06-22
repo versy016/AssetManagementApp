@@ -54,6 +54,46 @@ function isBlankPhysicalQrSticker(a) {
 // ---------- Import Theme Constants ----------
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 
+// Quick-action grid: two columns that wrap. Colour is purely positional —
+// the LEFT column is always blue (filled) and the RIGHT column always orange
+// (outlined), regardless of which action lands there. Pass an array of action
+// descriptors; falsy entries are skipped so conditional buttons don't break the
+// left/right alternation.
+function QuickActionRow({ actions, styles }) {
+  const items = (actions || []).filter(Boolean);
+  return (
+    <View style={styles.quickActionBar}>
+      {items.map((a, i) => {
+        const isLeft = i % 2 === 0;
+        const iconColor = isLeft ? '#FFFFFF' : Colors.accent;
+        return (
+          <TouchableOpacity
+            key={a.key || i}
+            testID={a.testID}
+            style={[
+              styles.quickActionBtn,
+              isLeft ? styles.quickActionBtnPrimary : styles.quickActionBtnSecondary,
+              a.disabled ? { opacity: 0.7 } : null,
+            ]}
+            onPress={a.onPress}
+            disabled={a.disabled}
+          >
+            <MaterialIcons name={a.icon} size={a.iconSize || 18} color={iconColor} />
+            <Text
+              style={[isLeft ? styles.quickActionBtnText : styles.quickActionBtnTextSecondary, { flexShrink: 1 }]}
+              numberOfLines={a.numberOfLines || 2}
+              adjustsFontSizeToFit={a.adjustsFontSizeToFit}
+              minimumFontScale={a.minimumFontScale}
+            >
+              {a.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 const badgeTone = (status) => {
   const s = String(status || '').toLowerCase();
   if (s.includes('repair')) return { bg: Colors.warningBg, fg: Colors.warningFg };
@@ -2253,11 +2293,15 @@ export default function CheckInScreen() {
           <View style={styles.tileGrid}>
 
             {isEOL ? (
-              <View style={styles.quickActionBar}>
-                {isAdmin && (
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
-                    onPress={() => {
+              <QuickActionRow
+                styles={styles}
+                actions={[
+                  isAdmin && {
+                    key: 'restore',
+                    icon: 'restart-alt',
+                    label: loading ? 'Loading…' : 'Bring back in service',
+                    disabled: loading,
+                    onPress: () => {
                       Alert.alert(
                         'Bring back in service',
                         'Restore this asset to In Service? It will no longer be marked End of Life.',
@@ -2266,268 +2310,198 @@ export default function CheckInScreen() {
                           { text: 'Restore', onPress: () => updateStatus('In Service') },
                         ]
                       );
-                    }}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="restart-alt" size={18} color="#fff" />
-                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                      {loading ? 'Loading…' : 'Bring back in service'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                  onPress={() => router.replace('/(tabs)/dashboard')}
-                  disabled={loading}
-                >
-                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={2}>
-                    Back to Dashboard
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : isAwaitingQr ? (
-              <View style={styles.quickActionBar}>
-                <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                  onPress={() => router.push({
-                    pathname: '/qr-scanner',
-                    params: {
-                      intent: 'assign-awaiting-qr',
-                      awaitingAssetId: String(asset.id),
-                      returnTo: returnTo || '',
                     },
-                  })}
-                  disabled={loading}
-                >
-                  <MaterialIcons name="qr-code-scanner" size={18} color="#fff" />
-                  <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                    Scan QR to assign
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                  onPress={() => router.replace('/(tabs)/dashboard')}
-                >
-                  <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                  <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
-                    Back to Dashboard
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                  },
+                  {
+                    key: 'dash',
+                    icon: 'home',
+                    label: 'Back to Dashboard',
+                    disabled: loading,
+                    onPress: () => router.replace('/(tabs)/dashboard'),
+                  },
+                ]}
+              />
+            ) : isAwaitingQr ? (
+              <QuickActionRow
+                styles={styles}
+                actions={[
+                  {
+                    key: 'scan',
+                    icon: 'qr-code-scanner',
+                    label: 'Scan QR to assign',
+                    disabled: loading,
+                    onPress: () => router.push({
+                      pathname: '/qr-scanner',
+                      params: {
+                        intent: 'assign-awaiting-qr',
+                        awaitingAssetId: String(asset.id),
+                        returnTo: returnTo || '',
+                      },
+                    }),
+                  },
+                  {
+                    key: 'dash',
+                    icon: 'home',
+                    label: 'Back to Dashboard',
+                    numberOfLines: 1,
+                    onPress: () => router.replace('/(tabs)/dashboard'),
+                  },
+                ]}
+              />
             ) : isQRReserved ? (
-              <View style={styles.quickActionBar}>
-                <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                  onPress={() => setSwapOpen(true)}
-                  disabled={loading}
-                >
-                  <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                  <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                    Swap
-                  </Text>
-                </TouchableOpacity>
-                {!!asset?.id && (
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                    onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="assignment" size={18} color={Colors.accent} />
-                    <Text style={[styles.quickActionBtnTextSecondary, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                      Assign Imported Asset
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                {!!asset?.id && (
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                    onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="add-circle-outline" size={18} color="#fff" />
-                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                      Create Asset
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                  onPress={() => router.replace('/(tabs)/dashboard')}
-                >
-                  <MaterialIcons name="home" size={16} color={Colors.accent} />
-                  <Text style={styles.quickActionBtnTextSecondary} numberOfLines={1}>
-                    Back to Dashboard
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <QuickActionRow
+                styles={styles}
+                actions={[
+                  {
+                    key: 'swap',
+                    icon: 'swap-horiz',
+                    label: 'Swap',
+                    disabled: loading,
+                    onPress: () => setSwapOpen(true),
+                  },
+                  !!asset?.id && {
+                    key: 'assign',
+                    icon: 'assignment',
+                    label: 'Assign Imported Asset',
+                    numberOfLines: 1,
+                    adjustsFontSizeToFit: true,
+                    minimumFontScale: 0.7,
+                    disabled: loading,
+                    onPress: () => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); },
+                  },
+                  !!asset?.id && {
+                    key: 'create-asset',
+                    icon: 'add-circle-outline',
+                    label: 'Create Asset',
+                    disabled: loading,
+                    onPress: () => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } }),
+                  },
+                  {
+                    key: 'dash',
+                    icon: 'home',
+                    label: 'Back to Dashboard',
+                    numberOfLines: 1,
+                    onPress: () => router.replace('/(tabs)/dashboard'),
+                  },
+                ]}
+              />
             ) : isPlaceholder ? (
-              <>
-                <View style={styles.quickActionBar}>
-                  {!isAssignedToOffice ? (
-                    <TouchableOpacity
-                      testID="transfer-to-office-button"
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                      onPress={() => handleAction('checkin')}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="business" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        {loading ? 'Loading...' : 'Transfer to office'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
-                    <TouchableOpacity
-                      testID="transfer-to-me-button"
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                      onPress={() => handleAction('transferToMe')}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="person" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        {loading ? 'Loading...' : 'Transfer to me'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                    onPress={() => setSwapOpen(true)}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="swap-horiz" size={18} color="#fff" />
-                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                      Swap
-                    </Text>
-                  </TouchableOpacity>
-                  {!!asset?.id && (
-                    <TouchableOpacity
-                      style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                      onPress={() => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); }}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="assignment" size={18} color={Colors.accent} />
-                      <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
-                        Assign Imported Asset
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {!!asset?.id && (
-                    <TouchableOpacity
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                      onPress={() => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } })}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="add-circle-outline" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        Create Asset
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                    onPress={() => setShowCreateNoteInput(true)}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="note-add" size={18} color={Colors.accent} />
-                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
-                      Create note
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                    onPress={() => router.replace('/(tabs)/dashboard')}
-                  >
-                    <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
-                      Back to Dashboard
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+              <QuickActionRow
+                styles={styles}
+                actions={[
+                  !isAssignedToOffice
+                    ? {
+                        key: 'to-office',
+                        testID: 'transfer-to-office-button',
+                        icon: 'business',
+                        label: loading ? 'Loading...' : 'Transfer to office',
+                        disabled: loading,
+                        onPress: () => handleAction('checkin'),
+                      }
+                    : (myUserId && String(asset.assigned_to_id) !== String(myUserId)) && {
+                        key: 'to-me',
+                        testID: 'transfer-to-me-button',
+                        icon: 'person',
+                        label: loading ? 'Loading...' : 'Transfer to me',
+                        disabled: loading,
+                        onPress: () => handleAction('transferToMe'),
+                      },
+                  {
+                    key: 'swap',
+                    icon: 'swap-horiz',
+                    label: 'Swap',
+                    disabled: loading,
+                    onPress: () => setSwapOpen(true),
+                  },
+                  !!asset?.id && {
+                    key: 'assign',
+                    icon: 'assignment',
+                    label: 'Assign Imported Asset',
+                    disabled: loading,
+                    onPress: () => { setAssignSelected(null); setAssignQuery(''); setAssignOpen(true); if (!assignResults.length) loadImportedAssets(); },
+                  },
+                  !!asset?.id && {
+                    key: 'create-asset',
+                    icon: 'add-circle-outline',
+                    label: 'Create Asset',
+                    disabled: loading,
+                    onPress: () => router.push({ pathname: '/asset/new', params: { preselectId: asset.id, returnTo: returnTo || '' } }),
+                  },
+                  {
+                    key: 'note',
+                    icon: 'note-add',
+                    label: 'Create note',
+                    disabled: loading,
+                    onPress: () => setShowCreateNoteInput(true),
+                  },
+                  {
+                    key: 'dash',
+                    icon: 'home',
+                    label: 'Back to Dashboard',
+                    numberOfLines: 1,
+                    onPress: () => router.replace('/(tabs)/dashboard'),
+                  },
+                ]}
+              />
             ) : (
-              <>
-                {/* Quick actions: same style and placement as multi-scan */}
-                <View style={styles.quickActionBar}>
-                  {!isAssignedToOffice ? (
-                    <TouchableOpacity
-                      testID="transfer-to-office-button"
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
-                      onPress={() => handleAction('checkin')}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="business" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        {loading ? 'Loading...' : 'Transfer to office'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : myUserId && String(asset.assigned_to_id) !== String(myUserId) ? (
-                    <TouchableOpacity
-                      testID="transfer-to-me-button"
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary, { opacity: loading ? 0.7 : 1 }]}
-                      onPress={() => handleAction('transferToMe')}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="person" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        {loading ? 'Loading...' : 'Transfer to me'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                    onPress={openTransferMenu}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="person-add" size={18} color="#fff" />
-                    <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                      Transfer to user
-                    </Text>
-                  </TouchableOpacity>
-                  {(myUserId && String(asset.assigned_to_id) !== String(myUserId) && !isAssignedToOffice) && (
-                    <TouchableOpacity
-                      style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
-                      onPress={() => handleAction('transferToMe')}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="person" size={18} color="#fff" />
-                      <Text style={styles.quickActionBtnText} numberOfLines={2}>
-                        Transfer to me
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {!!asset?.id && (
-                    <TouchableOpacity
-                      style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                      onPress={() => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } })}
-                      disabled={loading}
-                    >
-                      <MaterialIcons name="content-copy" size={18} color={Colors.accent} />
-                      <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
-                        Copy Asset
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnSecondary]}
-                    onPress={() => setShowCreateNoteInput(true)}
-                    disabled={loading}
-                  >
-                    <MaterialIcons name="note-add" size={18} color={Colors.accent} />
-                    <Text style={styles.quickActionBtnTextSecondary} numberOfLines={2}>
-                      Create note
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.quickActionBtn, styles.quickActionBtnNeutral]}
-                    onPress={() => router.replace('/(tabs)/dashboard')}
-                  >
-                    <MaterialIcons name="home" size={16} color="#FFFFFF" />
-                    <Text style={styles.quickActionBtnTextNeutral} numberOfLines={1}>
-                      Back to Dashboard
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+              /* Quick actions: same style and placement as multi-scan */
+              <QuickActionRow
+                styles={styles}
+                actions={[
+                  !isAssignedToOffice
+                    ? {
+                        key: 'to-office',
+                        testID: 'transfer-to-office-button',
+                        icon: 'business',
+                        label: loading ? 'Loading...' : 'Transfer to office',
+                        disabled: loading,
+                        onPress: () => handleAction('checkin'),
+                      }
+                    : (myUserId && String(asset.assigned_to_id) !== String(myUserId)) && {
+                        key: 'to-me',
+                        testID: 'transfer-to-me-button',
+                        icon: 'person',
+                        label: loading ? 'Loading...' : 'Transfer to me',
+                        disabled: loading,
+                        onPress: () => handleAction('transferToMe'),
+                      },
+                  {
+                    key: 'to-user',
+                    icon: 'person-add',
+                    label: 'Transfer to user',
+                    disabled: loading,
+                    onPress: openTransferMenu,
+                  },
+                  (myUserId && String(asset.assigned_to_id) !== String(myUserId) && !isAssignedToOffice) && {
+                    key: 'to-me-2',
+                    icon: 'person',
+                    label: 'Transfer to me',
+                    disabled: loading,
+                    onPress: () => handleAction('transferToMe'),
+                  },
+                  !!asset?.id && {
+                    key: 'copy',
+                    icon: 'content-copy',
+                    label: 'Copy Asset',
+                    disabled: loading,
+                    onPress: () => router.push({ pathname: '/asset/new', params: { fromAssetId: asset.id, returnTo: returnTo || '' } }),
+                  },
+                  {
+                    key: 'note',
+                    icon: 'note-add',
+                    label: 'Create note',
+                    disabled: loading,
+                    onPress: () => setShowCreateNoteInput(true),
+                  },
+                  {
+                    key: 'dash',
+                    icon: 'home',
+                    label: 'Back to Dashboard',
+                    numberOfLines: 1,
+                    onPress: () => router.replace('/(tabs)/dashboard'),
+                  },
+                ]}
+              />
             )}
 
           </View>

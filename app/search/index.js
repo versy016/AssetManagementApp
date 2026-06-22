@@ -1396,8 +1396,8 @@ export default function SearchScreen(props = {}) {
                       />
                     </TouchableOpacity>
                   )}
-                  {/* Actions column header — admin web only, left side */}
-                  {isAdmin && Platform.OS === 'web' && (
+                  {/* Actions (quick action) column header — all web users, left side */}
+                  {Platform.OS === 'web' && (
                     <View style={[styles.th, styles.thCellIcon, { width: 48 }]} />
                   )}
                   {columns.map((c) => {
@@ -1498,8 +1498,8 @@ export default function SearchScreen(props = {}) {
                             </TouchableOpacity>
                           )
                         )}
-                        {/* Per-row Actions icon — admin web only, left side */}
-                        {isAdmin && Platform.OS === 'web' && (
+                        {/* Per-row quick-action icon — all web users, left side */}
+                        {Platform.OS === 'web' && (
                           <View style={[styles.td, styles.tdCellIcon, { width: 48 }]}>
                             <TouchableOpacity
                               style={styles.rowActionBtn}
@@ -1783,11 +1783,9 @@ export default function SearchScreen(props = {}) {
             <View style={styles.sheetHeader}>
               <Text style={styles.modalTitle}>Filters</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {activeCount > 0 && (
-                  <TouchableOpacity onPress={clearFilters} style={styles.clearAllBtn}>
-                    <Text style={styles.clearAllText}>Clear all</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity onPress={clearFilters} disabled={activeCount === 0} style={[styles.clearAllBtn, activeCount === 0 && styles.clearAllBtnDisabled]}>
+                  <Text style={[styles.clearAllText, activeCount === 0 && styles.clearAllTextDisabled]}>Clear all</Text>
+                </TouchableOpacity>
               <TouchableOpacity onPress={closeFilterModal} style={[styles.inlineIconBtn, { backgroundColor: '#F3F6FB' }]}>
                 <Feather name="x" size={16} color={Colors.primary} />
               </TouchableOpacity>
@@ -2132,7 +2130,7 @@ export default function SearchScreen(props = {}) {
             {/* Footer actions */}
             <View style={styles.favFooter}>
               <TouchableOpacity
-                style={styles.btnGhost}
+                style={[styles.btnGhost, favPickerDraft.length === 0 && { opacity: 0.4 }]}
                 onPress={() => { setFavPickerDraft([]); }}
                 disabled={favPickerDraft.length === 0}
               >
@@ -2301,7 +2299,9 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.line },
   switchLabel: { fontSize: sf(14), color: Colors.text, fontWeight: '600' },
   clearAllBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: Colors.accentLight, borderWidth: 1.5, borderColor: Colors.accentMuted },
+  clearAllBtnDisabled: { backgroundColor: 'transparent', borderColor: Colors.line, opacity: 0.5 },
   clearAllText: { color: Colors.accentDark, fontWeight: '800', fontSize: sf(12) },
+  clearAllTextDisabled: { color: Colors.sub2 },
   showMoreBtn: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, backgroundColor: Colors.chip },
   showMoreText: { color: Colors.accent, fontWeight: '700', fontSize: sf(12) },
   inlineAlert: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.chip },

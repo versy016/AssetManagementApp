@@ -6,7 +6,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Modal, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView, useWindowDimensions,
+  ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView, useWindowDimensions, Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatePickerModal } from 'react-native-paper-dates';
@@ -15,6 +15,10 @@ import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { auth } from '../../firebaseConfig';
 import { isAssetIdAwaitingQr } from '../../utils/assetId';
 import { fetchFields } from '../../hooks/useAssetTypeFields';
+import AssetScannerModal from './AssetScannerModal';
+
+// Native (iOS/Android) links assets by scanning the QR; web keeps text search.
+const SCAN_TO_LINK = Platform.OS !== 'web';
 
 // A field counts as a "certificate" field if its name/slug mentions a
 // certificate or calibration (calibration lives under certificates here).
@@ -64,6 +68,9 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
   const [assets, setAssets] = useState([]);
   const [assetQuery, setAssetQuery] = useState('');
   const [assetsLoading, setAssetsLoading] = useState(false);
+  // Native: scan a QR to link an asset (instead of searching).
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanResolving, setScanResolving] = useState(false);
 
   // Assignee (admins only)
   const [assignee, setAssignee] = useState(null); // { id, label }
@@ -75,6 +82,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
     setTitle(''); setDescription(''); setCategory('GENERAL'); setCertType(null); setCertFieldStatus('idle'); setPriority('MEDIUM');
     setDueDate(null); setDateOpen(false); setSubmitting(false);
     setAsset(null); setAssetPickerOpen(false); setAssetQuery('');
+    setScannerOpen(false); setScanResolving(false);
     setAssignee(null); setAssigneePickerOpen(false);
   };
 
@@ -156,6 +164,40 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
     } catch { /* ignore */ } finally { setAssetsLoading(false); }
   };
 
+  // Native: resolve a scanned asset ID into the linked-asset shape, validating
+  // that it's a real, usable asset before accepting it.
+  const handleScannedAsset = async (assetId) => {
+    setScanResolving(true);
+    try {
+      if (isAssetIdAwaitingQr(assetId)) {
+        Alert.alert('No asset assigned', 'This QR has no asset assigned to it yet.');
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/assets/${encodeURIComponent(assetId)}`);
+      if (!res.ok) {
+        Alert.alert(res.status === 404 ? 'Not found' : 'Error',
+          res.status === 404 ? 'No asset exists for that QR.' : 'Unable to look up that asset. Try again.');
+        return;
+      }
+      const a = await res.json();
+      if (isQrReserved(a)) {
+        Alert.alert('No asset assigned', 'This QR is reserved but has no asset assigned to it yet.');
+        return;
+      }
+      setAsset({
+        id: a.id,
+        typeId: a.type_id || a.asset_types?.id || null,
+        label: a.asset_types?.name || a.model || a.serial_number || a.id,
+        sub: [a.model, a.serial_number, a.other_id].filter(Boolean).join(' · '),
+      });
+      setScannerOpen(false);
+    } catch {
+      Alert.alert('Error', 'Failed to look up that asset. Check your connection and try again.');
+    } finally {
+      setScanResolving(false);
+    }
+  };
+
   const openAssigneePicker = async () => {
     setAssigneePickerOpen((v) => !v);
     if (users.length || usersLoading) return;
@@ -227,13 +269,24 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
             </View>
 
             <ScrollView style={{ flex: 1 }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
-              {/* Asset — pick this first; the rest of the form appears after. */}
+              {/* Asset — pick this first; the rest of the form appears after.
+                  Native links by scanning the QR; web searches by text. */}
               <Text style={s.label}>Asset</Text>
+              {SCAN_TO_LINK ? (
+                <View style={s.assetField}>
+                  <TouchableOpacity style={s.scanBtn} onPress={() => setScannerOpen(true)}>
+                    <MaterialIcons name="qr-code-scanner" size={20} color="#fff" />
+                    <Text style={s.scanBtnText} numberOfLines={1}>
+                      {asset ? 'Scan a different asset' : 'Scan asset QR to link'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
               <View style={s.assetField}>
                 <TouchableOpacity style={s.selectBtn} onPress={openAssetPicker}>
                   <MaterialIcons name="qr-code-2" size={18} color={Colors.primary} />
                   <Text style={s.selectBtnText} numberOfLines={1}>
-                    {asset ? asset.label : 'Search and link an asset (optional)'}
+                    {asset ? asset.label : 'Search for an asset to link to this task'}
                   </Text>
                   <MaterialIcons name={assetPickerOpen ? 'expand-less' : 'expand-more'} size={20} color={Colors.sub} />
                 </TouchableOpacity>
@@ -281,6 +334,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                   </View>
                 )}
               </View>
+              )}
               {asset ? (
                 <>
                   <View style={s.assetInfo}>
@@ -296,7 +350,11 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
               {/* The rest of the form only appears once an asset is selected, so
                   the options can be tailored to that asset's type. */}
               {!asset ? (
-                <Text style={s.gateHint}>Select an asset above to fill in the task details.</Text>
+                <Text style={s.gateHint}>
+                  {SCAN_TO_LINK
+                    ? 'Scan an asset above to fill in the task details.'
+                    : 'Select an asset above to fill in the task details.'}
+                </Text>
               ) : (
                 <>
               {/* Title */}
@@ -448,6 +506,15 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
         </KeyboardAvoidingView>
       </View>
 
+      {SCAN_TO_LINK && (
+        <AssetScannerModal
+          visible={scannerOpen}
+          busy={scanResolving}
+          onClose={() => { if (!scanResolving) setScannerOpen(false); }}
+          onScanned={handleScannedAsset}
+        />
+      )}
+
       <DatePickerModal
         locale="en-GB"
         mode="single"
@@ -514,6 +581,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 11, backgroundColor: Colors.card,
   },
   selectBtnText: { flex: 1, fontSize: sf(14), fontWeight: '700', color: Colors.text },
+  scanBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    borderRadius: Radius.md, paddingVertical: 13, paddingHorizontal: 14,
+    backgroundColor: Colors.primary,
+  },
+  scanBtnText: { fontSize: sf(15), fontWeight: '900', color: '#fff' },
   assetInfo: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.card },
   assetInfoSub: { fontSize: sf(13), color: Colors.text, fontWeight: '600' },
   assetInfoId: { fontSize: sf(12), color: Colors.accent, fontWeight: '800', marginTop: 3 },
@@ -557,7 +630,7 @@ const s = StyleSheet.create({
   },
   cancelBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line },
   cancelText: { fontSize: sf(15), fontWeight: '800', color: Colors.sub2 },
-  submitBtn: { flex: 2, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, backgroundColor: Colors.primary },
+  submitBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, backgroundColor: Colors.primary },
   submitBtnDisabled: { opacity: 0.5 },
   submitText: { fontSize: sf(15), fontWeight: '900', color: '#fff' },
 });

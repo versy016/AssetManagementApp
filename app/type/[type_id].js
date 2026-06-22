@@ -344,8 +344,8 @@ export default function AssetsType() {
           )}
         </View>
         <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
-          <View style={isWebWide ? styles.btnInnerWeb : styles.btnInner}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accent }]} onPress={goEditType}>
+          <View style={[isWebWide ? styles.btnInnerWeb : styles.btnInner, !isAdmin && styles.btnInnerSingle]}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accent }, !isAdmin && styles.actionBtnSingle]} onPress={goEditType}>
             <Text style={styles.actionText}>✏️ Edit Type</Text>
           </TouchableOpacity>
           {isAdmin && (
@@ -479,6 +479,9 @@ const styles = StyleSheet.create({
   actionBtn: {
     flex: 1, paddingVertical: 14, borderRadius: Radius.lg, alignItems: 'center', elevation: 2, ...CardShadow,
   },
+  // When Edit Type is the only action (non-admin), don't stretch the full bar.
+  btnInnerSingle: { justifyContent: 'flex-start' },
+  actionBtnSingle: { flex: 0, minWidth: 160, maxWidth: 240, alignSelf: 'flex-start', paddingHorizontal: 24 },
   actionText: { color: Colors.card, fontWeight: '800', fontSize: sf(15) },
 
   /* section headers */

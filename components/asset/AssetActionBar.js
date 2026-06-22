@@ -21,6 +21,13 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
   // The outer bar still spans edge-to-edge for the border/background fill.
   const innerStyle = isWebWide ? styles.btnInnerWeb : styles.btnInner;
 
+  // In the default (non-awaiting / non-reserved) bar, a non-admin user viewing an
+  // idle asset sees only the Edit button (Copy/Delete are admin-only, transfer
+  // buttons only show for available/rented). A lone flex:1 button stretches the
+  // whole bar, so detect that case and render it at a sensible fixed width.
+  const showsLeftAction = status === 'available' || status === 'rented' || isAdmin;
+  const onlyEditAction = !showsLeftAction && !isAdmin;
+
   if (awaitingPhysicalQr) {
     return (
       <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
@@ -97,7 +104,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
 
   return (
     <View style={[styles.actionsRow, Platform.OS === 'web' && styles.actionsRowSticky]}>
-      <View style={innerStyle}>
+      <View style={[innerStyle, onlyEditAction && styles.btnInnerSingle]}>
         {status === 'available' ? (
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnSecondary]}
@@ -132,7 +139,7 @@ export default function AssetActionBar({ asset, isAdmin, normalizedReturnTo, onD
         ) : null}
 
         <TouchableOpacity
-          style={[styles.actionBtn, styles.actionBtnPrimary]}
+          style={[styles.actionBtn, styles.actionBtnPrimary, onlyEditAction && styles.actionBtnSingle]}
           onPress={() =>
             router.push({
               pathname: '/asset/edit',
@@ -203,6 +210,10 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  // When Edit is the only action, keep it a sensible size instead of stretching
+  // the full bar width.
+  btnInnerSingle: { justifyContent: 'flex-start' },
+  actionBtnSingle: { flex: 0, minWidth: 160, maxWidth: 240, alignSelf: 'flex-start' },
   actionBtnPrimary: { backgroundColor: Colors.accent },
   actionBtnSecondary: { backgroundColor: Colors.primary },
   actionBtnDanger: { backgroundColor: Colors.dangerFg },

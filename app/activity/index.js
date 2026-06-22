@@ -872,6 +872,34 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
   const setStatus = (val) => setFilters((f) => ({ ...f, status: val }));
   const setUser = (val) => setFilters((f) => ({ ...f, user: val }));
   const setDate = (val) => setFilters((f) => ({ ...f, dateRange: val }));
+
+  // Whether any filter is currently set (enables the Clear all button).
+  const hasActiveFilters = (
+    (filters.types || []).length > 0 ||
+    (filters.assetTypes || []).length > 0 ||
+    !!filters.status ||
+    !!filters.user ||
+    (filters.dateRange && filters.dateRange !== 'all')
+  );
+
+  // Reset every filter back to its default (does not auto-apply — user still
+  // taps Apply, matching the Cancel/Apply flow).
+  const clearAll = () => {
+    setFilters((f) => ({
+      ...f,
+      types: [],
+      assetTypes: [],
+      status: null,
+      user: null,
+      dateRange: 'all',
+      dateFrom: '',
+      dateTo: '',
+    }));
+    setAssetTypeSearch('');
+    setUserSearch('');
+    setAssetTypeSuggestOpen(false);
+    setUserSuggestOpen(false);
+  };
   const toggleAssetType = (name) => setFilters((f) => {
     const set = new Set(f.assetTypes || []);
     const key = String(name || '').trim();
@@ -1048,6 +1076,10 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
 
         </ScrollView>
         <View style={mStyles.actions}>
+          <TouchableOpacity onPress={clearAll} disabled={!hasActiveFilters} style={[mStyles.btn, mStyles.ghost, !hasActiveFilters && mStyles.btnDisabled]}>
+            <Text style={[mStyles.btnGhostText, !hasActiveFilters && mStyles.btnDisabledText]}>Clear all</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
           <TouchableOpacity onPress={onClose} style={[mStyles.btn, mStyles.secondary]}>
             <Text style={mStyles.btnSecondaryText}>Cancel</Text>
           </TouchableOpacity>
@@ -1140,8 +1172,12 @@ const mStyles = StyleSheet.create({
   btn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1 },
   primary: { backgroundColor: Colors.primary, borderColor: '#0B3A5C' },
   secondary: { backgroundColor: Colors.card, borderColor: Colors.line },
+  ghost: { backgroundColor: 'transparent', borderColor: 'transparent' },
+  btnDisabled: { opacity: 0.4 },
   btnPrimaryText: { color: '#FFFFFF', fontWeight: '900' },
   btnSecondaryText: { color: Colors.text, fontWeight: '800' },
+  btnGhostText: { color: Colors.accent, fontWeight: '800' },
+  btnDisabledText: { color: Colors.sub2 },
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: Platform.OS === 'web' ? 8 : 6 },
   suggestList: { borderWidth: 1, borderColor: Colors.line, borderRadius: Radius.sm, backgroundColor: Colors.card, marginTop: 4 },
   suggestItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.chip },

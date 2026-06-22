@@ -195,26 +195,36 @@ function WebAssetDetailPanel({ asset, onOpenFull, onShowQR, onTransfer }) {
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
-      {/* Hero */}
-      <View style={[wS.detailHero, { backgroundColor: cfg.bg }]}>
+      {/* Hero — clicking it opens the full asset page. */}
+      <TouchableOpacity
+        style={[wS.detailHero, { backgroundColor: cfg.bg }]}
+        onPress={onOpenFull}
+        activeOpacity={0.85}
+        accessibilityRole="link"
+        accessibilityLabel={`Open ${name}`}
+      >
         {asset?.image_url ? (
           <Image source={{ uri: asset.image_url }} style={wS.detailHeroImg} resizeMode="contain" />
         ) : (
           <MaterialIcons name={cfg.icon || 'inventory-2'} size={72} color={cfg.fg} />
         )}
-      </View>
+      </TouchableOpacity>
 
       <View style={wS.detailBody}>
-        {awaitingQr ? (
-          <Text style={[wS.detailIdLine, { color: Colors.warningFg || '#92400E' }]}>AWAITING QR</Text>
-        ) : (
-          <Text style={wS.detailIdLine}>ID · {asset?.id}</Text>
-        )}
-        <Text style={wS.detailTitle} numberOfLines={3}>{name}</Text>
-        <Text style={wS.detailTypeLine}>
-          {type ? `${type} · ` : ''}
-          <Text style={{ color: cfg.fg }}>{cfg.label}</Text>
-        </Text>
+        {/* Identity block — also clickable to open the full asset. */}
+        <TouchableOpacity onPress={onOpenFull} activeOpacity={0.7} accessibilityRole="link">
+          {awaitingQr ? (
+            <Text style={[wS.detailIdLine, { color: Colors.warningFg || '#92400E' }]}>AWAITING QR</Text>
+          ) : (
+            <Text style={wS.detailIdLine}>ID · {asset?.id}</Text>
+          )}
+          <Text style={wS.detailTitle} numberOfLines={3}>{name}</Text>
+          <Text style={wS.detailTypeLine}>
+            {type ? `${type} · ` : ''}
+            <Text style={{ color: cfg.fg }}>{cfg.label}</Text>
+          </Text>
+          <Text style={wS.detailOpenHint}>Click to open full details ↗</Text>
+        </TouchableOpacity>
 
         {/* Quick actions — primary action only; everything else lives on the full page.
            "View QR" is hidden for awaiting-QR rows since there's no code to show yet. */}
@@ -616,6 +626,7 @@ const wS = StyleSheet.create({
   detailIdLine: { fontFamily: 'monospace', fontSize: 11, color: Colors.sub, marginBottom: 4 },
   detailTitle: { fontSize: 20, fontWeight: '900', color: Colors.text, marginBottom: 4 },
   detailTypeLine: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, color: Colors.sub2 },
+  detailOpenHint: { fontSize: 11, fontWeight: '700', color: Colors.accent, marginTop: 6 },
 
   quickActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
   quickAction: {
