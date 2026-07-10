@@ -482,26 +482,17 @@ export default function ScannedAssetsList() {
             <TouchableOpacity
               style={styles.otherActionRow}
               onPress={() => {
-                setBulkActionTargetIds(effectiveSelected);
+                const targets = effectiveSelected;
                 setShowOtherPicker(false);
-                setActionsFormType('Report Lost');
-                setActionsFormOpen(true);
+                Alert.alert('Report Lost or Stolen', 'What happened to the selected asset(s)?', [
+                  { text: 'Report Lost', onPress: () => { setBulkActionTargetIds(targets); setActionsFormType('Report Lost'); setActionsFormOpen(true); } },
+                  { text: 'Report Stolen', style: 'destructive', onPress: () => { setBulkActionTargetIds(targets); setActionsFormType('Report Stolen'); setActionsFormOpen(true); } },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
               }}
             >
-              <MaterialIcons name="lost-and-found" size={22} color="#D97706" />
-              <Text style={styles.otherActionLabel}>Report Lost</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.otherActionRow}
-              onPress={() => {
-                setBulkActionTargetIds(effectiveSelected);
-                setShowOtherPicker(false);
-                setActionsFormType('Report Stolen');
-                setActionsFormOpen(true);
-              }}
-            >
-              <MaterialIcons name="warning-amber" size={22} color="#DC2626" />
-              <Text style={styles.otherActionLabel}>Report Stolen</Text>
+              <MaterialIcons name="report" size={22} color="#DC2626" />
+              <Text style={styles.otherActionLabel}>Report Lost or Stolen</Text>
             </TouchableOpacity>
           </View>
         </View>

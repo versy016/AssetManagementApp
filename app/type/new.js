@@ -31,7 +31,7 @@ const DEFAULT_FIELDS = [
   { slug: 'type_id', label: 'Asset Type' },
   { slug: 'serial_number', label: 'Serial Number' },
   { slug: 'description', label: 'Description' },
-  { slug: 'model', label: 'Model' },
+  { slug: 'model', label: 'Model Name' },
   { slug: 'assigned_to_id', label: 'Assigned To' },
   { slug: 'status', label: 'Status' },
   { slug: 'image_url', label: 'Image URL' },
@@ -61,6 +61,9 @@ const PRESET_LIBRARY = [
   // Yours
   { key: 'asset_life_years', label: 'Asset life (years)', fieldTypeSlug: 'number' },
   { key: 'warranty_terms', label: 'Warranty terms', fieldTypeSlug: 'textarea' },
+  // Warranty expiry sits directly under Warranty terms so the two warranty
+  // fields are grouped together.
+  { key: 'warranty_expiry', label: 'Warranty expiry', fieldTypeSlug: 'date' },
   { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
   // Moved common fields (now optional)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
@@ -70,7 +73,6 @@ const PRESET_LIBRARY = [
   { key: 'supplier', label: 'Supplier', fieldTypeSlug: 'text' },
   { key: 'purchase_price', label: 'Purchase price', fieldTypeSlug: 'currency' },
   { key: 'condition', label: 'Condition', fieldTypeSlug: 'select', options: ['New', 'Good', 'Fair', 'Poor'] },
-  { key: 'warranty_expiry', label: 'Warranty expiry', fieldTypeSlug: 'date' },
 ];
 
 function DefaultFieldRow({ label }) {

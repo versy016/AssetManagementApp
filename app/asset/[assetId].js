@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
-import StatusBadge from '../../components/ui/StatusBadge';
+import StatusBadge, { AssetStatusBadges } from '../../components/ui/StatusBadge';
 import PriorityNotesBanner from '../../components/PriorityNotesBanner';
 import ScreenState from '../../components/ui/ScreenState';
 import { Row, DetailsGrid } from '../../components/asset/AssetRows';
@@ -165,7 +165,7 @@ function WebAssetHeader({
 
         {/* Status badge + action chips */}
         <View style={whs.statusRow}>
-          <StatusBadge status={asset.status} />
+          <AssetStatusBadges asset={asset} />
           <View style={{ flex: 1 }} />
           <TouchableOpacity onPress={copyId} style={whs.chip}>
             <MaterialIcons name="fingerprint" size={18} color={Colors.primary} />
@@ -459,7 +459,7 @@ export default function AssetDetailPage() {
           {/* Core fields — mobile only; web shows these in WebAssetHeader above */}
           {!isWebWide && (() => {
             const coreRows = [
-              { label: 'Status', value: <StatusBadge status={asset.status} /> },
+              { label: 'Status', value: <AssetStatusBadges asset={asset} /> },
               { label: 'Serial number', value: displaySerial || 'N/A' },
               { label: 'Assigned To', value: asset.users?.name || 'N/A' },
               { label: 'Last Scanned Location', value: displayLocation },

@@ -516,6 +516,11 @@ export default function AdminUsers() {
           </TouchableOpacity>
         </TourTarget>
 
+        <TouchableOpacity onPress={() => router.push('/admin/settings')} style={s.qrSheetsBtn}>
+          <MaterialIcons name="settings" size={18} color={Colors.primary} />
+          {isWeb && <Text style={s.qrSheetsBtnTxt}>Settings</Text>}
+        </TouchableOpacity>
+
         <NewButton icon="person-add" label={isWeb ? 'Invite User' : undefined} onPress={() => setShowInvite(true)} />
       </View>
       </TourTarget>

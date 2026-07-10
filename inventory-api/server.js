@@ -142,6 +142,7 @@ const publicAssetsRoutes   = require('./routes/publicAssets');
 const adminUsersRoutes     = require('./routes/adminUsers');
 const assetScanRoutes      = require('./routes/assetScan');
 const tasksRoutes          = require('./routes/tasks');
+const settingsRoutes       = require('./routes/settings');
 
 // Mount the vision scan route BEFORE the catch-all assetRoutes so the more
 // specific `/assets/scan-image` path wins.
@@ -160,6 +161,7 @@ app.use('/hire-disclaimer', hireDisclaimerRoutes);
 app.use('/public', publicAssetsRoutes);
 app.use('/admin/users', adminUsersRoutes);
 app.use('/tasks', tasksRoutes);
+app.use('/settings', settingsRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)
@@ -271,6 +273,19 @@ function start() {
     console.log(`[server] Listening on http://localhost:${PORT} (${NODE_ENV})`);
     console.log(`[server] Mounted ${qrRoot} at '${STATIC_MOUNT}' and '/qr' (legacy)`);
   });
+
+  // Auto-flag assets as Maintenance Due when their next_service_date enters the
+  // configured lead window. Runs on boot and every 6 hours.
+  try {
+    const { refreshMaintenanceDue } = settingsRoutes;
+    if (typeof refreshMaintenanceDue === 'function') {
+      refreshMaintenanceDue().then((n) => { if (n) console.log(`[server] maintenance-due sweep flagged ${n} asset(s)`); }).catch(() => {});
+      const sweep = setInterval(() => { refreshMaintenanceDue().catch(() => {}); }, 6 * 60 * 60 * 1000);
+      if (sweep.unref) sweep.unref();
+    }
+  } catch (e) {
+    console.warn('[server] maintenance-due sweep not started:', e?.message || e);
+  }
 
   const shutdown = async (signal) => {
     console.log(`[server] ${signal} received. Shutting down...`);

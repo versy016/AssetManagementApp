@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
+import { assetFlags, baseStatusKey } from '../../constants/assetStatus';
 
 /**
  * Canonical asset status configuration — Bold Industrial palette.
@@ -9,35 +10,35 @@ import { Colors, Radius, sf } from '../../constants/uiTheme';
  */
 export const STATUS_CONFIG = {
   in_service: {
-    label: 'In Service',
+    label: 'In service',
     bg: '#F0FDFA',
     fg: '#0D9488',
     bd: '#99F6E4',
     icon: 'build-circle',
   },
   end_of_life: {
-    label: 'End of Life',
+    label: 'End of life',
     bg: '#F5F5F4',
     fg: '#78716C',
     bd: '#D6D3D1',
     icon: 'block',
   },
   repair: {
-    label: 'Repair',
+    label: 'Needs repair',
     bg: '#FEF2F2',
     fg: '#DC2626',
     bd: '#FECACA',
     icon: 'build',
   },
   maintenance: {
-    label: 'Maintenance',
+    label: 'Maintenance due',
     bg: '#FFFBEB',
     fg: '#D97706',
     bd: '#FDE68A',
     icon: 'build',
   },
   on_hire: {
-    label: 'On Hire',
+    label: 'On hire',
     bg: '#EEF2FF',
     fg: '#4F46E5',
     bd: '#C7D2FE',
@@ -117,6 +118,39 @@ export default function StatusBadge({ status, size = 'md', style }) {
     </View>
   );
 }
+
+/** One badge chip from a raw STATUS_CONFIG entry. */
+function BadgeChip({ cfg, isSmall, style }) {
+  if (!cfg) return null;
+  return (
+    <View style={[styles.badge, { backgroundColor: cfg.bg, borderColor: cfg.bd || cfg.bg }, isSmall && styles.badgeSm, style]}>
+      <Text style={[styles.label, { color: cfg.fg }, isSmall && styles.labelSm]} numberOfLines={1}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+/**
+ * Renders an asset's FULL status: the base lifecycle badge (In service / On hire
+ * / End of life) plus a "Needs repair" and/or "Maintenance due" chip whenever
+ * those overlay flags are set. Pass the whole asset ({ status, needs_repair,
+ * maintenance_due }).
+ */
+export function AssetStatusBadges({ asset, size = 'md', style, chipStyle }) {
+  const isSmall = size === 'sm' || (typeof size === 'number' && size < 14);
+  const baseKey = baseStatusKey(asset?.status);
+  const flags = assetFlags(asset);
+  return (
+    <View style={[stylesRow.row, style]}>
+      <BadgeChip cfg={STATUS_CONFIG[baseKey]} isSmall={isSmall} style={chipStyle} />
+      {flags.needs_repair ? <BadgeChip cfg={STATUS_CONFIG.repair} isSmall={isSmall} style={chipStyle} /> : null}
+      {flags.maintenance_due ? <BadgeChip cfg={STATUS_CONFIG.maintenance} isSmall={isSmall} style={chipStyle} /> : null}
+    </View>
+  );
+}
+
+const stylesRow = StyleSheet.create({
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+});
 
 const styles = StyleSheet.create({
   badge: {

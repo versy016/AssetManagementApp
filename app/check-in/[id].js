@@ -23,7 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import ActionsForm from '../../components/ActionsForm';
 import ConfirmModal from '../../components/ui/ConfirmModal';
-import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
+import StatusBadge, { normalizeStatus, AssetStatusBadges } from '../../components/ui/StatusBadge';
 import PriorityNotesBanner from '../../components/PriorityNotesBanner';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES, revokeImageUri } from '../../utils/getFormFileFromPicker';
@@ -1486,6 +1486,32 @@ export default function CheckInScreen() {
   const markRepair = () => updateStatus('Repair');
   const markMaintenance = () => updateStatus('Maintenance');
 
+  // Set/clear the overlay flags (Needs Repair / Maintenance Due) directly, with
+  // an optimistic UI patch. Does not touch base status or assignment.
+  const updateFlags = async (patch, successMsg) => {
+    try {
+      setLoading(true);
+      const auth = getAuth();
+      const currentUser = auth?.currentUser;
+      const headers = { 'Content-Type': 'application/json' };
+      try { if (currentUser?.getIdToken) { const t = await currentUser.getIdToken(); if (t) headers.Authorization = `Bearer ${t}`; } } catch { /* non-fatal */ }
+      if (currentUser?.uid) headers['X-User-Id'] = currentUser.uid;
+      if (currentUser?.displayName) headers['X-User-Name'] = currentUser.displayName;
+      if (currentUser?.email) headers['X-User-Email'] = currentUser.email;
+      const res = await fetch(`${API_BASE_URL}/assets/${id}`, { method: 'PUT', headers, body: JSON.stringify(patch) });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to update');
+      applyAssetPatch(patch);
+      setLoading(false);
+      postActionAlert({ message: successMsg || 'Updated' });
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to update');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const markNeedsRepair = () => updateFlags({ needs_repair: true }, 'Marked as Needs Repair');
+  const goScheduleMaintenance = () => router.push({ pathname: '/servicing/[assetId]', params: { assetId: String(asset?.id) } });
+
 
   // Reusable post-action alert (cross-platform)
   // On web: uses ConfirmModal; on native: uses Alert.
@@ -1835,7 +1861,7 @@ export default function CheckInScreen() {
                       </Text>
                       <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
                     </View>
-                    <StatusBadge status={normalizeStatus(asset.status)} />
+                    <AssetStatusBadges asset={asset} />
                   </View>
                   {isAwaitingQr ? (
                     <Text style={{ color: Colors.subtle, fontSize: sf(12), marginTop: 4, fontWeight: '600' }}>
@@ -2132,36 +2158,40 @@ export default function CheckInScreen() {
                       </View>
                     </View>
 
-                    {/* Maintenance */}
+                    {/* Maintenance — conditional on the asset's overlay flags */}
                     <View style={styles.webActionGroup}>
                       <Text style={styles.webSectionLabel}>MAINTENANCE</Text>
                       <View style={styles.webActionCard}>
-                        <TouchableOpacity
-                          style={styles.webActionRow}
-                          onPress={() => { setActionsFormType('Repair'); setActionsFormOpen(true); }}
-                        >
-                          <View style={[styles.webActionIcon, { backgroundColor: Colors.warningBg }]}>
-                            <MaterialIcons name="build" size={20} color={Colors.warningFg} />
-                          </View>
-                          <View style={styles.webActionInfo}>
-                            <Text style={styles.webActionLabel}>Repair Required</Text>
-                            <Text style={styles.webActionDesc}>Log that this asset needs repair</Text>
-                          </View>
-                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.webActionRow, styles.webActionRowLast]}
-                          onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
-                        >
-                          <View style={[styles.webActionIcon, { backgroundColor: Colors.infoBg }]}>
-                            <MaterialIcons name="build-circle" size={20} color={Colors.infoFg} />
-                          </View>
-                          <View style={styles.webActionInfo}>
-                            <Text style={styles.webActionLabel}>Log Service</Text>
-                            <Text style={styles.webActionDesc}>Record a maintenance / service event</Text>
-                          </View>
-                          <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
-                        </TouchableOpacity>
+                        {(() => {
+                          const rows = [];
+                          if (!asset?.needs_repair) {
+                            rows.push({ key: 'repair-req', icon: 'build', bg: Colors.warningBg, fg: Colors.warningFg, label: 'Needs repair', desc: 'Mark that this asset needs repair', onPress: markNeedsRepair });
+                          }
+                          rows.push({ key: 'sched', icon: 'event', bg: Colors.infoBg, fg: Colors.infoFg, label: 'Log future maintenance', desc: 'Set when the next service is due', onPress: goScheduleMaintenance });
+                          if (asset?.needs_repair) {
+                            rows.push({ key: 'log-repair', icon: 'check-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Log Repair', desc: 'Record this asset has been repaired', onPress: () => { setActionsFormType('Repair'); setActionsFormOpen(true); } });
+                          }
+                          if (asset?.maintenance_due) {
+                            rows.push({ key: 'log-maint', icon: 'build-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Log Maintenance', desc: 'Record a maintenance / service event', onPress: () => { setActionsFormType('Maintenance'); setActionsFormOpen(true); } });
+                          }
+                          return rows.map((r, i) => (
+                            <TouchableOpacity
+                              key={r.key}
+                              style={[styles.webActionRow, i === rows.length - 1 && styles.webActionRowLast]}
+                              onPress={r.onPress}
+                              disabled={loading}
+                            >
+                              <View style={[styles.webActionIcon, { backgroundColor: r.bg }]}>
+                                <MaterialIcons name={r.icon} size={20} color={r.fg} />
+                              </View>
+                              <View style={styles.webActionInfo}>
+                                <Text style={styles.webActionLabel}>{r.label}</Text>
+                                <Text style={styles.webActionDesc}>{r.desc}</Text>
+                              </View>
+                              <MaterialIcons name="chevron-right" size={20} color={Colors.subtle} />
+                            </TouchableOpacity>
+                          ));
+                        })()}
                       </View>
                     </View>
 
@@ -2274,7 +2304,7 @@ export default function CheckInScreen() {
                 </Text>
                 <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
               </View>
-              <StatusBadge status={normalizeStatus(asset.status)} />
+              <AssetStatusBadges asset={asset} />
             </View>
 
             {/* Detail list */}
@@ -2511,23 +2541,31 @@ export default function CheckInScreen() {
         {/* Sticky Footer Bar (hide for placeholders, QR Reserved, and EOL) */}
         {!isPlaceholder && !isEOL && !isQRReserved && !isAwaitingQr && (
           <View style={styles.footerBar}>
+            {/* Adapts to the asset's flags: set the flag when clear, or log the
+                completed work (which clears the flag) when set. */}
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
-              onPress={() => { setActionsFormType('Repair'); setActionsFormOpen(true); }}
+              onPress={asset?.needs_repair
+                ? () => { setActionsFormType('Repair'); setActionsFormOpen(true); }
+                : markNeedsRepair}
+              disabled={loading}
             >
-              <MaterialIcons name="build" size={18} color="#fff" />
+              <MaterialIcons name={asset?.needs_repair ? 'check-circle' : 'build'} size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                Repair Required
+                {asset?.needs_repair ? 'Log Repair' : 'Needs repair'}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
-              onPress={() => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }}
+              onPress={asset?.maintenance_due
+                ? () => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }
+                : goScheduleMaintenance}
+              disabled={loading}
             >
-              <MaterialIcons name="build-circle" size={18} color="#fff" />
+              <MaterialIcons name={asset?.maintenance_due ? 'build-circle' : 'event'} size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                Log Service
+                {asset?.maintenance_due ? 'Log Maintenance' : 'Log future maintenance'}
               </Text>
             </TouchableOpacity>
 

@@ -111,7 +111,13 @@ const createAction = z.object({
   performed_by: optionalString,
   from_user_id: optionalString,
   to_user_id:   optionalString,
-  occurred_at:  z.string().datetime({ offset: true }).optional(),
+  // Accept a full ISO datetime OR a date-only string (YYYY-MM-DD). Clients
+  // (ActionsForm, Servicing) send date-only; normalise it to midnight UTC so it
+  // still satisfies the datetime check and `new Date(...)` parses it correctly.
+  occurred_at:  z.preprocess(
+    (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00.000Z` : v),
+    z.string().datetime({ offset: true }).optional(),
+  ),
   details:      z.record(z.unknown()).optional(),
 });
 

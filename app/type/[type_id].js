@@ -28,6 +28,7 @@ import StatusBadge, {
   STATUS_CONFIG,
   normalizeStatus,
 } from '../../components/ui/StatusBadge';
+import { assetFlags, baseStatusKey, assetHasStatusKey, statusFilterKey } from '../../constants/assetStatus';
 import EmptyState from '../../components/ui/EmptyState';
 import AssetsMasterDetail from '../../components/AssetsMasterDetail';
 
@@ -187,8 +188,11 @@ export default function AssetsType() {
       end_of_life: 0,
     };
     for (const a of assets) {
-      const k = normalizeStatus(a?.status);
-      if (k in c) c[k] += 1;
+      const base = baseStatusKey(a?.status);
+      if (base in c) c[base] += 1;
+      const fl = assetFlags(a);
+      if (fl.needs_repair) c.repair += 1;
+      if (fl.maintenance_due) c.maintenance += 1;
     }
     return { ...c, total: assets.length };
   }, [assets]);
@@ -256,8 +260,8 @@ export default function AssetsType() {
     let arr = assets.filter((a) => !isReservedQR(a));
     const statusFilter = filters?.status;
     if (statusFilter) {
-      const wantKey = normalizeStatus(statusFilter);
-      arr = arr.filter((a) => normalizeStatus(a?.status) === wantKey);
+      const wantKey = statusFilterKey(statusFilter);
+      arr = arr.filter((a) => assetHasStatusKey(a, wantKey));
     }
     return arr;
   }, [assets, filters?.status]);

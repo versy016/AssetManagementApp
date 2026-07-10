@@ -39,14 +39,44 @@ const ACTIONS = [
   'Report Stolen',
 ];
 
-// Map actions to a status that your backend accepts (PUT /assets/:id)
+// Map actions to a BASE status the backend accepts (PUT /assets/:id).
+// Repair / Maintenance are NOT base statuses anymore — they're overlay flags
+// (see FLAG_CLEAR_FOR_ACTION). Logging a repair/service means the work is DONE,
+// so it clears the flag rather than setting a status.
 const STATUS_MAP = {
-  'Repair': 'Repair',
-  'Maintenance': 'Maintenance',
   'End of Life': 'End of Life',
   'Hire': 'On Hire',
   // Lost / Stolen do not forcibly change status by default.
 };
+
+// Logging one of these records the completed event AND clears the overlay flag.
+const FLAG_CLEAR_FOR_ACTION = {
+  'Repair': 'needs_repair',
+  'Maintenance': 'maintenance_due',
+};
+
+// React Native's Alert.alert is a no-op on react-native-web, which silently
+// swallows validation/submit errors ("click and nothing happens"). Route all
+// alerts through this so web users get a real browser alert.
+function notify(title, message) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message ? `${title}\n\n${message}` : String(title));
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
+// The action API validates occurred_at as a full ISO datetime. `date` state is
+// a date-only string (YYYY-MM-DD) — convert it to midnight-local ISO so the
+// request passes validation.
+function toDateTimeISO(ymd) {
+  if (!ymd) return new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    const d = new Date(`${ymd}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return ymd;
+}
 
 // Map display label -> API action enum
 const ACTION_ENUM = {
@@ -221,11 +251,23 @@ export default function ActionsForm({
     return () => { cancel = true; };
   }, [visible, asset?.asset_types?.id, asset?.type_id]);
 
+  // Logging maintenance closes out the Maintenance Due flag — capture when the
+  // NEXT service is due so the auto-sweep doesn't immediately re-flag it. Default
+  // to +6 months when the form opens.
+  useEffect(() => {
+    if (visible && action === 'Maintenance' && !nextServiceDate) {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 6);
+      setNextServiceDate(d.toISOString().slice(0, 10));
+    }
+    if (!visible) setNextServiceDate('');
+  }, [visible, action]);
+
   const actionLabel =
     action === 'Repair'
-      ? 'Repair Required'
+      ? 'Log Repair'
       : action === 'Maintenance'
-        ? 'Log Service'
+        ? 'Log Maintenance'
         : action;
   const summaryLabel = action === 'Repair' ? 'Type of Repair *' : 'Type of Service *';
   const summaryPlaceholder = action === 'Repair' ? 'e.g. Screen replacement' : 'e.g. Scheduled maintenance';
@@ -233,30 +275,30 @@ export default function ActionsForm({
 
   const validate = () => {
     if (!action || !ACTIONS.includes(action)) {
-      Alert.alert('Invalid', 'Please choose a valid action.'); 
+      notify('Invalid', 'Please choose a valid action.'); 
       return false;
     }
     if (fields === 'service') {
       if (!summary.trim()) {
-        Alert.alert('Missing info', summaryAlertText);
+        notify('Missing info', summaryAlertText);
         return false;
       }
     } else if (fields === 'hire') {
       if (hireMode === 'project') {
-        if (!selectedProject) return Alert.alert('Missing info', 'Please select a project from suggestions.'), false;
+        if (!selectedProject) return notify('Missing info', 'Please select a project from suggestions.'), false;
       } else if (hireMode === 'client') {
-        if (!selectedClient) return Alert.alert('Missing info', 'Please select a client from suggestions.'), false;
+        if (!selectedClient) return notify('Missing info', 'Please select a client from suggestions.'), false;
       } else if (hireMode === 'manual') {
-        if (!hireTo.trim()) return Alert.alert('Missing info', 'Please enter who this is hired to.'), false;
+        if (!hireTo.trim()) return notify('Missing info', 'Please enter who this is hired to.'), false;
       }
-      if (!hireStart) return Alert.alert('Missing dates', 'Please choose a start date.'), false;
+      if (!hireStart) return notify('Missing dates', 'Please choose a start date.'), false;
       // (Optional) end date can be empty for open-ended hires
     } else if (fields === 'eol') {
-      if (!confirmEol) return Alert.alert('Confirm', 'Please confirm End of Life.'), false;
+      if (!confirmEol) return notify('Confirm', 'Please confirm End of Life.'), false;
     } else if (fields === 'lost') {
-      if (!where.trim()) return Alert.alert('Missing info', 'Please add where it was last seen.'), false;
+      if (!where.trim()) return notify('Missing info', 'Please add where it was last seen.'), false;
     } else if (fields === 'stolen') {
-      if (!where.trim()) return Alert.alert('Missing info', 'Please add where it was stolen from.'), false;
+      if (!where.trim()) return notify('Missing info', 'Please add where it was stolen from.'), false;
       // policeReport optional
     }
     return true;
@@ -302,15 +344,23 @@ export default function ActionsForm({
         ...(fields === 'stolen' ? { where, policeReport, project: lostProject || undefined, client: lostClient || undefined } : {}),
       };
 
-      // Optionally update asset status (only for API-accepted statuses)
+      // Optionally update the asset: a base status change (Hire / EOL) and/or
+      // clearing an overlay flag (logging a repair/service = the work is done).
       let updated = {};
       const newStatus = statusMap[action]; // may be undefined
-        if (submitToBackend && newStatus) {
+      const flagToClear = FLAG_CLEAR_FOR_ACTION[action]; // 'needs_repair' | 'maintenance_due' | undefined
+        if (submitToBackend && (newStatus || flagToClear)) {
       const auth = getAuth();
       const current = auth?.currentUser;
-      // Build update payload; Next Service Date is now captured at review/sign‑off time,
-      // so we only update the status here. Skip required-document validation when logging (enforced on sign-off).
-      const bodyPatch = { status: newStatus, skip_required_documents: true };
+      // Skip required-document validation when logging (enforced on sign-off).
+      const bodyPatch = { skip_required_documents: true };
+      if (newStatus) bodyPatch.status = newStatus;
+      if (flagToClear) bodyPatch[flagToClear] = false;
+      // Logging maintenance advances the next service date so the auto-sweep
+      // won't immediately re-flag Maintenance Due (unless the type stores its own).
+      if (action === 'Maintenance' && nextServiceDate && !hasDynamicNextService) {
+        bodyPatch.next_service_date = nextServiceDate;
+      }
         const res = await fetch(`${apiBaseUrl}/assets/${asset?.id}`, {
           method: 'PUT',
           headers: {
@@ -323,9 +373,10 @@ export default function ActionsForm({
         });
         if (!res.ok) {
           const t = await res.text();
-          throw new Error(t || `Failed to set status: ${newStatus}`);
+          throw new Error(t || 'Failed to update asset');
         }
-        updated.status = newStatus;
+        if (newStatus) updated.status = newStatus;
+        if (flagToClear) updated[flagToClear] = false;
       }
 
       // Always record a structured action with details
@@ -339,7 +390,7 @@ export default function ActionsForm({
           const form = new FormData();
           form.append('type', enumType);
           form.append('note', summary || '');
-          form.append('occurred_at', date);
+          form.append('occurred_at', toDateTimeISO(date));
           form.append('details', JSON.stringify(meta));
           form.append('data', JSON.stringify({ requires_signoff: true, completed: false }));
           serviceImages.forEach((f) => {
@@ -380,7 +431,7 @@ export default function ActionsForm({
             type: enumType,
             note: fields === 'service' ? summary : (notes || undefined),
             details: meta,
-            occurred_at: date,
+            occurred_at: toDateTimeISO(date),
             data: (fields === 'service' || enumType === 'HIRE') ? { requires_signoff: true, completed: false } : undefined,
           };
           const post = await fetch(`${apiBaseUrl}/assets/${asset?.id}/actions`, {
@@ -438,7 +489,7 @@ export default function ActionsForm({
             type: enumType,
             note: fields === 'service' ? summary : (notes || undefined),
             details: meta,
-            occurred_at: date,
+            occurred_at: toDateTimeISO(date),
             data: (fields === 'service' || enumType === 'HIRE') ? { requires_signoff: true, completed: false } : undefined,
           };
           const headers = { 'Content-Type': 'application/json' };
@@ -495,7 +546,7 @@ export default function ActionsForm({
       onClose && onClose();
     } catch (e) {
       logger.error('ActionsForm submit error', e);
-      Alert.alert('Error', e?.message || 'Failed to submit action');
+      notify('Error', e?.message || 'Failed to submit action');
     } finally {
       setSubmitting(false);
     }
@@ -696,6 +747,17 @@ export default function ActionsForm({
                   </>
                 )}
 
+                {/* Log Maintenance: capture when the next service is due so the
+                    Maintenance Due flag doesn't immediately re-trigger. Hidden
+                    when the asset type has its own next-service-date field. */}
+                {action === 'Maintenance' && !hasDynamicNextService && (
+                  <DateField
+                    label="Next service due"
+                    value={nextServiceDate}
+                    onChange={setNextServiceDate}
+                  />
+                )}
+
                 {/* Optional photos for Repair/Maintenance — web file input */}
                 {Platform.OS === 'web' && (
                   <LabeledInput label={action === 'Repair' ? 'Upload Repair Images (optional)' : 'Upload Service Images (optional)'}>
@@ -735,7 +797,7 @@ export default function ActionsForm({
                             try {
                               const { status } = await ImagePicker.requestCameraPermissionsAsync();
                               if (status !== 'granted') {
-                                Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+                                notify('Permission Required', 'Camera permission is required to take photos.');
                                 return;
                               }
                               const { assets, canceled } = await ImagePicker.launchCameraAsync({
@@ -749,7 +811,7 @@ export default function ActionsForm({
                               const name = a.fileName || `photo_${Date.now()}.jpg`;
                               setServiceImages((prev) => [...prev, { uri: a.uri, name, type }]);
                             } catch (e) {
-                              Alert.alert('Error', e.message || 'Failed to take photo');
+                              notify('Error', e.message || 'Failed to take photo');
                             }
                           }}
                         >
@@ -761,7 +823,7 @@ export default function ActionsForm({
                             try {
                               const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
                               if (status !== 'granted') {
-                                Alert.alert('Permission Required', 'Photo library permission is required to choose images.');
+                                notify('Permission Required', 'Photo library permission is required to choose images.');
                                 return;
                               }
                               const { assets, canceled } = await ImagePicker.launchImageLibraryAsync({
@@ -777,7 +839,7 @@ export default function ActionsForm({
                               }));
                               setServiceImages((prev) => [...prev, ...newOnes]);
                             } catch (e) {
-                              Alert.alert('Error', e.message || 'Failed to choose images');
+                              notify('Error', e.message || 'Failed to choose images');
                             }
                           }}
                         >

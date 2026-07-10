@@ -36,7 +36,8 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { TourTarget } from '../../components/TourGuide';
 import TablePagination from '../../components/ui/TablePagination';
-import StatusBadge from '../../components/ui/StatusBadge';
+import StatusBadge, { AssetStatusBadges } from '../../components/ui/StatusBadge';
+import { assetHasStatusKey, statusFilterKey } from '../../constants/assetStatus';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useUserData } from '../../contexts/UserDataContext';
 import ActionsForm from '../../components/ActionsForm';
@@ -115,6 +116,7 @@ export default function SearchScreen(props = {}) {
     assignedToUserIds: [],
     onlyMine: false,
     dueSoon: false,
+    needsRepair: false,
     includeQRReserved: false,
     includeQRAwaiting: false,
     onlyUnassigned: false,
@@ -186,6 +188,7 @@ export default function SearchScreen(props = {}) {
   const [bulkResultUi, setBulkResultUi] = useState(null);
   const [bulkFormVisible, setBulkFormVisible] = useState(false);
   const [bulkFormAction, setBulkFormAction] = useState('');
+  const [lostStolenOpen, setLostStolenOpen] = useState(false);
 
 
   // Load User
@@ -376,7 +379,8 @@ export default function SearchScreen(props = {}) {
       // Filters
       const types = filters.types;
       const typeOk = !types || types.length === 0 || types.some(t => it.asset_type === t || it.type === t || it.asset_types?.name === t);
-      const statusOk = !filters.status || (it.status === filters.status);
+      // Needs repair / Maintenance due filter by the overlay flags; base statuses match normally.
+      const statusOk = assetHasStatusKey(it, statusFilterKey(filters.status));
 
       const assigned = it.assigned_to || it.users?.name || it.users?.useremail || it.users?.email;
       const assignedUid = it.assigned_to_id || it.assigned_to_uid || it.assigned_to_user_id;
@@ -385,6 +389,7 @@ export default function SearchScreen(props = {}) {
         : (!filters.assignedTo || String(assigned || '').toLowerCase().includes(filters.assignedTo.toLowerCase()));
 
       const dueOk = !filters.dueSoon || (it.next_service_date && new Date(it.next_service_date) <= new Date(Date.now() + 7 * 86400000));
+      const needsRepairOk = !filters.needsRepair || !!it.needs_repair;
 
       const isMine = (me.uid && (assignedUid === me.uid)) || (me.email && String(assigned || '').toLowerCase().includes(me.email.toLowerCase()));
       const onlyMineOk = !filters.onlyMine || isMine;
@@ -400,7 +405,7 @@ export default function SearchScreen(props = {}) {
       // ⭐ Favourite asset types are reflected via filters.types — the existing
       // `typeOk` check above handles them, so no extra clause is needed here.
 
-      const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && onlyMineOk && reservedOk && awaitingOk;
+      const baseOk = keywordOk && typeOk && statusOk && assignedOk && dueOk && needsRepairOk && onlyMineOk && reservedOk && awaitingOk;
       return filters.onlyUnassigned ? (baseOk && unassignedOk) : baseOk;
     });
 
@@ -696,6 +701,7 @@ export default function SearchScreen(props = {}) {
       assignedToUserIds: [],
       onlyMine: false,
       dueSoon: false,
+      needsRepair: false,
       includeQRReserved: false,
       onlyUnassigned: false,
       awaitingQROnly: false,
@@ -711,6 +717,7 @@ export default function SearchScreen(props = {}) {
     !!(filters.assignedToUserIds?.length > 0),
     !!filters.onlyMine,
     !!filters.dueSoon,
+    !!filters.needsRepair,
     !!filters.awaitingQROnly,
   ].filter(Boolean).length;
 
@@ -1003,11 +1010,11 @@ export default function SearchScreen(props = {}) {
           if (!myDbUserId) return false;
           const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ assigned_to_id: myDbUserId }) });
           return res.ok;
-        } else if (actionType === 'repair') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'Repair' }) });
+        } else if (actionType === 'needsRepair') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ needs_repair: true }) });
           return res.ok;
-        } else if (actionType === 'service') {
-          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'Maintenance' }) });
+        } else if (actionType === 'maintenanceDue') {
+          const res = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ maintenance_due: true }) });
           return res.ok;
         } else if (actionType === 'eol') {
           const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, { method: 'PUT', headers, body: JSON.stringify({ status: 'End of Life' }) });
@@ -1094,7 +1101,7 @@ export default function SearchScreen(props = {}) {
               {officeAssignee?.id ? (
                 <Chip label="Office Gear" icon="briefcase" active={officeGearActive} onPress={toggleOfficeGear} />
               ) : null}
-              <Chip label="Needs service" icon="tool" active={filters.dueSoon} onPress={() => quickToggle('dueSoon')} />
+              <Chip label="Needs repair" icon="tool" active={filters.needsRepair} onPress={() => quickToggle('needsRepair')} />
 
               {/* ⭐ Per-user favourite asset-type chips — each toggles its
                  type in filters.types. A "+" button at the end opens the
@@ -1284,7 +1291,7 @@ export default function SearchScreen(props = {}) {
                         </Text>
                       </View>
                     </View>
-                    <StatusBadge status={item?.status} size="sm" />
+                    <AssetStatusBadges asset={item} size="sm" />
                   </View>
 
                   <View style={styles.mobileCardDetails}>
@@ -1583,7 +1590,7 @@ export default function SearchScreen(props = {}) {
                         </View>
                         {/* Status */}
                     <View style={[styles.td, styles.tdCellIcon, columnStyle('status')]}>
-                          <StatusBadge status={item?.status} size="sm" style={{ alignSelf: 'center' }} />
+                          <AssetStatusBadges asset={item} size="sm" style={{ justifyContent: 'center' }} />
                         </View>
                         {/* Last Updated */}
                     <View style={[styles.td, columnStyle('updated')]}>
@@ -1645,25 +1652,21 @@ export default function SearchScreen(props = {}) {
               <MaterialIcons name="person" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>To Me</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { setBulkFormAction('Repair'); setBulkFormVisible(true); }}>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('needsRepair')}>
               <MaterialIcons name="build" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Log Repair</Text>
+              <Text style={styles.bulkBtnText}>Needs Repair</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { setBulkFormAction('Maintenance'); setBulkFormVisible(true); }}>
-              <MaterialIcons name="build-circle" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Log Service</Text>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('maintenanceDue')}>
+              <MaterialIcons name="event" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Maintenance Due</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('End of Life'); setBulkFormVisible(true); }}>
               <MaterialIcons name="remove-circle-outline" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>End of Life</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('Report Lost'); setBulkFormVisible(true); }}>
-              <MaterialIcons name="lost-and-found" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Report Lost</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('Report Stolen'); setBulkFormVisible(true); }}>
-              <MaterialIcons name="warning-amber" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Report Stolen</Text>
+            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => setLostStolenOpen(true)}>
+              <MaterialIcons name="report" size={15} color="#fff" />
+              <Text style={styles.bulkBtnText}>Report Lost or Stolen</Text>
             </TouchableOpacity>
           </ScrollView>
           <TouchableOpacity style={styles.bulkClearBtn} onPress={clearSelection}>
@@ -1671,6 +1674,27 @@ export default function SearchScreen(props = {}) {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Report Lost or Stolen — pick which, then open the shared form */}
+      <Modal visible={lostStolenOpen} transparent animationType="fade" onRequestClose={() => setLostStolenOpen(false)}>
+        <TouchableOpacity style={styles.lsBackdrop} activeOpacity={1} onPress={() => setLostStolenOpen(false)}>
+          <View style={styles.lsCard}>
+            <Text style={styles.lsTitle}>Report Lost or Stolen</Text>
+            <Text style={styles.lsSub}>Choose what happened to the selected asset(s).</Text>
+            <TouchableOpacity style={[styles.lsBtn, styles.lsBtnLost]} onPress={() => { setLostStolenOpen(false); setBulkFormAction('Report Lost'); setBulkFormVisible(true); }}>
+              <MaterialIcons name="lost-and-found" size={18} color="#fff" />
+              <Text style={styles.lsBtnText}>Report Lost</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.lsBtn, styles.lsBtnStolen]} onPress={() => { setLostStolenOpen(false); setBulkFormAction('Report Stolen'); setBulkFormVisible(true); }}>
+              <MaterialIcons name="warning-amber" size={18} color="#fff" />
+              <Text style={styles.lsBtnText}>Report Stolen</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.lsCancel} onPress={() => setLostStolenOpen(false)}>
+              <Text style={styles.lsCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Bulk progress overlay */}
       {isAdmin && Platform.OS === 'web' && bulkLoading && (
@@ -1849,8 +1873,15 @@ export default function SearchScreen(props = {}) {
                   <Text style={styles.groupTitle}>Status</Text>
                   <View style={[styles.filterMenuRow, styles.chipsRow]}>
                     <Chip label="Any status" active={!filters.status} onPress={() => setFilters(f => ({ ...f, status: null }))} />
-                    {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
-                      <Chip key={s} label={s} active={filters.status === s} onPress={() => setFilters(f => ({ ...f, status: s }))} />
+                    {/* value = raw DB status string; label = new display name */}
+                    {[
+                      { value: 'In Service', label: 'In service' },
+                      { value: 'On Hire', label: 'On hire' },
+                      { value: 'Repair', label: 'Needs repair' },
+                      { value: 'Maintenance', label: 'Maintenance due' },
+                      { value: 'End of Life', label: 'End of life' },
+                    ].map(s => (
+                      <Chip key={s.value} label={s.label} active={filters.status === s.value} onPress={() => setFilters(f => ({ ...f, status: s.value }))} />
                     ))}
                   </View>
                 </View>
@@ -1959,7 +1990,7 @@ export default function SearchScreen(props = {}) {
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
               <TouchableOpacity style={[styles.btnGhost, { flex: 1 }]} onPress={() => {
-                setFilters({ types: [], status: null, assignedTo: null, assignedToUserIds: [], onlyMine: false, dueSoon: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
+                setFilters({ types: [], status: null, assignedTo: null, assignedToUserIds: [], onlyMine: false, dueSoon: false, needsRepair: false, includeQRReserved: false, onlyUnassigned: false, awaitingQROnly: false });
                 closeFilterModal();
               }}>
                 <Text style={[styles.btnText, { color: Colors.primary }]}>Cancel</Text>
@@ -2298,6 +2329,16 @@ const styles = StyleSheet.create({
   typeChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.line },
   switchLabel: { fontSize: sf(14), color: Colors.text, fontWeight: '600' },
+  lsBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  lsCard: { width: '100%', maxWidth: 380, backgroundColor: Colors.card, borderRadius: 16, padding: 20, gap: 10 },
+  lsTitle: { fontSize: sf(17), fontWeight: '900', color: Colors.text },
+  lsSub: { fontSize: sf(13), color: Colors.sub, marginBottom: 6 },
+  lsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 10 },
+  lsBtnLost: { backgroundColor: Colors.accent },
+  lsBtnStolen: { backgroundColor: Colors.dangerFg },
+  lsBtnText: { color: '#fff', fontWeight: '900', fontSize: sf(15) },
+  lsCancel: { paddingVertical: 11, alignItems: 'center' },
+  lsCancelText: { color: Colors.sub, fontWeight: '800', fontSize: sf(14) },
   clearAllBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: Colors.accentLight, borderWidth: 1.5, borderColor: Colors.accentMuted },
   clearAllBtnDisabled: { backgroundColor: 'transparent', borderColor: Colors.line, opacity: 0.5 },
   clearAllText: { color: Colors.accentDark, fontWeight: '800', fontSize: sf(12) },

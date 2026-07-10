@@ -130,11 +130,11 @@ export const FontWeights = {
 
 // Status config for mapping asset status to colors
 export const STATUS_CONFIG = {
-  in_service: { label: 'In Service', fg: Colors.statusInService, bg: Colors.statusInServiceBg, border: Colors.successBorder },
-  repair: { label: 'Repair', fg: Colors.statusRepair, bg: Colors.statusRepairBg, border: Colors.dangerBorder },
-  maintenance: { label: 'Maintenance', fg: Colors.statusMaintenance, bg: Colors.statusMaintenanceBg, border: Colors.warningBorder },
-  on_hire: { label: 'On Hire', fg: Colors.statusOnHire, bg: Colors.statusOnHireBg, border: Colors.infoBorder },
-  end_of_life: { label: 'End of Life', fg: Colors.statusEOL, bg: Colors.statusEOLBg, border: Colors.line },
+  in_service: { label: 'In service', fg: Colors.statusInService, bg: Colors.statusInServiceBg, border: Colors.successBorder },
+  repair: { label: 'Needs repair', fg: Colors.statusRepair, bg: Colors.statusRepairBg, border: Colors.dangerBorder },
+  maintenance: { label: 'Maintenance due', fg: Colors.statusMaintenance, bg: Colors.statusMaintenanceBg, border: Colors.warningBorder },
+  on_hire: { label: 'On hire', fg: Colors.statusOnHire, bg: Colors.statusOnHireBg, border: Colors.infoBorder },
+  end_of_life: { label: 'End of life', fg: Colors.statusEOL, bg: Colors.statusEOLBg, border: Colors.line },
 };
 
 function scaleMd3Fonts(fonts) {

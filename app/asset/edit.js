@@ -18,6 +18,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import * as DocumentPicker from 'expo-document-picker';
 import { pickAssetImage, revokeImageUri } from '../../utils/getFormFileFromPicker';
 import { IMAGE_UPLOAD_HINT, ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
+import { BASE_STATUSES, baseStatusKey } from '../../constants/assetStatus';
+import { STATUS_CONFIG } from '../../components/ui/StatusBadge';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 
 registerTranslation('en', en);
@@ -71,6 +73,8 @@ export default function EditAsset() {
   const [typeId, setTypeId] = useState('');
   const [assignedToId, setAssignedToId] = useState('');
   const [status, setStatus] = useState('');
+  const [needsRepair, setNeedsRepair] = useState(false);
+  const [maintenanceDue, setMaintenanceDue] = useState(false);
   const [location, setLocation] = useState('');
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -310,7 +314,10 @@ export default function EditAsset() {
 
         setTypeId(a.type_id || '');
         setAssignedToId(a.assigned_to_id || '');
-        setStatus(a.status || '');
+        // Base status only (legacy Repair/Maintenance rows fold into In Service + flag).
+        setStatus(['Repair', 'Maintenance'].includes(a.status) ? 'In Service' : (a.status || 'In Service'));
+        setNeedsRepair(!!a.needs_repair || a.status === 'Repair');
+        setMaintenanceDue(!!a.maintenance_due || a.status === 'Maintenance');
         setLocation(a.location || '');
         setModel(a.model || '');
         setSerialNumber(a.serial_number != null ? String(a.serial_number) : '');
@@ -418,6 +425,9 @@ export default function EditAsset() {
       model: model || null,
       other_id: otherId.trim() || null,
       description: description || null,
+      status: status || 'In Service',
+      needs_repair: !!needsRepair,
+      maintenance_due: !!maintenanceDue,
       next_service_date: nextServiceDate || null,
       date_purchased: datePurchased || null,
       notes: notes || null,
@@ -1372,12 +1382,37 @@ export default function EditAsset() {
 
         <View onLayout={onLayoutFor('status')}>
           <Text style={styles.label}>Status</Text>
-          <View style={[styles.input, styles.readOnlyBox]}>
-            <Text style={styles.readOnlyValue}>{status || '—'}</Text>
+          <View style={styles.statusChipsRow}>
+            {BASE_STATUSES.map((s) => {
+              const key = baseStatusKey(s);
+              const on = status === s;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.statusChip, on && styles.statusChipOn]}
+                  onPress={() => setStatus(s)}
+                >
+                  <Text style={[styles.statusChipText, on && styles.statusChipTextOn]}>
+                    {STATUS_CONFIG[key]?.label || s}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <View style={styles.lockRow}>
-            <MaterialIcons name="lock" size={14} color="#9CA3AF" />
-            <Text style={styles.lockText}>Status is set by workflows (check-in, hire, repairs, etc.), not on this screen.</Text>
+          {/* Overlay flags — independent of base status and of each other. */}
+          <View style={styles.flagRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.flagLabel}>Needs repair</Text>
+              <Text style={styles.flagHint}>Mark this asset as awaiting repair.</Text>
+            </View>
+            <Switch value={!!needsRepair} onValueChange={setNeedsRepair} />
+          </View>
+          <View style={styles.flagRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.flagLabel}>Maintenance due</Text>
+              <Text style={styles.flagHint}>Auto-set as the next service date approaches; can be set manually.</Text>
+            </View>
+            <Switch value={!!maintenanceDue} onValueChange={setMaintenanceDue} />
           </View>
         </View>
 
@@ -1606,6 +1641,14 @@ const styles = StyleSheet.create({
   readOnlyBox: { justifyContent: 'center', backgroundColor: Colors.chip },
   readOnlyValue: { fontSize: sf(15), fontWeight: '700', color: Colors.text },
   lockRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  statusChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
+  statusChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.card },
+  statusChipOn: { borderColor: Colors.accent, backgroundColor: Colors.accentLight },
+  statusChipText: { fontSize: sf(13), fontWeight: '800', color: Colors.sub },
+  statusChipTextOn: { color: Colors.accentDark },
+  flagRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: Colors.line, marginTop: 8 },
+  flagLabel: { fontSize: sf(14), fontWeight: '800', color: Colors.text },
+  flagHint: { fontSize: sf(11), color: Colors.sub2, marginTop: 2 },
   lockText: { color: Colors.sub2, fontSize: sf(12), fontWeight: '700' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },
   progressBar: { width: 260, height: 8, borderRadius: Radius.sm, backgroundColor: Colors.chip, marginTop: 8, overflow: 'hidden' },

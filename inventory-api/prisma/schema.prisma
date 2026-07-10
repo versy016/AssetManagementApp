@@ -60,7 +60,14 @@ model assets {
   description       String?
   other_id          String?
   assigned_to_id    String?
+  // Base lifecycle status: 'In Service' | 'On Hire' | 'End of Life'.
   status            String
+  // Overlay flags — an asset can be Needs Repair and/or Maintenance Due while
+  // still having a base status (they are NOT mutually exclusive with it or each
+  // other). Maintenance Due can be auto-set from next_service_date (lead time in
+  // app_settings) or set manually; Needs Repair is set manually.
+  needs_repair      Boolean              @default(false)
+  maintenance_due   Boolean              @default(false)
   next_service_date DateTime?            @db.Date
   documentation_url String?
   image_url         String?
@@ -84,6 +91,18 @@ model assets {
   @@index([type_id])
   @@index([status])
   @@index([assigned_to_id])
+  @@index([needs_repair])
+  @@index([maintenance_due])
+}
+
+// Global key/value app settings (admin-editable). First use: the maintenance-due
+// lead time in days (how far ahead of next_service_date an asset auto-flags as
+// Maintenance Due). Stored as strings; callers parse as needed.
+model app_settings {
+  key         String   @id
+  value       String
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamp(6)
+  updated_by  String?
 }
 
 model asset_field_values {

@@ -18,7 +18,9 @@ import { API_BASE_URL, CHECKIN_WEB_BASE_URL } from '../inventory-api/apiBase';
 import StatusBadge, {
   STATUS_CONFIG,
   normalizeStatus,
+  AssetStatusBadges,
 } from '../components/ui/StatusBadge';
+import { assetFlags, baseStatusKey, assetHasStatusKey, statusFilterKey } from '../constants/assetStatus';
 import { Colors, Radius, sf } from '../constants/uiTheme';
 import AssetQRModal from '../components/asset/AssetQRModal';
 
@@ -136,7 +138,7 @@ function WebAssetListRow({ asset, selected, onPress }) {
         {!!type && <Text style={wS.listRowType} numberOfLines={1}>{type}</Text>}
       </View>
       <View style={wS.listRowMeta}>
-        <StatusBadge status={asset?.status} size="sm" style={{ alignSelf: 'flex-end' }} />
+        <AssetStatusBadges asset={asset} size="sm" style={{ justifyContent: 'flex-end' }} />
         {awaitingQr ? (
           <View style={[wS.listRowIdPill, wS.listRowIdPillAwaiting]}>
             <Text style={[wS.listRowIdPillText, wS.listRowIdPillTextAwaiting]}>AWAITING QR</Text>
@@ -299,8 +301,13 @@ function AssetsMasterDetail({
   const statusCounts = useMemo(() => {
     const out = { in_service: 0, on_hire: 0, repair: 0, maintenance: 0, end_of_life: 0 };
     for (const a of assets) {
-      const k = normalizeStatus(a?.status);
-      if (k in out) out[k] += 1;
+      const base = baseStatusKey(a?.status);
+      if (base in out) out[base] += 1;
+      // Needs Repair / Maintenance Due are overlay flags — an asset can add to
+      // both its base bucket and one or both flag buckets.
+      const f = assetFlags(a);
+      if (f.needs_repair) out.repair += 1;
+      if (f.maintenance_due) out.maintenance += 1;
     }
     return out;
   }, [assets]);
@@ -346,7 +353,7 @@ function AssetsMasterDetail({
           onPress={() => setFilters && setFilters((f) => ({ ...f, status: null }))}
         />
         <WebStatusChip
-          label="In Service"
+          label={STATUS_CONFIG.in_service.label}
           count={statusCounts.in_service}
           color={STATUS_CONFIG.in_service.fg}
           bg={STATUS_CONFIG.in_service.bg}
@@ -355,7 +362,7 @@ function AssetsMasterDetail({
           onPress={() => handlePickStatus('In Service')}
         />
         <WebStatusChip
-          label="On Hire"
+          label={STATUS_CONFIG.on_hire.label}
           count={statusCounts.on_hire}
           color={STATUS_CONFIG.on_hire.fg}
           bg={STATUS_CONFIG.on_hire.bg}
@@ -364,7 +371,7 @@ function AssetsMasterDetail({
           onPress={() => handlePickStatus('On Hire')}
         />
         <WebStatusChip
-          label="Repair"
+          label={STATUS_CONFIG.repair.label}
           count={statusCounts.repair}
           color={STATUS_CONFIG.repair.fg}
           bg={STATUS_CONFIG.repair.bg}
@@ -373,7 +380,7 @@ function AssetsMasterDetail({
           onPress={() => handlePickStatus('Repair')}
         />
         <WebStatusChip
-          label="Maintenance"
+          label={STATUS_CONFIG.maintenance.label}
           count={statusCounts.maintenance}
           color={STATUS_CONFIG.maintenance.fg}
           bg={STATUS_CONFIG.maintenance.bg}
@@ -382,7 +389,7 @@ function AssetsMasterDetail({
           onPress={() => handlePickStatus('Maintenance')}
         />
         <WebStatusChip
-          label="End of Life"
+          label={STATUS_CONFIG.end_of_life.label}
           count={statusCounts.end_of_life}
           color={STATUS_CONFIG.end_of_life.fg}
           bg={STATUS_CONFIG.end_of_life.bg}

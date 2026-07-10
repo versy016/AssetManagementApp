@@ -40,8 +40,18 @@ import AssetQRModal from '../../components/asset/AssetQRModal';
 import AssetsMasterDetail from '../../components/AssetsMasterDetail';
 import { Colors, Radius, Spacing, Shadows, sf } from '../../constants/uiTheme';
 import { useResponsive } from '../../hooks/useResponsive';
+import { assetFlags, baseStatusKey, assetHasStatusKey, statusFilterKey } from '../../constants/assetStatus';
 
 const initialLayout = { width: Dimensions.get('window').width };
+
+// Status filter chips: stored value = raw DB status string; display = new label.
+const STATUS_FILTER_OPTIONS = [
+  { value: 'In Service', label: 'In service' },
+  { value: 'On Hire', label: 'On hire' },
+  { value: 'Repair', label: 'Needs repair' },
+  { value: 'Maintenance', label: 'Maintenance due' },
+  { value: 'End of Life', label: 'End of life' },
+];
 
 // Colors imported from constants/uiTheme
 
@@ -489,7 +499,7 @@ const AssetTypesTab = ({ query, filters }) => {
         if (isUUID(String(a?.id || ''))) continue;      // skip QR awaiting imports
         const tid = String(a?.type_id ?? a?.asset_types?.id ?? a?.asset_type_id ?? a?.typeId ?? '');
         if (!tid) continue;
-        const k = normalizeStatus(a?.status);
+        const base = baseStatusKey(a?.status);
         if (!acc[tid]) {
           acc[tid] = {
             in_service: 0, end_of_life: 0,
@@ -498,7 +508,11 @@ const AssetTypesTab = ({ query, filters }) => {
             total: 0,
           };
         }
-        if (k in acc[tid]) acc[tid][k] += 1;
+        if (base in acc[tid]) acc[tid][base] += 1;
+        // Overlay flags add to their bucket independently of the base status.
+        const fl = assetFlags(a);
+        if (fl.needs_repair) acc[tid].repair += 1;
+        if (fl.maintenance_due) acc[tid].maintenance += 1;
         acc[tid].total += 1;
 
         // (unassigned preview removed)
@@ -636,13 +650,13 @@ const AssetTypesTab = ({ query, filters }) => {
             <TypeChip
               cfg={STATUS_CONFIG.in_service}
               icon={STATUS_CONFIG.in_service.icon}
-              label="In Service"
+              label={STATUS_CONFIG.in_service.label}
               value={inService}
             />
             <TypeChip
               cfg={STATUS_CONFIG.end_of_life}
               icon={STATUS_CONFIG.end_of_life.icon}
-              label="End of Life"
+              label={STATUS_CONFIG.end_of_life.label}
               value={endOfLife}
             />
             <View style={[styles.typeChip, { backgroundColor: Colors.chip, borderColor: Colors.line }]}>
@@ -669,13 +683,13 @@ const AssetTypesTab = ({ query, filters }) => {
               <TypeChip
                 cfg={STATUS_CONFIG.repair}
                 icon={STATUS_CONFIG.repair.icon}
-                label="Repair"
+                label={STATUS_CONFIG.repair.label}
                 value={repair}           // will show 0 if zero
               />
               <TypeChip
                 cfg={STATUS_CONFIG.maintenance}
                 icon={STATUS_CONFIG.maintenance.icon}
-                label="Maintenance"
+                label={STATUS_CONFIG.maintenance.label}
                 value={maintenance}      // will show 0 if zero
               />
             </View>
@@ -836,8 +850,8 @@ const AllAssetsTab = ({ query, filters, setFilters }) => {
     }
     const statusFilter = filters?.status;
     if (statusFilter) {
-      const statusKey = normalizeStatus(statusFilter);
-      arr = arr.filter(it => normalizeStatus(it?.status) === statusKey);
+      const statusKey = statusFilterKey(statusFilter);
+      arr = arr.filter(it => assetHasStatusKey(it, statusKey));
     }
     const typeFilters = filters?.assetTypes;
     if (typeFilters && typeFilters.length > 0) {
@@ -1197,7 +1211,7 @@ const Inventory = () => {
                 style={wS.activeFilterChip}
                 onPress={() => setFilters(f => ({ ...f, status: null }))}
               >
-                <Text style={wS.activeFilterChipText}>{filters.status}</Text>
+                <Text style={wS.activeFilterChipText}>{STATUS_CONFIG[statusFilterKey(filters.status)]?.label || filters.status}</Text>
                 <Feather name="x" size={12} color={Colors.accent} />
               </TouchableOpacity>
             )}
@@ -1243,9 +1257,9 @@ const Inventory = () => {
                   <TouchableOpacity style={[styles.filterChip, !filters.status && styles.filterChipActive]} onPress={() => setFilters(f => ({ ...f, status: null }))}>
                     <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
                   </TouchableOpacity>
-                  {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
-                    <TouchableOpacity key={s} style={[styles.filterChip, filters.status === s && { ...styles.filterChipActive, backgroundColor: Colors.accent }]} onPress={() => setFilters(f => ({ ...f, status: f.status === s ? null : s }))}>
-                      <Text style={[styles.filterChipText, filters.status === s && { ...styles.filterChipTextActive, color: '#fff' }]}>{s}</Text>
+                  {STATUS_FILTER_OPTIONS.map(({ value, label }) => (
+                    <TouchableOpacity key={value} style={[styles.filterChip, filters.status === value && { ...styles.filterChipActive, backgroundColor: Colors.accent }]} onPress={() => setFilters(f => ({ ...f, status: f.status === value ? null : value }))}>
+                      <Text style={[styles.filterChipText, filters.status === value && { ...styles.filterChipTextActive, color: '#fff' }]}>{label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1387,13 +1401,13 @@ const Inventory = () => {
                   >
                     <Text style={[styles.filterChipText, !filters.status && styles.filterChipTextActive]}>Any</Text>
                   </TouchableOpacity>
-                  {['In Service', 'On Hire', 'Repair', 'Maintenance', 'End of Life'].map(s => (
+                  {STATUS_FILTER_OPTIONS.map(({ value, label }) => (
                     <TouchableOpacity
-                      key={s}
-                      style={[styles.filterChip, filters.status === s && { ...styles.filterChipActive, backgroundColor: Colors.accent }]}
-                      onPress={() => setFilters(f => ({ ...f, status: f.status === s ? null : s }))}
+                      key={value}
+                      style={[styles.filterChip, filters.status === value && { ...styles.filterChipActive, backgroundColor: Colors.accent }]}
+                      onPress={() => setFilters(f => ({ ...f, status: f.status === value ? null : value }))}
                     >
-                      <Text style={[styles.filterChipText, filters.status === s && { ...styles.filterChipTextActive, color: '#fff' }]}>{s}</Text>
+                      <Text style={[styles.filterChipText, filters.status === value && { ...styles.filterChipTextActive, color: '#fff' }]}>{label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>

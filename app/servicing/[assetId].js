@@ -56,6 +56,16 @@ function toISO(d) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+// The action API validates occurred_at as a full ISO datetime — turn a
+// date-only string (YYYY-MM-DD) into midnight-local ISO so it passes.
+function toDateTimeISO(ymd) {
+  if (!ymd) return new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    const d = new Date(`${ymd}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return ymd;
+}
 function prettyDate(iso) {
   try {
     const d = new Date(iso);
@@ -166,7 +176,7 @@ export default function ServicingScreen() {
         body: JSON.stringify({
           type: 'MAINTENANCE',
           note: detail.summary,
-          occurred_at: serviceDate,
+          occurred_at: toDateTimeISO(serviceDate),
           details: detail,
           data: { requires_signoff: false, completed: true },
         }),

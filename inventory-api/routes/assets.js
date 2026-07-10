@@ -1673,6 +1673,8 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
       'other_id',
       'location',
       'status',
+      'needs_repair',
+      'maintenance_due',
       'next_service_date',
       'date_purchased',
       'notes',
@@ -1690,6 +1692,10 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
     // Date normalization
     if ('next_service_date' in patch) patch.next_service_date = toDateOrNull(patch.next_service_date);
     if ('date_purchased' in patch) patch.date_purchased = toDateOrNull(patch.date_purchased);
+    // Overlay flags — coerce to real booleans (accept true/'true'/'1'/1).
+    const toBool = (v) => v === true || v === 'true' || v === '1' || v === 1;
+    if ('needs_repair' in patch) patch.needs_repair = toBool(patch.needs_repair);
+    if ('maintenance_due' in patch) patch.maintenance_due = toBool(patch.maintenance_due);
 
     // Serial number is sensitive; only DB admins may change it (status/assignment stay open for workflows).
     const actorForPriv = getActorInfo(req).id || null;

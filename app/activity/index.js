@@ -848,10 +848,11 @@ function FiltersModal({ visible, onClose, filters, setFilters, onApply, assetTyp
   ];
   const STATUS_OPTIONS = [
     { label: 'Any', value: null },
-    { label: 'In Service', value: 'in_service' },
-    { label: 'Repair', value: 'repair' },
-    { label: 'Maintenance', value: 'maintenance' },
-    { label: 'End of Life', value: 'end_of_life' },
+    { label: 'In service', value: 'in_service' },
+    { label: 'On hire', value: 'on_hire' },
+    { label: 'Needs repair', value: 'repair' },
+    { label: 'Maintenance due', value: 'maintenance' },
+    { label: 'End of life', value: 'end_of_life' },
   ];
   const DATE_OPTIONS = [
     { label: 'All', value: 'all' },
