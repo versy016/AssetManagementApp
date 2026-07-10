@@ -258,7 +258,7 @@ export default function ServicingScreen() {
   const serial = asset?.serial_number || '';
   const assignedTo = asset?.users?.name || asset?.users?.useremail || 'Unassigned';
 
-  const headerTitle = mode === 'past' ? 'Log Past Service' : mode === 'schedule' ? 'Schedule Service' : 'Servicing';
+  const headerTitle = mode === 'past' ? 'Log Maintenance' : mode === 'schedule' ? 'Schedule Maintenance' : 'Maintenance';
 
   const onBack = useCallback(() => {
     if (mode) { setMode(null); return; }
@@ -303,7 +303,7 @@ export default function ServicingScreen() {
                 {asset.next_service_date ? (
                   <View style={s.nextRow}>
                     <MaterialIcons name="event-available" size={14} color={Colors.sub} />
-                    <Text style={s.nextText}>Current next service: {prettyDate(asset.next_service_date)}</Text>
+                    <Text style={s.nextText}>Current next maintenance: {prettyDate(asset.next_service_date)}</Text>
                   </View>
                 ) : null}
               </View>
@@ -319,8 +319,8 @@ export default function ServicingScreen() {
                     <MaterialIcons name="history" size={22} color={Colors.accent} />
                   </View>
                   <View style={s.optionTextWrap}>
-                    <Text style={s.optionTitle}>Log a past service</Text>
-                    <Text style={s.optionSub}>Record a service that already happened and set when the next one is due. No task is created.</Text>
+                    <Text style={s.optionTitle}>Log Maintenance</Text>
+                    <Text style={s.optionSub}>Record maintenance that already happened and set when the next one is due. No task is created.</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={22} color={Colors.sub2} />
                 </TouchableOpacity>
@@ -330,8 +330,8 @@ export default function ServicingScreen() {
                     <MaterialIcons name="event" size={22} color="#4F46E5" />
                   </View>
                   <View style={s.optionTextWrap}>
-                    <Text style={s.optionTitle}>Schedule a service</Text>
-                    <Text style={s.optionSub}>Book a service for today or up to 6 months ahead. Creates a task for the assigned user to action and close.</Text>
+                    <Text style={s.optionTitle}>Schedule maintenance</Text>
+                    <Text style={s.optionSub}>Book maintenance for today or up to 6 months ahead. Creates a task for the assigned user to action and close.</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={22} color={Colors.sub2} />
                 </TouchableOpacity>
@@ -500,7 +500,8 @@ function QuickMonths({ onPick, includeToday }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 40, gap: 14 },
+  // Constrain to a readable column and centre it so the page doesn't sprawl on web.
+  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 14, width: '100%', maxWidth: 760, alignSelf: 'center' },
   center: { paddingVertical: 60, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: Colors.sub, fontSize: sf(15), fontWeight: '500' },
   errorText: { color: Colors.dangerFg, fontSize: sf(16), fontWeight: '700' },
@@ -520,10 +521,10 @@ const s = StyleSheet.create({
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   nextText: { fontSize: sf(12), color: Colors.sub, fontWeight: '600' },
 
-  menuHeading: { fontSize: sf(13), fontWeight: '800', color: Colors.sub, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
-  optionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, backgroundColor: Colors.card, ...Shadows.card },
-  optionIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  optionTextWrap: { flex: 1, gap: 2 },
+  menuHeading: { fontSize: sf(13), fontWeight: '800', color: Colors.sub, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, marginBottom: 2 },
+  optionCard: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 18, paddingHorizontal: 18, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.lg, backgroundColor: Colors.card, ...Shadows.card },
+  optionIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  optionTextWrap: { flex: 1, gap: 3 },
   optionTitle: { fontSize: sf(16), fontWeight: '800', color: Colors.text },
   optionSub: { fontSize: sf(12), color: Colors.sub, lineHeight: sf(17) },
 
