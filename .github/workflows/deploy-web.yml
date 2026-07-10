@@ -43,6 +43,10 @@ jobs:
       - name: Build Expo Web
         env:
           EXPO_PUBLIC_API_URL: https://api.gearops.com.au
+          # Maps JS API key for the web bundle. CI has no inventory-api/.env, so
+          # this MUST come from a GitHub Actions secret or the Maps tab ships
+          # keyless. Add the secret in repo Settings → Secrets and variables → Actions.
+          EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY }}
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npx expo export --platform web --clear
 
