@@ -101,8 +101,11 @@ export default function ActionsForm({
   additionalAssetIds = [], // when set, apply same action to these asset ids (bulk)
 }) {
   const scrollRef = React.useRef(null);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isWebWide = Platform.OS === 'web' && (width || 0) >= 768;
+  // Cap the web dialog to the current viewport so the heading is never clipped
+  // behind the fixed navbar (≈64px) — leave room for the navbar + top/bottom gap.
+  const webSheetMaxHeight = Math.max(360, (height || 800) - 132);
   const [submitting, setSubmitting] = useState(false);
   const { setTaskCount } = useTasksCount();
 
@@ -560,7 +563,7 @@ export default function ActionsForm({
           style={isWebWide ? whs.keyboardAvoid : styles.keyboardAvoid}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          <View style={isWebWide ? whs.sheet : styles.sheet}>
+          <View style={[isWebWide ? whs.sheet : styles.sheet, isWebWide && { maxHeight: webSheetMaxHeight }]}>
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>{actionLabel || 'Action'}</Text>
@@ -1164,12 +1167,15 @@ export default function ActionsForm({
 
 // ─── Web-only styles ────────────────────────────────────────────────────────
 const whs = StyleSheet.create({
-  // Backdrop: centered dialog overlay
+  // Backdrop: centered dialog overlay. Top/bottom padding keeps the centred
+  // dialog (and its heading) clear of the fixed navbar and the viewport edges.
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 76,
+    paddingBottom: 24,
   },
   // KeyboardAvoidingView: constrained width
   keyboardAvoid: {

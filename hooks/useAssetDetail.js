@@ -908,7 +908,7 @@ export function useAssetDetail({ assetId, returnTo }) {
     const notes =
       base.notes ||
       (!base.summary && latestMatchingAction.note ? latestMatchingAction.note : null);
-    return { ...base, date, summary, notes };
+    return { ...base, date, summary, notes, actionType: String(latestMatchingAction.type || '').toUpperCase() };
   }, [latestMatchingAction]);
 
   const currentActionImages = useMemo(() => {

@@ -27,8 +27,21 @@ const isCertField = (f) => /cert|calibrat/i.test(`${f?.name || ''} ${f?.slug || 
 const isQrReserved = (a) =>
   String(a?.description || a?.fields?.description || '').trim().toLowerCase() === 'qr reserved asset';
 
-const CATEGORIES = ['GENERAL', 'SERVICE', 'REPAIR', 'MAINTENANCE', 'INSPECTION', 'CERTIFICATE', 'OTHER'];
+// Task categories map to the asset's overlay flags: Repair → Needs repair,
+// Maintenance → Maintenance due. Certificate only shows when the asset type has a
+// certificate field; Other is a neutral catch-all (no flag).
+const CATEGORIES = ['REPAIR', 'MAINTENANCE', 'CERTIFICATE', 'OTHER'];
+const CATEGORY_LABELS = {
+  REPAIR: 'Needs repair',
+  MAINTENANCE: 'Maintenance due',
+  CERTIFICATE: 'Certificate',
+  OTHER: 'Other',
+};
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
+// Fold removed legacy categories onto the current set (for editing old tasks).
+const LEGACY_CATEGORY_MAP = { GENERAL: 'OTHER', SERVICE: 'MAINTENANCE', INSPECTION: 'MAINTENANCE' };
+const normalizeCategory = (c) =>
+  LEGACY_CATEGORY_MAP[c] || (CATEGORIES.includes(c) ? c : 'REPAIR');
 // Certificate sub-types (calibration lives here — calibration & certificates
 // are one category).
 const CERT_TYPES = ['Calibration', 'Test', 'Inspection', 'Compliance', 'Conformance', 'Warranty', 'Other'];
@@ -48,12 +61,12 @@ const toYMD = (d) => {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 };
 
-export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, isAdmin, editTask }) {
+export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, isAdmin, editTask, prefill }) {
   const isEdit = !!editTask;
   const { height: winH } = useWindowDimensions();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('GENERAL');
+  const [category, setCategory] = useState('REPAIR');
   const [certType, setCertType] = useState(null);
   const [priority, setPriority] = useState('MEDIUM');
   // Whether the linked asset's type has a certificate field: 'idle'|'checking'|'has'|'missing'.
@@ -79,7 +92,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
   const [usersLoading, setUsersLoading] = useState(false);
 
   const reset = () => {
-    setTitle(''); setDescription(''); setCategory('GENERAL'); setCertType(null); setCertFieldStatus('idle'); setPriority('MEDIUM');
+    setTitle(''); setDescription(''); setCategory('REPAIR'); setCertType(null); setCertFieldStatus('idle'); setPriority('MEDIUM');
     setDueDate(null); setDateOpen(false); setSubmitting(false);
     setAsset(null); setAssetPickerOpen(false); setAssetQuery('');
     setScannerOpen(false); setScanResolving(false);
@@ -92,7 +105,8 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
     if (editTask) {
       setTitle(editTask.title || '');
       setDescription(editTask.description || '');
-      setCategory(editTask.category || 'GENERAL');
+      // Map removed legacy categories onto the current set when editing old tasks.
+      setCategory(normalizeCategory(editTask.category));
       setCertType(editTask.certType || null);
       setPriority(editTask.priority || 'MEDIUM');
       setDueDate(editTask.due ? toYMD(editTask.due) : null);
@@ -107,8 +121,13 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
       setAssignee(editTask.assignedToId
         ? { id: editTask.assignedToId, label: editTask.assigneeName || editTask.assignedToId }
         : null);
+    } else if (prefill) {
+      // Fresh create opened with context (e.g. "Needs repair" on an asset screen):
+      // pre-link the asset and preset the category so the user just fills the detail.
+      if (prefill.asset) setAsset(prefill.asset);
+      if (prefill.category) setCategory(prefill.category);
     }
-  }, [visible, editTask]);
+  }, [visible, editTask, prefill]);
 
   // Once an asset is selected, inspect its type's fields so we only offer the
   // categories that make sense for it (e.g. Certificate only when the type has
@@ -135,7 +154,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
   );
   // If Certificate becomes unavailable (e.g. asset changed), fall back.
   useEffect(() => {
-    if (category === 'CERTIFICATE' && !hasCertField) { setCategory('GENERAL'); setCertType(null); }
+    if (category === 'CERTIFICATE' && !hasCertField) { setCategory('REPAIR'); setCertType(null); }
   }, [hasCertField, category]);
 
   const authHeaders = async () => {
@@ -389,7 +408,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                     style={[s.chip, category === c && s.chipOn]}
                     onPress={() => { setCategory(c); if (c !== 'CERTIFICATE') setCertType(null); }}
                   >
-                    <Text style={[s.chipText, category === c && s.chipTextOn]}>{cap(c)}</Text>
+                    <Text style={[s.chipText, category === c && s.chipTextOn]}>{CATEGORY_LABELS[c] || cap(c)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

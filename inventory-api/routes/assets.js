@@ -714,15 +714,9 @@ router.get('/tasks/count', authRequired, async (req, res) => {
     ];
     const dateSlugSet = new Set(DATE_FIELD_SLUGS.map((s) => s.toLowerCase()));
 
-    // Build asset filter -- admins see all, normal users see their assigned assets
-    const assetWhere = isAdmin
-      ? {}
-      : {
-          OR: [
-            { assigned_to_id: uid },
-            { assigned_to_id: null },
-          ],
-        };
+    // Build asset filter -- admins see all; normal users see ONLY assets
+    // assigned to them (strict, matches the task list).
+    const assetWhere = isAdmin ? {} : { assigned_to_id: uid };
 
     // Fetch all relevant assets in ONE query (no N+1). Only `next_service_date` exists on `assets`; other dates live in asset_field_values.
     const assets = await prisma.assets.findMany({
@@ -732,6 +726,8 @@ router.get('/tasks/count', authRequired, async (req, res) => {
         type_id: true,
         description: true,
         next_service_date: true,
+        needs_repair: true,
+        maintenance_due: true,
         field_values: {
           select: {
             value: true,
@@ -789,9 +785,17 @@ router.get('/tasks/count', authRequired, async (req, res) => {
       const tId = a.type_id || null;
       const leadDays = leadDaysMap[tId] || {};
 
-      // Top-level date column on `assets` (schema has no service_due / *_date columns)
+      // Overlay flags each count as one task (matches the derived task list).
+      if (a.needs_repair === true) seen.add(`${a.id}|flag|needs_repair`);
+      if (a.maintenance_due === true) seen.add(`${a.id}|flag|maintenance_due`);
+
+      // Top-level next service date: count when overdue OR within the lead window
+      // (upcoming maintenance) — unless the maintenance_due flag already counts it.
       const topD = isDateLike(a.next_service_date);
-      if (topD && topD < today) seen.add(`${a.id}|top|next_service_date|${+topD}`);
+      if (topD && a.maintenance_due !== true) {
+        const leadEnd = new Date(today.getTime() + 28 * 24 * 60 * 60 * 1000);
+        if (topD < today || topD <= leadEnd) seen.add(`${a.id}|top|next_service_date|${+topD}`);
+      }
 
       // Custom date values from asset_field_values rows
       for (const row of a.field_values || []) {
@@ -827,11 +831,7 @@ router.get('/tasks/count', authRequired, async (req, res) => {
           type: { in: ['REPAIR', 'MAINTENANCE', 'HIRE'] },
           occurred_at: { gte: since },
           ...(!isAdmin
-            ? {
-                asset: {
-                  OR: [{ assigned_to_id: uid }, { assigned_to_id: null }],
-                },
-              }
+            ? { asset: { assigned_to_id: uid } }
             : {}),
         },
         select: { data: true },
@@ -1826,6 +1826,16 @@ router.put('/:id', attachUserFromBearerIfPresent, validate(schemas.updateAsset),
     }
 
     if (hasAssignedField && prevUserId !== newUserId) {
+      // The asset moved — its open manual tasks follow to the new owner (or become
+      // unassigned when transferred to office). Derived tasks (sign-off / flags /
+      // dates) already track the asset's assignee, so only manual tasks need this.
+      postOps.push(
+        prisma.tasks.updateMany({
+          where: { asset_id: assetId, status: 'OPEN' },
+          data: { assigned_to_id: newUserId || null },
+        }).catch((e) => log(reqId, 'WARN', 'task-transfer-failed', { assetId, message: e?.message || String(e) }))
+      );
+
       const noteFromClient = typeof action_note === 'string' && action_note.trim() ? action_note.trim() : null;
       const scanLocFromBody =
         typeof assetData.location === 'string' && assetData.location.trim()
@@ -2263,6 +2273,22 @@ router.post('/:id/actions/:actionId/signoff', async (req, res) => {
     const action = await prisma.asset_actions.findUnique({ where: { id: actionId }, include: { asset: true } });
     if (!action || action.asset_id !== assetId) return errJson(res, 404, 'Action not found');
 
+    // Ownership: only an admin, or the user the asset is assigned to, may sign off.
+    const actorId = actorInfo.id || null;
+    let signerIsAdmin = false;
+    if (actorId) {
+      try {
+        const u = await prisma.users.findUnique({ where: { id: actorId }, select: { role: true } });
+        signerIsAdmin = String(u?.role || '').toUpperCase() === 'ADMIN';
+      } catch { /* non-fatal */ }
+    }
+    if (!signerIsAdmin) {
+      const assignedTo = action.asset?.assigned_to_id || null;
+      if (!assignedTo || String(assignedTo) !== String(actorId)) {
+        return errJson(res, 403, 'You can only sign off tasks for assets assigned to you');
+      }
+    }
+
     // Merge JSON flags
     const nowIso = new Date().toISOString();
     const merged = {
@@ -2275,10 +2301,18 @@ router.post('/:id/actions/:actionId/signoff', async (req, res) => {
     };
     await prisma.asset_actions.update({ where: { id: actionId }, data: { data: merged } });
 
-    // If completed: move asset to In Service
+    // If completed: clear the overlay flag matching the action (repair/maintenance
+    // done). Base status stays as-is (In Service / On Hire); we only lift the flag.
     if (completed === true) {
-      await prisma.assets.update({ where: { id: assetId }, data: { status: ASSET_STATUS.IN_SERVICE, last_updated: new Date(), last_changed_by: actorInfo.id || null } });
-      await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: actorInfo.id || null, message: `Sign-off complete -> ${ASSET_STATUS.IN_SERVICE}` } });
+      const t = String(action.type || '').toUpperCase();
+      const clear = {};
+      if (t === 'REPAIR') clear.needs_repair = false;
+      if (t === 'MAINTENANCE') clear.maintenance_due = false;
+      await prisma.assets.update({
+        where: { id: assetId },
+        data: { ...clear, last_updated: new Date(), last_changed_by: actorInfo.id || null },
+      });
+      await prisma.asset_logs.create({ data: { asset_id: assetId, user_id: actorInfo.id || null, message: `Sign-off complete${Object.keys(clear).length ? ` -> cleared ${Object.keys(clear).join(', ')}` : ''}` } });
     }
 
     log(reqId, 'INFO', 'signoff-ok', { assetId, actionId, completed: !!completed });

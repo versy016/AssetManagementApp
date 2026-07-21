@@ -970,6 +970,20 @@ export default function SearchScreen(props = {}) {
   );
   const bulkFormAdditionalIds = useMemo(() => bulkFormEligibleIds.slice(1), [bulkFormEligibleIds]);
 
+  // Do the selected assets all share the same status (base status + repair/maintenance
+  // flags)? When a multi-selection is mixed, the Needs Repair / Maintenance Due bulk
+  // actions are hidden — setting one flag across differing statuses is ambiguous.
+  const bulkStatusUniform = useMemo(() => {
+    if (bulkFormEligibleIds.length <= 1) return true;
+    const sig = (a) => `${String(a?.status || '').toLowerCase()}|${a?.needs_repair ? 1 : 0}|${a?.maintenance_due ? 1 : 0}`;
+    const sel = bulkFormEligibleIds
+      .map((id) => items.find((it) => String(it.id) === String(id)))
+      .filter(Boolean);
+    if (sel.length <= 1) return true;
+    const first = sig(sel[0]);
+    return sel.every((a) => sig(a) === first);
+  }, [bulkFormEligibleIds, items]);
+
   // Drop awaiting-QR ids from selection when the list refreshes (stale ids)
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -1652,14 +1666,34 @@ export default function SearchScreen(props = {}) {
               <MaterialIcons name="person" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>To Me</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('needsRepair')}>
-              <MaterialIcons name="build" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Needs Repair</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('maintenanceDue')}>
-              <MaterialIcons name="event" size={15} color="#fff" />
-              <Text style={styles.bulkBtnText}>Maintenance Due</Text>
-            </TouchableOpacity>
+            {/* Needs Repair / Maintenance Due — hidden when a multi-selection has
+                mixed statuses. Single flagged asset → sign off; otherwise bulk-set. */}
+            {bulkStatusUniform && (
+              <>
+                {bulkEligibleSelectedCount === 1 && bulkFormAsset?.needs_repair ? (
+                  <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { const a = bulkFormAsset; clearSelection(); router.push({ pathname: '/check-in/[id]', params: { id: String(a.id), signoff: 'repair' } }); }}>
+                    <MaterialIcons name="check-circle" size={15} color="#fff" />
+                    <Text style={styles.bulkBtnText}>Sign off repair</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('needsRepair')}>
+                    <MaterialIcons name="build" size={15} color="#fff" />
+                    <Text style={styles.bulkBtnText}>Needs Repair</Text>
+                  </TouchableOpacity>
+                )}
+                {bulkEligibleSelectedCount === 1 && bulkFormAsset?.maintenance_due ? (
+                  <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => { const a = bulkFormAsset; clearSelection(); router.push({ pathname: '/check-in/[id]', params: { id: String(a.id), signoff: 'maintenance' } }); }}>
+                    <MaterialIcons name="check-circle" size={15} color="#fff" />
+                    <Text style={styles.bulkBtnText}>Sign off maintenance</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnWarning]} onPress={() => performBulkAction('maintenanceDue')}>
+                    <MaterialIcons name="event" size={15} color="#fff" />
+                    <Text style={styles.bulkBtnText}>Maintenance Due</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
             <TouchableOpacity style={[styles.bulkBtn, styles.bulkBtnDanger]} onPress={() => { setBulkFormAction('End of Life'); setBulkFormVisible(true); }}>
               <MaterialIcons name="remove-circle-outline" size={15} color="#fff" />
               <Text style={styles.bulkBtnText}>End of Life</Text>

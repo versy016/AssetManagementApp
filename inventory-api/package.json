@@ -26,7 +26,8 @@
         "env:production": "node scripts/switch-env.js production",
         "seed:types": "node scripts/seed-asset-types.js",
         "import:excel": "node scripts/import-excel-assets.js",
-        "normalize:statuses": "node scripts/normalize-asset-statuses.js"
+        "normalize:statuses": "node scripts/normalize-asset-statuses.js",
+        "db:erd": "node scripts/generate-erd.js"
     },
     "keywords": [
         "inventory",
@@ -90,6 +91,10 @@
         ],
         "**/*.json": [
             "prettier --write"
+        ],
+        "prisma/schema.prisma": [
+            "node scripts/generate-erd.js",
+            "git add prisma/ERD.md"
         ]
     },
     "engines": {

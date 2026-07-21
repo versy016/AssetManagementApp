@@ -64,7 +64,7 @@ const PRESET_LIBRARY = [
   // Warranty expiry sits directly under Warranty terms so the two warranty
   // fields are grouped together.
   { key: 'warranty_expiry', label: 'Warranty expiry', fieldTypeSlug: 'date' },
-  { key: 'vehicle_accessories', label: 'Vehicle Accessories', fieldTypeSlug: 'textarea' },
+  { key: 'vehicle_accessories', label: 'Accessories', fieldTypeSlug: 'textarea' },
   // Moved common fields (now optional)
   { key: 'next_service_date', label: 'Next Service Date', fieldTypeSlug: 'date' },
   { key: 'documentation_url', label: 'Document', fieldTypeSlug: 'url' },

@@ -149,7 +149,10 @@ export function AssetStatusBadges({ asset, size = 'md', style, chipStyle }) {
 }
 
 const stylesRow = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  // flexShrink lets the row give up width (and wrap its chips) when it's a
+  // sibling in a row; flexWrap does the wrapping. Together they prevent the
+  // badges ever overflowing their container on narrow web / mobile.
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
 });
 
 const styles = StyleSheet.create({

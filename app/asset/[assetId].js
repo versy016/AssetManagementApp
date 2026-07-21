@@ -488,7 +488,17 @@ export default function AssetDetailPage() {
             {/* Current work details */}
           {currentDetails && (
             <>
-              <Text style={[styles.sectionH, { marginTop: 16 }]}>Current Work Details</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                <Text style={styles.sectionH}>Current Work Details</Text>
+                {(currentDetails.actionType === 'REPAIR' || currentDetails.actionType === 'MAINTENANCE') && (() => {
+                  const cm = typeMeta(currentDetails.actionType);
+                  return (
+                    <View style={[styles.noteBadge, { backgroundColor: cm.bg, borderColor: cm.bd }]}>
+                      <Text style={[styles.noteBadgeText, { color: cm.fg }]}>{cm.label}</Text>
+                    </View>
+                  );
+                })()}
+              </View>
               {isWebWide ? (
                 (() => {
                   const rows = [];
@@ -591,7 +601,7 @@ export default function AssetDetailPage() {
               {[
                 { key: 'notes',       label: 'Notes',        count: (assetNote ? 1 : 0) + typedNotes.length },
                 { key: 'documents',   label: 'Documents',   count: (() => { try { return buildDynamicData().history.length; } catch { return 0; } })() },
-                { key: 'maintenance', label: 'Maintenance',  count: workDetailHistory.length },
+                { key: 'maintenance', label: 'Maintenance/Repair',  count: workDetailHistory.length },
                 { key: 'history',     label: 'History',     count: noteItems.length },
               ].map((tab) => {
                 const isActive = activeTab === tab.key;
@@ -736,13 +746,13 @@ export default function AssetDetailPage() {
                 {workDetailHistory.length === 0 ? (
                   <View style={styles.tabEmpty}>
                     <MaterialIcons name="build" size={32} color={Colors.line} />
-                    <Text style={styles.tabEmptyText}>No maintenance record yet.</Text>
+                    <Text style={styles.tabEmptyText}>No maintenance/repair record yet.</Text>
                   </View>
                 ) : (
                   <View style={{ gap: 12 }}>
                     {visibleWorkHistory.map((w) => {
                       const meta = typeMeta(w.type === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE');
-                      const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Service';
+                      const typeHeading = w.type === 'REPAIR' ? 'Repair' : 'Maintenance';
                       const isService = w.type === 'MAINTENANCE';
                       const summaryWithNext = [
                         (w.summary || '').trim(),

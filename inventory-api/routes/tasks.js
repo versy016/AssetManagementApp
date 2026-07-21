@@ -11,6 +11,34 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
+const { getLeadDays } = require('./settings');
+
+// ── Unified task-feed helpers (server-computed; mirrors the old client logic) ──
+// Human labels for date-based tasks (top-level column + dynamic date fields).
+const TASK_DATE_LABELS = {
+  next_service_date: 'Next Service', service_due: 'Service', service_date: 'Service',
+  maintenance_due: 'Maintenance', maintenance_date: 'Maintenance',
+  repair_due: 'Repair', repair_date: 'Repair',
+  certificate_expiry: 'Certificate Expiry', cert_expiry: 'Certificate Expiry',
+  calibration_due: 'Calibration', calibration_date: 'Calibration',
+  inspection_due: 'Inspection', inspection_date: 'Inspection',
+  expiry: 'Expiry', expires_at: 'Expiry',
+};
+const DATE_SLUG_SET = new Set(Object.keys(TASK_DATE_LABELS));
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const addDays = (base, n) => new Date(base.getTime() + n * 24 * 60 * 60 * 1000);
+const looksShortId = (id) => /^[A-Z0-9]{6,12}$/i.test(String(id || ''));
+function toDateOrNull(v) {
+  if (!v) return null;
+  if (v instanceof Date) return Number.isNaN(+v) ? null : v;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + 'T00:00:00');
+  const d = new Date(s);
+  return Number.isNaN(+d) ? null : d;
+}
+function labelForDateKey(k) {
+  return TASK_DATE_LABELS[k] || String(k).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function rid() {
   return (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).toUpperCase();
@@ -25,14 +53,14 @@ function errJson(res, status, message, extra = {}) {
 const CATEGORIES = ['GENERAL', 'SERVICE', 'REPAIR', 'MAINTENANCE', 'INSPECTION', 'CERTIFICATE', 'OTHER'];
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
-// When a task is created against an asset, reflect the work on the asset's
-// status where the category maps to one. Categories not listed leave it alone.
-const STATUS_FOR_CATEGORY = {
-  REPAIR: 'Repair',
-  SERVICE: 'Maintenance',
-  MAINTENANCE: 'Maintenance',
-  INSPECTION: 'Maintenance',
-};
+// When a task is created against an asset, raise an OVERLAY FLAG on the asset
+// (Needs Repair / Maintenance Due) — NOT the base status. Repair/Maintenance are no
+// longer base statuses; they're flags that coexist with In Service/On Hire.
+// Rule: ANY task raises Maintenance Due, EXCEPT a Repair task, which raises Needs
+// Repair (repair logged via scan is the only exception). Completing the task clears
+// whichever flag it raised.
+const flagForCategory = (category) =>
+  String(category || '').toUpperCase() === 'REPAIR' ? 'needs_repair' : 'maintenance_due';
 
 // On completion, log the work to the asset's Maintenance history with this
 // action type (so it appears in the Maintenance tab). Others stay plain notes.
@@ -86,6 +114,7 @@ const TASK_INCLUDE = {
   asset: {
     select: {
       id: true, type_id: true, model: true, serial_number: true, image_url: true,
+      status: true, needs_repair: true, maintenance_due: true,
       asset_types: { select: { name: true } },
     },
   },
@@ -146,11 +175,9 @@ router.get('/', async (req, res) => {
 
     const where = {};
     if (status && status !== 'ALL') where.status = status;
+    // Non-admins see ONLY tasks assigned to them (strict). Admins see everything.
     if (!isAdmin) {
-      where.OR = [
-        { assigned_to_id: null },
-        ...(actorId ? [{ assigned_to_id: actorId }, { created_by: actorId }] : []),
-      ];
+      where.assigned_to_id = actorId || '__no_user__';
     }
 
     const rows = await prisma.tasks.findMany({
@@ -163,6 +190,202 @@ router.get('/', async (req, res) => {
   } catch (e) {
     log(reqId, 'ERROR', 'tasks-list-failed', { message: e.message });
     errJson(res, 500, e.message || 'Failed to load tasks');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /tasks/feed — the UNIFIED task list, computed server-side. Merges:
+//   • manual tasks (tasks table)
+//   • overlay-flag tasks (assets.needs_repair / maintenance_due)
+//   • date tasks (next_service_date + dynamic date fields; overdue OR in lead)
+//   • pending sign-offs (asset_actions with requires_signoff)
+// Visibility: non-admins see only items assigned to them. This replaces the
+// old client-side merge (3 fetches + N+1) and the drift between it and the count.
+// ---------------------------------------------------------------------------
+router.get('/feed', async (req, res) => {
+  const reqId = rid();
+  try {
+    const actorInfo = getActorInfo(req);
+    const actorId = actorInfo.id || null;
+    const isAdmin = await actorIsAdmin(actorId);
+    const lead = await getLeadDays();
+    const today = startOfToday();
+    const NOMATCH = '__no_user__';
+    const items = [];
+
+    // ── 1) Manual tasks ──
+    const manualWhere = { status: 'OPEN' };
+    if (!isAdmin) manualWhere.assigned_to_id = actorId || NOMATCH;
+    const manual = await prisma.tasks.findMany({
+      where: manualWhere, include: TASK_INCLUDE,
+      orderBy: [{ due_date: 'asc' }, { created_at: 'desc' }], take: 500,
+    });
+    // Assets already represented by an open manual Repair/Maintenance task — their
+    // matching flag task is suppressed below so one manual task ≠ two rows.
+    const coveredByManual = { needs_repair: new Set(), maintenance_due: new Set() };
+    for (const t of manual) {
+      const cat = String(t.category || '').toUpperCase();
+      const actionType = cat === 'REPAIR' ? 'REPAIR' : (cat === 'SERVICE' || cat === 'MAINTENANCE' ? 'MAINTENANCE' : '');
+      // A manual task raises Needs Repair (repair) or Maintenance Due (everything
+      // else) on its asset — suppress the matching flag-derived card so one task ≠
+      // two rows. Mirrors flagForCategory on the write side.
+      if (t.asset_id) {
+        if (cat === 'REPAIR') coveredByManual.needs_repair.add(t.asset_id);
+        else coveredByManual.maintenance_due.add(t.asset_id);
+      }
+      items.push({
+        kind: 'manual', taskId: t.id, key: `manual:${t.id}`,
+        title: t.title, description: t.description || '',
+        subtitle: t.asset?.asset_types?.name || t.asset?.model || null,
+        model: t.asset?.model || null, assetTypeName: t.asset?.asset_types?.name || null,
+        serialNumber: t.asset?.serial_number || null, imageUrl: t.asset?.image_url || null,
+        assetId: t.asset_id || null, assetTypeId: t.asset?.type_id || null,
+        due: t.due_date || null, priority: t.priority, category: t.category,
+        certType: t.cert_type || null, actionType, taskStatus: t.status,
+        // status/flags reflect the LINKED ASSET (for the status badge on the card).
+        status: t.asset?.status || null,
+        needs_repair: !!t.asset?.needs_repair, maintenance_due: !!t.asset?.maintenance_due,
+        assignedToId: t.assigned_to_id || null,
+        assigneeName: t.assignee ? (t.assignee.name || t.assignee.useremail) : null,
+        creatorName: t.creator ? (t.creator.name || t.creator.useremail) : null,
+        createdBy: t.created_by || null,
+      });
+    }
+
+    // ── 2) Assets in scope → flag tasks + date tasks ──
+    const assetWhere = isAdmin ? {} : { assigned_to_id: actorId || NOMATCH };
+    const assets = await prisma.assets.findMany({
+      where: assetWhere,
+      select: {
+        id: true, type_id: true, model: true, serial_number: true, description: true,
+        image_url: true, status: true, needs_repair: true, maintenance_due: true,
+        next_service_date: true, assigned_to_id: true,
+        asset_types: { select: { name: true } },
+        field_values: { select: { value: true, asset_type_field: { select: { slug: true } } } },
+      },
+    });
+    // Per-type/field reminder_lead_days for dynamic date fields.
+    const typeIds = [...new Set(assets.map((a) => a.type_id).filter(Boolean))];
+    const leadDaysMap = {};
+    if (typeIds.length) {
+      const defs = await prisma.asset_type_fields.findMany({
+        where: { asset_type_id: { in: typeIds } },
+        select: { asset_type_id: true, slug: true, validation_rules: true },
+      });
+      for (const d of defs) {
+        try {
+          const vr = d.validation_rules && typeof d.validation_rules === 'object'
+            ? d.validation_rules : (d.validation_rules ? JSON.parse(d.validation_rules) : null);
+          const n = Number(vr && (vr.reminder_lead_days || vr.reminderDays || vr.reminder_days));
+          if (Number.isFinite(n) && n > 0) {
+            (leadDaysMap[d.asset_type_id] = leadDaysMap[d.asset_type_id] || {})[String(d.slug || '').toLowerCase()] = Math.floor(n);
+          }
+        } catch { /* ignore malformed */ }
+      }
+    }
+
+    for (const a of assets) {
+      if (!looksShortId(a.id)) continue;
+      if (String(a.description || '').toLowerCase() === 'qr reserved asset') continue;
+      const identity = {
+        assetId: a.id,
+        subtitle: a.model || a.asset_types?.name || a.id,
+        model: a.model || null, assetTypeName: a.asset_types?.name || null,
+        serialNumber: a.serial_number != null && String(a.serial_number).trim() !== '' ? String(a.serial_number) : null,
+        imageUrl: a.image_url || null, typeId: a.type_id || null,
+        assigned_to_id: a.assigned_to_id || null,
+        status: a.status, needs_repair: !!a.needs_repair, maintenance_due: !!a.maintenance_due,
+      };
+
+      if (a.needs_repair === true && !coveredByManual.needs_repair.has(a.id)) {
+        items.push({ ...identity, title: 'Needs repair', due: null, kind: 'flag', flag: 'needs_repair', type: 'REPAIR', key: `${a.id}|flag|needs_repair` });
+      }
+      if (a.maintenance_due === true && !coveredByManual.maintenance_due.has(a.id)) {
+        items.push({ ...identity, title: 'Maintenance due', due: null, kind: 'flag', flag: 'maintenance_due', type: 'MAINTENANCE', key: `${a.id}|flag|maintenance_due` });
+      }
+
+      // Top-level next service date — overdue OR within the lead window.
+      const topD = toDateOrNull(a.next_service_date);
+      if (topD && a.maintenance_due !== true) {
+        const overdue = topD < today;
+        const soon = !overdue && topD <= addDays(today, lead);
+        if (overdue || soon) {
+          const label = labelForDateKey('next_service_date');
+          items.push({
+            ...identity, title: overdue ? `${label} Overdue` : `${label} due`, due: topD,
+            fieldKey: 'next_service_date', scope: 'top', key: `${a.id}|top||`,
+            maintenance_due: true, // this task IS the asset being due for maintenance
+          });
+        }
+      }
+
+      // Dynamic date fields (overdue, or due-soon when the field has a lead).
+      for (const row of a.field_values || []) {
+        const k = row.asset_type_field?.slug;
+        if (!k) continue;
+        const kl = String(k).toLowerCase();
+        if (!DATE_SLUG_SET.has(kl) && !/date|due|expiry|expires/i.test(k)) continue;
+        const d = toDateOrNull(row.value);
+        if (!d) continue;
+        const daysLead = (leadDaysMap[a.type_id] || {})[kl] || 0;
+        const overdue = d < today;
+        const soon = !overdue && daysLead > 0 && d <= addDays(today, daysLead);
+        if (!overdue && !soon) continue;
+        const label = labelForDateKey(k);
+        items.push({
+          ...identity, title: overdue ? `${label} Overdue` : label, due: d,
+          fieldKey: k, scope: 'field', key: `${a.id}|field|${k}|${overdue ? '' : 'soon|'}${+d}`,
+        });
+      }
+    }
+
+    // ── 3) Pending sign-offs ──
+    const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+    const actionWhere = { type: { in: ['REPAIR', 'MAINTENANCE', 'HIRE'] }, occurred_at: { gte: since } };
+    if (!isAdmin) actionWhere.asset = { assigned_to_id: actorId || NOMATCH };
+    const actions = await prisma.asset_actions.findMany({
+      where: actionWhere,
+      include: { asset: { include: { asset_types: { select: { name: true } } } }, details: true },
+      orderBy: { occurred_at: 'desc' }, take: 400,
+    });
+    for (const act of actions) {
+      const dta = act.data || {};
+      const need = dta.requires_signoff === true || dta.requires_sign_off === true;
+      const done = dta.completed === true || dta.signed_off === true;
+      if (!need || done) continue;
+      const asset = act.asset || {};
+      items.push({
+        kind: 'signoff', actionId: act.id, assetId: act.asset_id, actionType: act.type,
+        occurred_at: act.occurred_at, due: act.details?.date || act.occurred_at,
+        title: `Sign Off ${act.type === 'MAINTENANCE' ? 'Maintenance' : (act.type === 'REPAIR' ? 'Repair' : 'Hire')}`,
+        subtitle: asset.model || asset.description || asset.id,
+        model: asset.model || asset.description || null,
+        assetTypeName: asset.asset_types?.name || null,
+        serialNumber: asset.serial_number ?? null, imageUrl: asset.image_url || null,
+        typeId: asset.type_id || null, assigned_to_id: asset.assigned_to_id || null,
+        actionImages: Array.isArray(dta.images) ? dta.images : [],
+        status: asset.status ?? null, needs_repair: !!asset.needs_repair, maintenance_due: !!asset.maintenance_due,
+      });
+    }
+
+    // ── Dedup + sort (soonest due first; undated flags after) ──
+    const seen = new Set();
+    const deduped = items.filter((it) => {
+      const key = it.actionId ? `action:${it.actionId}` : (it.key || `${it.assetId || ''}|${it.title || ''}|${it.due ? +new Date(it.due) : ''}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((x, y) => {
+      const dx = x.due ? new Date(x.due).getTime() : Infinity;
+      const dy = y.due ? new Date(y.due).getTime() : Infinity;
+      return dx - dy;
+    });
+
+    log(reqId, 'INFO', 'tasks-feed-ok', { uid: actorId, isAdmin, count: deduped.length });
+    res.json({ items: deduped, isAdmin });
+  } catch (e) {
+    log(reqId, 'ERROR', 'tasks-feed-failed', { message: e.message });
+    errJson(res, 500, e.message || 'Failed to load task feed');
   }
 });
 
@@ -190,15 +413,19 @@ router.post('/', async (req, res) => {
       if (!a) return errJson(res, 400, 'Linked asset not found');
     }
 
-    const assignedToId = b.assigned_to_id ? String(b.assigned_to_id) : null;
+    const actorInfo = getActorInfo(req);
+    const actorId = actorInfo.id || null;
+    if (actorId) await ensureUserKnown(actorId, actorInfo.name, actorInfo.email);
+    const creatorIsAdmin = await actorIsAdmin(actorId);
+
+    // Non-admins can't pick an assignee, so their tasks default to themselves —
+    // otherwise (with strict assigned-to-me visibility) they'd never see them.
+    let assignedToId = b.assigned_to_id ? String(b.assigned_to_id) : null;
+    if (!assignedToId && !creatorIsAdmin && actorId) assignedToId = actorId;
     if (assignedToId) {
       const u = await prisma.users.findUnique({ where: { id: assignedToId }, select: { id: true } });
       if (!u) return errJson(res, 400, 'Assigned user not found');
     }
-
-    const actorInfo = getActorInfo(req);
-    const actorId = actorInfo.id || null;
-    if (actorId) await ensureUserKnown(actorId, actorInfo.name, actorInfo.email);
 
     const created = await prisma.tasks.create({
       data: {
@@ -216,29 +443,31 @@ router.post('/', async (req, res) => {
       include: TASK_INCLUDE,
     });
 
-    // Reflect the task on the linked asset's status (and log it to history).
-    const newStatus = assetId ? STATUS_FOR_CATEGORY[category] : null;
-    if (newStatus) {
+    // Raise the matching overlay flag on the linked asset (Needs Repair /
+    // Maintenance Due) — base status is left untouched.
+    const flagKey = assetId ? flagForCategory(category) : null;
+    if (flagKey) {
       try {
         await prisma.assets.update({
           where: { id: assetId },
-          data: { status: newStatus, last_updated: new Date(), last_changed_by: actorId || undefined },
+          data: { [flagKey]: true, last_updated: new Date(), last_changed_by: actorId || undefined },
         });
+        const flagLabel = flagKey === 'needs_repair' ? 'Needs repair' : 'Maintenance due';
         await prisma.asset_actions.create({
           data: {
             asset_id: assetId,
             type: 'STATUS_CHANGE',
-            note: `Status set to ${newStatus} for task: ${title}`,
-            data: { task_id: created.id, status: newStatus },
+            note: `${flagLabel} set for task: ${title}`,
+            data: { task_id: created.id, [flagKey]: true },
             performed_by: actorId,
           },
         });
       } catch (e) {
-        log(reqId, 'WARN', 'task-status-update-failed', { id: created.id, message: e.message });
+        log(reqId, 'WARN', 'task-flag-update-failed', { id: created.id, message: e.message });
       }
     }
 
-    log(reqId, 'INFO', 'task-created', { id: created.id, status: newStatus || undefined });
+    log(reqId, 'INFO', 'task-created', { id: created.id, flag: flagKey || undefined });
     res.status(201).json(shapeTask(created));
   } catch (e) {
     log(reqId, 'ERROR', 'task-create-failed', { message: e.message });
@@ -389,6 +618,18 @@ async function closeTask(req, res, nextStatus) {
         }
       } catch (e) {
         log(reqId, 'WARN', 'task-history-log-failed', { id, message: e.message });
+      }
+      // Clear the overlay flag the task raised (repair done / maintenance done).
+      const clearFlag = flagForCategory(task.category);
+      if (clearFlag) {
+        try {
+          await prisma.assets.update({
+            where: { id: task.asset_id },
+            data: { [clearFlag]: false, last_updated: new Date(), last_changed_by: actorId || undefined },
+          });
+        } catch (e) {
+          log(reqId, 'WARN', 'task-flag-clear-failed', { id, message: e.message });
+        }
       }
     }
     log(reqId, 'INFO', 'task-closed', { id, status: nextStatus });

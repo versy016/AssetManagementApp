@@ -22,6 +22,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import ActionsForm from '../../components/ActionsForm';
+import TaskActionModal from '../../components/tasks/TaskActionModal';
+import CreateTaskModal from '../../components/tasks/CreateTaskModal';
+import { useAssetSignoff } from '../../hooks/useAssetSignoff';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import StatusBadge, { normalizeStatus, AssetStatusBadges } from '../../components/ui/StatusBadge';
 import PriorityNotesBanner from '../../components/PriorityNotesBanner';
@@ -53,6 +56,16 @@ function isBlankPhysicalQrSticker(a) {
 
 // ---------- Import Theme Constants ----------
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
+
+// If an asset still has an unresolved Needs-repair / Maintenance-due flag, build a
+// warning string — else null. Used to alert before transferring without sign-off.
+function unresolvedFlagWarning(a) {
+  const parts = [];
+  if (a?.needs_repair) parts.push('needs repair');
+  if (a?.maintenance_due) parts.push('is due for maintenance');
+  if (!parts.length) return null;
+  return `This asset ${parts.join(' and ')}, and the repair/maintenance has not been signed off. `;
+}
 
 // Quick-action grid: two columns that wrap. Colour is purely positional —
 // the LEFT column is always blue (filled) and the RIGHT column always orange
@@ -235,6 +248,8 @@ const DescriptionRow = ({ value }) => {
 const dl = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
   titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  // Status badges sit on their own full-width line and wrap so they never overflow.
+  statusBadgesRow: { marginTop: 6, marginBottom: 2 },
   seeMore: { color: Colors.accent, fontWeight: '800', fontSize: sf(12), marginTop: 3 },
   title: { fontSize: sf(17), fontWeight: '900', color: Colors.text },
   idChip: { backgroundColor: Colors.primary, paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.sm },
@@ -272,7 +287,7 @@ const ab = StyleSheet.create({
 
 // ---------- Main Screen ----------
 export default function CheckInScreen() {
-  const { id, returnTo } = useLocalSearchParams(); // Get asset ID and return URL from route params
+  const { id, returnTo, signoff: signoffParam } = useLocalSearchParams(); // asset ID, return URL, optional auto-open sign-off ('repair' | 'maintenance')
   const router = useRouter();
 
   // State for loading spinner
@@ -369,9 +384,29 @@ export default function CheckInScreen() {
     try { router.replace('/qr-scanner'); } catch { router.push('/qr-scanner'); }
   };
   const [postActionUi, setPostActionUi] = useState(null); // { title, message, onGo, onStay }
+  const [flagUi, setFlagUi] = useState(null); // repair/maintenance-due alert + transfer confirm (in-app modal)
   const [showOtherModal, setShowOtherModal] = useState(false);
   const [actionsFormOpen, setActionsFormOpen] = useState(false);
   const [actionsFormType, setActionsFormType] = useState(null);
+
+  // Sign off an open Needs-repair / Maintenance-due task with the same modal as the
+  // Tasks tab. On success we clear the flag locally and stay on the scan menu.
+  const signoff = useAssetSignoff(asset, {
+    onDone: (patch) => {
+      if (patch && Object.keys(patch).length) setAsset((prev) => ({ ...prev, ...patch }));
+      postActionAlert({ message: 'Task signed off' });
+    },
+  });
+
+  // Deep-link: arriving with ?signoff=repair|maintenance (e.g. from the web bulk bar)
+  // auto-opens the sign-off for the matching flag, once, after the asset has loaded.
+  const signoffAutoRef = useRef(false);
+  useEffect(() => {
+    if (signoffAutoRef.current || !asset?.id) return;
+    const which = String(signoffParam || '').toLowerCase();
+    if (which === 'repair' && asset?.needs_repair) { signoffAutoRef.current = true; signoff.open('repair'); }
+    else if (which === 'maintenance' && asset?.maintenance_due) { signoffAutoRef.current = true; signoff.open('maintenance'); }
+  }, [asset?.id, asset?.needs_repair, asset?.maintenance_due, signoffParam]); // eslint-disable-line react-hooks/exhaustive-deps
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapIdInput, setSwapIdInput] = useState('');
   const [lookupQuery, setLookupQuery] = useState('');
@@ -1154,9 +1189,48 @@ export default function CheckInScreen() {
   };
 
 
+  // Alert once (in-app modal) when a flagged asset is opened (e.g. after scanning)
+  // so the user knows a repair/maintenance is outstanding before transferring.
+  const flagAlertedRef = useRef(null);
+  useEffect(() => {
+    const w = unresolvedFlagWarning(asset);
+    if (asset?.id && w && flagAlertedRef.current !== asset.id) {
+      flagAlertedRef.current = asset.id;
+      setFlagUi({
+        phase: 'result',
+        title: 'Action required',
+        message: `${w}You can still transfer it, but the task will remain open until signed off.`,
+      });
+    }
+  }, [asset?.id, asset?.needs_repair, asset?.maintenance_due]);
+
+  // Confirm (via the in-app modal) before transferring a still-flagged asset.
+  // Resolves true when there's nothing to warn about, or the user proceeds.
+  const confirmTransferIfFlagged = useCallback((a) => {
+    const w = unresolvedFlagWarning(a);
+    if (!w) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setFlagUi({
+        phase: 'confirm',
+        title: 'Repair / maintenance not signed off',
+        message: `${w}Transfer anyway?`,
+        confirmLabel: 'Transfer anyway',
+        confirmTone: 'danger',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { setFlagUi(null); resolve(true); },
+        onCancel: () => { setFlagUi(null); resolve(false); },
+      });
+    });
+  }, []);
+
   // Handle check-in or transfer button actions
   const handleAction = async (type) => {
     if (!asset || !user) return;
+    // Warn again before a transfer if repair/maintenance is still unresolved.
+    if (type === 'checkin' || type === 'transferToMe') {
+      const proceed = await confirmTransferIfFlagged(asset);
+      if (!proceed) return;
+    }
 
     let payload = {};
     let successMessage = '';
@@ -1285,8 +1359,10 @@ export default function CheckInScreen() {
     }
   };
 
-  const openTransferMenu = React.useCallback(() => {
+  const openTransferMenu = React.useCallback(async () => {
     if (!id) return;
+    const proceed = await confirmTransferIfFlagged(asset);
+    if (!proceed) return;
     const target = returnTo ? String(returnTo) : `/check-in/${id}`;
     router.push({
       pathname: '/transfer/[assetId]',
@@ -1295,7 +1371,7 @@ export default function CheckInScreen() {
         returnTo: target,
       },
     });
-  }, [id, returnTo, router]);
+  }, [id, returnTo, router, asset]);
 
   const handleOtherAction = (key) => {
     if (!isAdmin && (key === 'hire' || key === 'eol')) {
@@ -1509,7 +1585,41 @@ export default function CheckInScreen() {
       setLoading(false);
     }
   };
-  const markNeedsRepair = () => updateFlags({ needs_repair: true }, 'Marked as Needs Repair');
+  // "Needs repair" opens the task form (prefilled with this asset + Repair) so the
+  // fault is captured; creating the task raises the Needs-repair flag server-side.
+  const [repairFormOpen, setRepairFormOpen] = useState(false);
+  const repairPrefill = useMemo(() => (asset ? {
+    asset: {
+      id: asset.id,
+      typeId: asset.type_id || asset.asset_types?.id || null,
+      label: asset.asset_types?.name || asset.model || asset.serial_number || asset.id,
+      sub: [asset.model, asset.serial_number, asset.other_id].filter(Boolean).join(' · '),
+    },
+    category: 'REPAIR',
+  } : null), [asset?.id, asset?.type_id, asset?.model, asset?.serial_number]);
+
+  const createTaskFromForm = async (payload) => {
+    try {
+      const auth = getAuth();
+      const u = auth?.currentUser;
+      const headers = { 'Content-Type': 'application/json' };
+      if (u?.uid) headers['X-User-Id'] = u.uid;
+      if (u?.displayName) headers['X-User-Name'] = u.displayName;
+      if (u?.email) headers['X-User-Email'] = u.email;
+      try { if (u?.getIdToken) { const t = await u.getIdToken(); if (t) headers.Authorization = `Bearer ${t}`; } } catch { /* non-fatal */ }
+      const res = await fetch(`${API_BASE_URL}/tasks`, { method: 'POST', headers, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to create task');
+      // Reflect the flag the task raised (Repair → needs_repair, else maintenance_due).
+      applyAssetPatch(String(payload.category || '').toUpperCase() === 'REPAIR' ? { needs_repair: true } : { maintenance_due: true });
+      postActionAlert({ message: 'Repair task created' });
+      return true;
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to create task');
+      return false;
+    }
+  };
+
+  const markNeedsRepair = () => setRepairFormOpen(true);
   const goScheduleMaintenance = () => router.push({ pathname: '/servicing/[assetId]', params: { assetId: String(asset?.id) } });
 
 
@@ -1853,7 +1963,7 @@ export default function CheckInScreen() {
                     onScanAnother={goToScanner}
                     canAdd={!isQRReserved}
                   />
-                  {/* Header — type + ID inline, status */}
+                  {/* Header — type + ID inline; status badges wrap on their own line */}
                   <View style={dl.headerRow}>
                     <View style={dl.titleWrap}>
                       <Text style={dl.title} numberOfLines={2}>
@@ -1861,8 +1971,8 @@ export default function CheckInScreen() {
                       </Text>
                       <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
                     </View>
-                    <AssetStatusBadges asset={asset} />
                   </View>
+                  <AssetStatusBadges asset={asset} style={dl.statusBadgesRow} />
                   {isAwaitingQr ? (
                     <Text style={{ color: Colors.subtle, fontSize: sf(12), marginTop: 4, fontWeight: '600' }}>
                       Awaiting physical QR
@@ -2165,14 +2275,14 @@ export default function CheckInScreen() {
                         {(() => {
                           const rows = [];
                           if (!asset?.needs_repair) {
-                            rows.push({ key: 'repair-req', icon: 'build', bg: Colors.warningBg, fg: Colors.warningFg, label: 'Needs repair', desc: 'Mark that this asset needs repair', onPress: markNeedsRepair });
+                            rows.push({ key: 'repair-req', icon: 'build', bg: Colors.warningBg, fg: Colors.warningFg, label: 'Needs repair', desc: 'Report a repair — describe the fault', onPress: markNeedsRepair });
                           }
                           rows.push({ key: 'sched', icon: 'event', bg: Colors.infoBg, fg: Colors.infoFg, label: 'Log future maintenance', desc: 'Set when the next service is due', onPress: goScheduleMaintenance });
                           if (asset?.needs_repair) {
-                            rows.push({ key: 'log-repair', icon: 'check-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Log Repair', desc: 'Record this asset has been repaired', onPress: () => { setActionsFormType('Repair'); setActionsFormOpen(true); } });
+                            rows.push({ key: 'log-repair', icon: 'check-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Sign off repair', desc: 'Close out the open repair task', onPress: () => signoff.open('repair') });
                           }
                           if (asset?.maintenance_due) {
-                            rows.push({ key: 'log-maint', icon: 'build-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Log Maintenance', desc: 'Record a maintenance / service event', onPress: () => { setActionsFormType('Maintenance'); setActionsFormOpen(true); } });
+                            rows.push({ key: 'log-maint', icon: 'build-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Sign off maintenance', desc: 'Close out the maintenance task', onPress: () => signoff.open('maintenance') });
                           }
                           return rows.map((r, i) => (
                             <TouchableOpacity
@@ -2296,7 +2406,7 @@ export default function CheckInScreen() {
               onScanAnother={goToScanner}
               canAdd={!isQRReserved}
             />
-            {/* Header — type + ID inline, status */}
+            {/* Header — type + ID inline; status badges wrap on their own line */}
             <View style={dl.headerRow}>
               <View style={dl.titleWrap}>
                 <Text style={dl.title} numberOfLines={2}>
@@ -2304,8 +2414,8 @@ export default function CheckInScreen() {
                 </Text>
                 <View style={dl.idChip}><Text style={dl.idChipText}>{asset.id}</Text></View>
               </View>
-              <AssetStatusBadges asset={asset} />
             </View>
+            <AssetStatusBadges asset={asset} style={dl.statusBadgesRow} />
 
             {/* Detail list */}
             <View style={dl.list}>
@@ -2546,26 +2656,26 @@ export default function CheckInScreen() {
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
               onPress={asset?.needs_repair
-                ? () => { setActionsFormType('Repair'); setActionsFormOpen(true); }
+                ? () => signoff.open('repair')
                 : markNeedsRepair}
               disabled={loading}
             >
               <MaterialIcons name={asset?.needs_repair ? 'check-circle' : 'build'} size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                {asset?.needs_repair ? 'Log Repair' : 'Needs repair'}
+                {asset?.needs_repair ? 'Sign off repair' : 'Needs repair'}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
               onPress={asset?.maintenance_due
-                ? () => { setActionsFormType('Maintenance'); setActionsFormOpen(true); }
+                ? () => signoff.open('maintenance')
                 : goScheduleMaintenance}
               disabled={loading}
             >
               <MaterialIcons name={asset?.maintenance_due ? 'build-circle' : 'event'} size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                {asset?.maintenance_due ? 'Log Maintenance' : 'Log future maintenance'}
+                {asset?.maintenance_due ? 'Sign off maintenance' : 'Log future maintenance'}
               </Text>
             </TouchableOpacity>
 
@@ -2599,6 +2709,18 @@ export default function CheckInScreen() {
         }}
       />
 
+      {/* Sign-off modal for Needs-repair / Maintenance-due tasks (same as Tasks tab) */}
+      <TaskActionModal {...signoff.modalProps} />
+
+      {/* "Needs repair" opens the repair-task form (prefilled with this asset) */}
+      <CreateTaskModal
+        visible={repairFormOpen}
+        onClose={() => setRepairFormOpen(false)}
+        onCreate={createTaskFromForm}
+        isAdmin={isAdmin}
+        prefill={repairPrefill}
+      />
+
       {renderUserModal()}
       {renderOtherActionsModal()}
       {renderCreateNoteModal()}
@@ -2614,6 +2736,19 @@ export default function CheckInScreen() {
         cancelLabel={postActionUi?.stayLabel || 'Stay here'}
         onConfirm={() => { setPostActionUi(null); postActionUi?.onGo?.(); }}
         onCancel={() => { setPostActionUi(null); postActionUi?.onStay?.(); }}
+      />
+      {/* Repair / Maintenance-due alert (scan) + transfer confirm — in-app modal */}
+      <ConfirmModal
+        visible={!!flagUi}
+        phase={flagUi?.phase || 'result'}
+        title={flagUi?.title || ''}
+        message={flagUi?.message || ''}
+        confirmLabel={flagUi?.confirmLabel || 'Confirm'}
+        confirmTone={flagUi?.confirmTone || 'primary'}
+        cancelLabel={flagUi?.cancelLabel || 'Cancel'}
+        onConfirm={() => { if (flagUi?.onConfirm) flagUi.onConfirm(); else setFlagUi(null); }}
+        onCancel={() => { if (flagUi?.onCancel) flagUi.onCancel(); else setFlagUi(null); }}
+        onDismiss={() => { if (flagUi?.onCancel) flagUi.onCancel(); else setFlagUi(null); }}
       />
       {swapOpen && (
         <Modal transparent animationType="slide" visible={swapOpen} onRequestClose={() => setSwapOpen(false)}>

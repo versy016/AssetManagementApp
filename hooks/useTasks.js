@@ -84,6 +84,12 @@ const getTaskDueTime = (item) => {
 const getTaskTitle = (item) => String(item?.title || '').toLowerCase();
 const getTaskActionType = (item) => String(item?.actionType || '').toUpperCase();
 
+// How many days before an asset's next service date it starts showing as a
+// maintenance task (mirrors the backend maintenance_due_lead_days default). This
+// makes scheduled maintenance visible in Tasks as the date approaches, without
+// waiting for the server's auto-flag sweep.
+const MAINTENANCE_LEAD_DAYS = 28;
+
 // Map a manual task's category onto the action-type buckets the filter chips
 // use, so manual tasks classify under Service / Repair correctly.
 const categoryToActionType = (category) => {
@@ -217,8 +223,38 @@ export function useTasks() {
     return () => { cancelled = true; };
   }, [activeTab]);
 
-  // ── Task build: assets → overdue/reminder items ──────────────────────────
+  // ── Unified task feed (server-computed: GET /tasks/feed) ──────────────────
+  // One request returns the whole list (manual + flags + dates + sign-offs),
+  // already filtered by assignment. Replaces the old 3-fetch + N+1 client merge.
+  const loadFeed = React.useCallback(async () => {
+    const u = auth?.currentUser;
+    if (!u?.uid) { setTasks({ items: [], loading: false }); return; }
+    try {
+      const headers = { 'X-User-Id': u.uid };
+      if (u.displayName) headers['X-User-Name'] = u.displayName;
+      if (u.email) headers['X-User-Email'] = u.email;
+      try { if (typeof u.getIdToken === 'function') { const tk = await u.getIdToken(); if (tk) headers.Authorization = `Bearer ${tk}`; } } catch { /* non-fatal */ }
+      const res = await fetch(`${API_BASE_URL}/tasks/feed`, { headers });
+      if (!res.ok) throw new Error('Failed to load task feed');
+      const json = await res.json();
+      setDbAdmin(!!json?.isAdmin);
+      setTasks({ items: Array.isArray(json?.items) ? json.items : [], loading: false });
+    } catch (e) {
+      logger.error('useTasks: feed load failed', e?.message || e);
+      setTasks((prev) => ({ items: Array.isArray(prev?.items) ? prev.items : [], loading: false }));
+    }
+  }, []);
+
   useEffect(() => {
+    if (!user?.uid) { setTasks({ items: [], loading: false }); return; }
+    setTasks((prev) => ({ ...prev, loading: true }));
+    loadFeed();
+  }, [user?.uid, loadFeed]);
+
+  // ── Legacy client-side derivation — DISABLED (superseded by loadFeed) ──────
+  useEffect(() => {
+    return; // no-op: the task list is now server-computed via GET /tasks/feed
+    // eslint-disable-next-line no-unreachable
     if (!user?.uid) return;
     let cancelled = false;
     (async () => {
@@ -332,19 +368,33 @@ export function useTasks() {
           if (!hasQrAssigned(a)) continue;
           if (!viewingAsAdmin) {
             if (!me) continue;
-            if (a?.assigned_to_id && String(a.assigned_to_id) !== String(me)) continue;
+            // Strict: only tasks for assets assigned to me (no unassigned/office).
+            if (String(a?.assigned_to_id || '') !== String(me)) continue;
           }
 
           const { model, serialNumber, assetTypeName } = fromAsset(a);
           const subtitle = model || assetTypeName || a.id;
+          // Asset status fields so every task card can show the asset's status badge.
+          const assetStatusFields = {
+            status: a.status,
+            needs_repair: !!a.needs_repair,
+            maintenance_due: !!a.maintenance_due,
+          };
 
           for (const k of keysOfInterest) {
             const d = isDateLike(a?.[k]);
-            if (!d || d >= today) continue;
+            if (!d) continue;
+            const overdue = d < today;
+            // Surface maintenance as the service date approaches (lead window),
+            // not only once overdue — so scheduled maintenance shows as a task.
+            const soon = !overdue && d <= new Date(today.getTime() + MAINTENANCE_LEAD_DAYS * 86400000);
+            if (!overdue && !soon) continue;
+            // The maintenance_due flag already yields a task; don't double up.
+            if (k === 'next_service_date' && a?.maintenance_due === true) continue;
             const label = TOP_DATE_LABELS[k] || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
             items.push({
               assetId: a.id,
-              title: `${label} Overdue`,
+              title: overdue ? `${label} Overdue` : `${label} due`,
               subtitle,
               model,
               assetTypeName,
@@ -355,6 +405,51 @@ export function useTasks() {
               key: `${a.id}|top||`,
               imageUrl: a.image_url || a.imageUrl || null,
               typeId: a.type_id || a.typeId || null,
+              ...assetStatusFields,
+              // This task IS the asset being due for maintenance — show the badge
+              // even if the server hasn't set the maintenance_due flag column yet.
+              ...(k === 'next_service_date' ? { maintenance_due: true } : {}),
+            });
+          }
+
+          // Overlay flags fire a task directly: setting Needs Repair / Maintenance
+          // Due (via scan, check-in, bulk, edit or a created task) shows up here.
+          if (a?.needs_repair === true) {
+            items.push({
+              assetId: a.id,
+              title: 'Needs repair',
+              subtitle,
+              model,
+              assetTypeName,
+              serialNumber,
+              due: null,
+              kind: 'flag',
+              flag: 'needs_repair',
+              type: 'REPAIR',
+              key: `${a.id}|flag|needs_repair`,
+              imageUrl: a.image_url || a.imageUrl || null,
+              typeId: a.type_id || a.typeId || null,
+              assigned_to_id: a.assigned_to_id || null,
+              ...assetStatusFields,
+            });
+          }
+          if (a?.maintenance_due === true) {
+            items.push({
+              assetId: a.id,
+              title: 'Maintenance due',
+              subtitle,
+              model,
+              assetTypeName,
+              serialNumber,
+              due: null,
+              kind: 'flag',
+              flag: 'maintenance_due',
+              type: 'MAINTENANCE',
+              key: `${a.id}|flag|maintenance_due`,
+              imageUrl: a.image_url || a.imageUrl || null,
+              typeId: a.type_id || a.typeId || null,
+              assigned_to_id: a.assigned_to_id || null,
+              ...assetStatusFields,
             });
           }
 
@@ -384,6 +479,7 @@ export function useTasks() {
                   key: `${a.id}|field|${k}|${+d}`,
                   imageUrl: a.image_url || a.imageUrl || null,
                   typeId: tId,
+                  ...assetStatusFields,
                 });
               } else if (daysLead > 0) {
                 const windowEnd = new Date(today.getTime() + daysLead * 24 * 60 * 60 * 1000);
@@ -404,6 +500,7 @@ export function useTasks() {
                     key: `${a.id}|field|${k}|soon|${+d}`,
                     imageUrl: a.image_url || a.imageUrl || null,
                     typeId: tId,
+                    ...assetStatusFields,
                   });
                 }
               }
@@ -446,6 +543,8 @@ export function useTasks() {
 
   // ── Pending sign-offs ────────────────────────────────────────────────────
   useEffect(() => {
+    return; // no-op: sign-offs are now part of GET /tasks/feed
+    // eslint-disable-next-line no-unreachable
     if (!user?.uid) return;
     let cancelled = false;
     (async () => {
@@ -467,8 +566,8 @@ export function useTasks() {
         const mine = arr.filter((it) => {
           if (resolvedAdmin) return true;
           if (!me) return false;
-          if (!it.assigned_to_id) return true;
-          return String(it.assigned_to_id) === String(me);
+          // Strict: only sign-offs for assets assigned to me.
+          return String(it.assigned_to_id || '') === String(me);
         });
 
         const assetIds = [...new Set(mine.map((it) => it.assetId).filter(Boolean))];
@@ -485,6 +584,9 @@ export function useTasks() {
                 model: asset.model ?? asset.name ?? asset.asset_name ?? null,
                 serialNumber: asset.serial_number ?? asset.serialNumber ?? null,
                 assetTypeName: asset.asset_types?.name ?? asset.asset_type ?? null,
+                status: asset.status ?? null,
+                needs_repair: !!asset.needs_repair,
+                maintenance_due: !!asset.maintenance_due,
               };
             } catch {}
           })
@@ -495,6 +597,9 @@ export function useTasks() {
           model: assetMap[it.assetId]?.model ?? it.model ?? null,
           serialNumber: assetMap[it.assetId]?.serialNumber ?? it.serialNumber ?? null,
           assetTypeName: assetMap[it.assetId]?.assetTypeName ?? it.assetTypeName ?? null,
+          status: assetMap[it.assetId]?.status ?? it.status ?? null,
+          needs_repair: assetMap[it.assetId]?.needs_repair ?? false,
+          maintenance_due: assetMap[it.assetId]?.maintenance_due ?? false,
         }));
 
         if (cancelled) return;
@@ -563,21 +668,8 @@ export function useTasks() {
     });
   }, []);
 
-  const loadManualTasks = React.useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const headers = await authHeaders(false);
-      const res = await fetch(`${API_BASE_URL}/tasks?status=OPEN`, { headers });
-      if (!res.ok) return;
-      const json = await res.json();
-      const arr = Array.isArray(json?.items) ? json.items : [];
-      mergeManualItems(arr.map(adaptManualTask));
-    } catch (e) {
-      logger.error('useTasks: manual tasks fetch failed', e?.message || e);
-    }
-  }, [user?.uid, authHeaders, mergeManualItems]);
-
-  useEffect(() => { loadManualTasks(); }, [loadManualTasks]);
+  // Manual-task mutations refresh the whole unified feed.
+  const loadManualTasks = React.useCallback(async () => { await loadFeed(); }, [loadFeed]);
 
   // Create a manual task; returns true on success.
   const createManualTask = React.useCallback(async (payload) => {
@@ -643,13 +735,14 @@ export function useTasks() {
         ...prev,
         items: (prev.items || []).filter((it) => !(it.kind === 'manual' && it.taskId === taskId)),
       }));
+      loadFeed(); // reconcile (flag cleared, badge, etc.)
       showSuccess(kind === 'complete' ? 'Task completed.' : 'Task dismissed.');
       return true;
     } catch (e) {
       showError(e?.message || 'Failed to update task');
       return false;
     }
-  }, [authHeaders]);
+  }, [authHeaders, loadFeed]);
 
   const completeManualTask = React.useCallback((taskId, note, photo, assetId) => closeManualTask(taskId, 'complete', note, photo, assetId), [closeManualTask]);
   const dismissManualTask = React.useCallback((taskId) => closeManualTask(taskId, 'dismiss'), [closeManualTask]);
@@ -848,6 +941,69 @@ export function useTasks() {
     try {
       setActionSubmitting(true);
 
+      // ── Manual task path (same modal as sign-offs) ─────────────────────
+      // Completing a manual task goes through the persisted /tasks complete
+      // endpoint, which records history + clears any flag it raised.
+      if (actionTask.kind === 'manual') {
+        const ok = await completeManualTask(actionTask.taskId, (actionNote || '').trim(), actionPhoto, actionTask.assetId);
+        if (ok) setActionOpen(false);
+        setActionSubmitting(false);
+        return;
+      }
+
+      // ── Overlay-flag path (Needs repair / Maintenance due) ─────────────
+      // Completing means the work is done: log it to Maintenance history and
+      // clear the flag. For maintenance, advance the next service date if given.
+      if (actionTask.kind === 'flag') {
+        const flagHeaders = { 'Content-Type': 'application/json' };
+        try {
+          const u = auth?.currentUser;
+          if (u?.uid) {
+            flagHeaders['X-User-Id'] = String(u.uid);
+            flagHeaders['X-User-Email'] = u.email || '';
+            flagHeaders['X-User-Name'] = u.displayName || (u.email ? u.email.split('@')[0] : '');
+          }
+        } catch {}
+        const enumType = String(actionTask.type || '').toUpperCase() === 'REPAIR' ? 'REPAIR' : 'MAINTENANCE';
+        const nowIso = new Date().toISOString();
+        try {
+          await fetch(`${API_BASE_URL}/assets/${actionTask.assetId}/actions`, {
+            method: 'POST',
+            headers: flagHeaders,
+            body: JSON.stringify({
+              type: enumType,
+              note: actionNote || `${enumType === 'REPAIR' ? 'Repair' : 'Maintenance'} completed`,
+              occurred_at: nowIso,
+              data: { completed: true, requires_signoff: false },
+              details: {
+                action: enumType === 'REPAIR' ? 'Repair' : 'Maintenance',
+                date: nowIso.slice(0, 10),
+                summary: enumType === 'REPAIR' ? 'Repair completed' : 'Maintenance completed',
+                notes: actionNote || undefined,
+              },
+            }),
+          });
+        } catch (e) {
+          logger.warn('useTasks: flag-task history log failed', e?.message || e);
+        }
+        const patch = { [actionTask.flag]: false };
+        if (actionTask.flag === 'maintenance_due' && actionNextDate) patch.next_service_date = actionNextDate;
+        const putRes = await fetch(`${API_BASE_URL}/assets/${actionTask.assetId}`, {
+          method: 'PUT',
+          headers: flagHeaders,
+          body: JSON.stringify(patch),
+        });
+        if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to complete task');
+        setTasks((prev) => {
+          const items = (prev.items || []).filter((t) => t.key !== actionTask.key);
+          return { items, loading: false };
+        });
+        loadFeed(); // reconcile flag/next-date changes
+        setActionOpen(false);
+        setActionSubmitting(false);
+        return;
+      }
+
       // ── Sign-off path ──────────────────────────────────────────────────
       if (actionTask.kind === 'signoff') {
         const userHeaders = {};
@@ -1041,6 +1197,7 @@ export function useTasks() {
           setActionOpen(false);
           setActionSubmitting(false);
         }
+        loadFeed(); // reconcile after sign-off (flag cleared, next date)
         return;
       }
 
@@ -1165,6 +1322,7 @@ export function useTasks() {
         );
         return { items: rest, loading: false };
       });
+      loadFeed(); // reconcile after advancing the date / logging the action
       setActionOpen(false);
     } catch (e) {
       showError(e, 'Please try again.', 'Failed to save');

@@ -75,6 +75,10 @@ export default function TaskActionModal({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
+  // "Next service date" only makes sense for maintenance-type completions. A
+  // Needs-repair flag task has no next-service date, so hide the date picker.
+  const isNeedsRepairFlag = actionTask?.kind === 'flag' && actionTask?.flag === 'needs_repair';
+
   return (
     <Modal
       visible={actionOpen}
@@ -289,11 +293,14 @@ export default function TaskActionModal({
                     </>
                   )}
                 </>
+              ) : (actionTask?.kind === 'manual' || isNeedsRepairFlag) ? (
+                /* ── Manual task / Needs-repair: just a note (+ photo), no next date ── */
+                null
               ) : (
-                /* ── Regular task branch ────────────────────────────── */
+                /* ── Maintenance / date task branch: pick the next service date ── */
                 <>
                   <View style={{ marginBottom: 10 }}>
-                    <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Select next date</Text>
+                    <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Next service date</Text>
                     <TouchableOpacity onPress={() => setDateOpen(true)}>
                       <View style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 }}>
                         <Text style={{ color: '#111827' }}>{prettyDate(new Date(actionNextDate))}</Text>
@@ -304,9 +311,11 @@ export default function TaskActionModal({
                 </>
               )}
 
-              {/* ── Note (both paths) ──────────────────────────────── */}
+              {/* ── Note (all paths; required to sign off a manual task) ── */}
               <View style={{ marginTop: 8 }}>
-                <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>Note (optional)</Text>
+                <Text style={{ color: '#6B7280', fontSize: sf(12), marginBottom: 6 }}>
+                  {actionTask?.kind === 'manual' ? 'Completion details' : 'Note (optional)'}
+                </Text>
                 <AppTextInput
                   style={{ minHeight: 44, backgroundColor: theme.colors.surface }}
                   placeholder="Add a note"
@@ -326,18 +335,20 @@ export default function TaskActionModal({
                 )}
               </View>
 
-              {/* ── Doc + photo for regular tasks ─────────────────── */}
+              {/* ── Doc (date tasks only) + photo (date & manual) ─────── */}
               {actionTask?.kind !== 'signoff' && (
                 <>
-                  <DocUploadSection
-                    label={actionDocSlug
-                      ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
-                      : 'Other relevant document (optional)'}
-                    actionDocSlug={actionDocSlug}
-                    actionDocPicked={actionDocPicked}
-                    setActionDocPicked={setActionDocPicked}
-                    containerStyle={{ marginTop: 10 }}
-                  />
+                  {actionTask?.kind !== 'manual' && (
+                    <DocUploadSection
+                      label={actionDocSlug
+                        ? `Upload ${String(actionDocSlug).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}${actionTask?.scope === 'field' ? ' (required)' : ' (optional)'}`
+                        : 'Other relevant document (optional)'}
+                      actionDocSlug={actionDocSlug}
+                      actionDocPicked={actionDocPicked}
+                      setActionDocPicked={setActionDocPicked}
+                      containerStyle={{ marginTop: 10 }}
+                    />
+                  )}
                   <PhotoSection actionPhoto={actionPhoto} setActionPhoto={setActionPhoto} containerStyle={{ marginTop: 14 }} />
                 </>
               )}
@@ -364,7 +375,11 @@ export default function TaskActionModal({
                       ? String(actionTask?.actionType || '').toUpperCase() === 'MAINTENANCE'
                         ? 'Sign off Service'
                         : 'Sign Off'
-                      : 'Mark Done'}
+                      : actionTask?.kind === 'manual'
+                        ? 'Complete task'
+                        : actionTask?.kind === 'flag'
+                          ? 'Sign off'
+                          : 'Mark Done'}
                 </Text>
               </TouchableOpacity>
             </View>

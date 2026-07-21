@@ -27,6 +27,7 @@ import * as DocumentPicker from 'expo-document-picker';
 
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge, { normalizeStatus } from '../../components/ui/StatusBadge';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 import { Colors, Radius, Shadows, sf } from '../../constants/uiTheme';
 import { API_BASE_URL } from '../../inventory-api/apiBase';
 import { useTasksCount } from '../../contexts/TasksCountContext';
@@ -108,6 +109,8 @@ export default function ServicingScreen() {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState(null); // null | 'past' | 'schedule'
   const [submitting, setSubmitting] = useState(false);
+  // In-app result/confirm modal (replaces web-noop Alert). { phase, title, message, ... }
+  const [resultUi, setResultUi] = useState(null);
 
   // Past-service form state
   const [serviceDate, setServiceDate] = useState(toISO(startOfToday()));
@@ -158,7 +161,7 @@ export default function ServicingScreen() {
   // ── Submit: Log a PAST service (no open task) ────────────────────────────
   const submitPast = useCallback(async () => {
     if (submitting) return;
-    if (!nextDate) { Alert.alert('Missing date', 'Please choose when the next service is due.'); return; }
+    if (!nextDate) { setResultUi({ phase: 'result', title: 'Missing date', message: 'Please choose when the next service is due.', error: true }); return; }
     setSubmitting(true);
     try {
       const headers = await authHeaders(true);
@@ -183,11 +186,12 @@ export default function ServicingScreen() {
       });
       if (!actRes.ok) throw new Error((await actRes.text()) || 'Failed to log the service');
 
-      // 2) Set the next service due date (the only forward-looking item).
+      // 2) Set the next service due date and clear Maintenance Due (this logs the
+      //    maintenance as done, so the flag/task should close out).
       const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify({ next_service_date: nextDate, skip_required_documents: true }),
+        body: JSON.stringify({ next_service_date: nextDate, maintenance_due: false, skip_required_documents: true }),
       });
       if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to set the next service date');
 
@@ -214,12 +218,17 @@ export default function ServicingScreen() {
       }
 
       await refreshTaskBadge();
-      Alert.alert('Service logged', `Recorded the past service. Next service due ${prettyDate(nextDate)}.`, [
-        { text: 'Done', onPress: () => backToTarget() },
-        { text: 'View Asset', onPress: () => router.replace({ pathname: '/asset/[assetId]', params: { assetId } }) },
-      ]);
+      setResultUi({
+        phase: 'confirm',
+        title: 'Maintenance logged',
+        message: `Recorded the maintenance. Next service due ${prettyDate(nextDate)}.`,
+        confirmLabel: 'View asset',
+        cancelLabel: 'Done',
+        onConfirm: () => { setResultUi(null); router.replace({ pathname: '/asset/[assetId]', params: { assetId } }); },
+        onCancel: () => { setResultUi(null); backToTarget(); },
+      });
     } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to log the service');
+      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to log the maintenance', error: true });
     } finally {
       setSubmitting(false);
     }
@@ -228,7 +237,7 @@ export default function ServicingScreen() {
   // ── Submit: Schedule / today's service (creates the task) ────────────────
   const submitSchedule = useCallback(async () => {
     if (submitting) return;
-    if (!dueDate) { Alert.alert('Missing date', 'Please choose the service due date.'); return; }
+    if (!dueDate) { setResultUi({ phase: 'result', title: 'Missing date', message: 'Please choose the service due date.', error: true }); return; }
     setSubmitting(true);
     try {
       const headers = await authHeaders(true);
@@ -242,12 +251,17 @@ export default function ServicingScreen() {
       if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to schedule the service');
 
       await refreshTaskBadge();
-      Alert.alert('Service scheduled', `A service task is set for ${prettyDate(dueDate)}. The assigned user can action and close it from Tasks.`, [
-        { text: 'Done', onPress: () => backToTarget() },
-        { text: 'View Asset', onPress: () => router.replace({ pathname: '/asset/[assetId]', params: { assetId } }) },
-      ]);
+      setResultUi({
+        phase: 'confirm',
+        title: 'Maintenance scheduled',
+        message: `Maintenance is set for ${prettyDate(dueDate)}. The assigned user can action and close it from Tasks.`,
+        confirmLabel: 'View asset',
+        cancelLabel: 'Done',
+        onConfirm: () => { setResultUi(null); router.replace({ pathname: '/asset/[assetId]', params: { assetId } }); },
+        onCancel: () => { setResultUi(null); backToTarget(); },
+      });
     } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to schedule the service');
+      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to schedule the maintenance', error: true });
     } finally {
       setSubmitting(false);
     }
@@ -413,7 +427,7 @@ export default function ServicingScreen() {
                   onPress={submitPast}
                   disabled={submitting}
                 >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Log service</Text>}
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Log Maintenance</Text>}
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -443,13 +457,27 @@ export default function ServicingScreen() {
                   onPress={submitSchedule}
                   disabled={submitting}
                 >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Schedule service</Text>}
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Schedule Maintenance</Text>}
                 </TouchableOpacity>
               </View>
             ) : null}
           </>
         )}
       </ScrollView>
+
+      {/* Result / confirm modal (in-app; Alert is a no-op on web) */}
+      <ConfirmModal
+        visible={!!resultUi}
+        phase={resultUi?.phase || 'result'}
+        title={resultUi?.title || ''}
+        message={resultUi?.message || ''}
+        resultError={!!resultUi?.error}
+        confirmLabel={resultUi?.confirmLabel || 'Confirm'}
+        cancelLabel={resultUi?.cancelLabel || 'Cancel'}
+        onConfirm={() => { if (resultUi?.onConfirm) resultUi.onConfirm(); else setResultUi(null); }}
+        onCancel={() => { if (resultUi?.onCancel) resultUi.onCancel(); else setResultUi(null); }}
+        onDismiss={() => { if (resultUi?.onCancel) resultUi.onCancel(); else setResultUi(null); }}
+      />
     </SafeAreaView>
   );
 }
