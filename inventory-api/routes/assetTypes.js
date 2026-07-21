@@ -61,10 +61,11 @@ router.put('/:id', authRequired, adminOnly, validate(schemas.updateAssetType), (
           }
         }
 
-        const { name } = req.body || {};
+        const { name, bookable } = req.body || {};
         const patch = {};
         if (name !== undefined) patch.name = String(name).trim();
         if (image_url !== undefined) patch.image_url = image_url || null;
+        if (bookable !== undefined) patch.bookable = bookable === true || bookable === 'true';
 
         if (!Object.keys(patch).length) {
           return res.status(400).json({ status: 'error', message: 'No fields to update' });

@@ -117,6 +117,8 @@ export default function NewAssetType() {
   // Type basics
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
+  // Whether assets of this type can be booked (internal reservations). On by default.
+  const [bookable, setBookable] = useState(true);
   const [image, setImage] = useState(null); // { uri, file }
   // Unmount cleanup so any held blob:URL is released on navigation away.
   const imageUriRef = useRef(null);
@@ -433,6 +435,7 @@ export default function NewAssetType() {
       const authH = await getAuthHeaders();
       const form = new FormData();
       form.append('name', name.trim());
+      form.append('bookable', bookable ? 'true' : 'false');
       if (image?.file) form.append('image', image.file);
       const createTypeRes = await fetch(`${API_BASE_URL}/asset-types`, { method: 'POST', body: form, headers: authH });
       if (!createTypeRes.ok) throw new Error(await createTypeRes.text() || 'Failed to create asset type');
@@ -671,6 +674,15 @@ export default function NewAssetType() {
               />
             </View>
           {!!nameError && <Text style={s.errorBelow}>{nameError}</Text>}
+
+          {/* Bookable — assets of this type can be reserved (bookings feature). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, marginBottom: 6, gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>Bookable</Text>
+              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Allow assets of this type to be reserved (bookings).</Text>
+            </View>
+            <Switch value={bookable} onValueChange={setBookable} />
+          </View>
 
           {/* Mobile-only image picker (web hero card carries the controls). */}
           {!isWebWide && (

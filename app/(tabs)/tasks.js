@@ -2,7 +2,7 @@
 // Thin orchestrator — all logic lives in hooks/useTasks.js.
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Alert } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -18,6 +18,9 @@ import TaskActionModal from '../../components/tasks/TaskActionModal';
 import CreateTaskModal from '../../components/tasks/CreateTaskModal';
 import CompleteTaskModal from '../../components/tasks/CompleteTaskModal';
 import NewButton from '../../components/ui/NewButton';
+import { useBookings } from '../../hooks/useBookings';
+import BookingCard from '../../components/bookings/BookingCard';
+import CreateBookingModal from '../../components/bookings/CreateBookingModal';
 
 export default function TasksScreen() {
   const {
@@ -83,6 +86,10 @@ export default function TasksScreen() {
   const [editTarget, setEditTarget] = useState(null);     // manual task being edited
   const [completeTarget, setCompleteTarget] = useState(null); // manual task being signed off
 
+  // Bookings (Work ▸ Bookings sub-tab)
+  const bookings = useBookings();
+  const [bookingCreateOpen, setBookingCreateOpen] = useState(false);
+
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
   // Responsive columns: desktop web gets a denser multi-column grid.
@@ -123,6 +130,7 @@ export default function TasksScreen() {
         <View style={styles.subTabBar}>
           {[
             { key: 'tasks', label: 'Tasks' },
+            { key: 'bookings', label: 'Bookings' },
             { key: 'hire',  label: 'Hire'  },
           ].map((tab) => (
             <TouchableOpacity
@@ -137,6 +145,63 @@ export default function TasksScreen() {
             </TouchableOpacity>
           ))}
         </View>
+      )}
+
+      {/* ── Bookings list (mobile native only) ── */}
+      {Platform.OS !== 'web' && activeTab === 'bookings' && (
+        <FlatList
+          data={bookings.loading ? [] : bookings.items}
+          keyExtractor={(b) => String(b.id)}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ListHeaderComponent={() => (
+            <View style={styles.tasksHeader}>
+              <View style={styles.tasksHeaderRow}>
+                <Text style={styles.sectionTitle}>Bookings</Text>
+                <NewButton label="Book" onPress={() => setBookingCreateOpen(true)} />
+              </View>
+              <View style={[styles.subTabBar, { marginTop: 10, marginHorizontal: 0 }]}>
+                {[{ key: 'upcoming', label: 'Upcoming' }, { key: 'past', label: 'Past' }].map((sc) => (
+                  <TouchableOpacity
+                    key={sc.key}
+                    style={[styles.subTab, bookings.scope === sc.key && styles.subTabActive]}
+                    onPress={() => bookings.setScope(sc.key)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.subTabText, bookings.scope === sc.key && styles.subTabTextActive]}>{sc.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+          ListEmptyComponent={() =>
+            bookings.loading ? (
+              <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  icon="event"
+                  iconColor={Colors.primary}
+                  iconBg={Colors.primaryLight}
+                  title={bookings.scope === 'past' ? 'No past bookings' : 'No upcoming bookings'}
+                  subtitle="Book a piece of gear for a project and dates."
+                  hint="Tip: Scan an asset to book it."
+                />
+              </View>
+            )
+          }
+          renderItem={({ item }) => (
+            <BookingCard
+              item={item}
+              canManage
+              onCancel={(id) => Alert.alert('Cancel booking', 'Remove this booking?', [
+                { text: 'Keep' },
+                { text: 'Cancel booking', style: 'destructive', onPress: () => bookings.cancelBooking(id) },
+              ])}
+            />
+          )}
+        />
       )}
 
       {/* ── Hire list (mobile native only) ── */}
@@ -315,6 +380,14 @@ export default function TasksScreen() {
         task={completeTarget}
         onClose={() => setCompleteTarget(null)}
         onComplete={completeManualTask}
+      />
+
+      {/* ── Create booking modal ── */}
+      <CreateBookingModal
+        visible={bookingCreateOpen}
+        onClose={() => setBookingCreateOpen(false)}
+        onCreate={bookings.createBooking}
+        getAvailability={bookings.getAvailability}
       />
     </ScreenWrapper>
   );

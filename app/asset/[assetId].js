@@ -21,6 +21,7 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import StatusBadge, { AssetStatusBadges } from '../../components/ui/StatusBadge';
 import PriorityNotesBanner from '../../components/PriorityNotesBanner';
+import AssetBookingBanner from '../../components/bookings/AssetBookingBanner';
 import ScreenState from '../../components/ui/ScreenState';
 import { Row, DetailsGrid } from '../../components/asset/AssetRows';
 import AssetQRModal from '../../components/asset/AssetQRModal';
@@ -484,6 +485,9 @@ export default function AssetDetailPage() {
               </>
             );
           })()}
+
+            {/* Upcoming/active internal booking banner */}
+            <AssetBookingBanner assetId={asset?.id} style={{ marginTop: 16 }} />
 
             {/* Current work details */}
           {currentDetails && (

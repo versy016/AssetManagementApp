@@ -105,7 +105,7 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
-    const { name, image_url } = req.body;
+    const { name, image_url, bookable } = req.body;
     const existing = await prisma.asset_types.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ status: 'error', message: 'Asset type not found' });
 
@@ -114,6 +114,7 @@ exports.update = async (req, res, next) => {
       data: {
         ...(name !== undefined ? { name: name?.trim() } : {}),
         ...(image_url !== undefined ? { image_url } : {}),
+        ...(bookable !== undefined ? { bookable: bookable === true || bookable === 'true' } : {}),
       },
     });
     res.json({ status: 'success', data: updated });
@@ -145,13 +146,14 @@ exports.remove = async (req, res, next) => {
 exports.create = async (req, res, next) => {
   try {
     // Supports JSON body (no file)
-    const { name, image_url } = req.body || {};
+    const { name, image_url, bookable } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ status: 'error', message: 'name is required' });
     }
 
     const created = await prisma.asset_types.create({
-      data: { name: name.trim(), image_url: image_url || null },
+      // Bookable by default — only false when explicitly turned off.
+      data: { name: name.trim(), image_url: image_url || null, bookable: !(bookable === false || bookable === 'false') },
     });
 
     res.status(201).json({ status: 'success', data: created });
@@ -161,7 +163,7 @@ exports.create = async (req, res, next) => {
 // Called when route detected multipart + upload.single('image') already ran
 exports.createWithImage = async (req, res, next) => {
   try {
-    const { name } = req.body || {};
+    const { name, bookable } = req.body || {};
     if (!name || !req.file) {
       return res.status(400).json({ status: 'error', message: 'name and image are required' });
     }
@@ -170,7 +172,8 @@ exports.createWithImage = async (req, res, next) => {
     if (!s3Url) return res.status(500).json({ status: 'error', message: 'Image upload failed' });
 
     const created = await prisma.asset_types.create({
-      data: { name: name.trim(), image_url: s3Url },
+      // Bookable by default — only false when explicitly turned off.
+      data: { name: name.trim(), image_url: s3Url, bookable: !(bookable === false || bookable === 'false') },
     });
 
     res.status(201).json({ status: 'success', data: created });

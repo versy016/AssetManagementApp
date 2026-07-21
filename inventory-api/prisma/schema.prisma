@@ -33,6 +33,16 @@ enum ActionPriority {
   CRITICAL
 }
 
+// Lifecycle of an internal asset booking.
+enum BookingStatus {
+  REQUESTED // > 6 weeks — awaiting admin approval
+  CONFIRMED // within limits, or approved
+  REJECTED  // admin declined a long booking
+  CANCELLED // withdrawn by user/admin
+  ACTIVE    // window is current / asset checked out
+  COMPLETED // returned or window ended
+}
+
 model asset_logs {
   id       String    @id @default(dbgenerated("uuid_generate_v4()"))
   asset_id String?
@@ -47,6 +57,9 @@ model asset_types {
   id         String              @id @default(dbgenerated("uuid_generate_v4()"))
   name       String
   image_url  String?
+  // Whether assets of this type can be booked (internal reservations). Bookable by
+  // default; an admin can turn it off per type.
+  bookable   Boolean             @default(true)
   created_at DateTime            @default(now()) @db.Timestamp(6)
   updated_at DateTime?           @updatedAt
   fields     asset_type_fields[]
@@ -84,6 +97,7 @@ model assets {
   actions           asset_actions[]
   documents         asset_documents[]
   tasks             tasks[]              @relation("TaskAsset")
+  bookings          bookings[]
 
   // Indexes for the common list/filter/group-by paths (status summary,
   // inventory filters, per-user assignment lookups). FK columns are NOT
@@ -217,6 +231,10 @@ model users {
   // Backrefs for manual tasks
   tasks_assigned    tasks[]         @relation("TaskAssignee")
   tasks_created     tasks[]         @relation("TaskCreator")
+
+  // Backrefs for bookings
+  bookings_made     bookings[]      @relation("BookingBookedBy")
+  bookings_approved bookings[]      @relation("BookingApprover")
 }
 
 enum UserRole {
@@ -337,4 +355,37 @@ model registered_domains {
   display_name String
   created_at   DateTime @default(now()) @db.Timestamptz(6)
   updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
+// Internal asset booking: one user reserves a bookable asset for a project + date
+// window. Distinct from Hire (external clients). Availability is checked against
+// both bookings and hires so an asset can't be double-allocated.
+model bookings {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()"))
+  asset_id       String
+  booked_by_id   String
+  project        String?       // display label
+  project_ref    String?       // Algolia projects objectID (same source as Hire)
+  date_from      DateTime      @db.Date
+  date_to        DateTime      @db.Date
+  status         BookingStatus @default(CONFIRMED)
+  needs_approval Boolean       @default(false) // true when duration > 6 weeks
+  approved_by    String?
+  checked_out_at DateTime?     @db.Timestamptz(6) // actual collection
+  returned_at    DateTime?     @db.Timestamptz(6) // actual return
+  notes          String?
+  // Google Calendar two-way sync (shared company equipment calendar).
+  google_event_id  String?     @unique // linked event id on the shared calendar
+  google_synced_at DateTime?   @db.Timestamptz(6)
+  created_at     DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime      @default(now()) @updatedAt @db.Timestamptz(6)
+
+  asset     assets @relation(fields: [asset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  booked_by users  @relation("BookingBookedBy", fields: [booked_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approver  users? @relation("BookingApprover", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([asset_id])
+  @@index([date_from, date_to])
+  @@index([booked_by_id])
+  @@index([status])
 }

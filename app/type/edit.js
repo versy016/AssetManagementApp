@@ -150,6 +150,9 @@ export default function EditAssetType() {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
+  // Whether assets of this type can be booked (internal reservations).
+  const [bookable, setBookable] = useState(false);
+  const [origBookable, setOrigBookable] = useState(false);
   const [pickedImage, setPickedImage] = useState(null); // { uri, file }
   // Unmount cleanup so any held blob:URL is released when leaving the page.
   const pickedImageUriRef = useRef(null);
@@ -340,6 +343,8 @@ export default function EditAssetType() {
         setImageUrl(row?.image_url || '');
         setOrigName(row?.name || '');
         setOrigImageUrl(row?.image_url || '');
+        setBookable(!!row?.bookable);
+        setOrigBookable(!!row?.bookable);
         const fields = Array.isArray(row?.fields) ? row.fields : [];
         setExistingFields(fields);
 
@@ -726,7 +731,8 @@ export default function EditAssetType() {
         !!origImageUrl &&
         (origImageUrl === 'changed' || String(origImageUrl).trim().length > 0);
       const imageRemoved = !pickingNew && hadImageOnServer && !urlTrim;
-      const needCore = nameChanged || pickingNew || imageRemoved;
+      const bookableChanged = !!bookable !== !!origBookable;
+      const needCore = nameChanged || pickingNew || imageRemoved || bookableChanged;
 
       const coreMsgs = [];
       if (needCore) {
@@ -734,6 +740,7 @@ export default function EditAssetType() {
         if (pickingNew) {
           const fd = new FormData();
           fd.append('name', trimmedName);
+          fd.append('bookable', bookable ? 'true' : 'false');
           fd.append('image', pickedImage.file, pickedImage.file.name || 'upload.jpg');
           resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
             method: 'PUT',
@@ -741,7 +748,7 @@ export default function EditAssetType() {
             headers: { ...authH },
           });
         } else {
-          const payload = { name: trimmedName };
+          const payload = { name: trimmedName, bookable };
           if (imageRemoved) payload.image_url = null;
 
           resCore = await fetch(`${API_BASE_URL}/asset-types/${id}`, {
@@ -758,8 +765,10 @@ export default function EditAssetType() {
         else if (imageRemoved) coreMsgs.push('Image removed');
         if (nameChanged) coreMsgs.push('Name updated');
 
+        if (bookableChanged) coreMsgs.push(bookable ? 'Bookable enabled' : 'Bookable disabled');
         // Update originals for subsequent saves
         setOrigName(trimmedName);
+        setOrigBookable(bookable);
         if (pickingNew) {
           setOrigImageUrl('changed');
           setImageUrl('');
@@ -1057,6 +1066,15 @@ export default function EditAssetType() {
             value={name}
             onChangeText={(t) => { setName(t); if (nameError && t.trim()) setNameError(false); }}
           />
+
+          {/* Bookable — assets of this type can be reserved (bookings feature). */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>Bookable</Text>
+              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Allow assets of this type to be reserved (bookings).</Text>
+            </View>
+            <Switch value={bookable} onValueChange={setBookable} />
+          </View>
 
           {/* Mobile-only image picker (the web hero card carries the controls
              on wide screens, so this section is hidden there). */}

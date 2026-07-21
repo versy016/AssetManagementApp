@@ -89,6 +89,7 @@ app.use('/places', apiLimiter);
 app.use('/activity', apiLimiter);
 app.use('/labels', apiLimiter);
 app.use('/hire-disclaimer', apiLimiter);
+app.use('/bookings', apiLimiter);
 
 // Signing page & submission — unauthenticated but token-gated; allow generous limit
 // per IP so signers on mobile/proxy IPs aren't blocked after a few retries.
@@ -143,6 +144,7 @@ const adminUsersRoutes     = require('./routes/adminUsers');
 const assetScanRoutes      = require('./routes/assetScan');
 const tasksRoutes          = require('./routes/tasks');
 const settingsRoutes       = require('./routes/settings');
+const bookingsRoutes       = require('./routes/bookings');
 
 // Mount the vision scan route BEFORE the catch-all assetRoutes so the more
 // specific `/assets/scan-image` path wins.
@@ -162,6 +164,7 @@ app.use('/public', publicAssetsRoutes);
 app.use('/admin/users', adminUsersRoutes);
 app.use('/tasks', tasksRoutes);
 app.use('/settings', settingsRoutes);
+app.use('/bookings', bookingsRoutes);
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)

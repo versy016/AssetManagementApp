@@ -20,6 +20,7 @@ import TasksScreen from './tasks';
 import CertsView from '../../components/CertsView';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import HireView from '../../components/HireView';
+import BookingsView from '../../components/BookingsView';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import { getShortcutType, getDisplayShortcuts, canUseShortcut } from '../../constants/ShortcutTypes';
 import { executeShortcut } from '../../utils/ShortcutExecutor';
@@ -395,6 +396,7 @@ const Dashboard = ({ isAdmin }) => {
       );
     }
     if (key === 'tasks') return <View style={s.webPane}><TasksScreen /></View>;
+    if (key === 'bookings') return <View style={s.webPane}><BookingsView /></View>;
     if (key === 'hire') {
       // Admin-only section — redirect non-admins silently to the dashboard home
       if (!canAdmin) return <View style={s.webPane}><SearchScreen embed /></View>;
