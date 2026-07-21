@@ -64,6 +64,9 @@ logs
 # Audit / analysis deliverables (kept out of version control)
 audit-reports/
 
+# Planning docs & diagram deliverables (kept out of version control)
+docs/
+
 # Prisma
 prisma/migrations/
 !prisma/migrations/.gitkeep
