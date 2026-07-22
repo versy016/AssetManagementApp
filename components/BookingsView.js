@@ -9,6 +9,7 @@ import { Colors, Radius, sf } from '../constants/uiTheme';
 import { useBookings } from '../hooks/useBookings';
 import BookingCard from './bookings/BookingCard';
 import CreateBookingModal from './bookings/CreateBookingModal';
+import BookingsCalendar from './bookings/BookingsCalendar';
 import ConfirmModal from './ui/ConfirmModal';
 import EmptyState from './ui/EmptyState';
 
@@ -22,6 +23,7 @@ export default function BookingsView() {
   const b = useBookings();
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelId, setCancelId] = useState(null);
+  const [viewMode, setViewMode] = useState('calendar'); // default to calendar
 
   const pending = useMemo(
     () => b.items.filter((x) => String(x.status).toUpperCase() === 'REQUESTED'),
@@ -37,12 +39,21 @@ export default function BookingsView() {
       <View style={styles.header}>
         <Text style={styles.title}>Bookings</Text>
         <View style={styles.seg}>
-          {[{ k: 'upcoming', l: 'Upcoming' }, { k: 'past', l: 'Past' }].map((sc) => (
-            <TouchableOpacity key={sc.k} style={[styles.segBtn, b.scope === sc.k && styles.segBtnOn]} onPress={() => b.setScope(sc.k)}>
-              <Text style={[styles.segText, b.scope === sc.k && styles.segTextOn]}>{sc.l}</Text>
+          {[{ k: 'calendar', l: 'Calendar' }, { k: 'list', l: 'List' }].map((vm) => (
+            <TouchableOpacity key={vm.k} style={[styles.segBtn, viewMode === vm.k && styles.segBtnOn]} onPress={() => setViewMode(vm.k)}>
+              <Text style={[styles.segText, viewMode === vm.k && styles.segTextOn]}>{vm.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
+        {viewMode === 'list' ? (
+          <View style={styles.seg}>
+            {[{ k: 'upcoming', l: 'Upcoming' }, { k: 'past', l: 'Past' }].map((sc) => (
+              <TouchableOpacity key={sc.k} style={[styles.segBtn, b.scope === sc.k && styles.segBtnOn]} onPress={() => b.setScope(sc.k)}>
+                <Text style={[styles.segText, b.scope === sc.k && styles.segTextOn]}>{sc.l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
         <View style={{ flex: 1 }} />
         <TouchableOpacity style={styles.newBtn} onPress={() => setCreateOpen(true)}>
           <MaterialIcons name="add" size={18} color="#fff" />
@@ -50,10 +61,24 @@ export default function BookingsView() {
         </TouchableOpacity>
       </View>
 
-      {b.loading ? (
+      {viewMode === 'calendar' ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.centered}>
+            <BookingsCalendar
+              items={b.calItems}
+              loadRange={b.loadRange}
+              canManage
+              onCancel={(id) => setCancelId(id)}
+              onCheckout={b.checkoutBooking}
+              onReturn={b.returnBooking}
+            />
+          </View>
+        </ScrollView>
+      ) : b.loading ? (
         <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 48 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          <View style={styles.centered}>
           {/* Admin approvals */}
           {b.isAdmin && pending.length > 0 && (
             <View style={styles.section}>
@@ -94,11 +119,12 @@ export default function BookingsView() {
             <View style={styles.grid}>
               {rest.map((item) => (
                 <View key={item.id} style={styles.gridItem}>
-                  <BookingCard item={item} canManage onCancel={(id) => setCancelId(id)} />
+                  <BookingCard item={item} canManage onCancel={(id) => setCancelId(id)} onCheckout={b.checkoutBooking} onReturn={b.returnBooking} />
                 </View>
               ))}
             </View>
           )}
+          </View>
         </ScrollView>
       )}
 
@@ -123,8 +149,9 @@ export default function BookingsView() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
+  wrap: { flex: 1, width: '100%', paddingTop: 16 },
+  centered: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap', width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20 },
   title: { fontSize: sf(22), fontWeight: '900', color: Colors.text },
   seg: { flexDirection: 'row', borderWidth: 1, borderColor: Colors.line, borderRadius: 9, overflow: 'hidden' },
   segBtn: { paddingVertical: 7, paddingHorizontal: 14 },

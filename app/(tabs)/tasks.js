@@ -2,7 +2,7 @@
 // Thin orchestrator — all logic lives in hooks/useTasks.js.
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Alert } from 'react-native';
 import { Colors, Radius, sf } from '../../constants/uiTheme';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -20,6 +20,7 @@ import CompleteTaskModal from '../../components/tasks/CompleteTaskModal';
 import NewButton from '../../components/ui/NewButton';
 import { useBookings } from '../../hooks/useBookings';
 import BookingCard from '../../components/bookings/BookingCard';
+import BookingsCalendar from '../../components/bookings/BookingsCalendar';
 import CreateBookingModal from '../../components/bookings/CreateBookingModal';
 
 export default function TasksScreen() {
@@ -89,6 +90,11 @@ export default function TasksScreen() {
   // Bookings (Work ▸ Bookings sub-tab)
   const bookings = useBookings();
   const [bookingCreateOpen, setBookingCreateOpen] = useState(false);
+  const [bookingView, setBookingView] = useState('calendar'); // calendar | list
+  const cancelBookingConfirm = (id) => Alert.alert('Cancel booking', 'Remove this booking?', [
+    { text: 'Keep' },
+    { text: 'Cancel booking', style: 'destructive', onPress: () => bookings.cancelBooking(id) },
+  ]);
 
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
@@ -147,61 +153,72 @@ export default function TasksScreen() {
         </View>
       )}
 
-      {/* ── Bookings list (mobile native only) ── */}
+      {/* ── Bookings (mobile native only) — calendar by default ── */}
       {Platform.OS !== 'web' && activeTab === 'bookings' && (
-        <FlatList
-          data={bookings.loading ? [] : bookings.items}
-          keyExtractor={(b) => String(b.id)}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          ListHeaderComponent={() => (
-            <View style={styles.tasksHeader}>
-              <View style={styles.tasksHeaderRow}>
-                <Text style={styles.sectionTitle}>Bookings</Text>
-                <NewButton label="Book" onPress={() => setBookingCreateOpen(true)} />
-              </View>
-              <View style={[styles.subTabBar, { marginTop: 10, marginHorizontal: 0 }]}>
-                {[{ key: 'upcoming', label: 'Upcoming' }, { key: 'past', label: 'Past' }].map((sc) => (
-                  <TouchableOpacity
-                    key={sc.key}
-                    style={[styles.subTab, bookings.scope === sc.key && styles.subTabActive]}
-                    onPress={() => bookings.setScope(sc.key)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.subTabText, bookings.scope === sc.key && styles.subTabTextActive]}>{sc.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+        <View style={{ flex: 1 }}>
+          <View style={[styles.tasksHeader, { paddingBottom: 0 }]}>
+            <View style={styles.tasksHeaderRow}>
+              <Text style={styles.sectionTitle}>Bookings</Text>
+              <NewButton label="Book" onPress={() => setBookingCreateOpen(true)} />
             </View>
-          )}
-          ListEmptyComponent={() =>
-            bookings.loading ? (
-              <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
-            ) : (
-              <View style={styles.emptyWrap}>
-                <EmptyState
-                  icon="event"
-                  iconColor={Colors.primary}
-                  iconBg={Colors.primaryLight}
-                  title={bookings.scope === 'past' ? 'No past bookings' : 'No upcoming bookings'}
-                  subtitle="Book a piece of gear for a project and dates."
-                  hint="Tip: Scan an asset to book it."
-                />
-              </View>
-            )
-          }
-          renderItem={({ item }) => (
-            <BookingCard
-              item={item}
-              canManage
-              onCancel={(id) => Alert.alert('Cancel booking', 'Remove this booking?', [
-                { text: 'Keep' },
-                { text: 'Cancel booking', style: 'destructive', onPress: () => bookings.cancelBooking(id) },
-              ])}
+            <View style={[styles.subTabBar, { marginTop: 10, marginHorizontal: 0 }]}>
+              {[{ key: 'calendar', label: 'Calendar' }, { key: 'list', label: 'List' }].map((vm) => (
+                <TouchableOpacity key={vm.key} style={[styles.subTab, bookingView === vm.key && styles.subTabActive]} onPress={() => setBookingView(vm.key)} activeOpacity={0.8}>
+                  <Text style={[styles.subTabText, bookingView === vm.key && styles.subTabTextActive]}>{vm.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {bookingView === 'calendar' ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+              <BookingsCalendar
+                items={bookings.calItems}
+                loadRange={bookings.loadRange}
+                canManage
+                onCancel={cancelBookingConfirm}
+                onCheckout={bookings.checkoutBooking}
+                onReturn={bookings.returnBooking}
+              />
+            </ScrollView>
+          ) : (
+            <FlatList
+              data={bookings.loading ? [] : bookings.items}
+              keyExtractor={(b) => String(b.id)}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              ListHeaderComponent={() => (
+                <View style={[styles.subTabBar, { marginBottom: 10, marginHorizontal: 0 }]}>
+                  {[{ key: 'upcoming', label: 'Upcoming' }, { key: 'past', label: 'Past' }].map((sc) => (
+                    <TouchableOpacity key={sc.key} style={[styles.subTab, bookings.scope === sc.key && styles.subTabActive]} onPress={() => bookings.setScope(sc.key)} activeOpacity={0.8}>
+                      <Text style={[styles.subTabText, bookings.scope === sc.key && styles.subTabTextActive]}>{sc.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              ListEmptyComponent={() =>
+                bookings.loading ? (
+                  <View style={styles.emptyWrap}><LoadingSpinner flex={false} size="large" /></View>
+                ) : (
+                  <View style={styles.emptyWrap}>
+                    <EmptyState
+                      icon="event"
+                      iconColor={Colors.primary}
+                      iconBg={Colors.primaryLight}
+                      title={bookings.scope === 'past' ? 'No past bookings' : 'No upcoming bookings'}
+                      subtitle="Book a piece of gear for a project and dates."
+                      hint="Tip: Scan an asset to book it."
+                    />
+                  </View>
+                )
+              }
+              renderItem={({ item }) => (
+                <BookingCard item={item} canManage onCancel={cancelBookingConfirm} onCheckout={bookings.checkoutBooking} onReturn={bookings.returnBooking} />
+              )}
             />
           )}
-        />
+        </View>
       )}
 
       {/* ── Hire list (mobile native only) ── */}

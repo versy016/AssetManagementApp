@@ -26,8 +26,9 @@ const initials = (s) => {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
 };
 
-export default function BookingCard({ item, canManage, onCancel }) {
-  const st = STATUS[String(item.status || '').toUpperCase()] || STATUS.CONFIRMED;
+export default function BookingCard({ item, canManage, onCancel, onCheckout, onReturn }) {
+  const statusUpper = String(item.status || '').toUpperCase();
+  const st = STATUS[statusUpper] || STATUS.CONFIRMED;
   const title = [item.assetTypeName || item.model || 'Asset', item.assetId].filter(Boolean).join(' · ');
   return (
     <View style={styles.card}>
@@ -66,10 +67,24 @@ export default function BookingCard({ item, canManage, onCancel }) {
       </View>
 
       {canManage ? (
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => onCancel?.(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MaterialIcons name="delete-outline" size={15} color={Colors.dangerFg} />
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
+        <View style={styles.actions}>
+          {statusUpper === 'CONFIRMED' && onCheckout ? (
+            <TouchableOpacity style={styles.actBtn} onPress={() => onCheckout(item.id)}>
+              <MaterialIcons name="logout" size={15} color={Colors.infoFg} />
+              <Text style={[styles.actText, { color: Colors.infoFg }]}>Check out</Text>
+            </TouchableOpacity>
+          ) : null}
+          {statusUpper === 'ACTIVE' && onReturn ? (
+            <TouchableOpacity style={styles.actBtn} onPress={() => onReturn(item.id)}>
+              <MaterialIcons name="login" size={15} color={Colors.successFg} />
+              <Text style={[styles.actText, { color: Colors.successFg }]}>Return</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity style={styles.actBtn} onPress={() => onCancel?.(item.id)}>
+            <MaterialIcons name="delete-outline" size={15} color={Colors.dangerFg} />
+            <Text style={[styles.actText, { color: Colors.dangerFg }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
     </View>
   );
@@ -93,6 +108,7 @@ const styles = StyleSheet.create({
   whoName: { fontSize: sf(12.5), color: Colors.sub, fontWeight: '600', flexShrink: 1 },
   dates: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   datesText: { fontSize: sf(12.5), fontWeight: '800', color: Colors.text },
-  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 10 },
-  cancelText: { fontSize: sf(12.5), fontWeight: '700', color: Colors.dangerFg },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 10 },
+  actBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  actText: { fontSize: sf(12.5), fontWeight: '700' },
 });

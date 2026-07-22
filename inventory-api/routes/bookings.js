@@ -243,8 +243,15 @@ router.get('/', async (req, res) => {
     if (req.query.asset_id) where.asset_id = String(req.query.asset_id);
     if (req.query.status) where.status = String(req.query.status).toUpperCase();
     if (req.query.booked_by) where.booked_by_id = String(req.query.booked_by);
-    if (scope === 'upcoming') where.date_to = { gte: today };
-    else if (scope === 'past') where.date_to = { lt: today };
+    // Calendar passes an explicit from/to window; the list uses scope. Range wins.
+    if (req.query.from || req.query.to) {
+      if (req.query.from) where.date_to = { gte: parseDate(req.query.from) };
+      if (req.query.to) where.date_from = { lte: parseDate(req.query.to) };
+    } else if (scope === 'upcoming') {
+      where.date_to = { gte: today };
+    } else if (scope === 'past') {
+      where.date_to = { lt: today };
+    }
 
     const rows = await prisma.bookings.findMany({
       where,
