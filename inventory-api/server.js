@@ -290,6 +290,19 @@ function start() {
     console.warn('[server] maintenance-due sweep not started:', e?.message || e);
   }
 
+  // Booking reminders (collect / return tomorrow) + overdue-return alerts.
+  // Runs on boot and every 6 hours; idempotent so pushes fire once.
+  try {
+    const { runBookingSweep } = bookingsRoutes;
+    if (typeof runBookingSweep === 'function') {
+      runBookingSweep().then((n) => { if (n) console.log(`[server] booking sweep sent ${n} notification(s)`); }).catch(() => {});
+      const bsweep = setInterval(() => { runBookingSweep().catch(() => {}); }, 6 * 60 * 60 * 1000);
+      if (bsweep.unref) bsweep.unref();
+    }
+  } catch (e) {
+    console.warn('[server] booking sweep not started:', e?.message || e);
+  }
+
   const shutdown = async (signal) => {
     console.log(`[server] ${signal} received. Shutting down...`);
     server?.close(async () => {

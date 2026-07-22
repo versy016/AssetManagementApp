@@ -374,6 +374,10 @@ model bookings {
   checked_out_at DateTime?     @db.Timestamptz(6) // actual collection
   returned_at    DateTime?     @db.Timestamptz(6) // actual return
   notes          String?
+  // Reminder-sweep bookkeeping (so each push fires once).
+  reminded_start_at   DateTime? @db.Timestamptz(6) // "collect tomorrow" sent
+  reminded_end_at     DateTime? @db.Timestamptz(6) // "due back tomorrow" sent
+  overdue_notified_at DateTime? @db.Timestamptz(6) // overdue-return alert sent
   // Google Calendar two-way sync (shared company equipment calendar).
   google_event_id  String?     @unique // linked event id on the shared calendar
   google_synced_at DateTime?   @db.Timestamptz(6)

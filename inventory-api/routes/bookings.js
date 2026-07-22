@@ -481,4 +481,64 @@ router.post('/:id/return', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Scheduled sweep — collect/return reminders + overdue alerts. Idempotent via the
+// reminded_*/overdue_notified_at columns so each push fires once. Run on boot + on
+// an interval from server.js.
+// ─────────────────────────────────────────────────────────────────────────────
+async function runBookingSweep() {
+  const today = todayUtc();
+  const dayAfter = new Date(+today + 2 * DAY);
+  const assetName = (b) => b.asset?.asset_types?.name || b.asset?.model || 'an asset';
+  const dstr = (d) => new Date(d).toISOString().slice(0, 10);
+  let sent = 0;
+  try {
+    // 1) Start reminder — a confirmed booking starting today or tomorrow.
+    const starts = await prisma.bookings.findMany({
+      where: { reminded_start_at: null, status: 'CONFIRMED', date_from: { gte: today, lt: dayAfter } },
+      include: BOOKING_INCLUDE,
+    });
+    for (const b of starts) {
+      const when = +new Date(b.date_from) <= +today ? 'today' : 'tomorrow';
+      await pushToUsers([b.booked_by_id], `Booking starts ${when}`,
+        `Collect ${assetName(b)} ${when}${b.project ? ` for ${b.project}` : ''}.`,
+        { type: 'booking_reminder_start', bookingId: b.id });
+      await prisma.bookings.update({ where: { id: b.id }, data: { reminded_start_at: new Date() } });
+      sent += 1;
+    }
+    // 2) Return reminder — a live booking ending today or tomorrow.
+    const ends = await prisma.bookings.findMany({
+      where: { reminded_end_at: null, status: { in: ['CONFIRMED', 'ACTIVE'] }, date_to: { gte: today, lt: dayAfter } },
+      include: BOOKING_INCLUDE,
+    });
+    for (const b of ends) {
+      const when = +new Date(b.date_to) <= +today ? 'today' : 'tomorrow';
+      await pushToUsers([b.booked_by_id], `Booking ends ${when}`,
+        `${assetName(b)} is due back ${when}.`,
+        { type: 'booking_reminder_end', bookingId: b.id });
+      await prisma.bookings.update({ where: { id: b.id }, data: { reminded_end_at: new Date() } });
+      sent += 1;
+    }
+    // 3) Overdue — ended before today, not returned, still live.
+    const overdue = await prisma.bookings.findMany({
+      where: { overdue_notified_at: null, returned_at: null, status: { in: ['CONFIRMED', 'ACTIVE'] }, date_to: { lt: today } },
+      include: BOOKING_INCLUDE,
+    });
+    if (overdue.length) {
+      const admins = await adminIds();
+      for (const b of overdue) {
+        await pushToUsers([b.booked_by_id, ...admins], 'Booking overdue',
+          `${assetName(b)} was due back ${dstr(b.date_to)} and hasn't been returned.`,
+          { type: 'booking_overdue', bookingId: b.id });
+        await prisma.bookings.update({ where: { id: b.id }, data: { overdue_notified_at: new Date() } });
+        sent += 1;
+      }
+    }
+  } catch (e) {
+    log('-', 'WARN', 'booking-sweep-failed', { message: e.message });
+  }
+  return sent;
+}
+
 module.exports = router;
+module.exports.runBookingSweep = runBookingSweep;
