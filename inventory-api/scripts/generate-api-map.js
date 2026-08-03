@@ -352,19 +352,41 @@ function toOpenApi(map) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+/** Everything except the timestamp, so an unchanged map compares equal. */
+function withoutGeneratedAt(text) {
+  return text.replace(/^\s*"generatedAt":.*$/m, '');
+}
+
+/**
+ * Write only when the meaningful content changed. The commit hook regenerates on
+ * every routes/*.js change, and rewriting solely to bump `generatedAt` would dirty
+ * both files on every commit and turn them into recurring merge conflicts.
+ * @returns {boolean} whether the file was written
+ */
+function writeIfChanged(file, contents) {
+  try {
+    const prev = fs.readFileSync(file, 'utf8');
+    if (withoutGeneratedAt(prev) === withoutGeneratedAt(contents)) return false;
+  } catch (_) {
+    // No previous file — fall through and write.
+  }
+  fs.writeFileSync(file, contents);
+  return true;
+}
+
 function main() {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const map = build();
-  fs.writeFileSync(DATA_OUT, `${JSON.stringify(map, null, 2)}\n`);
-  fs.writeFileSync(OPENAPI_OUT, `${JSON.stringify(toOpenApi(map), null, 2)}\n`);
+  const wroteData = writeIfChanged(DATA_OUT, `${JSON.stringify(map, null, 2)}\n`);
+  const wroteApi = writeIfChanged(OPENAPI_OUT, `${JSON.stringify(toOpenApi(map), null, 2)}\n`);
 
   const rel = (p) => path.relative(process.cwd(), p);
   console.log(
-    `API map written: ${rel(DATA_OUT)} (${map.totals.routers} routers, ` +
+    `API map ${wroteData ? 'written' : 'unchanged'}: ${rel(DATA_OUT)} (${map.totals.routers} routers, ` +
       `${map.totals.endpoints} endpoints, ${map.totals.unguardedRouters} with no auth guard)`
   );
-  console.log(`OpenAPI written: ${rel(OPENAPI_OUT)}`);
+  console.log(`OpenAPI ${wroteApi ? 'written' : 'unchanged'}: ${rel(OPENAPI_OUT)}`);
 }
 
 try {
