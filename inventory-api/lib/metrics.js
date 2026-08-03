@@ -44,16 +44,37 @@ function minuteBucket(d) {
 function templateFor(req) {
   const base = req.baseUrl || '';
   const routePath = req.route && req.route.path ? req.route.path : null;
-  if (!routePath) return { router: '(unmatched)', route: `${base || ''}(unmatched)` };
+
+  if (!routePath) {
+    // No route matched, or the request died in middleware before routing — a
+    // rate-limit rejection, a malformed body, a 404. Bucket by first path segment
+    // rather than into one global bin: cardinality stays bounded by the number of
+    // top-level mounts, and "/assets is throwing 429s" stays visible.
+    const seg = String(req.path || '/').split('/')[1] || '';
+    return { router: '(unmatched)', route: `${seg ? `/${seg}` : ''}/(unmatched)` };
+  }
+
   const joined = `${base}${routePath === '/' ? '' : routePath}` || '/';
   return { router: routerIdFromMount(base || '/'), route: joined };
 }
 
-/** Express middleware. Mount once, before the routers. */
+/**
+ * Paths excluded from collection. The map polls /metrics/routes every 15s and
+ * loads its assets from /docs, so counting them would make the two busiest routes
+ * in any window the monitoring itself — burying the traffic worth looking at.
+ */
+const IGNORED = [/^\/metrics(\/|$)/, /^\/docs(\/|$)/];
+
+function isIgnored(pathname) {
+  return IGNORED.some((re) => re.test(pathname));
+}
+
+/** Express middleware. Mount once, above the rate limiters and body parsers. */
 function middleware() {
   if (!ENABLED) return (_req, _res, next) => next();
 
   return function metricsMiddleware(req, res, next) {
+    if (isIgnored(req.path || '')) return next();
     const startedAt = process.hrtime.bigint();
 
     res.on('finish', () => {

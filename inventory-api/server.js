@@ -52,6 +52,17 @@ app.use(cors());
 // No Sentry request middleware here by design: since v8 the SDK instruments
 // Express automatically from init(), which runs above the `express` require.
 
+// ---- Request metrics ------------------------------------------------------
+// Records method/route/status/duration for the API map's live view.
+//
+// Mounted FIRST, above the rate limiters and body parsers, so it sees every
+// response — including the ones that never reach a route handler. Sitting below
+// them (where this started) made rate-limit rejections and malformed-body errors
+// invisible, which are exactly the failures worth seeing. It reads req.route on
+// the 'finish' event, after routing has run, so an early mount costs nothing.
+const metrics = require('./lib/metrics');
+app.use(metrics.middleware());
+
 // ---- Rate limiting --------------------------------------------------------
 // Only enforce rate limits in production — dev/test traffic is trusted localhost.
 const isNonProd = () => NODE_ENV !== 'production';
@@ -128,13 +139,6 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded' }));
-
-// ---- Request metrics ------------------------------------------------------
-// Records method/route/status/duration per request for the API map's live view.
-// Must sit before the routers so `req.route` is populated by the time it reads it,
-// and after the body parsers so it measures the same work the handler does.
-const metrics = require('./lib/metrics');
-app.use(metrics.middleware());
 
 // ---- Routes ---------------------------------------------------------------
 const assetRoutes = require('./routes/assets');
