@@ -166,20 +166,36 @@ async function flush() {
   return rows.length;
 }
 
-/** Drop rows past the retention window. Runs at most hourly, per worker. */
+/**
+ * Delete rows past the retention window.
+ *
+ * Exported deliberately: the scheduled path below only fires an hour after a
+ * flush, which makes it the easiest part of this module to ship broken and never
+ * notice. Being callable means it can be tested directly and run by hand.
+ *
+ * The cutoff is computed here rather than in SQL because Prisma binds parameters
+ * as untyped, and Postgres cannot resolve `make_interval(days => $1)` from an
+ * untyped parameter. Binding a Date sidesteps the function entirely.
+ *
+ * @param {number} [retentionDays] Defaults to METRICS_RETENTION_DAYS.
+ * @returns {Promise<number>} rows deleted
+ */
+async function prune(retentionDays = RETENTION_DAYS) {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  return prisma.$executeRaw`
+    DELETE FROM api_route_metrics
+    WHERE bucket < ${cutoff}
+  `;
+}
+
+/** Runs at most hourly, per worker. */
 async function pruneOccasionally() {
   const now = Date.now();
   if (now - lastPruneAt < 60 * 60 * 1000) return;
   lastPruneAt = now;
   try {
-    // The cutoff is computed here rather than in SQL: Prisma binds parameters as
-    // untyped, and Postgres cannot resolve `make_interval(days => $1)` from an
-    // untyped parameter. Binding a Date sidesteps the function entirely.
-    const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await prisma.$executeRaw`
-      DELETE FROM api_route_metrics
-      WHERE bucket < ${cutoff}
-    `;
+    const removed = await prune();
+    if (removed) logger.log(`[metrics] pruned ${removed} row(s) past retention`);
   } catch (e) {
     logger.warn('[metrics] prune failed:', e && e.message ? e.message : e);
   }
@@ -241,4 +257,4 @@ async function summary(minutes = 60) {
   return { windowMinutes: mins, generatedAt: new Date().toISOString(), byRouter, routes };
 }
 
-module.exports = { middleware, flush, summary, ENABLED };
+module.exports = { middleware, flush, summary, prune, ENABLED };
