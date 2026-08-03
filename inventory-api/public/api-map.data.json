@@ -1,0 +1,1163 @@
+{
+  "generatedAt": "2026-08-03T05:11:30.961Z",
+  "generator": "scripts/generate-api-map.js",
+  "totals": {
+    "routers": 17,
+    "endpoints": 120,
+    "unguardedRouters": 11,
+    "externals": 8
+  },
+  "routers": [
+    {
+      "id": "r_assets",
+      "mount": "/assets",
+      "file": "routes/assets.js",
+      "label": "assets",
+      "count": 37,
+      "guardedCount": 9,
+      "posture": "mixed",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/assets",
+          "template": "/assets",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets",
+          "template": "/assets",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/:id",
+          "template": "/assets/:id",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/:id",
+          "template": "/assets/:id",
+          "guards": []
+        },
+        {
+          "method": "PUT",
+          "path": "/assets/:id",
+          "template": "/assets/:id",
+          "guards": [
+            "optional",
+            "validated"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/:id/actions",
+          "template": "/assets/:id/actions",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/actions",
+          "template": "/assets/:id/actions",
+          "guards": [
+            "validated"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/:id/actions/:actionId/note",
+          "template": "/assets/:id/actions/:actionId/note",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/assets/:id/actions/:actionId/note",
+          "template": "/assets/:id/actions/:actionId/note",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/actions/:actionId/priority",
+          "template": "/assets/:id/actions/:actionId/priority",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/actions/:actionId/signoff",
+          "template": "/assets/:id/actions/:actionId/signoff",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/actions/upload",
+          "template": "/assets/:id/actions/upload",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/files",
+          "template": "/assets/:id/files",
+          "guards": []
+        },
+        {
+          "method": "PUT",
+          "path": "/assets/:id/files",
+          "template": "/assets/:id/files",
+          "guards": []
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/:id/priority-note",
+          "template": "/assets/:id/priority-note",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/:id/priority-note",
+          "template": "/assets/:id/priority-note",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:id/priority-note",
+          "template": "/assets/:id/priority-note",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/actions/pending-signoff",
+          "template": "/assets/actions/pending-signoff",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/asset_types",
+          "template": "/assets/asset_types",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/asset-options",
+          "template": "/assets/asset-options",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/asset-types",
+          "template": "/assets/asset-types",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/asset-types-summary",
+          "template": "/assets/asset-types-summary",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/asset-types/:id/fields",
+          "template": "/assets/asset-types/:id/fields",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/asset-types/:id/fields",
+          "template": "/assets/asset-types/:id/fields",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/asset-types/:id/fields/:fieldId",
+          "template": "/assets/asset-types/:id/fields/:fieldId",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/assets/asset-types/:id/fields/:fieldId",
+          "template": "/assets/asset-types/:id/fields/:fieldId",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/assets/asset-types/:id/sync",
+          "template": "/assets/asset-types/:id/sync",
+          "guards": [
+            "admin"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/assigned/:userId",
+          "template": "/assets/assigned/:userId",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/assets/stats",
+          "template": "/assets/stats",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/swap-qr",
+          "template": "/assets/swap-qr",
+          "guards": [
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/tasks/count",
+          "template": "/assets/tasks/count",
+          "guards": [
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/:assetId/documents",
+          "template": "/assets/:assetId/documents",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:assetId/documents",
+          "template": "/assets/:assetId/documents",
+          "guards": [
+            "optional"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/:assetId/documents/:docId",
+          "template": "/assets/:assetId/documents/:docId",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/assets/:assetId/documents/:docId",
+          "template": "/assets/:assetId/documents/:docId",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/:assetId/documents/upload",
+          "template": "/assets/:assetId/documents/upload",
+          "guards": [
+            "optional"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/assets/documents",
+          "template": "/assets/documents",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_users",
+      "mount": "/users",
+      "file": "routes/users.js",
+      "label": "users",
+      "count": 15,
+      "guardedCount": 7,
+      "posture": "mixed",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/users",
+          "template": "/users",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/users",
+          "template": "/users",
+          "guards": [
+            "validated"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/users/:id",
+          "template": "/users/:id",
+          "guards": []
+        },
+        {
+          "method": "PUT",
+          "path": "/users/:id",
+          "template": "/users/:id",
+          "guards": [
+            "validated"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/:id/demote",
+          "template": "/users/:id/demote",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/users/:id/favourites",
+          "template": "/users/:id/favourites",
+          "guards": []
+        },
+        {
+          "method": "PUT",
+          "path": "/users/:id/favourites",
+          "template": "/users/:id/favourites",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/users/:id/promote",
+          "template": "/users/:id/promote",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/:userId/assign-asset",
+          "template": "/users/:userId/assign-asset",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/users/lookup/by-email",
+          "template": "/users/lookup/by-email",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/push-token",
+          "template": "/users/push-token",
+          "guards": [
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/qr/generate",
+          "template": "/users/qr/generate",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/qr/generate-excel",
+          "template": "/users/qr/generate-excel",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/users/qr/preview",
+          "template": "/users/qr/preview",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/users/qr/sheets",
+          "template": "/users/qr/sheets",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_hire_disclaimer",
+      "mount": "/hire-disclaimer",
+      "file": "routes/hireDisclaimer.js",
+      "label": "hire-disclaimer",
+      "count": 13,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/hire-disclaimer/generate",
+          "template": "/hire-disclaimer/generate",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/hires",
+          "template": "/hire-disclaimer/hires",
+          "guards": []
+        },
+        {
+          "method": "DELETE",
+          "path": "/hire-disclaimer/hires/:actionId",
+          "template": "/hire-disclaimer/hires/:actionId",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/hires/:actionId/document",
+          "template": "/hire-disclaimer/hires/:actionId/document",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/hires/:actionId/preview.pdf",
+          "template": "/hire-disclaimer/hires/:actionId/preview.pdf",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/hire-disclaimer/hires/:actionId/signature-status",
+          "template": "/hire-disclaimer/hires/:actionId/signature-status",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/hire-disclaimer/hires/:actionId/signing/create",
+          "template": "/hire-disclaimer/hires/:actionId/signing/create",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/hire-disclaimer/hires/:actionId/signing/send",
+          "template": "/hire-disclaimer/hires/:actionId/signing/send",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/signing/:token",
+          "template": "/hire-disclaimer/signing/:token",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/hire-disclaimer/signing/:token/decline",
+          "template": "/hire-disclaimer/signing/:token/decline",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/signing/:token/document.pdf",
+          "template": "/hire-disclaimer/signing/:token/document.pdf",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/hire-disclaimer/signing/:token/submit",
+          "template": "/hire-disclaimer/signing/:token/submit",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/hire-disclaimer/signing/status",
+          "template": "/hire-disclaimer/signing/status",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_bookings",
+      "mount": "/bookings",
+      "file": "routes/bookings.js",
+      "label": "bookings",
+      "count": 10,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/bookings",
+          "template": "/bookings",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/bookings",
+          "template": "/bookings",
+          "guards": []
+        },
+        {
+          "method": "DELETE",
+          "path": "/bookings/:id",
+          "template": "/bookings/:id",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/bookings/:id",
+          "template": "/bookings/:id",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/bookings/:id",
+          "template": "/bookings/:id",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/bookings/:id/approve",
+          "template": "/bookings/:id/approve",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/bookings/:id/checkout",
+          "template": "/bookings/:id/checkout",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/bookings/:id/reject",
+          "template": "/bookings/:id/reject",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/bookings/:id/return",
+          "template": "/bookings/:id/return",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/bookings/availability",
+          "template": "/bookings/availability",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_asset_types",
+      "mount": "/asset-types",
+      "file": "routes/assetTypes.js",
+      "label": "asset-types",
+      "count": 7,
+      "guardedCount": 5,
+      "posture": "mixed",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/asset-types",
+          "template": "/asset-types",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/asset-types",
+          "template": "/asset-types",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/asset-types/:id",
+          "template": "/asset-types/:id",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/asset-types/:id",
+          "template": "/asset-types/:id",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/asset-types/:id",
+          "template": "/asset-types/:id",
+          "guards": [
+            "admin",
+            "auth",
+            "validated"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/asset-types/legacy/all",
+          "template": "/asset-types/legacy/all",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/asset-types/summary/list",
+          "template": "/asset-types/summary/list",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_tasks",
+      "mount": "/tasks",
+      "file": "routes/tasks.js",
+      "label": "tasks",
+      "count": 7,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/tasks",
+          "template": "/tasks",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/tasks",
+          "template": "/tasks",
+          "guards": []
+        },
+        {
+          "method": "DELETE",
+          "path": "/tasks/:id",
+          "template": "/tasks/:id",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/tasks/:id",
+          "template": "/tasks/:id",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/tasks/:id/complete",
+          "template": "/tasks/:id/complete",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/tasks/:id/dismiss",
+          "template": "/tasks/:id/dismiss",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/tasks/feed",
+          "template": "/tasks/feed",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_asset_documents",
+      "mount": "/asset-documents",
+      "file": "routes/assetDocuments.js",
+      "label": "asset-documents",
+      "count": 6,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/asset-documents/:assetId/documents",
+          "template": "/asset-documents/:assetId/documents",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/asset-documents/:assetId/documents",
+          "template": "/asset-documents/:assetId/documents",
+          "guards": [
+            "optional"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/asset-documents/:assetId/documents/:docId",
+          "template": "/asset-documents/:assetId/documents/:docId",
+          "guards": []
+        },
+        {
+          "method": "PATCH",
+          "path": "/asset-documents/:assetId/documents/:docId",
+          "template": "/asset-documents/:assetId/documents/:docId",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/asset-documents/:assetId/documents/upload",
+          "template": "/asset-documents/:assetId/documents/upload",
+          "guards": [
+            "optional"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/asset-documents/documents",
+          "template": "/asset-documents/documents",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_admin_users",
+      "mount": "/admin/users",
+      "file": "routes/adminUsers.js",
+      "label": "admin / users",
+      "count": 5,
+      "guardedCount": 5,
+      "posture": "locked",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/admin/users",
+          "template": "/admin/users",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/admin/users/:id",
+          "template": "/admin/users/:id",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "PATCH",
+          "path": "/admin/users/:id/role",
+          "template": "/admin/users/:id/role",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "PATCH",
+          "path": "/admin/users/:id/status",
+          "template": "/admin/users/:id/status",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/admin/users/invite",
+          "template": "/admin/users/invite",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r_assets_asset_types",
+      "mount": "/assets/asset-types",
+      "file": "routes/assetTypeFields.js",
+      "label": "assets / asset-types",
+      "count": 4,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/assets/asset-types/:assetTypeId/fields",
+          "template": "/assets/asset-types/:assetTypeId/fields",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/assets/asset-types/:assetTypeId/fields",
+          "template": "/assets/asset-types/:assetTypeId/fields",
+          "guards": []
+        },
+        {
+          "method": "DELETE",
+          "path": "/assets/asset-types/:assetTypeId/fields/:fieldId",
+          "template": "/assets/asset-types/:assetTypeId/fields/:fieldId",
+          "guards": []
+        },
+        {
+          "method": "PUT",
+          "path": "/assets/asset-types/:assetTypeId/fields/:fieldId",
+          "template": "/assets/asset-types/:assetTypeId/fields/:fieldId",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_places",
+      "mount": "/places",
+      "file": "routes/places.js",
+      "label": "places",
+      "count": 4,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/places/autocomplete",
+          "template": "/places/autocomplete",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/places/details",
+          "template": "/places/details",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/places/geocode",
+          "template": "/places/geocode",
+          "guards": []
+        },
+        {
+          "method": "GET",
+          "path": "/places/reverse-geocode",
+          "template": "/places/reverse-geocode",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_field_types",
+      "mount": "/field-types",
+      "file": "routes/fieldTypes.js",
+      "label": "field-types",
+      "count": 3,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/field-types",
+          "template": "/field-types",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/field-types",
+          "template": "/field-types",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/field-types/ensure-defaults",
+          "template": "/field-types/ensure-defaults",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_public",
+      "mount": "/public",
+      "file": "routes/publicAssets.js",
+      "label": "public",
+      "count": 3,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/public/assets/:id",
+          "template": "/public/assets/:id",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/public/assets/:id/lost-and-found",
+          "template": "/public/assets/:id/lost-and-found",
+          "guards": []
+        },
+        {
+          "method": "POST",
+          "path": "/public/assets/:id/transfer-to-office",
+          "template": "/public/assets/:id/transfer-to-office",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_settings",
+      "mount": "/settings",
+      "file": "routes/settings.js",
+      "label": "settings",
+      "count": 2,
+      "guardedCount": 2,
+      "posture": "locked",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/settings",
+          "template": "/settings",
+          "guards": [
+            "auth"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/settings/:key",
+          "template": "/settings/:key",
+          "guards": [
+            "admin",
+            "auth"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r_activity",
+      "mount": "/activity",
+      "file": "routes/activity.js",
+      "label": "activity",
+      "count": 1,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/activity",
+          "template": "/activity",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_assets_scan_image",
+      "mount": "/assets/scan-image",
+      "file": "routes/assetScan.js",
+      "label": "assets / scan-image",
+      "count": 1,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/assets/scan-image",
+          "template": "/assets/scan-image",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_labels",
+      "mount": "/labels",
+      "file": "routes/labels.js",
+      "label": "labels",
+      "count": 1,
+      "guardedCount": 0,
+      "posture": "open",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/labels/l7651",
+          "template": "/labels/l7651",
+          "guards": []
+        }
+      ]
+    },
+    {
+      "id": "r_metrics",
+      "mount": "/metrics",
+      "file": "routes/metrics.js",
+      "label": "metrics",
+      "count": 1,
+      "guardedCount": 1,
+      "posture": "locked",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/metrics/routes",
+          "template": "/metrics/routes",
+          "guards": [
+            "token"
+          ]
+        }
+      ]
+    }
+  ],
+  "externals": [
+    {
+      "id": "boldsign",
+      "kind": "ext",
+      "title": "BoldSign",
+      "sub": "hire agreement e-signing"
+    },
+    {
+      "id": "fbauth",
+      "kind": "ext",
+      "title": "Firebase Auth",
+      "sub": "identity · invitations"
+    },
+    {
+      "id": "gplaces",
+      "kind": "ext",
+      "title": "Google Places",
+      "sub": "autocomplete · geocoding"
+    },
+    {
+      "id": "groq",
+      "kind": "ext",
+      "title": "Groq Vision",
+      "sub": "photo → asset fields"
+    },
+    {
+      "id": "push",
+      "kind": "ext",
+      "title": "Expo Push",
+      "sub": "task & booking notifications"
+    },
+    {
+      "id": "s3",
+      "kind": "ext",
+      "title": "AWS S3",
+      "sub": "documents · images · QR · PDFs"
+    },
+    {
+      "id": "smtp",
+      "kind": "ext",
+      "title": "SMTP",
+      "sub": "nodemailer · transactional mail"
+    },
+    {
+      "id": "soffice",
+      "kind": "ext",
+      "title": "LibreOffice",
+      "sub": "docx → pdf subprocess"
+    }
+  ],
+  "externalEdges": [
+    [
+      "r_assets_scan_image",
+      "groq"
+    ],
+    [
+      "r_assets",
+      "s3"
+    ],
+    [
+      "r_assets",
+      "push"
+    ],
+    [
+      "r_assets",
+      "fbauth"
+    ],
+    [
+      "r_users",
+      "fbauth"
+    ],
+    [
+      "r_asset_types",
+      "s3"
+    ],
+    [
+      "r_asset_types",
+      "fbauth"
+    ],
+    [
+      "r_places",
+      "gplaces"
+    ],
+    [
+      "r_labels",
+      "s3"
+    ],
+    [
+      "r_assets",
+      "s3"
+    ],
+    [
+      "r_assets",
+      "fbauth"
+    ],
+    [
+      "r_asset_documents",
+      "s3"
+    ],
+    [
+      "r_asset_documents",
+      "fbauth"
+    ],
+    [
+      "r_hire_disclaimer",
+      "s3"
+    ],
+    [
+      "r_hire_disclaimer",
+      "boldsign"
+    ],
+    [
+      "r_hire_disclaimer",
+      "smtp"
+    ],
+    [
+      "r_hire_disclaimer",
+      "soffice"
+    ],
+    [
+      "r_public",
+      "smtp"
+    ],
+    [
+      "r_admin_users",
+      "smtp"
+    ],
+    [
+      "r_admin_users",
+      "fbauth"
+    ],
+    [
+      "r_settings",
+      "fbauth"
+    ],
+    [
+      "r_bookings",
+      "push"
+    ]
+  ]
+}

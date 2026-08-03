@@ -27,7 +27,8 @@
         "seed:types": "node scripts/seed-asset-types.js",
         "import:excel": "node scripts/import-excel-assets.js",
         "normalize:statuses": "node scripts/normalize-asset-statuses.js",
-        "db:erd": "node scripts/generate-erd.js"
+        "db:erd": "node scripts/generate-erd.js",
+        "api:map": "node scripts/generate-api-map.js"
     },
     "keywords": [
         "inventory",
@@ -96,6 +97,14 @@
         "prisma/schema.prisma": [
             "node scripts/generate-erd.js",
             "git add prisma/ERD.md"
+        ],
+        "routes/*.js": [
+            "node scripts/generate-api-map.js",
+            "git add public/api-map.data.json public/openapi.json"
+        ],
+        "server.js": [
+            "node scripts/generate-api-map.js",
+            "git add public/api-map.data.json public/openapi.json"
         ]
     },
     "engines": {

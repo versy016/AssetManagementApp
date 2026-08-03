@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GearOps API Map</title>
+<style>
+  /* Nodes and layout are generated at runtime from api-map.data.json — nothing in
+     this file hard-codes the route list. Colour tokens are shared with the rest of
+     the GearOps tooling. */
+  :root {
+    --canvas: #EDF1F4; --grid: #C7D2DB; --surface: #FFFFFF; --surface-2: #F4F7F9;
+    --border: #C6D0D9; --border-strong: #8FA0AD;
+    --ink: #16202A; --ink-2: #4C5A66; --ink-3: #78868F;
+    --flow: #1B7A8D; --brass: #8A6524;
+    --ok: #2C7A4B; --warn: #94670F; --risk: #AF382F; --idle: #9AA7B1;
+    --shadow: 0 1px 2px rgba(22,32,42,.10), 0 6px 16px rgba(22,32,42,.07);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #0E141B; --grid: #1D2833; --surface: #17202A; --surface-2: #1C2731;
+      --border: #2C3945; --border-strong: #43535F;
+      --ink: #E3EAEF; --ink-2: #A2B0BB; --ink-3: #6E7D89;
+      --flow: #47B4C9; --brass: #C69B58;
+      --ok: #54B47C; --warn: #D6A63F; --risk: #DF665D; --idle: #55636E;
+      --shadow: 0 1px 2px rgba(0,0,0,.40), 0 8px 22px rgba(0,0,0,.30);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: var(--font-ui); color: var(--ink); background: var(--canvas);
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+
+  .bar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 9px 14px; background: var(--surface);
+    border-bottom: 1px solid var(--border); z-index: 5;
+  }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .brand p { margin: 1px 0 0; font-size: 11px; color: var(--ink-3); font-family: var(--font-mono); }
+  .spacer { flex: 1 1 auto; }
+
+  .stat { display: flex; flex-direction: column; gap: 1px; min-width: 62px; }
+  .stat .v {
+    font-family: var(--font-mono); font-size: 15px; font-weight: 600;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat .k {
+    font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .stat.err .v { color: var(--risk); }
+
+  .search {
+    display: flex; align-items: center; gap: 7px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 7px; padding: 0 9px; height: 30px; min-width: 190px;
+  }
+  .search input {
+    border: 0; background: transparent; outline: none; color: var(--ink);
+    font-family: var(--font-mono); font-size: 12px; width: 100%; height: 100%;
+  }
+  .search:focus-within { border-color: var(--flow); }
+
+  .btn {
+    height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--ink-2); font-family: var(--font-ui);
+    font-size: 12px; font-weight: 550; cursor: pointer; display: inline-flex;
+    align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--border-strong); color: var(--ink); }
+  .btn:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
+  .btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--risk) 14%, var(--surface));
+    border-color: var(--risk); color: var(--risk);
+  }
+  .btn.icon { width: 30px; padding: 0; justify-content: center; font-size: 14px; }
+  select.btn { padding-right: 6px; }
+
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .dot.bad { background: var(--risk); box-shadow: 0 0 0 3px color-mix(in srgb, var(--risk) 25%, transparent); }
+
+  .banner {
+    padding: 7px 14px; font-size: 12px; background: color-mix(in srgb, var(--warn) 13%, var(--surface));
+    border-bottom: 1px solid var(--border); color: var(--ink-2); display: none;
+  }
+  .banner.show { display: block; }
+  .banner code { font-family: var(--font-mono); font-size: 11px; }
+
+  .stage {
+    position: relative; flex: 1 1 auto; overflow: hidden; cursor: grab;
+    background-color: var(--canvas);
+    background-image: radial-gradient(var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .stage.dragging { cursor: grabbing; }
+  #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  #wires { position: absolute; inset: 0; overflow: visible; }
+  #wires path {
+    fill: none; stroke: var(--flow); stroke-opacity: .28; stroke-width: 1.6;
+    transition: stroke-opacity .15s, stroke-width .15s;
+  }
+  #wires path.ext { stroke: var(--brass); }
+  #wires path.gate { stroke-dasharray: 5 4; stroke-opacity: .5; }
+  #wires path.hot { stroke-opacity: 1; stroke-width: 2.4; }
+  #wires path.cold { stroke-opacity: .06; }
+
+  .node {
+    position: absolute; background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--kind, var(--flow)); border-radius: 9px;
+    box-shadow: var(--shadow); padding: 8px 10px; text-align: left;
+    font-family: var(--font-ui); color: inherit; cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px;
+    transition: transform .12s, border-color .12s, opacity .15s;
+  }
+  .node:hover { transform: translateY(-1px); border-color: var(--border-strong); }
+  .node:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
+  .node.sel { box-shadow: var(--shadow), 0 0 0 2px color-mix(in srgb, var(--kind, var(--flow)) 38%, transparent); }
+  .node.cold { opacity: .2; }
+  .node .t { font-size: 12.5px; font-weight: 620; line-height: 1.25; }
+  .node .s { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); line-height: 1.3; }
+  .node .f { display: flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 3px; flex-wrap: wrap; }
+
+  /* Severity ring driven by live error rate */
+  .node[data-sev="critical"] { border-color: var(--risk); }
+  .node[data-sev="warn"]     { border-color: var(--warn); }
+  .node[data-sev="critical"]::after,
+  .node[data-sev="warn"]::after {
+    content: ""; position: absolute; inset: -3px; border-radius: 11px; pointer-events: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sev, var(--risk)) 45%, transparent);
+  }
+  .node[data-sev="critical"] { --sev: var(--risk); }
+  .node[data-sev="warn"] { --sev: var(--warn); }
+
+  .count {
+    font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums;
+    color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px; line-height: 15px;
+  }
+  .count.err { color: var(--risk); border-color: color-mix(in srgb, var(--risk) 40%, var(--border)); }
+  .count.hits { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
+  .flag {
+    font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    border-radius: 4px; padding: 0 4px; line-height: 15px;
+  }
+  .flag.locked { color: var(--ok);   background: color-mix(in srgb, var(--ok) 15%, transparent); }
+  .flag.open   { color: var(--risk); background: color-mix(in srgb, var(--risk) 15%, transparent); }
+  .flag.mixed  { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+
+  .lane {
+    position: absolute; font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3);
+    pointer-events: none; user-select: none;
+  }
+
+  .legend {
+    position: absolute; left: 12px; bottom: 12px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(6px);
+    border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px;
+    display: flex; gap: 13px; flex-wrap: wrap; font-size: 11px; color: var(--ink-2); z-index: 4;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .dash { width: 18px; border-top: 2px dashed var(--flow); flex: none; }
+  .sol { width: 18px; border-top: 2px solid var(--brass); flex: none; }
+
+  .inspector {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100%;
+    background: var(--surface); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; transform: translateX(100%);
+    transition: transform .22s cubic-bezier(.4,0,.2,1); z-index: 6;
+  }
+  .inspector.open { transform: none; }
+  .ih { padding: 13px 15px 11px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+  .ih h2 { margin: 0 0 3px; font-size: 15px; font-weight: 650; }
+  .ih .m { font-family: var(--font-mono); font-size: 11.5px; color: var(--flow); }
+  .ix {
+    margin-left: auto; flex: none; background: transparent; border: 1px solid var(--border);
+    color: var(--ink-2); border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 15px;
+  }
+  .ib { overflow-y: auto; padding: 13px 15px 20px; display: flex; flex-direction: column; gap: 13px; }
+
+  .sec { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+         text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .eps { display: flex; flex-direction: column; gap: 2px; }
+  .ep {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 7px; align-items: baseline;
+    padding: 4px 6px; border-radius: 5px; font-family: var(--font-mono); font-size: 11.5px;
+  }
+  .ep:nth-child(odd) { background: var(--surface-2); }
+  .ep.failing { background: color-mix(in srgb, var(--risk) 12%, transparent); }
+  .ep .mm { font-size: 9.5px; font-weight: 700; text-align: right; }
+  .ep .pp { color: var(--ink); word-break: break-all; }
+  .ep .nn { font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+  .ep .nn b { color: var(--risk); font-weight: 700; }
+  .m-GET { color: var(--flow); } .m-POST { color: var(--ok); }
+  .m-PUT, .m-PATCH { color: var(--warn); } .m-DELETE { color: var(--risk); }
+  .g { font-size: 9px; font-weight: 700; color: var(--ok); }
+  .g.admin { color: var(--warn); }
+  .g.token { color: var(--flow); }
+  .g.none { color: var(--risk); }
+
+  .note {
+    border-radius: 7px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+    border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--ink-2);
+  }
+  .note.risk { border-left-color: var(--risk); background: color-mix(in srgb, var(--risk) 10%, transparent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 11px; border: 1px solid var(--border); background: var(--surface-2);
+          border-radius: 5px; padding: 2px 7px; color: var(--ink-2); }
+
+  .hint { position: absolute; right: 12px; bottom: 12px; font-family: var(--font-mono);
+          font-size: 10.5px; color: var(--ink-3); z-index: 3; pointer-events: none; }
+
+  @media (max-width: 780px) {
+    .inspector { width: 100%; top: auto; height: 62%; border-left: 0; border-top: 1px solid var(--border); transform: translateY(100%); }
+    .legend, .hint { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="brand">
+    <h1>GearOps API Map</h1>
+    <p id="sub">loading…</p>
+  </div>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="filter endpoints…" autocomplete="off" spellcheck="false" />
+  </div>
+  <button class="btn" id="gaps" aria-pressed="false">Auth gaps</button>
+  <button class="btn" id="failing" aria-pressed="false">Failing only</button>
+
+  <div class="spacer"></div>
+
+  <div class="stat"><span class="v" id="s-req">–</span><span class="k">requests</span></div>
+  <div class="stat err"><span class="v" id="s-err">–</span><span class="k">5xx</span></div>
+  <div class="stat"><span class="v" id="s-rate">–</span><span class="k">error rate</span></div>
+
+  <select class="btn" id="window" aria-label="Time window">
+    <option value="15">15 min</option>
+    <option value="60" selected>1 hour</option>
+    <option value="360">6 hours</option>
+    <option value="1440">24 hours</option>
+  </select>
+
+  <span class="live"><i class="dot" id="pulse"></i><span id="ago">—</span></span>
+
+  <div style="display:flex;gap:5px">
+    <button class="btn icon" id="zout" aria-label="Zoom out">−</button>
+    <button class="btn icon" id="zin" aria-label="Zoom in">+</button>
+    <button class="btn" id="fit">Fit</button>
+  </div>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<div class="stage" id="stage">
+  <div id="world"><svg id="wires" aria-hidden="true"></svg></div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--flow)"></i>Router</span>
+    <span><i class="sw" style="background:var(--brass)"></i>Third party</span>
+    <span><i class="dash"></i>Auth enforced</span>
+    <span><i class="sol"></i>Outbound call</span>
+    <span><i class="sw" style="background:var(--warn)"></i>≥1% 5xx</span>
+    <span><i class="sw" style="background:var(--risk)"></i>≥5% 5xx</span>
+  </div>
+  <div class="hint">drag to pan · scroll to zoom · click a node</div>
+</div>
+
+<aside class="inspector" id="insp" aria-label="Node detail">
+  <div class="ih">
+    <div><h2 id="i-title">—</h2><div class="m" id="i-mount"></div></div>
+    <button class="ix" id="i-close" aria-label="Close">×</button>
+  </div>
+  <div class="ib" id="i-body"></div>
+</aside>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── Fixed context nodes ──────────────────────────────────────────────────
+  // Clients, the Express edge and the auth gate are not derivable from the route
+  // tree, so they are declared here. Everything to the right of them is generated.
+  var STATIC_NODES = [
+    { id: "mobile", kind: "client", title: "Expo mobile app", sub: "iOS · Android", col: 0 },
+    { id: "web", kind: "client", title: "Web app", sub: "Expo web · CI deploy", col: 0 },
+    { id: "qr", kind: "client", title: "Public QR pages", sub: "no login · printed labels", col: 0 },
+    { id: "express", kind: "edge", title: "Express 5 · EC2", sub: "PM2 cluster · helmet · cors", col: 1 },
+    { id: "limit", kind: "edge", title: "Rate limiters", sub: "api · upload · signing · public", col: 1 },
+    { id: "fb", kind: "auth", title: "Firebase ID token", sub: "verifyIdToken → req.user.uid", col: 2 },
+    { id: "admin", kind: "auth", title: "adminOnly", sub: "users.role === ADMIN", col: 2 }
+  ];
+
+  var KIND_COLOR = {
+    client: "var(--ink-3)", edge: "var(--ink-2)", auth: "var(--ok)",
+    route: "var(--flow)", data: "var(--flow)", ext: "var(--brass)"
+  };
+
+  var NODE_NOTES = {
+    express: [{ t: "risk", h: "Sentry is a no-op", b: "<code>lib/sentry.js</code> requires <code>@sentry/node</code> inside a try/catch, but the package is not in <code>package.json</code>." }],
+    fb: [{ t: "warn", h: "Dev bypass", b: "Outside production, <code>?uid=</code> or <code>X-User-Id</code> authenticates as any user with no token." }]
+  };
+
+  var state = {
+    data: null, metrics: null, nodes: [], edges: [], byId: {}, el: {},
+    selected: null, gaps: false, failingOnly: false, world: { w: 2400, h: 800 }
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var world = $("world"), wires = $("wires"), stage = $("stage");
+
+  // ── Layout ───────────────────────────────────────────────────────────────
+  var L = {
+    colX: [40, 320, 610],
+    routeX: 910, routeColW: 238, routeCols: 3, routeW: 214, routeH: 94, routeRowH: 112,
+    dbW: 214, dbH: 120, extW: 200, extH: 78, extRowH: 96, extCols: 2, extColW: 232
+  };
+
+  function layout(data) {
+    var nodes = [];
+    var routers = data.routers.slice();
+    var rows = Math.ceil(routers.length / L.routeCols);
+
+    var routeBlockH = rows * L.routeRowH;
+    var top = 70;
+    var worldH = Math.max(routeBlockH + top + 60, 760);
+
+    routers.forEach(function (r, i) {
+      var col = i % L.routeCols, row = Math.floor(i / L.routeCols);
+      nodes.push({
+        id: r.id, kind: "route", title: r.label, sub: r.mount, router: r,
+        x: L.routeX + col * L.routeColW, y: top + row * L.routeRowH,
+        w: L.routeW, h: L.routeH
+      });
+    });
+
+    var dbX = L.routeX + L.routeCols * L.routeColW + 56;
+    nodes.push({
+      id: "db", kind: "data", title: "PostgreSQL", sub: "Prisma · " + (data.totals.endpoints) + " routes served",
+      x: dbX, y: worldH / 2 - L.dbH / 2 - 60, w: L.dbW, h: L.dbH
+    });
+    nodes.push({
+      id: "metrics", kind: "data", title: "api_route_metrics", sub: "per-minute counters",
+      x: dbX, y: worldH / 2 + 70, w: L.dbW, h: 78
+    });
+
+    var extX = dbX + L.dbW + 66;
+    data.externals.forEach(function (e, i) {
+      var col = i % L.extCols, row = Math.floor(i / L.extCols);
+      nodes.push({
+        id: e.id, kind: "ext", title: e.title, sub: e.sub,
+        x: extX + col * L.extColW, y: 70 + row * L.extRowH, w: L.extW, h: L.extH
+      });
+    });
+
+    // Left columns, vertically centred against the generated block.
+    var mid = worldH / 2;
+    var groups = [
+      { col: 0, ids: ["mobile", "web", "qr"], w: 200, h: 78, gap: 102 },
+      { col: 1, ids: ["express", "limit"], w: 214, h: 86, gap: 108 },
+      { col: 2, ids: ["fb", "admin"], w: 200, h: 78, gap: 102 }
+    ];
+    groups.forEach(function (g) {
+      var totalH = (g.ids.length - 1) * g.gap + g.h;
+      var y0 = mid - totalH / 2;
+      g.ids.forEach(function (id, i) {
+        var s = STATIC_NODES.find(function (n) { return n.id === id; });
+        nodes.push({
+          id: id, kind: s.kind, title: s.title, sub: s.sub,
+          x: L.colX[g.col], y: y0 + i * g.gap, w: g.w, h: g.h
+        });
+      });
+    });
+
+    var maxX = nodes.reduce(function (m, n) { return Math.max(m, n.x + n.w); }, 0);
+    state.world = { w: maxX + 60, h: worldH };
+    return nodes;
+  }
+
+  function buildEdges(data) {
+    var e = [];
+    ["mobile", "web", "qr"].forEach(function (c) { e.push([c, "express"]); });
+    e.push(["express", "limit"]);
+    e.push(["limit", "fb"]);
+    e.push(["fb", "admin"]);
+    data.routers.forEach(function (r) {
+      e.push(["limit", r.id]);
+      if (r.guardedCount > 0) e.push(["admin", r.id, "gate"]);
+      e.push([r.id, "db"]);
+    });
+    e.push(["db", "metrics"]);
+    (data.externalEdges || []).forEach(function (p) { e.push([p[0], p[1], "ext"]); });
+    return e;
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  function el(tag, cls, txt) {
+    var d = document.createElement(tag);
+    if (cls) d.className = cls;
+    if (txt != null) d.textContent = txt;
+    return d;
+  }
+
+  function render() {
+    world.style.width = state.world.w + "px";
+    world.style.height = state.world.h + "px";
+    wires.setAttribute("width", state.world.w);
+    wires.setAttribute("height", state.world.h);
+
+    var lanes = [
+      { t: "Clients", x: L.colX[0], y: state.world.h / 2 - 190 },
+      { t: "Edge", x: L.colX[1], y: state.world.h / 2 - 190 },
+      { t: "Auth", x: L.colX[2], y: state.world.h / 2 - 190 },
+      { t: "Route groups · " + state.data.totals.routers + " routers", x: L.routeX, y: 36 },
+      { t: "Third party · " + state.data.externals.length, x: state.byId[state.data.externals[0] && state.data.externals[0].id] ? state.byId[state.data.externals[0].id].x : 0, y: 36 }
+    ];
+    lanes.forEach(function (l) {
+      if (!l.x) return;
+      var d = el("div", "lane", l.t);
+      d.style.left = l.x + "px";
+      d.style.top = l.y + "px";
+      world.appendChild(d);
+    });
+
+    state.nodes.forEach(function (n) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "node";
+      b.style.cssText = "left:" + n.x + "px;top:" + n.y + "px;width:" + n.w + "px;height:" + n.h +
+        "px;--kind:" + KIND_COLOR[n.kind];
+      b.appendChild(el("div", "t", n.title));
+      b.appendChild(el("div", "s", n.sub));
+
+      var f = el("div", "f");
+      if (n.router) {
+        f.appendChild(el("span", "count", n.router.count + (n.router.count === 1 ? " route" : " routes")));
+        f.appendChild(el("span", "flag " + n.router.posture, n.router.posture));
+      }
+      b.appendChild(f);
+      b._foot = f;
+
+      b.addEventListener("click", function (ev) { ev.stopPropagation(); select(n.id); });
+      b.addEventListener("mouseenter", function () { highlight(n.id); });
+      b.addEventListener("mouseleave", function () { highlight(null); });
+      b.addEventListener("focus", function () { highlight(n.id); });
+      b.addEventListener("blur", function () { highlight(null); });
+
+      world.appendChild(b);
+      state.el[n.id] = b;
+    });
+
+    state.edges.forEach(function (ed) {
+      var a = state.byId[ed[0]], z = state.byId[ed[1]];
+      if (!a || !z) return;
+      var x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = z.x, y2 = z.y + z.h / 2;
+      var dx = Math.max(46, (x2 - x1) * 0.45);
+      var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", "M " + x1 + " " + y1 + " C " + (x1 + dx) + " " + y1 + ", " +
+        (x2 - dx) + " " + y2 + ", " + x2 + " " + y2);
+      if (ed[2]) p.setAttribute("class", ed[2]);
+      p.dataset.a = ed[0];
+      p.dataset.b = ed[1];
+      wires.appendChild(p);
+    });
+  }
+
+  function highlight(id) {
+    var paths = wires.querySelectorAll("path");
+    if (!id) {
+      paths.forEach(function (p) { p.classList.remove("hot", "cold"); });
+      state.nodes.forEach(function (n) { state.el[n.id].classList.remove("cold"); });
+      applyFilter();
+      return;
+    }
+    var live = {};
+    live[id] = true;
+    paths.forEach(function (p) {
+      var on = p.dataset.a === id || p.dataset.b === id;
+      p.classList.toggle("hot", on);
+      p.classList.toggle("cold", !on);
+      if (on) { live[p.dataset.a] = true; live[p.dataset.b] = true; }
+    });
+    state.nodes.forEach(function (n) { state.el[n.id].classList.toggle("cold", !live[n.id]); });
+  }
+
+  // ── Metrics ──────────────────────────────────────────────────────────────
+  function severity(requests, serverErrors) {
+    if (!requests) return "idle";
+    var rate = serverErrors / requests;
+    if (rate >= 0.05) return "critical";
+    if (rate >= 0.01) return "warn";
+    return "ok";
+  }
+
+  function paintMetrics() {
+    var m = state.metrics;
+    state.nodes.forEach(function (n) {
+      if (!n.router) return;
+      var b = state.el[n.id];
+      var agg = m && m.byRouter ? m.byRouter[n.id] : null;
+
+      // Rebuild the footer so counts replace themselves rather than accumulate.
+      var f = b._foot;
+      f.textContent = "";
+      f.appendChild(el("span", "count", n.router.count + (n.router.count === 1 ? " route" : " routes")));
+      f.appendChild(el("span", "flag " + n.router.posture, n.router.posture));
+
+      if (agg && agg.requests) {
+        f.appendChild(el("span", "count hits", agg.requests.toLocaleString() + " req"));
+        if (agg.serverErrors) f.appendChild(el("span", "count err", agg.serverErrors + " err"));
+        b.dataset.sev = severity(agg.requests, agg.serverErrors);
+      } else {
+        delete b.dataset.sev;
+      }
+    });
+
+    var totals = { req: 0, err: 0 };
+    if (m && m.byRouter) {
+      Object.keys(m.byRouter).forEach(function (k) {
+        totals.req += m.byRouter[k].requests;
+        totals.err += m.byRouter[k].serverErrors;
+      });
+    }
+    $("s-req").textContent = m ? totals.req.toLocaleString() : "–";
+    $("s-err").textContent = m ? totals.err.toLocaleString() : "–";
+    $("s-rate").textContent = m && totals.req
+      ? ((totals.err / totals.req) * 100).toFixed(totals.err ? 2 : 0) + "%"
+      : (m ? "0%" : "–");
+
+    $("pulse").className = "dot " + (m ? (totals.err ? "bad" : "on") : "");
+    $("ago").textContent = m ? "live · " + new Date(m.generatedAt).toLocaleTimeString() : "no metrics";
+
+    if (state.selected) select(state.selected, true);
+    applyFilter();
+  }
+
+  function metricsUrl() {
+    var minutes = $("window").value;
+    var key = new URLSearchParams(location.search).get("key");
+    var base = new URL("../metrics/routes", location.href);
+    base.searchParams.set("minutes", minutes);
+    if (key) base.searchParams.set("key", key);
+    return base.toString();
+  }
+
+  function banner(msg) {
+    var b = $("banner");
+    if (!msg) { b.className = "banner"; return; }
+    b.className = "banner show";
+    b.innerHTML = msg;
+  }
+
+  function pollMetrics() {
+    fetch(metricsUrl(), { headers: { Accept: "application/json" } })
+      .then(function (r) {
+        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || ("HTTP " + r.status)); });
+        return r.json();
+      })
+      .then(function (j) {
+        state.metrics = j;
+        banner(null);
+        paintMetrics();
+      })
+      .catch(function (e) {
+        state.metrics = null;
+        banner("<strong>Live metrics unavailable</strong> — " + e.message +
+          ". The structure below is still accurate; only the traffic overlay is missing.");
+        paintMetrics();
+      });
+  }
+
+  // ── Inspector ────────────────────────────────────────────────────────────
+  function routeStats(template, method) {
+    if (!state.metrics || !state.metrics.routes) return null;
+    for (var i = 0; i < state.metrics.routes.length; i++) {
+      var r = state.metrics.routes[i];
+      if (r.route === template && r.method === method) return r;
+    }
+    return null;
+  }
+
+  function select(id, keepScroll) {
+    var n = state.byId[id];
+    if (!n) return;
+    if (state.selected && state.el[state.selected]) state.el[state.selected].classList.remove("sel");
+    state.selected = id;
+    state.el[id].classList.add("sel");
+
+    var body = $("i-body");
+    var scroll = keepScroll ? body.scrollTop : 0;
+    $("i-title").textContent = n.title;
+    $("i-mount").textContent = n.router ? n.router.file : n.sub;
+    body.textContent = "";
+
+    (NODE_NOTES[id] || []).forEach(function (nt) {
+      var d = el("div", "note" + (nt.t === "risk" ? " risk" : ""));
+      d.innerHTML = "<strong>" + nt.h + "</strong> — " + nt.b;
+      body.appendChild(d);
+    });
+
+    if (n.router) {
+      if (n.router.posture === "open") {
+        var w = el("div", "note risk");
+        w.innerHTML = "<strong>No auth middleware</strong> — none of the " + n.router.count +
+          " routes on this router call <code>authRequired</code> or <code>adminOnly</code>.";
+        body.appendChild(w);
+      }
+
+      var agg = state.metrics && state.metrics.byRouter ? state.metrics.byRouter[id] : null;
+      if (agg) {
+        var s = el("div");
+        s.appendChild(el("div", "sec", "Last " + state.metrics.windowMinutes + " min"));
+        var c = el("div", "chips");
+        c.appendChild(el("span", "chip", agg.requests.toLocaleString() + " requests"));
+        c.appendChild(el("span", "chip", agg.serverErrors + " server errors"));
+        c.appendChild(el("span", "chip", agg.clientErrors + " client errors"));
+        c.appendChild(el("span", "chip", "avg " + agg.avgMs + " ms"));
+        c.appendChild(el("span", "chip", "max " + agg.maxMs + " ms"));
+        s.appendChild(c);
+        body.appendChild(s);
+      }
+
+      var eps = n.router.endpoints.slice().map(function (e) {
+        return { e: e, st: routeStats(e.template, e.method) };
+      });
+      // Failing endpoints first, then busiest — the point of opening this panel is
+      // usually "which one is red".
+      eps.sort(function (a, b) {
+        var ae = a.st ? a.st.serverErrors : 0, be = b.st ? b.st.serverErrors : 0;
+        if (ae !== be) return be - ae;
+        var ar = a.st ? a.st.requests : 0, br = b.st ? b.st.requests : 0;
+        return br - ar;
+      });
+
+      var sec = el("div");
+      sec.appendChild(el("div", "sec", "Endpoints · " + eps.length));
+      var list = el("div", "eps");
+      eps.forEach(function (row) {
+        var e = row.e, st = row.st;
+        var d = el("div", "ep" + (st && st.serverErrors ? " failing" : ""));
+        d.appendChild(el("span", "mm m-" + e.method, e.method));
+        var p = el("span", "pp", e.path);
+        d.appendChild(p);
+        var right = el("span", "nn");
+        if (st) {
+          right.innerHTML = st.requests.toLocaleString() + " · " +
+            (st.serverErrors ? "<b>" + st.serverErrors + " err</b> · " : "") + st.avgMs + "ms";
+        } else {
+          var lvl = e.guards.indexOf("admin") > -1 ? "admin"
+            : e.guards.indexOf("auth") > -1 ? "auth"
+            : e.guards.indexOf("token") > -1 ? "token" : "none";
+          right.innerHTML = '<span class="g ' + lvl + '">' + lvl + "</span>";
+        }
+        d.appendChild(right);
+        list.appendChild(d);
+      });
+      sec.appendChild(list);
+      body.appendChild(sec);
+    }
+
+    var out = state.edges.filter(function (e) { return e[0] === id; })
+      .map(function (e) { return state.byId[e[1]] && state.byId[e[1]].title; })
+      .filter(Boolean);
+    if (out.length) {
+      var s3 = el("div");
+      s3.appendChild(el("div", "sec", "Calls out to"));
+      var cw = el("div", "chips");
+      out.forEach(function (t) { cw.appendChild(el("span", "chip", t)); });
+      s3.appendChild(cw);
+      body.appendChild(s3);
+    }
+
+    $("insp").classList.add("open");
+    body.scrollTop = scroll;
+  }
+
+  function closeInsp() {
+    $("insp").classList.remove("open");
+    if (state.selected && state.el[state.selected]) state.el[state.selected].classList.remove("sel");
+    state.selected = null;
+  }
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+  function applyFilter() {
+    var term = $("q").value.trim().toLowerCase();
+    state.nodes.forEach(function (n) {
+      var show = true;
+      if (term) {
+        show = n.title.toLowerCase().indexOf(term) > -1 || (n.sub || "").toLowerCase().indexOf(term) > -1 ||
+          (n.router ? n.router.endpoints.some(function (e) {
+            return (e.method + " " + e.path).toLowerCase().indexOf(term) > -1;
+          }) : false);
+      }
+      if (show && state.gaps) show = !!n.router && n.router.posture === "open";
+      if (show && state.failingOnly) {
+        var agg = state.metrics && state.metrics.byRouter ? state.metrics.byRouter[n.id] : null;
+        show = !!(agg && agg.serverErrors > 0);
+      }
+      state.el[n.id].classList.toggle("cold", !show);
+    });
+  }
+
+  // ── Pan & zoom ───────────────────────────────────────────────────────────
+  var tx = 0, ty = 0, sc = 1;
+  function apply() { world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + sc + ")"; }
+  function fit() {
+    var r = stage.getBoundingClientRect();
+    sc = Math.max(0.15, Math.min(r.width / state.world.w, r.height / state.world.h, 1));
+    tx = (r.width - state.world.w * sc) / 2;
+    ty = (r.height - state.world.h * sc) / 2;
+    apply();
+  }
+  function zoomAt(cx, cy, factor) {
+    var next = Math.min(2.2, Math.max(0.15, sc * factor));
+    var r = stage.getBoundingClientRect();
+    var px = cx - r.left, py = cy - r.top;
+    tx = px - (px - tx) * (next / sc);
+    ty = py - (py - ty) * (next / sc);
+    sc = next;
+    apply();
+  }
+  stage.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  }, { passive: false });
+
+  var drag = null;
+  stage.addEventListener("pointerdown", function (e) {
+    if (e.target.closest(".node")) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    stage.classList.add("dragging");
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    apply();
+  });
+  ["pointerup", "pointercancel"].forEach(function (ev) {
+    stage.addEventListener(ev, function () { drag = null; stage.classList.remove("dragging"); });
+  });
+  stage.addEventListener("click", function (e) { if (!e.target.closest(".node")) closeInsp(); });
+
+  // ── Wire up ──────────────────────────────────────────────────────────────
+  $("i-close").addEventListener("click", closeInsp);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeInsp(); });
+  $("q").addEventListener("input", applyFilter);
+  $("gaps").addEventListener("click", function () {
+    state.gaps = !state.gaps;
+    this.setAttribute("aria-pressed", String(state.gaps));
+    applyFilter();
+  });
+  $("failing").addEventListener("click", function () {
+    state.failingOnly = !state.failingOnly;
+    this.setAttribute("aria-pressed", String(state.failingOnly));
+    applyFilter();
+  });
+  $("window").addEventListener("change", pollMetrics);
+  $("zin").addEventListener("click", function () {
+    var r = stage.getBoundingClientRect();
+    zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+  });
+  $("zout").addEventListener("click", function () {
+    var r = stage.getBoundingClientRect();
+    zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+  });
+  $("fit").addEventListener("click", fit);
+  window.addEventListener("resize", function () { if (sc <= 0.9) fit(); });
+
+  fetch("api-map.data.json")
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      state.data = data;
+      state.nodes = layout(data);
+      state.nodes.forEach(function (n) { state.byId[n.id] = n; });
+      state.edges = buildEdges(data);
+      render();
+      fit();
+
+      var gen = new Date(data.generatedAt);
+      $("sub").textContent = data.totals.endpoints + " endpoints · " + data.totals.routers +
+        " routers · " + data.totals.unguardedRouters + " with no auth guard · generated " +
+        gen.toLocaleDateString();
+
+      pollMetrics();
+      setInterval(pollMetrics, 15000);
+    })
+    .catch(function (e) {
+      banner("<strong>Could not load api-map.data.json</strong> — " + e.message +
+        ". Run <code>npm run api:map</code> in <code>inventory-api/</code> to generate it.");
+    });
+})();
+</script>
+</body>
+</html>
