@@ -78,14 +78,17 @@ function isEnabled() {
 }
 
 /**
- * Org/project slugs, when configured, so the API map can deep-link a failing
- * route into Sentry's issue search. Returns null when not configured.
+ * Org (and optionally project) slugs, so the API map can deep-link a failing
+ * route into Sentry's issue search. SENTRY_ORG alone is enough — the search
+ * matches on transaction name across the org. SENTRY_PROJECT only narrows the
+ * link further, and Sentry's project filter wants the numeric id rather than the
+ * slug. Returns null when SENTRY_ORG is not set.
  */
 function orgProject() {
   const org = process.env.SENTRY_ORG;
+  if (!org) return null;
   const project = process.env.SENTRY_PROJECT;
-  if (!org || !project) return null;
-  return { org, project };
+  return project ? { org, project } : { org };
 }
 
 module.exports = { init, captureError, setupExpressErrorHandler, isEnabled, orgProject };
