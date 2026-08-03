@@ -126,7 +126,7 @@ router.post('/push-token', authRequired, async (req, res) => {
     });
     return res.json({ ok: true });
   } catch (e) {
-    console.error('Push token update error:', e);
+    logger.error('Push token update error:', e);
     return res.status(500).json({ error: 'Failed to save push token' });
   }
 });
@@ -165,7 +165,7 @@ router.post('/:userId/assign-asset', async (req, res) => {
 
     return res.json({ message: 'Asset successfully assigned to user', assetId, userId });
   } catch (err) {
-    console.error('❌ Asset assignment error:', err);
+    logger.error('❌ Asset assignment error:', err);
     return res.status(500).json({ error: 'Failed to assign asset' });
   }
 });
@@ -188,7 +188,7 @@ router.get('/lookup/by-email', authRequired, adminOnly, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.json(user);
   } catch (e) {
-    console.error('lookup by email error:', e);
+    logger.error('lookup by email error:', e);
     return res.status(500).json({ error: 'Lookup failed' });
   }
 });
@@ -800,7 +800,7 @@ router.post('/:id/promote', authRequired, adminOnly, async (req, res) => {
 
     return res.json({ ok: true, uid: targetUid, role: 'ADMIN', firebaseClaimsUpdated });
   } catch (e) {
-    console.error('Promote error:', e);
+    logger.error('Promote error:', e);
     return res.status(500).json({ error: 'Failed to promote user' });
   }
 });
@@ -832,7 +832,7 @@ router.post('/:id/demote', authRequired, adminOnly, async (req, res) => {
 
     return res.json({ ok: true, uid: targetUid, role: 'USER', firebaseClaimsUpdated });
   } catch (e) {
-    console.error('Demote error:', e);
+    logger.error('Demote error:', e);
     return res.status(500).json({ error: 'Failed to demote user' });
   }
 });
@@ -849,7 +849,7 @@ router.put('/:id', validate(schemas.updateUser), async (req, res) => {
     });
     return res.json(updatedUser);
   } catch (err) {
-    console.error('Update user error:', err);
+    logger.error('Update user error:', err);
     return res.status(400).json({ error: 'Failed to update user' });
   }
 });
@@ -863,7 +863,7 @@ router.get('/', async (_req, res) => {
     const users = await prisma.users.findMany();
     return res.json(users);
   } catch (err) {
-    console.error('❌ Failed to fetch users:', err);
+    logger.error('❌ Failed to fetch users:', err);
     return res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
@@ -878,7 +878,7 @@ router.get('/:id', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.json(user);
   } catch (err) {
-    console.error('❌ Failed to fetch user:', err);
+    logger.error('❌ Failed to fetch user:', err);
     return res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
@@ -924,7 +924,7 @@ router.get('/:id/favourites', async (req, res) => {
       favouriteTypes: Array.isArray(user.favourite_type_names) ? user.favourite_type_names : [],
     });
   } catch (err) {
-    console.error('❌ Failed to fetch favourite types:', err);
+    logger.error('❌ Failed to fetch favourite types:', err);
     return res.status(500).json({ error: 'Failed to fetch favourite types' });
   }
 });
@@ -946,7 +946,7 @@ router.put('/:id/favourites', async (req, res) => {
     return res.json({ favouriteTypes: updated.favourite_type_names });
   } catch (err) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'User not found' });
-    console.error('❌ Failed to save favourite types:', err);
+    logger.error('❌ Failed to save favourite types:', err);
     return res.status(500).json({ error: 'Failed to save favourite types' });
   }
 });

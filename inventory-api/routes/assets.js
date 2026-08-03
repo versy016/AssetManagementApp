@@ -1,5 +1,6 @@
 // routes/assets.js
 const express = require('express');
+const logger = require('../lib/logger');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { sendExpoPush } = require('../utils/push');
@@ -135,7 +136,7 @@ async function recordDocumentCreatedActivity(assetId, req, docRow) {
       },
     });
   } catch (e) {
-    console.error('[assets/files] document activity log failed', e?.message || e);
+    logger.error('[assets/files] document activity log failed', e);
   }
 }
 

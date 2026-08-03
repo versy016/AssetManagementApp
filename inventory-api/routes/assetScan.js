@@ -23,6 +23,7 @@
 'use strict';
 
 const express = require('express');
+const logger = require('../lib/logger');
 const multer = require('multer');
 
 const router = express.Router();
@@ -172,7 +173,7 @@ router.post('/', upload.single('image'), async (req, res) => {
         });
       }
       // eslint-disable-next-line no-console
-      console.error('[scan-image] upstream error:', err?.message || err);
+      logger.error('[scan-image] upstream error:', err);
       return res.status(502).json({ ok: false, error: 'Vision model is unavailable. Please try again later.' });
     }
 
@@ -180,7 +181,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     return res.json({ ok: true, fields, raw: result.raw || '' });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('[scan-image] handler error:', err?.message || err);
+    logger.error('[scan-image] handler error:', err);
     return res.status(500).json({ ok: false, error: 'Server error while scanning image.' });
   }
 });

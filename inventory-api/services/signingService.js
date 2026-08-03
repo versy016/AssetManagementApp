@@ -42,6 +42,7 @@
  */
 
 const crypto  = require('crypto');
+const logger = require('../lib/logger');
 const AWS     = require('aws-sdk');
 const prisma  = require('../lib/prisma');
 const { resolveSigningOperatingEntityName } = require('../lib/domainRegistry');
@@ -220,7 +221,7 @@ async function createSigningSession(actionId, delivery = 'email', generatedDocum
         });
       } catch (emailErr) {
         // Log but don't fail the session creation — session already saved
-        console.error('[signingService] Failed to send signing email:', emailErr.message);
+        logger.error('[signingService] Failed to send signing email:', emailErr);
       }
     }
   }
@@ -391,7 +392,7 @@ async function completeSession(token, signingPayload) {
       });
     }
   } catch (e) {
-    console.error('[signingService] Failed to send signed copy to hirer:', e.message);
+    logger.error('[signingService] Failed to send signed copy to hirer:', e);
   }
   try {
     await sendAdminSignedNotification({
@@ -403,7 +404,7 @@ async function completeSession(token, signingPayload) {
       signedFileUrl,
     });
   } catch (e) {
-    console.error('[signingService] Failed to send admin notification:', e.message);
+    logger.error('[signingService] Failed to send admin notification:', e);
   }
 
   return { session: completedSession, signedFileUrl };

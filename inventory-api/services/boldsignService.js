@@ -50,6 +50,7 @@ const {
   DocumentCC,
 } = require('boldsign');
 const crypto = require('crypto');
+const logger = require('../lib/logger');
 
 // ── Config helpers ────────────────────────────────────────────────────────────
 
@@ -298,7 +299,7 @@ async function createHireDocument(opts) {
     // Raw axios errors have the body at err.response.data.
     const body = err?.body ?? err?.response?.data ?? err?.message;
     const detail = typeof body === 'object' ? JSON.stringify(body) : String(body ?? err);
-    console.error('[boldsign] sendDocument failed:', detail);
+    logger.error('[boldsign] sendDocument failed:', detail);
     throw new Error(`BoldSign document send failed: ${detail}`);
   }
 
@@ -384,7 +385,7 @@ async function getEmbeddedSignUrl(documentId, signerEmail, redirectUrl) {
   } catch (err) {
     const body = err?.body ?? err?.response?.data ?? err?.message;
     const detail = typeof body === 'object' ? JSON.stringify(body) : String(body ?? err);
-    console.error('[boldsign] getEmbeddedSignLink failed:', detail);
+    logger.error('[boldsign] getEmbeddedSignLink failed:', detail);
     throw new Error(`BoldSign getEmbeddedSignLink failed: ${detail}`);
   }
 

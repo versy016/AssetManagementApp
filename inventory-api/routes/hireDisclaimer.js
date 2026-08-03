@@ -433,7 +433,7 @@ async function buildHireDisclaimerDocxFromParsed(p, opts = {}) {
     try {
       doc.render(templateData);
     } catch (renderErr) {
-      console.error('[hireDisclaimer] template render error:', renderErr?.message || renderErr);
+      logger.error('[hireDisclaimer] template render error:', renderErr);
       throw new Error('Template render failed. Check placeholder names in the Word template.');
     }
     if (signatureImageBuffer) {
@@ -853,7 +853,7 @@ router.post('/generate', async (req, res) => {
       try {
         persistResult = await persistHireRecord(p, existingActionId, { allowPlaceholderForNew: true });
       } catch (persistErr) {
-        console.error('[hireDisclaimer] persist (json) failed:', persistErr?.message || persistErr);
+        logger.error('[hireDisclaimer] persist (json) failed:', persistErr);
         return res.status(500).json({ error: persistErr?.message || 'Failed to save hire' });
       }
       if (persistResult.error === 'not_found') {
@@ -898,7 +898,7 @@ router.post('/generate', async (req, res) => {
         /* unreachable: existingActionId handled above */
       }
     } catch (persistErr) {
-      console.error('[hireDisclaimer] failed to record HIRE action from disclaimer form:', persistErr?.message || persistErr);
+      logger.error('[hireDisclaimer] failed to record HIRE action from disclaimer form:', persistErr);
     }
 
     let buffer;
@@ -917,7 +917,7 @@ router.post('/generate', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
   } catch (e) {
-    console.error('[hireDisclaimer] generate error:', e?.message || e);
+    logger.error('[hireDisclaimer] generate error:', e);
     res.status(500).json({ error: e?.message || 'Failed to generate document' });
   }
 });
@@ -942,7 +942,7 @@ router.get('/hires/:actionId/preview.pdf', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="hire_preview_${safeName}.pdf"`);
     res.send(pdfBuf);
   } catch (e) {
-    console.error('[hireDisclaimer] preview.pdf error:', e?.message || e);
+    logger.error('[hireDisclaimer] preview.pdf error:', e);
     const status = e && e.code === 'HIRE_DOCX_TO_PDF' ? 503 : 500;
     res.status(status).json({ error: e?.message || 'Failed to build preview PDF' });
   }
@@ -1054,7 +1054,7 @@ router.get('/hires/:actionId/document', async (req, res) => {
     if (e && /template render/i.test(String(e.message || ''))) {
       return res.status(500).json({ error: e.message || 'Template render failed.' });
     }
-    console.error('[hireDisclaimer] document error:', e?.message || e);
+    logger.error('[hireDisclaimer] document error:', e);
     res.status(500).json({ error: e?.message || 'Failed to build document' });
   }
 });
@@ -1093,7 +1093,7 @@ router.patch('/hires/:actionId/signature-status', async (req, res) => {
     });
     res.json({ ok: true, signatureStatus: status, signedAt: merged.signedAt || null });
   } catch (e) {
-    console.error('[hireDisclaimer] signature-status error:', e?.message || e);
+    logger.error('[hireDisclaimer] signature-status error:', e);
     res.status(500).json({ error: e?.message || 'Failed to update signature status' });
   }
 });
@@ -1138,7 +1138,7 @@ router.delete('/hires/:actionId', async (req, res) => {
 
     res.json({ ok: true });
   } catch (e) {
-    console.error('[hireDisclaimer] delete hire error:', e?.message || e);
+    logger.error('[hireDisclaimer] delete hire error:', e);
     res.status(500).json({ error: e?.message || 'Failed to delete hire' });
   }
 });
@@ -1223,7 +1223,7 @@ router.get('/hires', async (req, res) => {
     });
     res.json({ hires });
   } catch (e) {
-    console.error('[hireDisclaimer] hires list error:', e?.message || e);
+    logger.error('[hireDisclaimer] hires list error:', e);
     res.status(500).json({ error: e?.message || 'Failed to fetch hires' });
   }
 });
@@ -1269,7 +1269,7 @@ router.post('/hires/:actionId/signing/create', async (req, res) => {
       status: session.status,
     });
   } catch (e) {
-    logger.error('[hireDisclaimer] signing/create error:', e?.message || e);
+    logger.error('[hireDisclaimer] signing/create error:', e);
     res.status(500).json({ error: e?.message || 'Failed to create signing session' });
   }
 });
@@ -1607,7 +1607,7 @@ router.get('/signing/:token/document.pdf', async (req, res) => {
       // Try to get it by finding the action via the error's session
       if (err?.session?.unsignedFileUrl) return res.redirect(302, err.session.unsignedFileUrl);
     }
-    console.error('[hireDisclaimer] signing document.pdf error:', err?.message || err);
+    logger.error('[hireDisclaimer] signing document.pdf error:', err);
     res.status(400).json({ error: err?.message || 'Could not load document' });
   }
 });
@@ -1667,7 +1667,7 @@ router.post('/signing/:token/submit', async (req, res) => {
     const code = err?.code;
     if (code === 'ALREADY_SIGNED') return res.status(409).json({ error: 'This agreement has already been signed.' });
     if (code === 'EXPIRED')        return res.status(410).json({ error: 'This signing link has expired.' });
-    logger.error('[hireDisclaimer] signing/submit error:', err?.message || err);
+    logger.error('[hireDisclaimer] signing/submit error:', err);
     res.status(500).json({ error: err?.message || 'Signing submission failed' });
   }
 });
@@ -1686,7 +1686,7 @@ router.post('/signing/:token/decline', async (req, res) => {
     const code = err?.code;
     if (code === 'ALREADY_SIGNED')   return res.status(409).json({ error: 'This agreement has already been signed.' });
     if (code === 'ALREADY_DECLINED') return res.status(409).json({ error: 'Already declined.' });
-    logger.error('[hireDisclaimer] signing/decline error:', err?.message || err);
+    logger.error('[hireDisclaimer] signing/decline error:', err);
     res.status(500).json({ error: err?.message || 'Decline failed' });
   }
 });

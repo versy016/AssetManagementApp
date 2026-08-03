@@ -1,5 +1,6 @@
 // inventory-api/routes/assetTypes.js
 const express = require('express');
+const logger = require('../lib/logger');
 const router = express.Router();
 
 const AWS = require('aws-sdk');
@@ -56,7 +57,7 @@ router.put('/:id', authRequired, adminOnly, validate(schemas.updateAssetType), (
             const result = await uploadToS3(file, 'asset-type-images');
             image_url = result?.Location;
           } catch (e) {
-            console.error('[asset-types] S3 upload failed:', e?.message || e);
+            logger.error('[asset-types] S3 upload failed:', e);
             return res.status(500).json({ status: 'error', message: 'Image upload failed', error: e?.message || String(e) });
           }
         }

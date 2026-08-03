@@ -14,6 +14,7 @@
 // Every export is a no-op-safe helper: when the integration isn't configured,
 // `isConfigured()` is false and callers should skip sync rather than throw.
 const fs = require('fs');
+const logger = require('../lib/logger');
 const path = require('path');
 const { google } = require('googleapis');
 
@@ -198,7 +199,7 @@ async function syncBookingToGoogle(booking, { onLink } = {}) {
     await onLink?.(data.id);
     return { eventId: data.id, deleted: false };
   } catch (e) {
-    console.error('[googleCalendar] sync failed for booking', booking?.id, e?.message || e);
+    logger.error('[googleCalendar] sync failed for booking', booking?.id, e);
     return null;
   }
 }
@@ -212,7 +213,7 @@ async function deleteBookingFromGoogle(booking) {
     return true;
   } catch (e) {
     if (e?.code === 404 || e?.code === 410) return true; // already gone
-    console.error('[googleCalendar] delete failed for booking', booking?.id, e?.message || e);
+    logger.error('[googleCalendar] delete failed for booking', booking?.id, e);
     return false;
   }
 }

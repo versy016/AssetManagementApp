@@ -1,5 +1,6 @@
 ﻿// routes/labels.js
 const express = require('express');
+const logger = require('../lib/logger');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -147,7 +148,7 @@ router.post('/l7651', async (req, res) => {
       },
     });
   } catch (e) {
-    console.error('[labels] error:', e);
+    logger.error('[labels] error:', e);
     return res.status(500).json({ error: e.message || 'Failed to generate labels' });
   }
 });

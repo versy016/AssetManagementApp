@@ -12,6 +12,7 @@
 //  • transfer-to-office records an asset_action (TRANSFER type) only
 
 const express = require('express');
+const logger = require('../lib/logger');
 const router  = express.Router();
 const prisma  = require('../lib/prisma');
 const { sendLostAndFoundEmail, sendTransferToOfficeEmail } = require('../lib/emailService');
@@ -87,7 +88,7 @@ router.get('/assets/:id', async (req, res) => {
     if (!asset) return res.status(404).json({ error: 'Asset not found' });
     return res.json({ asset });
   } catch (e) {
-    console.error('[publicAssets] GET error:', e?.message || e);
+    logger.error('[publicAssets] GET error:', e);
     return res.status(500).json({ error: 'Failed to look up asset' });
   }
 });
@@ -156,11 +157,11 @@ router.post('/assets/:id/lost-and-found', async (req, res) => {
       finderName:     finderName    || null,
       finderContact:  finderContact || null,
       notes:          notes         || null,
-    }).catch((e) => console.error('[publicAssets] Email send failed (non-fatal):', e?.message || e));
+    }).catch((e) => logger.error('[publicAssets] Email send failed (non-fatal):', e));
 
     return res.json({ success: true });
   } catch (e) {
-    console.error('[publicAssets] Lost-and-found error:', e?.message || e);
+    logger.error('[publicAssets] Lost-and-found error:', e);
     return res.status(500).json({ error: 'Failed to submit report' });
   }
 });
@@ -218,11 +219,11 @@ router.post('/assets/:id/transfer-to-office', async (req, res) => {
       submitterName:     submitterName     || null,
       submitterContact:  submitterContact  || null,
       notes:             notes             || null,
-    }).catch((e) => console.error('[publicAssets] Email send failed (non-fatal):', e?.message || e));
+    }).catch((e) => logger.error('[publicAssets] Email send failed (non-fatal):', e));
 
     return res.json({ success: true });
   } catch (e) {
-    console.error('[publicAssets] Transfer-to-office error:', e?.message || e);
+    logger.error('[publicAssets] Transfer-to-office error:', e);
     return res.status(500).json({ error: 'Failed to submit request' });
   }
 });

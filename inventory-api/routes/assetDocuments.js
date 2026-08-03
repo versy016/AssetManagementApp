@@ -1,5 +1,6 @@
 // routes/assetDocuments.js - Nested routes under /assets for attachments
 const express = require('express');
+const logger = require('../lib/logger');
 const router = express.Router({ mergeParams: true });
 const prisma = require('../lib/prisma');
 const { normalizeMulterImageForWeb } = require('../lib/normalizeHeicImageUpload');
@@ -112,7 +113,7 @@ async function recordDocumentCreatedAction(assetId, req, doc) {
       },
     });
   } catch (e) {
-    console.error('[assetDocuments] Failed to record document-create action:', e?.message || e);
+    logger.error('[assetDocuments] Failed to record document-create action:', e);
   }
 }
 
@@ -244,7 +245,7 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
       try {
         put = await uploadBufferToS3(fileForS3);
       } catch (s3Err) {
-        console.error('[assetDocuments] S3 upload failed:', s3Err.message || s3Err);
+        logger.error('[assetDocuments] S3 upload failed:', s3Err);
         return res.status(502).json({
           error: 'File storage upload failed. Check server logs and S3 configuration (bucket, credentials, region).',
           detail: process.env.NODE_ENV === 'development' ? (s3Err.message || String(s3Err)) : undefined,
@@ -300,7 +301,7 @@ router.post('/:assetId/documents/upload', attachUserFromBearerIfPresent, (req, r
       await recordDocumentCreatedAction(assetId, req, doc);
       res.status(201).json({ document: doc });
     } catch (e) {
-      console.error('[assetDocuments] Document upload error:', e.message || e);
+      logger.error('[assetDocuments] Document upload error:', e);
       res.status(500).json({ error: e.message || 'Failed to save document' });
     }
   });
@@ -410,7 +411,7 @@ router.delete('/:assetId/documents/:docId', async (req, res) => {
         },
       });
     } catch (e) {
-      console.error('[assetDocuments] Failed to record document-delete action:', e?.message || e);
+      logger.error('[assetDocuments] Failed to record document-delete action:', e);
       // Non-fatal: deletion succeeded, activity recording failed
     }
     res.json({ document: updated });

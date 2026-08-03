@@ -289,10 +289,21 @@ app.get('/check-in/:id', (req, res) => {
 // while the handler below still shapes the response the client sees.
 sentry.setupExpressErrorHandler(app);
 app.use((err, _req, res, _next) => {
-  console.error(err.stack);
-  res.status(500).json({
+  // Deliberately console.error and not logger.error: Sentry's handler above has
+  // already captured anything it considers reportable, and logger.error now
+  // reports too, so routing this through it would double-count every 5xx.
+  console.error(err.stack || err);
+
+  // Honour the status the error carries when it is a client error. body-parser
+  // tags malformed JSON as 400 and express-rate-limit uses 429; reporting those
+  // as 500 misattributes client mistakes as server failures, which inflates the
+  // API map's error rate and burns Sentry quota on non-issues.
+  const carried = Number(err.status || err.statusCode);
+  const status = Number.isInteger(carried) && carried >= 400 && carried < 500 ? carried : 500;
+
+  res.status(status).json({
     status: 'error',
-    message: 'Something went wrong!',
+    message: status === 500 ? 'Something went wrong!' : err.message || 'Bad request',
     ...(NODE_ENV === 'development' && { error: err.message }),
   });
 });
