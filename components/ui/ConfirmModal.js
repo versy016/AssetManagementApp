@@ -56,6 +56,7 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
   onDismiss,
+  children,
 }) {
   const dismissable = phase !== 'loading';
   const handleBackdrop = () => { if (dismissable && onCancel) onCancel(); };
@@ -87,6 +88,8 @@ export default function ConfirmModal({
             <>
               {!!title && <Text style={styles.title}>{title}</Text>}
               {!!message && <Text style={styles.body}>{message}</Text>}
+              {/* Optional extra content (e.g. a required note field) */}
+              {children}
               <View style={styles.actions}>
                 <TouchableOpacity
                   style={[styles.btn, styles.btnGhost, styles.btnGhostSpaced]}

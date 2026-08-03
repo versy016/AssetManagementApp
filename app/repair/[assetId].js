@@ -1,20 +1,16 @@
-// app/servicing/[assetId].js
-// Servicing menu reached from the "Servicing" shortcut after scanning an asset.
+// app/repair/[assetId].js
+// Repair menu reached from the "Repair" shortcut after scanning an asset.
+// Mirrors the Maintenance screen (app/servicing/[assetId].js) so both flows feel
+// the same, with two clearly-separated options:
 //
-// Two clearly-separated flows (single service cadence per asset — they never
-// overlap because both write the SAME assets.next_service_date):
+//   1. Log a repair       → records a COMPLETED repair (history, no open task) and
+//      clears the Needs-repair flag. Optional cost, notes and a repair report.
 //
-//   1. Log a PAST service  → records a completed MAINTENANCE action (history,
-//      NO open task) and sets the next service due date (default +6 months,
-//      capped at +6 months).
+//   2. Repair required    → reports a fault that still needs doing. Creates a REPAIR
+//      task (which raises the Needs-repair flag server-side) so it shows in Tasks
+//      until someone signs it off.
 //
-//   2. Schedule / today's service → sets assets.next_service_date to the chosen
-//      due date (today … +6 months). That derives the normal date-based service
-//      task, which the assigned user later actions and closes ("service done"),
-//      and is then offered to schedule the next one (handled by the existing
-//      TaskActionModal flow).
-//
-// The 6-month limit is enforced on every future-service picker via validRange.
+// Repair-focused by design: no category picker and no assignee — just the fault.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
@@ -37,9 +33,7 @@ import { FIELD_LIMITS } from '../../constants/fieldLimits';
 import { ASSET_DOCUMENT_FIELD_HINT } from '../../constants/uploadFormats';
 import logger from '../../utils/logger';
 
-const SERVICE_WINDOW_MONTHS = 6;
-// Matches the ActionPriority enum stored on asset_action_details.
-const SCHED_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
+const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
 // ── Date helpers (kept local so this screen is self-contained) ──────────────
 function startOfToday() {
@@ -81,10 +75,10 @@ function prettyDate(iso) {
   }
 }
 
-// Future-service window: today .. today + 6 months.
-const serviceWindow = () => ({ startDate: startOfToday(), endDate: addMonths(startOfToday(), SERVICE_WINDOW_MONTHS) });
-// Past window for "when was it serviced": 10 years ago .. today.
+// When did the repair happen: 10 years ago .. today.
 const pastWindow = () => ({ startDate: addMonths(startOfToday(), -120), endDate: startOfToday() });
+// When is it needed by: today .. 12 months ahead.
+const dueWindow = () => ({ startDate: startOfToday(), endDate: addMonths(startOfToday(), 12) });
 
 async function authHeaders(json = true) {
   const headers = json ? { 'Content-Type': 'application/json' } : {};
@@ -101,7 +95,7 @@ async function authHeaders(json = true) {
   return headers;
 }
 
-export default function ServicingScreen() {
+export default function RepairScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
   const assetId = params?.assetId ? String(params.assetId) : null;
@@ -110,26 +104,23 @@ export default function ServicingScreen() {
 
   const [asset, setAsset] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState(null); // null | 'past' | 'schedule'
+  const [mode, setMode] = useState(null); // null | 'log' | 'required'
   const [submitting, setSubmitting] = useState(false);
-  // In-app result/confirm modal (replaces web-noop Alert). { phase, title, message, ... }
   const [resultUi, setResultUi] = useState(null);
   const [workKey, setWorkKey] = useState(0); // bumped so the work panel reloads after a submit
 
-  // Past-service form state
-  const [serviceDate, setServiceDate] = useState(toISO(startOfToday()));
+  // "Log a repair" form state
+  const [repairDate, setRepairDate] = useState(toISO(startOfToday()));
   const [summary, setSummary] = useState('');
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
   const [report, setReport] = useState(null);
-  const [nextDate, setNextDate] = useState(toISO(addMonths(startOfToday(), SERVICE_WINDOW_MONTHS)));
 
-  // Schedule form state
-  const [dueDate, setDueDate] = useState(toISO(startOfToday()));
-  const [schedTitle, setSchedTitle] = useState('');
-  const [schedDetail, setSchedDetail] = useState('');
-  const [schedPriority, setSchedPriority] = useState('NORMAL');
-  const [schedCost, setSchedCost] = useState('');
+  // "Repair required" form state
+  const [faultTitle, setFaultTitle] = useState('');
+  const [faultDetail, setFaultDetail] = useState('');
+  const [priority, setPriority] = useState('MEDIUM');
+  const [dueDate, setDueDate] = useState(null);
 
   const backToTarget = useCallback(() => {
     if (returnTo) router.replace(returnTo);
@@ -160,24 +151,26 @@ export default function ServicingScreen() {
 
   const refreshTaskBadge = useCallback(async () => {
     try {
-      // Server-side count derives from the user's token; args are ignored.
       const count = await fetchTaskCount();
       setTaskCount(count);
     } catch (_) { /* non-fatal */ }
   }, [setTaskCount]);
 
-  // ── Submit: Log a PAST service (no open task) ────────────────────────────
-  const submitPast = useCallback(async () => {
+  // ── Submit: Log a completed repair (no open task) ────────────────────────
+  const submitLog = useCallback(async () => {
     if (submitting) return;
-    if (!nextDate) { setResultUi({ phase: 'result', title: 'Missing date', message: 'Please choose when the next service is due.', error: true }); return; }
+    if (!summary.trim()) {
+      setResultUi({ phase: 'result', title: 'Missing detail', message: 'Please describe what was repaired.', error: true });
+      return;
+    }
     setSubmitting(true);
     try {
       const headers = await authHeaders(true);
-      // 1) History: completed maintenance, explicitly NOT requiring sign-off.
+      // 1) History: completed repair, explicitly NOT requiring sign-off.
       const detail = {
-        action: 'Maintenance',
-        date: serviceDate,
-        summary: summary.trim() || 'Service',
+        action: 'Repair',
+        date: repairDate,
+        summary: summary.trim(),
         cost: Number(cost) || 0,
         notes: notes.trim() || undefined,
       };
@@ -185,43 +178,42 @@ export default function ServicingScreen() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          type: 'MAINTENANCE',
+          type: 'REPAIR',
           note: detail.summary,
-          occurred_at: toDateTimeISO(serviceDate),
+          occurred_at: toDateTimeISO(repairDate),
           details: detail,
           data: { requires_signoff: false, completed: true },
         }),
       });
-      if (!actRes.ok) throw new Error((await actRes.text()) || 'Failed to log the service');
+      if (!actRes.ok) throw new Error((await actRes.text()) || 'Failed to log the repair');
 
-      // 2) Set the next service due date and clear Maintenance Due (this logs the
-      //    maintenance as done, so the flag/task should close out).
+      // 2) The repair is done, so clear the Needs-repair flag.
       const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify({ next_service_date: nextDate, maintenance_due: false, skip_required_documents: true }),
+        body: JSON.stringify({ needs_repair: false, skip_required_documents: true }),
       });
-      if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to set the next service date');
+      if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to clear the repair flag');
 
-      // 3) Optional service report.
+      // 3) Optional repair report.
       if (report) {
         try {
           const fileObj = Platform.OS === 'web'
             ? report
-            : { uri: report.uri, name: report.name || 'service-report', type: report.mimeType || 'application/pdf' };
+            : { uri: report.uri, name: report.name || 'repair-report', type: report.mimeType || 'application/pdf' };
           const fd = new FormData();
           fd.append('file', fileObj);
-          fd.append('title', 'Service Report');
-          fd.append('kind', 'Service Report');
-          fd.append('related_date_label', 'Service Report');
-          fd.append('related_date', serviceDate);
+          fd.append('title', 'Repair Report');
+          fd.append('kind', 'Repair Report');
+          fd.append('related_date_label', 'Repair Report');
+          fd.append('related_date', repairDate);
           await fetch(`${API_BASE_URL}/assets/${assetId}/documents/upload`, {
             method: 'POST',
             headers: await authHeaders(false),
             body: fd,
           });
         } catch (e) {
-          logger.error('Servicing: report upload failed', e);
+          logger.error('Repair: report upload failed', e);
         }
       }
 
@@ -229,88 +221,70 @@ export default function ServicingScreen() {
       setWorkKey((n) => n + 1);
       setResultUi({
         phase: 'confirm',
-        title: 'Maintenance logged',
-        message: `Recorded the maintenance. Next service due ${prettyDate(nextDate)}.`,
+        title: 'Repair logged',
+        message: `Recorded the repair on ${prettyDate(repairDate)}. The asset is no longer flagged as needing repair.`,
         confirmLabel: 'View asset',
         cancelLabel: 'Done',
         onConfirm: () => { setResultUi(null); router.replace({ pathname: '/asset/[assetId]', params: { assetId } }); },
         onCancel: () => { setResultUi(null); backToTarget(); },
       });
     } catch (e) {
-      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to log the maintenance', error: true });
+      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to log the repair', error: true });
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, nextDate, serviceDate, summary, cost, notes, report, assetId, refreshTaskBadge, backToTarget, router]);
+  }, [submitting, summary, repairDate, cost, notes, report, assetId, refreshTaskBadge, backToTarget, router]);
 
-  // ── Submit: Schedule / today's service (creates the task) ────────────────
-  const submitSchedule = useCallback(async () => {
+  // ── Submit: Repair required (creates the REPAIR task) ────────────────────
+  const submitRequired = useCallback(async () => {
     if (submitting) return;
-    if (!dueDate) { setResultUi({ phase: 'result', title: 'Missing date', message: 'Please choose the service due date.', error: true }); return; }
+    if (!faultTitle.trim()) {
+      setResultUi({ phase: 'result', title: 'Missing detail', message: 'Please describe what needs repair.', error: true });
+      return;
+    }
     setSubmitting(true);
     try {
       const headers = await authHeaders(true);
-      // Setting next_service_date derives the date-based service task; the
-      // assigned user actions and closes it later, then schedules the next one.
-      const putRes = await fetch(`${API_BASE_URL}/assets/${assetId}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ next_service_date: dueDate, skip_required_documents: true }),
-      });
-      if (!putRes.ok) throw new Error((await putRes.text()) || 'Failed to schedule the service');
+      const body = {
+        title: faultTitle.trim(),
+        category: 'REPAIR',
+        priority,
+        asset_id: assetId,
+      };
+      if (faultDetail.trim()) body.description = faultDetail.trim();
+      if (dueDate) body.due_date = dueDate;
 
-      // Record WHAT was scheduled (not just when) as a maintenance action. It is
-      // deliberately not a task and needs no sign-off — creating a task here would
-      // flag the asset as due immediately, even for maintenance months away.
-      if (schedTitle.trim() || schedDetail.trim() || schedCost.trim() || schedPriority !== 'NORMAL') {
-        try {
-          await fetch(`${API_BASE_URL}/assets/${assetId}/actions`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              type: 'MAINTENANCE',
-              note: schedTitle.trim() || 'Scheduled maintenance',
-              occurred_at: toDateTimeISO(dueDate),
-              details: {
-                action: 'Maintenance',
-                date: dueDate,
-                summary: schedTitle.trim() || 'Scheduled maintenance',
-                notes: schedDetail.trim() || undefined,
-                cost: Number(schedCost) || 0,
-                priority: schedPriority,
-              },
-              data: { requires_signoff: false, completed: false, scheduled: true },
-            }),
-          });
-        } catch (e) {
-          logger.error('Servicing: scheduled-detail log failed', e);
-        }
-      }
+      const res = await fetch(`${API_BASE_URL}/tasks`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Failed to report the repair');
 
       await refreshTaskBadge();
       setWorkKey((n) => n + 1);
       setResultUi({
         phase: 'confirm',
-        title: 'Maintenance scheduled',
-        message: `Maintenance is set for ${prettyDate(dueDate)}. The assigned user can action and close it from Tasks.`,
+        title: 'Repair reported',
+        message: `"${faultTitle.trim()}" is now flagged as needing repair${dueDate ? `, due ${prettyDate(dueDate)}` : ''}. It stays open in Tasks until it's signed off.`,
         confirmLabel: 'View asset',
         cancelLabel: 'Done',
         onConfirm: () => { setResultUi(null); router.replace({ pathname: '/asset/[assetId]', params: { assetId } }); },
         onCancel: () => { setResultUi(null); backToTarget(); },
       });
     } catch (e) {
-      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to schedule the maintenance', error: true });
+      setResultUi({ phase: 'result', title: 'Error', message: e?.message || 'Failed to report the repair', error: true });
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, dueDate, schedTitle, schedDetail, schedCost, schedPriority, assetId, refreshTaskBadge, backToTarget, router]);
+  }, [submitting, faultTitle, faultDetail, priority, dueDate, assetId, refreshTaskBadge, backToTarget, router]);
 
   const assetType = asset?.asset_types?.name || asset?.name || 'Asset';
   const model = asset?.model || asset?.description || '';
   const serial = asset?.serial_number || '';
   const assignedTo = asset?.users?.name || asset?.users?.useremail || 'Unassigned';
 
-  const headerTitle = mode === 'past' ? 'Log Maintenance' : mode === 'schedule' ? 'Schedule Maintenance' : 'Maintenance';
+  const headerTitle = mode === 'log' ? 'Log a Repair' : mode === 'required' ? 'Repair Required' : 'Repair';
 
   const onBack = useCallback(() => {
     if (mode) { setMode(null); return; }
@@ -335,7 +309,7 @@ export default function ServicingScreen() {
           <>
             {/* Asset summary card */}
             <View style={s.assetCard}>
-              <View style={[s.accentBar, { backgroundColor: Colors.accent }]} />
+              <View style={[s.accentBar, { backgroundColor: Colors.warningFg }]} />
               <View style={s.cardBody}>
                 <View style={s.titleRow}>
                   <Text style={s.assetTitle} numberOfLines={2}>{assetType}</Text>
@@ -352,10 +326,10 @@ export default function ServicingScreen() {
                     <View style={{ marginTop: 4 }}><StatusBadge status={normalizeStatus(asset.status)} /></View>
                   </View>
                 </View>
-                {asset.next_service_date ? (
+                {asset.needs_repair ? (
                   <View style={s.nextRow}>
-                    <MaterialIcons name="event-available" size={14} color={Colors.sub} />
-                    <Text style={s.nextText}>Current next maintenance: {prettyDate(asset.next_service_date)}</Text>
+                    <MaterialIcons name="build" size={14} color={Colors.warningFg} />
+                    <Text style={[s.nextText, { color: Colors.warningFg }]}>Currently flagged as needing repair</Text>
                   </View>
                 ) : null}
               </View>
@@ -366,33 +340,33 @@ export default function ServicingScreen() {
               <View style={{ gap: 12, marginTop: 4 }}>
                 <Text style={s.menuHeading}>What would you like to do?</Text>
 
-                <TouchableOpacity style={s.optionCard} activeOpacity={0.85} onPress={() => setMode('past')}>
+                <TouchableOpacity style={s.optionCard} activeOpacity={0.85} onPress={() => setMode('log')}>
                   <View style={[s.optionIcon, { backgroundColor: Colors.accentMuted }]}>
                     <MaterialIcons name="history" size={22} color={Colors.accent} />
                   </View>
                   <View style={s.optionTextWrap}>
-                    <Text style={s.optionTitle}>Log Maintenance</Text>
-                    <Text style={s.optionSub}>Record maintenance that already happened and set when the next one is due. No task is created.</Text>
+                    <Text style={s.optionTitle}>Log a repair</Text>
+                    <Text style={s.optionSub}>Record a repair that has already been done. Clears the Needs-repair flag. No task is created.</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={22} color={Colors.sub2} />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={s.optionCard} activeOpacity={0.85} onPress={() => setMode('schedule')}>
-                  <View style={[s.optionIcon, { backgroundColor: '#EEF2FF' }]}>
-                    <MaterialIcons name="event" size={22} color="#4F46E5" />
+                <TouchableOpacity style={s.optionCard} activeOpacity={0.85} onPress={() => setMode('required')}>
+                  <View style={[s.optionIcon, { backgroundColor: Colors.warningBg }]}>
+                    <MaterialIcons name="report-problem" size={22} color={Colors.warningFg} />
                   </View>
                   <View style={s.optionTextWrap}>
-                    <Text style={s.optionTitle}>Schedule maintenance</Text>
-                    <Text style={s.optionSub}>Book maintenance for today or up to 6 months ahead. Creates a task for the assigned user to action and close.</Text>
+                    <Text style={s.optionTitle}>Repair required</Text>
+                    <Text style={s.optionSub}>Report a fault that still needs fixing. Flags the asset and creates a task that stays open until it's signed off.</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={22} color={Colors.sub2} />
                 </TouchableOpacity>
 
-                {/* Outstanding maintenance (sign-off-able) + past maintenance record */}
+                {/* Outstanding repairs (sign-off-able) + past repair record */}
                 <AssetWorkPanel
                   asset={asset}
                   assetId={assetId}
-                  kind="MAINTENANCE"
+                  kind="REPAIR"
                   reloadKey={workKey}
                   onChanged={(patch) => {
                     setAsset((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -402,15 +376,15 @@ export default function ServicingScreen() {
               </View>
             ) : null}
 
-            {/* Option 1 — Log past service */}
-            {mode === 'past' ? (
+            {/* Option 1 — Log a completed repair */}
+            {mode === 'log' ? (
               <View style={s.formCard}>
-                <DateField label="Maintenance Date" value={serviceDate} onChange={setServiceDate} validRange={pastWindow()} />
+                <DateField label="When was it repaired?" value={repairDate} onChange={setRepairDate} validRange={pastWindow()} />
 
-                <Text style={s.fieldLabel}>Type of maintenance (optional)</Text>
+                <Text style={s.fieldLabel}>What was repaired? *</Text>
                 <TextInput
                   style={s.input}
-                  placeholder="e.g. Scheduled maintenance"
+                  placeholder="e.g. Replaced cracked screen"
                   placeholderTextColor={Colors.muted}
                   value={summary}
                   onChangeText={setSummary}
@@ -438,7 +412,7 @@ export default function ServicingScreen() {
                   maxLength={FIELD_LIMITS.NOTES}
                 />
 
-                <Text style={s.fieldLabel}>Maintenance report (optional)</Text>
+                <Text style={s.fieldLabel}>Repair report (optional)</Text>
                 <Text style={s.hint}>{ASSET_DOCUMENT_FIELD_HINT}</Text>
                 {report ? <Text style={s.attached}>Attached: {report.name || 'document'}</Text> : null}
                 <TouchableOpacity
@@ -461,99 +435,78 @@ export default function ServicingScreen() {
                   <Text style={s.secondaryBtnText}>{report ? 'Replace report' : 'Attach report'}</Text>
                 </TouchableOpacity>
 
-                <View style={s.divider} />
-
-                <DateField
-                  label="Next maintenance due *"
-                  value={nextDate}
-                  onChange={setNextDate}
-                  validRange={serviceWindow()}
-                  helper="Defaults to 6 months from today. Cannot be more than 6 months ahead."
-                />
-                <QuickMonths onPick={(m) => setNextDate(toISO(addMonths(startOfToday(), m)))} />
-
                 <TouchableOpacity
-                  style={[s.primaryBtn, submitting && { opacity: 0.6 }]}
-                  onPress={submitPast}
-                  disabled={submitting}
+                  style={[s.primaryBtn, (submitting || !summary.trim()) && { opacity: 0.6 }]}
+                  onPress={submitLog}
+                  disabled={submitting || !summary.trim()}
                 >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Log Maintenance</Text>}
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Log Repair</Text>}
                 </TouchableOpacity>
               </View>
             ) : null}
 
-            {/* Option 2 — Schedule service */}
-            {mode === 'schedule' ? (
+            {/* Option 2 — Repair required */}
+            {mode === 'required' ? (
               <View style={s.formCard}>
                 <View style={s.banner}>
-                  <MaterialIcons name="info-outline" size={16} color="#4F46E5" />
+                  <MaterialIcons name="info-outline" size={16} color={Colors.warningFg} />
                   <Text style={s.bannerText}>
-                    This creates a service task on the chosen date. The assigned user actions and closes it
-                    ("service done") and is then offered to schedule the next service.
+                    This flags the asset as needing repair and creates a task. It stays open in Tasks
+                    until someone logs the repair or signs it off.
                   </Text>
                 </View>
 
-                <DateField
-                  label="Maintenance due *"
-                  value={dueDate}
-                  onChange={setDueDate}
-                  validRange={serviceWindow()}
-                  helper="Today up to 6 months ahead."
-                />
-                <QuickMonths onPick={(m) => setDueDate(toISO(addMonths(startOfToday(), m)))} includeToday />
-
-                <Text style={s.fieldLabel}>What's the maintenance? (optional)</Text>
+                <Text style={s.fieldLabel}>What needs repair? *</Text>
                 <TextInput
                   style={s.input}
-                  placeholder="e.g. Annual calibration"
+                  placeholder="e.g. Cracked screen, won't power on"
                   placeholderTextColor={Colors.muted}
-                  value={schedTitle}
-                  onChangeText={setSchedTitle}
-                  maxLength={FIELD_LIMITS.DESCRIPTION}
+                  value={faultTitle}
+                  onChangeText={setFaultTitle}
+                  maxLength={200}
                 />
 
-                <Text style={s.fieldLabel}>What needs doing? (optional)</Text>
+                <Text style={s.fieldLabel}>Description (optional)</Text>
                 <TextInput
                   style={[s.input, { height: 88, textAlignVertical: 'top' }]}
-                  placeholder="Parts, checks, who to book it with…"
+                  placeholder="More detail about the fault…"
                   placeholderTextColor={Colors.muted}
-                  value={schedDetail}
-                  onChangeText={setSchedDetail}
+                  value={faultDetail}
+                  onChangeText={setFaultDetail}
                   multiline
                   maxLength={FIELD_LIMITS.NOTES}
                 />
 
                 <Text style={s.fieldLabel}>Priority</Text>
                 <View style={s.chipRow}>
-                  {SCHED_PRIORITIES.map((p) => (
+                  {PRIORITIES.map((p) => (
                     <TouchableOpacity
                       key={p}
-                      style={[s.chip, schedPriority === p && (p === 'CRITICAL' || p === 'HIGH' ? s.chipDanger : s.chipOn)]}
-                      onPress={() => setSchedPriority(p)}
+                      style={[s.chip, priority === p && (p === 'HIGH' ? s.chipDanger : s.chipOn)]}
+                      onPress={() => setPriority(p)}
                     >
-                      <Text style={[s.chipText, schedPriority === p && s.chipTextOn]}>
+                      <Text style={[s.chipText, priority === p && s.chipTextOn]}>
                         {p.charAt(0) + p.slice(1).toLowerCase()}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
 
-                <Text style={s.fieldLabel}>Estimated cost (optional)</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  placeholderTextColor={Colors.muted}
-                  value={schedCost}
-                  onChangeText={setSchedCost}
+                <DateField
+                  label="Needed by (optional)"
+                  value={dueDate}
+                  onChange={setDueDate}
+                  validRange={dueWindow()}
+                  placeholder="No date set"
+                  onClear={dueDate ? () => setDueDate(null) : null}
                 />
 
                 <TouchableOpacity
-                  style={[s.primaryBtn, submitting && { opacity: 0.6 }]}
-                  onPress={submitSchedule}
-                  disabled={submitting}
+                  style={[s.primaryBtn, (submitting || !faultTitle.trim()) && { opacity: 0.6 }]}
+                  onPress={submitRequired}
+                  disabled={submitting || !faultTitle.trim()}
                 >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Schedule Maintenance</Text>}
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Report Repair</Text>}
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -561,7 +514,6 @@ export default function ServicingScreen() {
         )}
       </ScrollView>
 
-      {/* Result / confirm modal (in-app; Alert is a no-op on web) */}
       <ConfirmModal
         visible={!!resultUi}
         phase={resultUi?.phase || 'result'}
@@ -579,7 +531,7 @@ export default function ServicingScreen() {
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
-function DateField({ label, value, onChange, validRange, helper }) {
+function DateField({ label, value, onChange, validRange, helper, placeholder, onClear }) {
   const [open, setOpen] = useState(false);
   const parsed = useMemo(() => {
     try { return value ? new Date(value) : new Date(); } catch { return new Date(); }
@@ -587,10 +539,19 @@ function DateField({ label, value, onChange, validRange, helper }) {
   return (
     <View>
       <Text style={s.fieldLabel}>{label}</Text>
-      <TouchableOpacity style={s.dateInput} onPress={() => setOpen(true)}>
-        <MaterialIcons name="event" size={18} color={Colors.sub} />
-        <Text style={s.dateText}>{value ? prettyDate(value) : 'Select date'}</Text>
-      </TouchableOpacity>
+      <View style={s.dateRow}>
+        <TouchableOpacity style={[s.dateInput, { flex: 1 }]} onPress={() => setOpen(true)}>
+          <MaterialIcons name="event" size={18} color={Colors.sub} />
+          <Text style={[s.dateText, !value && { color: Colors.muted }]}>
+            {value ? prettyDate(value) : (placeholder || 'Select date')}
+          </Text>
+        </TouchableOpacity>
+        {onClear ? (
+          <TouchableOpacity onPress={onClear} style={s.clearBtn}>
+            <Text style={s.clearText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       {helper ? <Text style={s.hint}>{helper}</Text> : null}
       <DatePickerModal
         locale="en-GB"
@@ -605,26 +566,8 @@ function DateField({ label, value, onChange, validRange, helper }) {
   );
 }
 
-function QuickMonths({ onPick, includeToday }) {
-  return (
-    <View style={s.quickRow}>
-      {includeToday ? (
-        <TouchableOpacity style={s.quickChip} onPress={() => onPick(0)}>
-          <Text style={s.quickChipText}>Today</Text>
-        </TouchableOpacity>
-      ) : null}
-      {[1, 3, 6].map((m) => (
-        <TouchableOpacity key={m} style={s.quickChip} onPress={() => onPick(m)}>
-          <Text style={s.quickChipText}>+{m} month{m === 1 ? '' : 's'}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
-  // Constrain to a readable column and centre it so the page doesn't sprawl on web.
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 14, width: '100%', maxWidth: 760, alignSelf: 'center' },
   center: { paddingVertical: 60, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: Colors.sub, fontSize: sf(15), fontWeight: '500' },
@@ -657,9 +600,11 @@ const s = StyleSheet.create({
   input: { borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, color: Colors.text, backgroundColor: Colors.card },
   hint: { fontSize: sf(11), color: Colors.sub2, marginTop: 4, lineHeight: sf(16) },
   attached: { marginTop: 6, fontStyle: 'italic', color: Colors.sub },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateInput: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 2, borderColor: Colors.line, borderRadius: Radius.md, padding: 12, backgroundColor: Colors.card },
   dateText: { color: Colors.text, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: Colors.line, marginVertical: 12 },
+  clearBtn: { paddingHorizontal: 12, paddingVertical: 12 },
+  clearText: { fontSize: sf(12.5), fontWeight: '700', color: Colors.sub },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
@@ -668,12 +613,8 @@ const s = StyleSheet.create({
   chipText: { fontWeight: '700', color: Colors.sub, fontSize: sf(12.5) },
   chipTextOn: { color: '#fff' },
 
-  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  quickChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: Colors.line, backgroundColor: Colors.chip },
-  quickChipText: { fontWeight: '700', color: Colors.primaryDark, fontSize: sf(12) },
-
-  banner: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: Radius.md, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', marginBottom: 4 },
-  bannerText: { flex: 1, fontSize: sf(12), color: '#3730A3', lineHeight: sf(17) },
+  banner: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: Radius.md, backgroundColor: Colors.warningBg, borderWidth: 1, borderColor: Colors.warningBorder, marginBottom: 4 },
+  bannerText: { flex: 1, fontSize: sf(12), color: Colors.warningFg, lineHeight: sf(17) },
 
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line, backgroundColor: Colors.chip, marginTop: 4 },
   secondaryBtnText: { fontWeight: '700', color: Colors.text },

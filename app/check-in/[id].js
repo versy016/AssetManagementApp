@@ -22,12 +22,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import ActionsForm from '../../components/ActionsForm';
-import TaskActionModal from '../../components/tasks/TaskActionModal';
-import CreateTaskModal from '../../components/tasks/CreateTaskModal';
-import { useAssetSignoff } from '../../hooks/useAssetSignoff';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import StatusBadge, { normalizeStatus, AssetStatusBadges } from '../../components/ui/StatusBadge';
 import PriorityNotesBanner from '../../components/PriorityNotesBanner';
+import AssetBookingBanner from '../../components/bookings/AssetBookingBanner';
 import { getAuthHeaders } from '../../utils/authHeaders';
 import { getImageFileFromPicker, ALLOWED_IMAGE_MIME_TYPES, revokeImageUri } from '../../utils/getFormFileFromPicker';
 // NOTE: Avoid static import of expo-location to prevent SSR/import loops on web.
@@ -385,28 +383,24 @@ export default function CheckInScreen() {
   };
   const [postActionUi, setPostActionUi] = useState(null); // { title, message, onGo, onStay }
   const [flagUi, setFlagUi] = useState(null); // repair/maintenance-due alert + transfer confirm (in-app modal)
+  const [bookingWarn, setBookingWarn] = useState(null); // active booking by another user: { label, to }
   const [showOtherModal, setShowOtherModal] = useState(false);
   const [actionsFormOpen, setActionsFormOpen] = useState(false);
   const [actionsFormType, setActionsFormType] = useState(null);
 
-  // Sign off an open Needs-repair / Maintenance-due task with the same modal as the
-  // Tasks tab. On success we clear the flag locally and stay on the scan menu.
-  const signoff = useAssetSignoff(asset, {
-    onDone: (patch) => {
-      if (patch && Object.keys(patch).length) setAsset((prev) => ({ ...prev, ...patch }));
-      postActionAlert({ message: 'Task signed off' });
-    },
-  });
-
   // Deep-link: arriving with ?signoff=repair|maintenance (e.g. from the web bulk bar)
-  // auto-opens the sign-off for the matching flag, once, after the asset has loaded.
+  // forwards to the screen that owns that work, where it can be signed off.
   const signoffAutoRef = useRef(false);
   useEffect(() => {
     if (signoffAutoRef.current || !asset?.id) return;
     const which = String(signoffParam || '').toLowerCase();
-    if (which === 'repair' && asset?.needs_repair) { signoffAutoRef.current = true; signoff.open('repair'); }
-    else if (which === 'maintenance' && asset?.maintenance_due) { signoffAutoRef.current = true; signoff.open('maintenance'); }
-  }, [asset?.id, asset?.needs_repair, asset?.maintenance_due, signoffParam]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (which !== 'repair' && which !== 'maintenance') return;
+    signoffAutoRef.current = true;
+    router.push({
+      pathname: which === 'repair' ? '/repair/[assetId]' : '/servicing/[assetId]',
+      params: { assetId: String(asset.id) },
+    });
+  }, [asset?.id, signoffParam]); // eslint-disable-line react-hooks/exhaustive-deps
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapIdInput, setSwapIdInput] = useState('');
   const [lookupQuery, setLookupQuery] = useState('');
@@ -1192,17 +1186,74 @@ export default function CheckInScreen() {
   // Alert once (in-app modal) when a flagged asset is opened (e.g. after scanning)
   // so the user knows a repair/maintenance is outstanding before transferring.
   const flagAlertedRef = useRef(null);
+  // Fire only when a (freshly loaded) asset is opened/scanned — NOT when the flags
+  // change mid-session (e.g. right after the user logs a repair). Keyed to asset.id
+  // so it re-evaluates on the next scan, not on flag mutations.
   useEffect(() => {
+    if (!asset?.id || flagAlertedRef.current === asset.id) return;
     const w = unresolvedFlagWarning(asset);
-    if (asset?.id && w && flagAlertedRef.current !== asset.id) {
-      flagAlertedRef.current = asset.id;
+    flagAlertedRef.current = asset.id;
+    if (w) {
       setFlagUi({
         phase: 'result',
         title: 'Action required',
         message: `${w}You can still transfer it, but the task will remain open until signed off.`,
       });
     }
-  }, [asset?.id, asset?.needs_repair, asset?.maintenance_due]);
+  }, [asset?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch the asset's current booking; flag when it's actively booked by someone else.
+  const bookingAlertedRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!asset?.id) { setBookingWarn(null); return undefined; }
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/bookings/availability?asset_id=${encodeURIComponent(asset.id)}`);
+        const json = await res.json().catch(() => ({}));
+        const myUid = getAuth()?.currentUser?.uid || null;
+        const n = new Date();
+        const todayY = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+        const active = (Array.isArray(json.windows) ? json.windows : []).find(
+          (w) => w.kind === 'booking' && w.from <= todayY && (!w.to || todayY <= w.to) && w.bookedById && String(w.bookedById) !== String(myUid),
+        );
+        if (!cancelled) setBookingWarn(active ? { label: active.label, to: active.to } : null);
+      } catch { if (!cancelled) setBookingWarn(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [asset?.id]);
+
+  const bookedUntil = (to) => { try { return new Date(`${to}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return to; } };
+
+  // Alert once when opening an asset actively booked by another user (skip if a
+  // repair/maintenance alert is already showing, to avoid stacking modals).
+  useEffect(() => {
+    if (asset?.id && bookingWarn && !unresolvedFlagWarning(asset) && bookingAlertedRef.current !== asset.id) {
+      bookingAlertedRef.current = asset.id;
+      setFlagUi({
+        phase: 'result',
+        title: 'Asset is booked',
+        message: `This asset is booked by ${bookingWarn.label} until ${bookedUntil(bookingWarn.to)}. Make sure you have the authority to use or transfer it.`,
+      });
+    }
+  }, [asset?.id, bookingWarn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirm before transferring an asset that's booked by someone else.
+  const confirmBookingBeforeTransfer = useCallback(() => {
+    if (!bookingWarn) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setFlagUi({
+        phase: 'confirm',
+        title: 'Asset is booked',
+        message: `This asset is booked by ${bookingWarn.label} until ${bookedUntil(bookingWarn.to)}. Confirm you have the authority to transfer it.`,
+        confirmLabel: 'I have authority — transfer',
+        confirmTone: 'danger',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { setFlagUi(null); resolve(true); },
+        onCancel: () => { setFlagUi(null); resolve(false); },
+      });
+    });
+  }, [bookingWarn]);
 
   // Confirm (via the in-app modal) before transferring a still-flagged asset.
   // Resolves true when there's nothing to warn about, or the user proceeds.
@@ -1230,6 +1281,8 @@ export default function CheckInScreen() {
     if (type === 'checkin' || type === 'transferToMe') {
       const proceed = await confirmTransferIfFlagged(asset);
       if (!proceed) return;
+      const proceedBooking = await confirmBookingBeforeTransfer();
+      if (!proceedBooking) return;
     }
 
     let payload = {};
@@ -1363,6 +1416,8 @@ export default function CheckInScreen() {
     if (!id) return;
     const proceed = await confirmTransferIfFlagged(asset);
     if (!proceed) return;
+    const proceedBooking = await confirmBookingBeforeTransfer();
+    if (!proceedBooking) return;
     const target = returnTo ? String(returnTo) : `/check-in/${id}`;
     router.push({
       pathname: '/transfer/[assetId]',
@@ -1585,41 +1640,9 @@ export default function CheckInScreen() {
       setLoading(false);
     }
   };
-  // "Needs repair" opens the task form (prefilled with this asset + Repair) so the
-  // fault is captured; creating the task raises the Needs-repair flag server-side.
-  const [repairFormOpen, setRepairFormOpen] = useState(false);
-  const repairPrefill = useMemo(() => (asset ? {
-    asset: {
-      id: asset.id,
-      typeId: asset.type_id || asset.asset_types?.id || null,
-      label: asset.asset_types?.name || asset.model || asset.serial_number || asset.id,
-      sub: [asset.model, asset.serial_number, asset.other_id].filter(Boolean).join(' · '),
-    },
-    category: 'REPAIR',
-  } : null), [asset?.id, asset?.type_id, asset?.model, asset?.serial_number]);
-
-  const createTaskFromForm = async (payload) => {
-    try {
-      const auth = getAuth();
-      const u = auth?.currentUser;
-      const headers = { 'Content-Type': 'application/json' };
-      if (u?.uid) headers['X-User-Id'] = u.uid;
-      if (u?.displayName) headers['X-User-Name'] = u.displayName;
-      if (u?.email) headers['X-User-Email'] = u.email;
-      try { if (u?.getIdToken) { const t = await u.getIdToken(); if (t) headers.Authorization = `Bearer ${t}`; } } catch { /* non-fatal */ }
-      const res = await fetch(`${API_BASE_URL}/tasks`, { method: 'POST', headers, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error((await res.text()) || 'Failed to create task');
-      // Reflect the flag the task raised (Repair → needs_repair, else maintenance_due).
-      applyAssetPatch(String(payload.category || '').toUpperCase() === 'REPAIR' ? { needs_repair: true } : { maintenance_due: true });
-      postActionAlert({ message: 'Repair task created' });
-      return true;
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to create task');
-      return false;
-    }
-  };
-
-  const markNeedsRepair = () => setRepairFormOpen(true);
+  // Repair and Maintenance are parallel flows — each opens its own screen with a
+  // "log what happened" vs "flag what's needed" choice.
+  const goRepair = () => router.push({ pathname: '/repair/[assetId]', params: { assetId: String(asset?.id) } });
   const goScheduleMaintenance = () => router.push({ pathname: '/servicing/[assetId]', params: { assetId: String(asset?.id) } });
 
 
@@ -1947,6 +1970,7 @@ export default function CheckInScreen() {
 
             {/* Priority (pinned) notes */}
             <PriorityNotesBanner notes={priorityNotes} onRemovePriority={removePriorityNote} />
+            <AssetBookingBanner assetId={asset?.id} style={{ marginTop: 12 }} />
 
             {/* Two-column body */}
             <View style={styles.webBody}>
@@ -2268,22 +2292,17 @@ export default function CheckInScreen() {
                       </View>
                     </View>
 
-                    {/* Maintenance — conditional on the asset's overlay flags */}
+                    {/* Repair / maintenance — conditional on the asset's overlay flags */}
                     <View style={styles.webActionGroup}>
-                      <Text style={styles.webSectionLabel}>MAINTENANCE</Text>
+                      <Text style={styles.webSectionLabel}>REPAIR/MAINTENANCE</Text>
                       <View style={styles.webActionCard}>
                         {(() => {
-                          const rows = [];
-                          if (!asset?.needs_repair) {
-                            rows.push({ key: 'repair-req', icon: 'build', bg: Colors.warningBg, fg: Colors.warningFg, label: 'Needs repair', desc: 'Report a repair — describe the fault', onPress: markNeedsRepair });
-                          }
-                          rows.push({ key: 'sched', icon: 'event', bg: Colors.infoBg, fg: Colors.infoFg, label: 'Log future maintenance', desc: 'Set when the next service is due', onPress: goScheduleMaintenance });
-                          if (asset?.needs_repair) {
-                            rows.push({ key: 'log-repair', icon: 'check-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Sign off repair', desc: 'Close out the open repair task', onPress: () => signoff.open('repair') });
-                          }
-                          if (asset?.maintenance_due) {
-                            rows.push({ key: 'log-maint', icon: 'build-circle', bg: Colors.successBg, fg: Colors.successFg, label: 'Sign off maintenance', desc: 'Close out the maintenance task', onPress: () => signoff.open('maintenance') });
-                          }
+                          // Both screens own their own sign-off (see the "current work"
+                          // section there), so no sign-off rows belong here.
+                          const rows = [
+                            { key: 'repair-req', icon: 'build', bg: Colors.warningBg, fg: Colors.warningFg, label: 'Repair', desc: asset?.needs_repair ? 'Repair outstanding — log or sign it off' : 'Log a repair, or flag one as required', onPress: goRepair },
+                            { key: 'sched', icon: 'event', bg: Colors.infoBg, fg: Colors.infoFg, label: 'Maintenance', desc: asset?.maintenance_due ? 'Maintenance due — log or sign it off' : 'Log maintenance, or schedule the next one', onPress: goScheduleMaintenance },
+                          ];
                           return rows.map((r, i) => (
                             <TouchableOpacity
                               key={r.key}
@@ -2651,31 +2670,27 @@ export default function CheckInScreen() {
         {/* Sticky Footer Bar (hide for placeholders, QR Reserved, and EOL) */}
         {!isPlaceholder && !isEOL && !isQRReserved && !isAwaitingQr && (
           <View style={styles.footerBar}>
-            {/* Adapts to the asset's flags: set the flag when clear, or log the
-                completed work (which clears the flag) when set. */}
+            {/* Each opens its own screen, where the work is logged, flagged or
+                signed off — the flag only changes the label's urgency here. */}
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
-              onPress={asset?.needs_repair
-                ? () => signoff.open('repair')
-                : markNeedsRepair}
+              onPress={goRepair}
               disabled={loading}
             >
-              <MaterialIcons name={asset?.needs_repair ? 'check-circle' : 'build'} size={18} color="#fff" />
+              <MaterialIcons name="build" size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                {asset?.needs_repair ? 'Sign off repair' : 'Needs repair'}
+                Repair
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.footerBtn, styles.footerBtnPrimary]}
-              onPress={asset?.maintenance_due
-                ? () => signoff.open('maintenance')
-                : goScheduleMaintenance}
+              onPress={goScheduleMaintenance}
               disabled={loading}
             >
-              <MaterialIcons name={asset?.maintenance_due ? 'build-circle' : 'event'} size={18} color="#fff" />
+              <MaterialIcons name="event" size={18} color="#fff" />
               <Text style={styles.footerBtnText} numberOfLines={2}>
-                {asset?.maintenance_due ? 'Sign off maintenance' : 'Log future maintenance'}
+                Maintenance
               </Text>
             </TouchableOpacity>
 
@@ -2707,18 +2722,6 @@ export default function CheckInScreen() {
           }
           postActionAlert({ message: 'Asset updated successfully' });
         }}
-      />
-
-      {/* Sign-off modal for Needs-repair / Maintenance-due tasks (same as Tasks tab) */}
-      <TaskActionModal {...signoff.modalProps} />
-
-      {/* "Needs repair" opens the repair-task form (prefilled with this asset) */}
-      <CreateTaskModal
-        visible={repairFormOpen}
-        onClose={() => setRepairFormOpen(false)}
-        onCreate={createTaskFromForm}
-        isAdmin={isAdmin}
-        prefill={repairPrefill}
       />
 
       {renderUserModal()}

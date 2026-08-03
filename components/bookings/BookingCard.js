@@ -26,7 +26,7 @@ const initials = (s) => {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
 };
 
-export default function BookingCard({ item, canManage, onCancel, onCheckout, onReturn }) {
+export default function BookingCard({ item, canManage, onCancel, onCheckout, onReturn, onEdit }) {
   const statusUpper = String(item.status || '').toUpperCase();
   const st = STATUS[statusUpper] || STATUS.CONFIRMED;
   const title = [item.assetTypeName || item.model || 'Asset', item.assetId].filter(Boolean).join(' · ');
@@ -48,12 +48,10 @@ export default function BookingCard({ item, canManage, onCancel, onCheckout, onR
         </View>
       </View>
 
-      {item.project ? (
-        <View style={styles.projRow}>
-          <MaterialIcons name="folder-open" size={13} color={Colors.sub} />
-          <Text style={styles.proj} numberOfLines={1}>{item.project}</Text>
-        </View>
-      ) : null}
+      <View style={styles.projRow}>
+        <MaterialIcons name="folder-open" size={13} color={Colors.sub} />
+        <Text style={[styles.proj, !item.project && styles.projEmpty]} numberOfLines={1}>{item.project || 'No project'}</Text>
+      </View>
 
       <View style={styles.foot}>
         <View style={styles.who}>
@@ -68,21 +66,27 @@ export default function BookingCard({ item, canManage, onCancel, onCheckout, onR
 
       {canManage ? (
         <View style={styles.actions}>
+          {onEdit && statusUpper !== 'COMPLETED' ? (
+            <TouchableOpacity style={styles.actBtn} onPress={() => onEdit(item)}>
+              <MaterialIcons name="edit" size={15} color={Colors.sub} />
+              <Text style={[styles.actText, { color: Colors.sub }]}>Edit</Text>
+            </TouchableOpacity>
+          ) : null}
           {statusUpper === 'CONFIRMED' && onCheckout ? (
             <TouchableOpacity style={styles.actBtn} onPress={() => onCheckout(item.id)}>
               <MaterialIcons name="logout" size={15} color={Colors.infoFg} />
-              <Text style={[styles.actText, { color: Colors.infoFg }]}>Check out</Text>
+              <Text style={[styles.actText, { color: Colors.infoFg }]}>Transfer to me</Text>
             </TouchableOpacity>
           ) : null}
           {statusUpper === 'ACTIVE' && onReturn ? (
             <TouchableOpacity style={styles.actBtn} onPress={() => onReturn(item.id)}>
               <MaterialIcons name="login" size={15} color={Colors.successFg} />
-              <Text style={[styles.actText, { color: Colors.successFg }]}>Return</Text>
+              <Text style={[styles.actText, { color: Colors.successFg }]}>Transfer to office</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity style={styles.actBtn} onPress={() => onCancel?.(item.id)}>
             <MaterialIcons name="delete-outline" size={15} color={Colors.dangerFg} />
-            <Text style={[styles.actText, { color: Colors.dangerFg }]}>Cancel</Text>
+            <Text style={[styles.actText, { color: Colors.dangerFg }]}>Cancel booking</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -101,6 +105,7 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: sf(11), fontWeight: '800' },
   projRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   proj: { fontSize: sf(12.5), color: Colors.sub, fontWeight: '600', flex: 1 },
+  projEmpty: { fontStyle: 'italic', color: Colors.subtle, fontWeight: '500' },
   foot: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.line },
   who: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
   avatar: { width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },

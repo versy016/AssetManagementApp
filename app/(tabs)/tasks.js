@@ -90,6 +90,7 @@ export default function TasksScreen() {
   // Bookings (Work ▸ Bookings sub-tab)
   const bookings = useBookings();
   const [bookingCreateOpen, setBookingCreateOpen] = useState(false);
+  const [bookingEdit, setBookingEdit] = useState(null);
   const [bookingView, setBookingView] = useState('calendar'); // calendar | list
   const cancelBookingConfirm = (id) => Alert.alert('Cancel booking', 'Remove this booking?', [
     { text: 'Keep' },
@@ -156,18 +157,18 @@ export default function TasksScreen() {
       {/* ── Bookings (mobile native only) — calendar by default ── */}
       {Platform.OS !== 'web' && activeTab === 'bookings' && (
         <View style={{ flex: 1 }}>
-          <View style={[styles.tasksHeader, { paddingBottom: 0 }]}>
-            <View style={styles.tasksHeaderRow}>
+          <View style={styles.bookingsHeader}>
+            <View style={styles.bookingsHeaderRow}>
               <Text style={styles.sectionTitle}>Bookings</Text>
               <NewButton label="Book" onPress={() => setBookingCreateOpen(true)} />
             </View>
-            <View style={[styles.subTabBar, { marginTop: 10, marginHorizontal: 0 }]}>
-              {[{ key: 'calendar', label: 'Calendar' }, { key: 'list', label: 'List' }].map((vm) => (
-                <TouchableOpacity key={vm.key} style={[styles.subTab, bookingView === vm.key && styles.subTabActive]} onPress={() => setBookingView(vm.key)} activeOpacity={0.8}>
-                  <Text style={[styles.subTabText, bookingView === vm.key && styles.subTabTextActive]}>{vm.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          </View>
+          <View style={styles.subTabBar}>
+            {[{ key: 'calendar', label: 'Calendar' }, { key: 'list', label: 'List' }].map((vm) => (
+              <TouchableOpacity key={vm.key} style={[styles.subTab, bookingView === vm.key && styles.subTabActive]} onPress={() => setBookingView(vm.key)} activeOpacity={0.8}>
+                <Text style={[styles.subTabText, bookingView === vm.key && styles.subTabTextActive]}>{vm.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           {bookingView === 'calendar' ? (
@@ -179,6 +180,7 @@ export default function TasksScreen() {
                 onCancel={cancelBookingConfirm}
                 onCheckout={bookings.checkoutBooking}
                 onReturn={bookings.returnBooking}
+                onEdit={setBookingEdit}
               />
             </ScrollView>
           ) : (
@@ -189,10 +191,10 @@ export default function TasksScreen() {
               showsVerticalScrollIndicator={false}
               ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
               ListHeaderComponent={() => (
-                <View style={[styles.subTabBar, { marginBottom: 10, marginHorizontal: 0 }]}>
+                <View style={styles.scopeSeg}>
                   {[{ key: 'upcoming', label: 'Upcoming' }, { key: 'past', label: 'Past' }].map((sc) => (
-                    <TouchableOpacity key={sc.key} style={[styles.subTab, bookings.scope === sc.key && styles.subTabActive]} onPress={() => bookings.setScope(sc.key)} activeOpacity={0.8}>
-                      <Text style={[styles.subTabText, bookings.scope === sc.key && styles.subTabTextActive]}>{sc.label}</Text>
+                    <TouchableOpacity key={sc.key} style={[styles.scopeSegBtn, bookings.scope === sc.key && styles.scopeSegBtnOn]} onPress={() => bookings.setScope(sc.key)} activeOpacity={0.8}>
+                      <Text style={[styles.scopeSegText, bookings.scope === sc.key && styles.scopeSegTextOn]}>{sc.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -214,7 +216,7 @@ export default function TasksScreen() {
                 )
               }
               renderItem={({ item }) => (
-                <BookingCard item={item} canManage onCancel={cancelBookingConfirm} onCheckout={bookings.checkoutBooking} onReturn={bookings.returnBooking} />
+                <BookingCard item={item} canManage onCancel={cancelBookingConfirm} onCheckout={bookings.checkoutBooking} onReturn={bookings.returnBooking} onEdit={setBookingEdit} />
               )}
             />
           )}
@@ -401,9 +403,11 @@ export default function TasksScreen() {
 
       {/* ── Create booking modal ── */}
       <CreateBookingModal
-        visible={bookingCreateOpen}
-        onClose={() => setBookingCreateOpen(false)}
+        visible={bookingCreateOpen || !!bookingEdit}
+        editBooking={bookingEdit}
+        onClose={() => { setBookingCreateOpen(false); setBookingEdit(null); }}
         onCreate={bookings.createBooking}
+        onUpdate={bookings.updateBooking}
         getAvailability={bookings.getAvailability}
       />
     </ScreenWrapper>
@@ -419,6 +423,20 @@ const styles = StyleSheet.create({
   colWrap: { gap: 14, marginBottom: 14 },
   gridCell: { flex: 1 },
   emptyWrap: { alignItems: 'center', paddingVertical: 40 },
+
+  // ── Bookings header (mobile) ────────────────────────────────────────────
+  // Rendered outside the padded list, so it carries its own horizontal padding.
+  bookingsHeader: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, backgroundColor: Colors.bg },
+  bookingsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  // Upcoming/Past segmented control inside the bookings list.
+  scopeSeg: {
+    flexDirection: 'row', backgroundColor: Colors.chip, borderRadius: 10,
+    padding: 3, marginBottom: 12,
+  },
+  scopeSegBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8 },
+  scopeSegBtnOn: { backgroundColor: Colors.card },
+  scopeSegText: { fontSize: sf(13), fontWeight: '800', color: Colors.sub },
+  scopeSegTextOn: { color: Colors.text },
 
   // ── Header ──────────────────────────────────────────────────────────────
   tasksHeader: { marginBottom: 4 },

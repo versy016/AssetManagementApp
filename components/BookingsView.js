@@ -7,9 +7,9 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Radius, sf } from '../constants/uiTheme';
 import { useBookings } from '../hooks/useBookings';
-import BookingCard from './bookings/BookingCard';
 import CreateBookingModal from './bookings/CreateBookingModal';
 import BookingsCalendar from './bookings/BookingsCalendar';
+import BookingsGantt from './bookings/BookingsGantt';
 import ConfirmModal from './ui/ConfirmModal';
 import EmptyState from './ui/EmptyState';
 
@@ -23,6 +23,7 @@ export default function BookingsView() {
   const b = useBookings();
   const [createOpen, setCreateOpen] = useState(false);
   const [cancelId, setCancelId] = useState(null);
+  const [editBooking, setEditBooking] = useState(null);
   const [viewMode, setViewMode] = useState('calendar'); // default to calendar
 
   const pending = useMemo(
@@ -36,16 +37,16 @@ export default function BookingsView() {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.header}>
+      <View style={[styles.header, viewMode === 'gantt' && styles.headerWide]}>
         <Text style={styles.title}>Bookings</Text>
         <View style={styles.seg}>
-          {[{ k: 'calendar', l: 'Calendar' }, { k: 'list', l: 'List' }].map((vm) => (
+          {[{ k: 'calendar', l: 'Calendar' }, { k: 'gantt', l: 'Gantt' }].map((vm) => (
             <TouchableOpacity key={vm.k} style={[styles.segBtn, viewMode === vm.k && styles.segBtnOn]} onPress={() => setViewMode(vm.k)}>
               <Text style={[styles.segText, viewMode === vm.k && styles.segTextOn]}>{vm.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
-        {viewMode === 'list' ? (
+        {viewMode === 'gantt' ? (
           <View style={styles.seg}>
             {[{ k: 'upcoming', l: 'Upcoming' }, { k: 'past', l: 'Past' }].map((sc) => (
               <TouchableOpacity key={sc.k} style={[styles.segBtn, b.scope === sc.k && styles.segBtnOn]} onPress={() => b.setScope(sc.k)}>
@@ -71,6 +72,7 @@ export default function BookingsView() {
               onCancel={(id) => setCancelId(id)}
               onCheckout={b.checkoutBooking}
               onReturn={b.returnBooking}
+              onEdit={setEditBooking}
             />
           </View>
         </ScrollView>
@@ -78,7 +80,7 @@ export default function BookingsView() {
         <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 48 }} />
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-          <View style={styles.centered}>
+          <View style={styles.centeredWide}>
           {/* Admin approvals */}
           {b.isAdmin && pending.length > 0 && (
             <View style={styles.section}>
@@ -116,22 +118,25 @@ export default function BookingsView() {
               />
             </View>
           ) : (
-            <View style={styles.grid}>
-              {rest.map((item) => (
-                <View key={item.id} style={styles.gridItem}>
-                  <BookingCard item={item} canManage onCancel={(id) => setCancelId(id)} onCheckout={b.checkoutBooking} onReturn={b.returnBooking} />
-                </View>
-              ))}
-            </View>
+            <BookingsGantt
+              items={rest}
+              canManage
+              onCancel={(id) => setCancelId(id)}
+              onCheckout={b.checkoutBooking}
+              onReturn={b.returnBooking}
+              onEdit={setEditBooking}
+            />
           )}
           </View>
         </ScrollView>
       )}
 
       <CreateBookingModal
-        visible={createOpen}
-        onClose={() => setCreateOpen(false)}
+        visible={createOpen || !!editBooking}
+        editBooking={editBooking}
+        onClose={() => { setCreateOpen(false); setEditBooking(null); }}
         onCreate={b.createBooking}
+        onUpdate={b.updateBooking}
         getAvailability={b.getAvailability}
       />
       <ConfirmModal
@@ -151,6 +156,9 @@ export default function BookingsView() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, width: '100%', paddingTop: 16 },
   centered: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20 },
+  // The gantt earns more horizontal room than the calendar — more timeline per screen.
+  centeredWide: { width: '100%', maxWidth: 1800, alignSelf: 'center', paddingHorizontal: 20 },
+  headerWide: { maxWidth: 1800 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap', width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20 },
   title: { fontSize: sf(22), fontWeight: '900', color: Colors.text },
   seg: { flexDirection: 'row', borderWidth: 1, borderColor: Colors.line, borderRadius: 9, overflow: 'hidden' },
@@ -171,6 +179,4 @@ const styles = StyleSheet.create({
   apApproveText: { color: '#fff', fontWeight: '800', fontSize: sf(12.5) },
   apReject: { borderWidth: 1, borderColor: Colors.dangerBorder, backgroundColor: Colors.dangerBg },
   apRejectText: { color: Colors.dangerFg, fontWeight: '800', fontSize: sf(12.5) },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  gridItem: { width: '100%', maxWidth: 380, flexGrow: 1, flexBasis: 340 },
 });

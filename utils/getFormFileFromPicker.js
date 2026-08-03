@@ -219,6 +219,93 @@ export async function pickAssetImage() {
   return assetToResult(res.assets[0]);
 }
 
+/** Web multi-file picker — same validation as pickImageFileWeb, but many at once. */
+function pickImageFilesWeb(max) {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      resolve([]);
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = WEB_IMAGE_FILE_ACCEPT;
+    input.multiple = true;
+    input.style.display = 'none';
+    const cleanup = () => {
+      try { if (input.parentNode) input.parentNode.removeChild(input); } catch { /* ignore */ }
+    };
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []);
+      cleanup();
+      if (!files.length) { resolve([]); return; }
+      const allowed = new Set(ALLOWED_IMAGE_MIME_TYPES);
+      const out = [];
+      for (const f of files.slice(0, max)) {
+        const contentType = inferImageMimeFromFile(f);
+        if (!allowed.has(contentType)) {
+          reject(new Error(`Unsupported file type. Please use: ${Object.keys(EXT_TO_MIME).join(', ')}`));
+          return;
+        }
+        const file = f.type === contentType ? f : new File([f], f.name || 'upload.jpg', { type: contentType });
+        const ext = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg');
+        out.push({
+          uri: URL.createObjectURL(file),
+          file,
+          name: file.name || `upload.${ext}`,
+          type: contentType,
+          size: file.size ?? null,
+        });
+      }
+      resolve(out);
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/**
+ * Pick up to `max` images at once. Native offers Camera (one shot) or Library
+ * (multi-select); web uses a multiple file input. Returns an array of
+ * { uri, file, name, type, size } — empty if cancelled.
+ */
+export async function pickAssetImages(max = 5) {
+  const limit = Math.max(1, Number(max) || 1);
+  if (Platform.OS === 'web') return pickImageFilesWeb(limit);
+
+  const choice = await new Promise((resolve) => {
+    Alert.alert(
+      'Add photos',
+      `Choose an option (up to ${limit})`,
+      [
+        { text: 'Take Photo', onPress: () => resolve('camera') },
+        { text: 'Choose from Library', onPress: () => resolve('library') },
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(null) },
+    );
+  });
+  if (!choice) return [];
+
+  if (choice === 'camera') {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') throw new Error('Camera permission is required to take a photo.');
+    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+    if (res.canceled || !res.assets?.length) return [];
+    return [assetToResult(res.assets[0])];
+  }
+
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: false,
+    allowsMultipleSelection: true,
+    selectionLimit: limit,
+    quality: 0.7,
+    base64: false,
+  });
+  if (res.canceled || !res.assets?.length) return [];
+  return res.assets.slice(0, limit).map(assetToResult);
+}
+
 /**
  * Normalize browser File objects so FormData gets a correct Content-Type when `type` was empty.
  */

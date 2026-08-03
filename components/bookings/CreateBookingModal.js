@@ -29,7 +29,8 @@ const fmt = (ymd) => {
 const isQrReserved = (a) =>
   String(a?.description || a?.fields?.description || '').trim().toLowerCase() === 'qr reserved asset';
 
-export default function CreateBookingModal({ visible, onClose, onCreate, getAvailability }) {
+export default function CreateBookingModal({ visible, onClose, onCreate, onUpdate, getAvailability, editBooking }) {
+  const isEdit = !!editBooking;
   const { height: winH } = useWindowDimensions();
   const [asset, setAsset] = useState(null); // { id, label, sub }
   const [project, setProject] = useState('');
@@ -41,6 +42,7 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
 
   const [windows, setWindows] = useState([]);
   const [windowsLoading, setWindowsLoading] = useState(false);
+  const [maint, setMaint] = useState(null); // { maintenanceDue, nextServiceDate, status }
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanResolving, setScanResolving] = useState(false);
@@ -53,11 +55,21 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
 
   const reset = () => {
     setAsset(null); setProject(''); setDateFrom(null); setDateTo(null); setNotes('');
-    setSubmitting(false); setError(''); setWindows([]); setScannerOpen(false);
+    setSubmitting(false); setError(''); setWindows([]); setMaint(null); setScannerOpen(false);
     setScanResolving(false); setPickerOpen(false); setAssetQuery('');
     setFromOpen(false); setToOpen(false);
   };
-  useEffect(() => { if (!visible) reset(); }, [visible]);
+  useEffect(() => {
+    if (!visible) { reset(); return; }
+    if (editBooking) {
+      // Editing: asset is fixed; prefill the editable fields.
+      setAsset({ id: editBooking.assetId, label: editBooking.assetTypeName || editBooking.model || editBooking.assetId, sub: [editBooking.model, editBooking.serialNumber].filter(Boolean).join(' · ') });
+      setProject(editBooking.project || '');
+      setDateFrom(editBooking.dateFrom || null);
+      setDateTo(editBooking.dateTo || null);
+      setNotes(editBooking.notes || '');
+    }
+  }, [visible, editBooking]);
 
   // Load busy windows whenever the selected asset changes.
   useEffect(() => {
@@ -65,8 +77,8 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
     if (!visible || !asset?.id) { setWindows([]); return; }
     setWindowsLoading(true);
     getAvailability(asset.id)
-      .then((w) => { if (!cancelled) setWindows(Array.isArray(w) ? w : []); })
-      .catch(() => { if (!cancelled) setWindows([]); })
+      .then((data) => { if (!cancelled) { setWindows(data?.windows || []); setMaint(data?.asset || null); } })
+      .catch(() => { if (!cancelled) { setWindows([]); setMaint(null); } })
       .finally(() => { if (!cancelled) setWindowsLoading(false); });
     return () => { cancelled = true; };
   }, [visible, asset?.id, getAvailability]);
@@ -109,21 +121,20 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
   }, [assets, assetQuery]);
 
   const canSubmit = !!asset && !!dateFrom && !!dateTo && !submitting;
+  const maintWarn = !!maint && (maint.maintenanceDue || (!!maint.nextServiceDate && !!dateFrom && !!dateTo && dateFrom <= maint.nextServiceDate && maint.nextServiceDate <= dateTo));
+  const maintText = maint?.maintenanceDue
+    ? 'Heads up: this asset is flagged Maintenance Due.'
+    : (maintWarn ? `Heads up: maintenance is due ${fmt(maint.nextServiceDate)}, within your window.` : '');
 
   const submit = async () => {
     if (!canSubmit) return;
     if (dateTo < dateFrom) { setError('End date must be on or after the start date.'); return; }
     setSubmitting(true); setError('');
-    const result = await onCreate({
-      asset_id: asset.id,
-      project: project.trim() || undefined,
-      date_from: dateFrom,
-      date_to: dateTo,
-      notes: notes.trim() || undefined,
-    });
+    const payload = { project: project.trim() || undefined, date_from: dateFrom, date_to: dateTo, notes: notes.trim() || undefined };
+    const result = isEdit ? await onUpdate(editBooking.id, payload) : await onCreate({ asset_id: asset.id, ...payload });
     setSubmitting(false);
     if (result?.ok) onClose();
-    else setError(result?.error || 'Failed to create booking.');
+    else setError(result?.error || 'Failed to save booking.');
   };
 
   const today = new Date();
@@ -135,7 +146,7 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.kav}>
           <View style={[s.card, { height: Math.round(winH * 0.92) }]}>
             <View style={s.header}>
-              <Text style={s.headerTitle}>New booking</Text>
+              <Text style={s.headerTitle}>{isEdit ? 'Edit booking' : 'New booking'}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialIcons name="close" size={24} color={Colors.sub} />
               </TouchableOpacity>
@@ -144,7 +155,7 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
             <ScrollView style={{ flex: 1 }} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
               {/* Asset */}
               <Text style={s.label}>Asset</Text>
-              {SCAN_TO_LINK ? (
+              {isEdit ? null : SCAN_TO_LINK ? (
                 <TouchableOpacity style={s.scanBtn} onPress={() => setScannerOpen(true)}>
                   <MaterialIcons name="qr-code-scanner" size={20} color="#fff" />
                   <Text style={s.scanBtnText}>{asset ? 'Scan a different asset' : 'Scan asset QR to book'}</Text>
@@ -225,6 +236,13 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
                 </View>
               </View>
 
+              {maintWarn ? (
+                <View style={s.warnBox}>
+                  <MaterialIcons name="build" size={16} color={Colors.warningFg} />
+                  <Text style={s.warnText}>{maintText}</Text>
+                </View>
+              ) : null}
+
               {/* Project */}
               <Text style={s.label}>Project</Text>
               <TextInput style={s.input} placeholder="e.g. Riverside Survey" placeholderTextColor={Colors.subtle} value={project} onChangeText={setProject} maxLength={200} />
@@ -246,7 +264,7 @@ export default function CreateBookingModal({ visible, onClose, onCreate, getAvai
                 <Text style={s.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.submitBtn, !canSubmit && s.submitBtnDisabled]} onPress={submit} disabled={!canSubmit}>
-                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.submitText}>Create booking</Text>}
+                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.submitText}>{isEdit ? 'Save changes' : 'Create booking'}</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -295,6 +313,8 @@ const s = StyleSheet.create({
   busyText: { fontSize: sf(12.5), color: Colors.sub, flex: 1 },
   errorBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14, padding: 10, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.dangerBorder, backgroundColor: Colors.dangerBg },
   errorText: { flex: 1, fontSize: sf(13), fontWeight: '700', color: Colors.dangerFg, lineHeight: sf(18) },
+  warnBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 6, padding: 10, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.warningBorder, backgroundColor: Colors.warningBg },
+  warnText: { flex: 1, fontSize: sf(13), fontWeight: '700', color: Colors.warningFg, lineHeight: sf(18) },
   footer: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: Colors.line },
   cancelBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: Radius.md, borderWidth: 2, borderColor: Colors.line },
   cancelText: { fontSize: sf(15), fontWeight: '800', color: Colors.sub2 },

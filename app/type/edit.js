@@ -287,21 +287,34 @@ export default function EditAssetType() {
   // Decide if a field from the server matches any preset
   // Priority 1: slug === preset.key
   // Priority 2: case-insensitive name equals preset.label AND field type slug matches
-  function matchPresetKeyForField(field) {
-    // direct slug match
-    const k1 = PRESET_LIBRARY.find((p) => (field.slug || '').toLowerCase() === p.key.toLowerCase());
+  // `ftListOverride` matters during the initial load: setFieldTypes() hasn't been
+  // applied to state yet at that point, so callers there must pass the freshly
+  // fetched list or the type-dependent match below silently fails.
+  function matchPresetKeyForField(field, ftListOverride) {
+    const fieldSlug = (field.slug || '').toLowerCase();
+
+    // 1) direct slug match (slug === preset key)
+    const k1 = PRESET_LIBRARY.find((p) => fieldSlug === p.key.toLowerCase());
     if (k1) return k1.key;
 
-    // name + type match (fallback)
-    const fType = getFieldTypeById(field.field_type_id);
-    const fTypeSlug = fType?.slug;
-    const k2 = PRESET_LIBRARY.find(
+    // 2) slug matches the slugified label. Fields are created with a slug derived
+    //    from their NAME, not the preset key, so presets whose key differs from
+    //    their label (e.g. 'vehicle_accessories'/"Accessories",
+    //    'documentation_url'/"Document") only ever match here. Needs no field
+    //    types, so it works even before the catalog has loaded.
+    const k2 = PRESET_LIBRARY.find((p) => fieldSlug && fieldSlug === slugifyName(p.label));
+    if (k2) return k2.key;
+
+    // 3) name + type match (fallback, e.g. for fields saved without a slug)
+    const list = Array.isArray(ftListOverride) ? ftListOverride : fieldTypes;
+    const fTypeSlug = list.find((ft) => ft.id === field.field_type_id)?.slug;
+    const k3 = PRESET_LIBRARY.find(
       (p) =>
         (field.name || '').trim().toLowerCase() === p.label.trim().toLowerCase() &&
         fTypeSlug &&
         fTypeSlug === p.fieldTypeSlug
     );
-    if (k2) return k2.key;
+    if (k3) return k3.key;
 
     return null;
   }
@@ -389,7 +402,7 @@ export default function EditAssetType() {
         // Load the field's actual stored name so the editable name input shows
         // its current value (which may differ from the preset's default label).
         for (const f of fields) {
-          const key = matchPresetKeyForField(f);
+          const key = matchPresetKeyForField(f, ftList);
           if (key) {
             const presetDef = PRESET_LIBRARY.find((p) => p.key === key);
             const curName = (f.name || '').trim();
@@ -417,7 +430,7 @@ export default function EditAssetType() {
           const primary = primaryOf(f) || 'date';
           if (primary === 'document') {
             // f is the ATTACHED DATE; target is the primary Document field.
-            const docKey = target ? matchPresetKeyForField(target) : null;
+            const docKey = target ? matchPresetKeyForField(target, ftList) : null;
             if (docKey) {
               nextPreset[docKey] = {
                 ...nextPreset[docKey],
@@ -431,7 +444,7 @@ export default function EditAssetType() {
             }
           } else {
             // date-primary: f matches a date preset; target is the attached document.
-            const dateKey = matchPresetKeyForField(f);
+            const dateKey = matchPresetKeyForField(f, ftList);
             if (dateKey) {
               nextPreset[dateKey] = {
                 ...nextPreset[dateKey],
@@ -448,7 +461,7 @@ export default function EditAssetType() {
         setPresetState(nextPreset);
 
         // Custom = fields that neither match a preset nor are attached to one.
-        const customBucket = fields.filter((f) => !matchPresetKeyForField(f) && !attachedFieldIds.has(f.id));
+        const customBucket = fields.filter((f) => !matchPresetKeyForField(f, ftList) && !attachedFieldIds.has(f.id));
 
         // 2) Populate editable custom with everything that didn't match a preset
         const editable = customBucket
@@ -1151,7 +1164,9 @@ export default function EditAssetType() {
                 const state = presetState[p.key] || { selected: false, required: false };
                 const checked = !!state.selected;
                 const required = !!state.required;
-                const exField = existingFields.find((f) => (f.slug || '') === p.key);
+                // Match the same way the loader does — a preset's saved slug comes
+                // from its label, so it often differs from p.key (see Accessories).
+                const exField = existingFields.find((f) => matchPresetKeyForField(f) === p.key);
                 const existing = !!exField;
                 const pendingCreate = checked && !existing;
                 const pendingDelete = !checked && existing;
@@ -1576,14 +1591,20 @@ export default function EditAssetType() {
             <Text style={s.summaryTitle}>Review changes</Text>
             <ScrollView style={{ maxHeight: 320 }}>
               {(() => {
-                const existingBySlug = Object.fromEntries(existingFields.map((f) => [f.slug, f]));
+                // Key by preset, not raw slug — a preset's saved slug comes from its
+                // label and often differs from p.key (see Accessories / Document).
+                const existingByPreset = {};
+                existingFields.forEach((f) => {
+                  const k = matchPresetKeyForField(f);
+                  if (k && !existingByPreset[k]) existingByPreset[k] = f;
+                });
                 const creates = [];
                 const updates = [];
                 const deletes = [];
 
                 for (const p of PRESET_LIBRARY) {
                   const st = presetState[p.key] || { selected: false, required: false };
-                  const ex = existingBySlug[p.key];
+                  const ex = existingByPreset[p.key];
                   if (st.selected && !ex) creates.push(`${p.label}${st.required ? ' • Required' : ''}`);
                   if (!st.selected && ex) deletes.push(`${p.label}`);
                   if (st.selected && ex && (!!ex.is_required !== !!st.required)) {

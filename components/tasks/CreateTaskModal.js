@@ -61,7 +61,7 @@ const toYMD = (d) => {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 };
 
-export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, isAdmin, editTask, prefill }) {
+export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, isAdmin, editTask, prefill, repairMode }) {
   const isEdit = !!editTask;
   const { height: winH } = useWindowDimensions();
   const [title, setTitle] = useState('');
@@ -253,7 +253,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
   // Block creating a Certificate task against an asset whose type can't hold one.
   const certBlocked = category === 'CERTIFICATE' && !!asset && certFieldStatus === 'missing';
   // Admins must assign the task to someone (the assignee picker is admin-only).
-  const assigneeMissing = isAdmin && !assignee;
+  const assigneeMissing = !repairMode && isAdmin && !assignee;
 
   const submit = async () => {
     const t = title.trim();
@@ -281,7 +281,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.kav}>
           <View style={[s.card, { height: Math.round(winH * 0.92) }]}>
             <View style={s.header}>
-              <Text style={s.headerTitle}>{isEdit ? 'Edit task' : 'New Task'}</Text>
+              <Text style={s.headerTitle}>{isEdit ? 'Edit task' : repairMode ? 'Report repair' : 'New Task'}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialIcons name="close" size={24} color={Colors.sub} />
               </TouchableOpacity>
@@ -291,7 +291,14 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
               {/* Asset — pick this first; the rest of the form appears after.
                   Native links by scanning the QR; web searches by text. */}
               <Text style={s.label}>Asset</Text>
-              {SCAN_TO_LINK ? (
+              {repairMode ? (
+                <View style={s.assetField}>
+                  <View style={s.selectBtn}>
+                    <MaterialIcons name="qr-code-2" size={18} color={Colors.primary} />
+                    <Text style={s.selectBtnText} numberOfLines={1}>{asset ? asset.label : ''}</Text>
+                  </View>
+                </View>
+              ) : SCAN_TO_LINK ? (
                 <View style={s.assetField}>
                   <TouchableOpacity style={s.scanBtn} onPress={() => setScannerOpen(true)}>
                     <MaterialIcons name="qr-code-scanner" size={20} color="#fff" />
@@ -360,9 +367,11 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                     {asset.sub ? <Text style={s.assetInfoSub} numberOfLines={2}>{asset.sub}</Text> : null}
                     <Text style={s.assetInfoId}>ID: {asset.id}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => setAsset(null)} style={s.inlineClear}>
-                    <Text style={s.clearText}>Remove linked asset</Text>
-                  </TouchableOpacity>
+                  {!repairMode && (
+                    <TouchableOpacity onPress={() => setAsset(null)} style={s.inlineClear}>
+                      <Text style={s.clearText}>Remove linked asset</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               ) : null}
 
@@ -377,10 +386,10 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
               ) : (
                 <>
               {/* Title */}
-              <Text style={s.label}>Title *</Text>
+              <Text style={s.label}>{repairMode ? 'What needs repair? *' : 'Title *'}</Text>
               <TextInput
                 style={s.input}
-                placeholder="What needs to be done?"
+                placeholder={repairMode ? 'e.g. Cracked screen, won’t power on' : 'What needs to be done?'}
                 placeholderTextColor={Colors.subtle}
                 value={title}
                 onChangeText={setTitle}
@@ -399,19 +408,23 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                 maxLength={2000}
               />
 
-              {/* Category */}
-              <Text style={s.label}>Category</Text>
-              <View style={s.chipWrap}>
-                {categories.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[s.chip, category === c && s.chipOn]}
-                    onPress={() => { setCategory(c); if (c !== 'CERTIFICATE') setCertType(null); }}
-                  >
-                    <Text style={[s.chipText, category === c && s.chipTextOn]}>{CATEGORY_LABELS[c] || cap(c)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {/* Category — hidden in repair mode (always REPAIR) */}
+              {!repairMode && (
+                <>
+                  <Text style={s.label}>Category</Text>
+                  <View style={s.chipWrap}>
+                    {categories.map((c) => (
+                      <TouchableOpacity
+                        key={c}
+                        style={[s.chip, category === c && s.chipOn]}
+                        onPress={() => { setCategory(c); if (c !== 'CERTIFICATE') setCertType(null); }}
+                      >
+                        <Text style={[s.chipText, category === c && s.chipTextOn]}>{CATEGORY_LABELS[c] || cap(c)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* Certificate type — only when the Certificate category is chosen */}
               {category === 'CERTIFICATE' && (
@@ -470,8 +483,8 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                 ) : null}
               </View>
 
-              {/* Assignee (admins only) — required */}
-              {isAdmin && (
+              {/* Assignee (admins only) — required; hidden in repair mode */}
+              {!repairMode && isAdmin && (
                 <>
                   <Text style={s.label}>Assign to *</Text>
                   <TouchableOpacity style={s.selectBtn} onPress={openAssigneePicker}>
@@ -518,7 +531,7 @@ export default function CreateTaskModal({ visible, onClose, onCreate, onUpdate, 
                 onPress={submit}
                 disabled={!title.trim() || submitting || certBlocked || assigneeMissing}
               >
-                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.submitText}>{isEdit ? 'Save changes' : 'Create task'}</Text>}
+                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={s.submitText}>{isEdit ? 'Save changes' : repairMode ? 'Log repair' : 'Create task'}</Text>}
               </TouchableOpacity>
             </View>
           </View>

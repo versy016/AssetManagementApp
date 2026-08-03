@@ -26,6 +26,14 @@ registerTranslation('en', en);
 
 const normSlug = (s = '') => String(s).toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
 
+// Built-in inputs on this form that an asset type can ALSO define as a field (the
+// picker offers "Location" and "Next Service Date"). When the type defines one, the
+// dynamic field is authoritative — the API deliberately nulls assets.next_service_date
+// in that case (routes/assets.js), and Create only ever writes these through the
+// dynamic `fields` payload. So the static input below is suppressed to avoid showing
+// the same thing twice and writing to a column nothing reads.
+const STATIC_FIELDS_TYPE_CAN_OVERRIDE = ['location', 'next_service_date'];
+
 /**
  * AssetActionBar passes returnTo as this asset's detail URL so nested ?returnTo= survives.
  * router.replace() from edit → that URL stacks a second copy of detail; use router.back() instead.
@@ -603,6 +611,11 @@ export default function EditAsset() {
     });
     return set;
   }, [fieldsSchema]);
+
+  // True when this type defines its own field for a slug that also has a built-in
+  // input below — in which case the dynamic field wins and the static one is hidden.
+  const typeDefinesField = (slug) =>
+    fieldsSchema.some((f) => String(f.slug || normSlug(f.name)).toLowerCase() === slug);
 
   const renderDynamic = (f) => {
     const slug = f.slug || normSlug(f.name);
@@ -1214,11 +1227,14 @@ export default function EditAsset() {
             .filter((f) => String(f.slug || normSlug(f.name)).toLowerCase() !== 'serial_number')
             .map(renderDynamic)}
 
-        {/* Static */}
-        <View onLayout={onLayoutFor('location')}>
-          <Text style={styles.label}>Location</Text>
-          <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="Location" maxLength={FIELD_LIMITS.LOCATION} />
-        </View>
+        {/* Static — Location is skipped when the type defines its own Location field
+            (otherwise it renders twice; see STATIC_FIELDS_TYPE_CAN_OVERRIDE). */}
+        {!typeDefinesField('location') && (
+          <View onLayout={onLayoutFor('location')}>
+            <Text style={styles.label}>Location</Text>
+            <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="Location" maxLength={FIELD_LIMITS.LOCATION} />
+          </View>
+        )}
 
         <View onLayout={onLayoutFor('model')}>
           <Text style={styles.label}>Model</Text>
@@ -1242,12 +1258,17 @@ export default function EditAsset() {
           <TextInput style={[styles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Description" multiline maxLength={FIELD_LIMITS.DESCRIPTION} />
         </View>
 
-        <View onLayout={onLayoutFor('next_service_date')}>
-          <Text style={styles.label}>Next Service Date</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__next_service_date' })}>
-            <Text style={{ color: nextServiceDate ? '#000' : '#888' }}>{nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Select Next Service Date'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Skipped when the type defines its own Next Service Date field — the API
+            nulls assets.next_service_date in that case, so this input would write to
+            a column nothing reads (routes/assets.js). */}
+        {!typeDefinesField('next_service_date') && (
+          <View onLayout={onLayoutFor('next_service_date')}>
+            <Text style={styles.label}>Next Service Date</Text>
+            <TouchableOpacity style={styles.input} onPress={() => setDatePicker({ open: true, slug: '__next_service_date' })}>
+              <Text style={{ color: nextServiceDate ? '#000' : '#888' }}>{nextServiceDate ? formatDisplayDate(nextServiceDate) : 'Select Next Service Date'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View onLayout={onLayoutFor('date_purchased')}>
           <Text style={styles.label}>Date Purchased</Text>

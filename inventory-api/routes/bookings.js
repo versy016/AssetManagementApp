@@ -14,6 +14,7 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { sendExpoPush } = require('../utils/push');
+const gcal = require('../services/googleCalendar');
 
 const MAX_ADVANCE_MONTHS = 6;
 const MAX_SELF_DAYS = 42; // 6 weeks; longer needs admin approval
@@ -146,6 +147,34 @@ async function adminIds() {
   } catch { return []; }
 }
 
+// Record a booking event in the asset's activity/history (best-effort).
+async function logBookingAction(assetId, actorId, note, extra = {}) {
+  if (!assetId) return;
+  try {
+    await prisma.asset_actions.create({
+      data: { asset_id: assetId, type: 'STATUS_CHANGE', note, data: { kind: 'booking', ...extra }, performed_by: actorId || null },
+    });
+  } catch (e) { log('-', 'WARN', 'booking-log-failed', { message: e.message }); }
+}
+
+// Mirror a booking onto the Google calendar (Phase 3a) and persist the event link.
+// Deliberately NOT awaited by callers: Google is a mirror, not the source of truth, so
+// a slow or unreachable API must never delay — or fail — the booking write itself.
+// No-ops when the integration isn't configured.
+function syncGoogle(booking) {
+  if (!booking || !gcal.isConfigured()) return;
+  gcal.syncBookingToGoogle(booking, {
+    onLink: async (eventId) => {
+      try {
+        await prisma.bookings.update({
+          where: { id: booking.id },
+          data: { google_event_id: eventId, google_synced_at: new Date() },
+        });
+      } catch (e) { log('-', 'WARN', 'booking-google-link-failed', { message: e.message }); }
+    },
+  }).catch((e) => log('-', 'WARN', 'booking-google-sync-failed', { message: e?.message || String(e) }));
+}
+
 // ── availability: busy windows from bookings + hires ──
 async function bookingWindows(assetId, excludeId) {
   const rows = await prisma.bookings.findMany({
@@ -154,10 +183,11 @@ async function bookingWindows(assetId, excludeId) {
       status: { in: LIVE_STATUSES },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
-    select: { id: true, date_from: true, date_to: true, status: true, booked_by: { select: { name: true, useremail: true } } },
+    select: { id: true, date_from: true, date_to: true, status: true, booked_by_id: true, booked_by: { select: { name: true, useremail: true } } },
   });
   return rows.map((r) => ({
     kind: 'booking', id: r.id, from: r.date_from, to: r.date_to, status: r.status,
+    bookedById: r.booked_by_id || null,
     label: r.booked_by ? (r.booked_by.name || r.booked_by.useremail) : 'Booked',
   }));
 }
@@ -278,8 +308,12 @@ router.get('/availability', async (req, res) => {
       to: w.to ? new Date(w.to).toISOString().slice(0, 10) : null,
       label: w.label || null,
       status: w.status || null,
+      bookedById: w.bookedById || null,
     }));
-    res.json({ windows: out });
+    // Maintenance state so the create flow can warn when service falls in the window.
+    const a = await prisma.assets.findUnique({ where: { id: assetId }, select: { maintenance_due: true, next_service_date: true, status: true } });
+    const asset = a ? { maintenanceDue: !!a.maintenance_due, nextServiceDate: a.next_service_date ? new Date(a.next_service_date).toISOString().slice(0, 10) : null, status: a.status } : null;
+    res.json({ windows: out, asset });
   } catch (e) {
     log(reqId, 'ERROR', 'bookings-availability-failed', { message: e.message });
     errJson(res, 500, e.message || 'Failed to load availability');
@@ -354,8 +388,11 @@ router.post('/', async (req, res) => {
         { type: 'booking_created', bookingId: created.id });
     }
 
+    const sc = shapeBooking(created);
+    await logBookingAction(asset.id, actorId, `Booked by ${created.booked_by?.name || 'a user'} · ${sc.dateFrom} → ${sc.dateTo}${created.project ? ` · ${created.project}` : ''}`, { event: 'created', booking_id: created.id });
+    syncGoogle(created);
     log(reqId, 'INFO', 'booking-created', { id: created.id, needsApproval });
-    res.status(201).json(shapeBooking(created));
+    res.status(201).json(sc);
   } catch (e) {
     log(reqId, 'ERROR', 'booking-create-failed', { message: e.message });
     errJson(res, 500, e.message || 'Failed to create booking');
@@ -397,6 +434,7 @@ router.patch('/:id', async (req, res) => {
       if (needsApproval && b.status === 'CONFIRMED') data.status = 'REQUESTED';
     }
     const updated = await prisma.bookings.update({ where: { id: b.id }, data, include: BOOKING_INCLUDE });
+    syncGoogle(updated);
     log(reqId, 'INFO', 'booking-updated', { id: b.id });
     res.json(shapeBooking(updated));
   } catch (e) {
@@ -411,6 +449,9 @@ router.delete('/:id', async (req, res) => {
   try {
     const ctx = await loadManageable(req, res);
     if (!ctx) return;
+    await logBookingAction(ctx.b.asset_id, ctx.actorId, 'Booking cancelled', { event: 'cancelled', booking_id: ctx.b.id });
+    // Pull the Google event before the row goes — afterwards we'd have no event id.
+    await gcal.deleteBookingFromGoogle(ctx.b);
     await prisma.bookings.delete({ where: { id: ctx.b.id } });
     log(reqId, 'INFO', 'booking-deleted', { id: ctx.b.id });
     res.json({ ok: true, id: ctx.b.id });
@@ -437,6 +478,7 @@ async function decide(req, res, decision) {
       decision === 'approve' ? 'Booking approved' : 'Booking rejected',
       `Your booking of ${b.asset?.asset_types?.name || b.asset?.model || 'the asset'} was ${decision === 'approve' ? 'approved' : 'rejected'}.`,
       { type: 'booking_decision', bookingId: b.id });
+    syncGoogle(updated); // approve → event appears solid; reject → event removed
     log(reqId, 'INFO', 'booking-decided', { id: b.id, decision });
     res.json(shapeBooking(updated));
   } catch (e) {
@@ -458,6 +500,8 @@ router.post('/:id/checkout', async (req, res) => {
       data: { checked_out_at: new Date(), status: 'ACTIVE' },
       include: BOOKING_INCLUDE,
     });
+    await logBookingAction(ctx.b.asset_id, ctx.actorId, 'Booking collected (checked out)', { event: 'checkout', booking_id: ctx.b.id });
+    syncGoogle(updated);
     res.json(shapeBooking(updated));
   } catch (e) {
     log(reqId, 'ERROR', 'booking-checkout-failed', { message: e.message });
@@ -474,6 +518,8 @@ router.post('/:id/return', async (req, res) => {
       data: { returned_at: new Date(), status: 'COMPLETED' },
       include: BOOKING_INCLUDE,
     });
+    await logBookingAction(ctx.b.asset_id, ctx.actorId, 'Booking returned', { event: 'return', booking_id: ctx.b.id });
+    syncGoogle(updated);
     res.json(shapeBooking(updated));
   } catch (e) {
     log(reqId, 'ERROR', 'booking-return-failed', { message: e.message });

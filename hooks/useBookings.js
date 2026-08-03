@@ -84,6 +84,21 @@ export function useBookings() {
     }
   }, [refreshAll]);
 
+  const updateBooking = useCallback(async (id, payload) => {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_BASE_URL}/bookings/${id}`, {
+        method: 'PATCH', headers, body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: json?.error || 'Failed to update booking', conflict: json?.conflict };
+      await refreshAll();
+      return { ok: true, booking: json };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Failed to update booking' };
+    }
+  }, [refreshAll]);
+
   const cancelBooking = useCallback(async (id) => {
     try {
       const headers = await authHeaders();
@@ -109,14 +124,14 @@ export function useBookings() {
       const headers = await authHeaders();
       const res = await fetch(`${API_BASE_URL}/bookings/availability?asset_id=${encodeURIComponent(assetId)}`, { headers });
       const json = await res.json().catch(() => ({}));
-      return Array.isArray(json.windows) ? json.windows : [];
-    } catch { return []; }
+      return { windows: Array.isArray(json.windows) ? json.windows : [], asset: json.asset || null };
+    } catch { return { windows: [], asset: null }; }
   }, []);
 
   return {
     items, loading, scope, setScope, isAdmin,
     reload: () => load(scope),
-    createBooking, cancelBooking, getAvailability,
+    createBooking, updateBooking, cancelBooking, getAvailability,
     calItems, loadRange,
     approveBooking: (id) => decide(id, 'approve'),
     rejectBooking: (id) => decide(id, 'reject'),
