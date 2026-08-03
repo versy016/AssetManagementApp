@@ -352,9 +352,14 @@ function toOpenApi(map) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-/** Everything except the timestamp, so an unchanged map compares equal. */
+/**
+ * Everything except the timestamp, with line endings normalised, so an unchanged
+ * map compares equal. The normalisation matters: this repo has core.autocrlf=true,
+ * so git checks these files out as CRLF while the generator writes LF — comparing
+ * raw text would never match and would rewrite on every run.
+ */
 function withoutGeneratedAt(text) {
-  return text.replace(/^\s*"generatedAt":.*$/m, '');
+  return text.replace(/\r\n/g, '\n').replace(/^\s*"generatedAt":.*$/m, '');
 }
 
 /**
