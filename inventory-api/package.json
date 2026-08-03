@@ -41,6 +41,7 @@
     "description": "Inventory Management System API",
     "dependencies": {
         "@prisma/client": "^6.14.0",
+        "@sentry/node": "^10.69.0",
         "aws-sdk": "^2.1692.0",
         "axios": "^1.10.0",
         "body-parser": "^2.2.0",

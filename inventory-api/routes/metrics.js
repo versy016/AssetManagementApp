@@ -10,6 +10,7 @@
 
 const express = require('express');
 const metrics = require('../lib/metrics');
+const sentry = require('../lib/sentry');
 const logger = require('../lib/logger');
 
 const router = express.Router();
@@ -47,7 +48,12 @@ router.get('/routes', metricsTokenRequired, async (req, res) => {
     const minutes = Number(req.query.minutes || 60);
     const data = await metrics.summary(Number.isFinite(minutes) ? minutes : 60);
     res.set('Cache-Control', 'no-store');
-    return res.json(data);
+    // Lets the map turn a failing route into a link to that route's Sentry
+    // issues. Only slugs are exposed here — never the DSN.
+    return res.json({
+      ...data,
+      sentry: { enabled: sentry.isEnabled(), ...(sentry.orgProject() || {}) },
+    });
   } catch (e) {
     logger.error('[metrics] summary failed:', e && e.message ? e.message : e);
     // A missing table is the likely cause on a server that hasn't migrated yet —

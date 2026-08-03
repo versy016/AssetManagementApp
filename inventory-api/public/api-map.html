@@ -199,6 +199,11 @@
   .ep .nn b { color: var(--risk); font-weight: 700; }
   .m-GET { color: var(--flow); } .m-POST { color: var(--ok); }
   .m-PUT, .m-PATCH { color: var(--warn); } .m-DELETE { color: var(--risk); }
+  .ep a.sentry {
+    grid-column: 2 / -1; justify-self: start; font-size: 10.5px; color: var(--risk);
+    text-decoration: none; border-bottom: 1px dotted currentColor;
+  }
+  .ep a.sentry:hover { border-bottom-style: solid; }
   .g { font-size: 9px; font-weight: 700; color: var(--ok); }
   .g.admin { color: var(--warn); }
   .g.token { color: var(--flow); }
@@ -579,6 +584,22 @@
   }
 
   // ── Inspector ────────────────────────────────────────────────────────────
+  /**
+   * Sentry issue-search URL for one endpoint, or null when Sentry is not wired
+   * up (no DSN, or SENTRY_ORG not set). Never constructed from a DSN — the
+   * server only ever sends slugs.
+   */
+  function sentryLink(method, template) {
+    var s = state.metrics && state.metrics.sentry;
+    if (!s || !s.enabled || !s.org) return null;
+    var q = 'transaction:"' + method + " " + template + '"';
+    var url = "https://" + encodeURIComponent(s.org) + ".sentry.io/issues/?query=" +
+      encodeURIComponent(q) + "&statsPeriod=24h";
+    // Sentry's project filter takes the numeric id, not the slug.
+    if (s.project && /^\d+$/.test(String(s.project))) url += "&project=" + s.project;
+    return url;
+  }
+
   function routeStats(template, method) {
     if (!state.metrics || !state.metrics.routes) return null;
     for (var i = 0; i < state.metrics.routes.length; i++) {
@@ -661,6 +682,19 @@
           right.innerHTML = '<span class="g ' + lvl + '">' + lvl + "</span>";
         }
         d.appendChild(right);
+
+        // A failing endpoint gets a link to its own Sentry issues. The Express
+        // transaction name matches the route template, so the search lands on
+        // exactly this endpoint rather than the whole service.
+        var link = st && st.serverErrors ? sentryLink(e.method, e.template) : null;
+        if (link) {
+          var a = el("a", "sentry", "View " + st.serverErrors + " error" +
+            (st.serverErrors === 1 ? "" : "s") + " in Sentry →");
+          a.href = link;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          d.appendChild(a);
+        }
         list.appendChild(d);
       });
       sec.appendChild(list);

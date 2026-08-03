@@ -49,7 +49,8 @@ if (NODE_ENV === 'production') {
 }
 
 app.use(cors());
-app.use(sentry.requestHandler()); // must be first middleware
+// No Sentry request middleware here by design: since v8 the SDK instruments
+// Express automatically from init(), which runs above the `express` require.
 
 // ---- Rate limiting --------------------------------------------------------
 // Only enforce rate limits in production — dev/test traffic is trusted localhost.
@@ -280,8 +281,9 @@ app.get('/check-in/:id', (req, res) => {
 });
 
 // ---- Error handler (last) -------------------------------------------------
-// Sentry must come before the custom handler so it captures the error first
-app.use(sentry.errorHandler());
+// Sentry must come before the custom handler so it captures the error first,
+// while the handler below still shapes the response the client sees.
+sentry.setupExpressErrorHandler(app);
 app.use((err, _req, res, _next) => {
   console.error(err.stack);
   res.status(500).json({
