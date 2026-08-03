@@ -151,9 +151,13 @@ async function pruneOccasionally() {
   if (now - lastPruneAt < 60 * 60 * 1000) return;
   lastPruneAt = now;
   try {
+    // The cutoff is computed here rather than in SQL: Prisma binds parameters as
+    // untyped, and Postgres cannot resolve `make_interval(days => $1)` from an
+    // untyped parameter. Binding a Date sidesteps the function entirely.
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
     await prisma.$executeRaw`
       DELETE FROM api_route_metrics
-      WHERE bucket < NOW() - make_interval(days => ${RETENTION_DAYS})
+      WHERE bucket < ${cutoff}
     `;
   } catch (e) {
     logger.warn('[metrics] prune failed:', e && e.message ? e.message : e);
@@ -166,6 +170,10 @@ async function pruneOccasionally() {
  */
 async function summary(minutes = 60) {
   const mins = Math.min(60 * 24 * 7, Math.max(1, Math.floor(minutes)));
+  // See pruneOccasionally(): the window start is bound as a timestamp rather than
+  // built with make_interval(), which Postgres cannot resolve from an untyped
+  // Prisma parameter.
+  const since = new Date(Date.now() - mins * 60 * 1000);
 
   const rows = await prisma.$queryRaw`
     SELECT router,
@@ -177,7 +185,7 @@ async function summary(minutes = 60) {
            SUM(total_ms)::int      AS total_ms,
            MAX(max_ms)::int        AS max_ms
     FROM api_route_metrics
-    WHERE bucket >= NOW() - make_interval(mins => ${mins})
+    WHERE bucket >= ${since}
     GROUP BY router, method, route
     ORDER BY SUM(server_errors) DESC, SUM(requests) DESC
   `;
