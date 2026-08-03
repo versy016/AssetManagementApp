@@ -357,6 +357,28 @@ model registered_domains {
   updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
+/// Per-minute request counters per route template, written by lib/metrics.js and
+/// read by the API map's live view. Deliberately pre-aggregated: one row per
+/// (minute, method, route template) rather than one row per request, so the table
+/// stays small and every PM2 cluster worker can upsert into the same row.
+/// Rows older than METRICS_RETENTION_DAYS (default 7) are pruned on flush.
+model api_route_metrics {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()"))
+  bucket        DateTime @db.Timestamptz(6) // start of the minute
+  router        String   // node id, e.g. r_bookings — see lib/routeKey.js
+  method        String
+  route         String   // Express template, e.g. /bookings/:id
+  requests      Int      @default(0)
+  client_errors Int      @default(0) // 4xx
+  server_errors Int      @default(0) // 5xx
+  total_ms      Int      @default(0) // summed latency, for the window average
+  max_ms        Int      @default(0)
+
+  @@unique([bucket, method, route])
+  @@index([bucket])
+  @@index([router])
+}
+
 // Internal asset booking: one user reserves a bookable asset for a project + date
 // window. Distinct from Hire (external clients). Availability is checked against
 // both bookings and hires so an asset can't be double-allocated.

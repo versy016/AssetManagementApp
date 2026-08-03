@@ -1,0 +1,3346 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GearOps Inventory API",
+    "version": "1.0.0",
+    "description": "Generated from the Express route tree by `scripts/generate-api-map.js`. Request and response schemas are not inferred — only paths, methods and guards. Regenerate with `npm run api:map`."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "local"
+    },
+    {
+      "url": "{origin}",
+      "description": "deployed",
+      "variables": {
+        "origin": {
+          "default": "https://api.gearops.com.au"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "assets",
+      "description": "37 routes · routes/assets.js"
+    },
+    {
+      "name": "users",
+      "description": "15 routes · routes/users.js"
+    },
+    {
+      "name": "hire-disclaimer",
+      "description": "13 routes · routes/hireDisclaimer.js"
+    },
+    {
+      "name": "bookings",
+      "description": "10 routes · routes/bookings.js"
+    },
+    {
+      "name": "asset-types",
+      "description": "7 routes · routes/assetTypes.js"
+    },
+    {
+      "name": "tasks",
+      "description": "7 routes · routes/tasks.js"
+    },
+    {
+      "name": "asset-documents",
+      "description": "6 routes · routes/assetDocuments.js"
+    },
+    {
+      "name": "admin / users",
+      "description": "5 routes · routes/adminUsers.js"
+    },
+    {
+      "name": "assets / asset-types",
+      "description": "4 routes · routes/assetTypeFields.js"
+    },
+    {
+      "name": "places",
+      "description": "4 routes · routes/places.js"
+    },
+    {
+      "name": "field-types",
+      "description": "3 routes · routes/fieldTypes.js"
+    },
+    {
+      "name": "public",
+      "description": "3 routes · routes/publicAssets.js"
+    },
+    {
+      "name": "settings",
+      "description": "2 routes · routes/settings.js"
+    },
+    {
+      "name": "activity",
+      "description": "1 routes · routes/activity.js"
+    },
+    {
+      "name": "assets / scan-image",
+      "description": "1 routes · routes/assetScan.js"
+    },
+    {
+      "name": "labels",
+      "description": "1 routes · routes/labels.js"
+    },
+    {
+      "name": "metrics",
+      "description": "1 routes · routes/metrics.js"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "firebaseIdToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Firebase ID token, verified by `middleware/auth.js`."
+      },
+      "metricsToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Metrics-Token",
+        "description": "Shared token from METRICS_TOKEN, checked by `routes/metrics.js`."
+      }
+    }
+  },
+  "paths": {
+    "/assets": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth, validated",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "DELETE /assets/:id",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/:id",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "PUT /assets/:id",
+        "description": "Source: `routes/assets.js`\n\nGuards: optional, validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/actions": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/:id/actions",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/actions",
+        "description": "Source: `routes/assets.js`\n\nGuards: validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/actions/{actionId}/note": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "DELETE /assets/:id/actions/:actionId/note",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "PATCH /assets/:id/actions/:actionId/note",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/actions/{actionId}/priority": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/actions/:actionId/priority",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/actions/{actionId}/signoff": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/actions/:actionId/signoff",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/actions/upload": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/actions/upload",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/files": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/files",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "PUT /assets/:id/files",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{id}/priority-note": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "DELETE /assets/:id/priority-note",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/:id/priority-note",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:id/priority-note",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/actions/pending-signoff": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/actions/pending-signoff",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset_types": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/asset_types",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-options": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/asset-options",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/asset-types",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types-summary": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/asset-types-summary",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types/{id}/fields": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/asset-types/:id/fields",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/asset-types/:id/fields",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types/{id}/fields/{fieldId}": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "DELETE /assets/asset-types/:id/fields/:fieldId",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fieldId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "PUT /assets/asset-types/:id/fields/:fieldId",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fieldId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types/{id}/sync": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/asset-types/:id/sync",
+        "description": "Source: `routes/assets.js`\n\nGuards: admin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/assigned/{userId}": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/assigned/:userId",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/stats": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/stats",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/swap-qr": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/swap-qr",
+        "description": "Source: `routes/assets.js`\n\nGuards: auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/tasks/count": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/tasks/count",
+        "description": "Source: `routes/assets.js`\n\nGuards: auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{assetId}/documents": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/:assetId/documents",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:assetId/documents",
+        "description": "Source: `routes/assets.js`\n\nGuards: optional",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{assetId}/documents/{docId}": {
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "DELETE /assets/:assetId/documents/:docId",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "PATCH /assets/:assetId/documents/:docId",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/{assetId}/documents/upload": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "POST /assets/:assetId/documents/upload",
+        "description": "Source: `routes/assets.js`\n\nGuards: optional",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/documents": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "GET /assets/documents",
+        "description": "Source: `routes/assets.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users",
+        "description": "Source: `routes/users.js`\n\nGuards: validated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users/:id",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "PUT /users/:id",
+        "description": "Source: `routes/users.js`\n\nGuards: validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/{id}/demote": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/:id/demote",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/{id}/favourites": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users/:id/favourites",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "PUT /users/:id/favourites",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/{id}/promote": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/:id/promote",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/{userId}/assign-asset": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/:userId/assign-asset",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/lookup/by-email": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users/lookup/by-email",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/push-token": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/push-token",
+        "description": "Source: `routes/users.js`\n\nGuards: auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/qr/generate": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/qr/generate",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/qr/generate-excel": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/qr/generate-excel",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/qr/preview": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/qr/preview",
+        "description": "Source: `routes/users.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/users/qr/sheets": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users/qr/sheets",
+        "description": "Source: `routes/users.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/generate": {
+      "post": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "POST /hire-disclaimer/generate",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/hires",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}": {
+      "delete": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "DELETE /hire-disclaimer/hires/:actionId",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}/document": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/hires/:actionId/document",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}/preview.pdf": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/hires/:actionId/preview.pdf",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}/signature-status": {
+      "patch": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "PATCH /hire-disclaimer/hires/:actionId/signature-status",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}/signing/create": {
+      "post": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "POST /hire-disclaimer/hires/:actionId/signing/create",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/hires/{actionId}/signing/send": {
+      "post": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "POST /hire-disclaimer/hires/:actionId/signing/send",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/signing/{token}": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/signing/:token",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/signing/{token}/decline": {
+      "post": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "POST /hire-disclaimer/signing/:token/decline",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/signing/{token}/document.pdf": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/signing/:token/document.pdf",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/signing/{token}/submit": {
+      "post": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "POST /hire-disclaimer/signing/:token/submit",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/hire-disclaimer/signing/status": {
+      "get": {
+        "tags": [
+          "hire-disclaimer"
+        ],
+        "summary": "GET /hire-disclaimer/signing/status",
+        "description": "Source: `routes/hireDisclaimer.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "GET /bookings",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "POST /bookings",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/{id}": {
+      "delete": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "DELETE /bookings/:id",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "GET /bookings/:id",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "PATCH /bookings/:id",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/{id}/approve": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "POST /bookings/:id/approve",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/{id}/checkout": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "POST /bookings/:id/checkout",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/{id}/reject": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "POST /bookings/:id/reject",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/{id}/return": {
+      "post": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "POST /bookings/:id/return",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/bookings/availability": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "GET /bookings/availability",
+        "description": "Source: `routes/bookings.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-types": {
+      "get": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "GET /asset-types",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: admin, auth, validated",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "POST /asset-types",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: admin, auth, validated",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-types/{id}": {
+      "delete": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "DELETE /asset-types/:id",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: admin, auth, validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "GET /asset-types/:id",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: admin, auth, validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "PUT /asset-types/:id",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: admin, auth, validated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-types/legacy/all": {
+      "get": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "GET /asset-types/legacy/all",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-types/summary/list": {
+      "get": {
+        "tags": [
+          "asset-types"
+        ],
+        "summary": "GET /asset-types/summary/list",
+        "description": "Source: `routes/assetTypes.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "GET /tasks",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "POST /tasks",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "delete": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "DELETE /tasks/:id",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "PATCH /tasks/:id",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/complete": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "POST /tasks/:id/complete",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/dismiss": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "POST /tasks/:id/dismiss",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/tasks/feed": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "GET /tasks/feed",
+        "description": "Source: `routes/tasks.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-documents/{assetId}/documents": {
+      "get": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "GET /asset-documents/:assetId/documents",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "POST /asset-documents/:assetId/documents",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: optional",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-documents/{assetId}/documents/{docId}": {
+      "delete": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "DELETE /asset-documents/:assetId/documents/:docId",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "PATCH /asset-documents/:assetId/documents/:docId",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-documents/{assetId}/documents/upload": {
+      "post": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "POST /asset-documents/:assetId/documents/upload",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: optional",
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/asset-documents/documents": {
+      "get": {
+        "tags": [
+          "asset-documents"
+        ],
+        "summary": "GET /asset-documents/documents",
+        "description": "Source: `routes/assetDocuments.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": [
+          "admin / users"
+        ],
+        "summary": "GET /admin/users",
+        "description": "Source: `routes/adminUsers.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/admin/users/{id}": {
+      "delete": {
+        "tags": [
+          "admin / users"
+        ],
+        "summary": "DELETE /admin/users/:id",
+        "description": "Source: `routes/adminUsers.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/admin/users/{id}/role": {
+      "patch": {
+        "tags": [
+          "admin / users"
+        ],
+        "summary": "PATCH /admin/users/:id/role",
+        "description": "Source: `routes/adminUsers.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/admin/users/{id}/status": {
+      "patch": {
+        "tags": [
+          "admin / users"
+        ],
+        "summary": "PATCH /admin/users/:id/status",
+        "description": "Source: `routes/adminUsers.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/admin/users/invite": {
+      "post": {
+        "tags": [
+          "admin / users"
+        ],
+        "summary": "POST /admin/users/invite",
+        "description": "Source: `routes/adminUsers.js`\n\nGuards: admin, auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types/{assetTypeId}/fields": {
+      "get": {
+        "tags": [
+          "assets / asset-types"
+        ],
+        "summary": "GET /assets/asset-types/:assetTypeId/fields",
+        "description": "Source: `routes/assetTypeFields.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets / asset-types"
+        ],
+        "summary": "POST /assets/asset-types/:assetTypeId/fields",
+        "description": "Source: `routes/assetTypeFields.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/asset-types/{assetTypeId}/fields/{fieldId}": {
+      "delete": {
+        "tags": [
+          "assets / asset-types"
+        ],
+        "summary": "DELETE /assets/asset-types/:assetTypeId/fields/:fieldId",
+        "description": "Source: `routes/assetTypeFields.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fieldId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "assets / asset-types"
+        ],
+        "summary": "PUT /assets/asset-types/:assetTypeId/fields/:fieldId",
+        "description": "Source: `routes/assetTypeFields.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "assetTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fieldId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/places/autocomplete": {
+      "get": {
+        "tags": [
+          "places"
+        ],
+        "summary": "GET /places/autocomplete",
+        "description": "Source: `routes/places.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/places/details": {
+      "get": {
+        "tags": [
+          "places"
+        ],
+        "summary": "GET /places/details",
+        "description": "Source: `routes/places.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/places/geocode": {
+      "get": {
+        "tags": [
+          "places"
+        ],
+        "summary": "GET /places/geocode",
+        "description": "Source: `routes/places.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/places/reverse-geocode": {
+      "get": {
+        "tags": [
+          "places"
+        ],
+        "summary": "GET /places/reverse-geocode",
+        "description": "Source: `routes/places.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/field-types": {
+      "get": {
+        "tags": [
+          "field-types"
+        ],
+        "summary": "GET /field-types",
+        "description": "Source: `routes/fieldTypes.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "field-types"
+        ],
+        "summary": "POST /field-types",
+        "description": "Source: `routes/fieldTypes.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/field-types/ensure-defaults": {
+      "post": {
+        "tags": [
+          "field-types"
+        ],
+        "summary": "POST /field-types/ensure-defaults",
+        "description": "Source: `routes/fieldTypes.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/public/assets/{id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "GET /public/assets/:id",
+        "description": "Source: `routes/publicAssets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/public/assets/{id}/lost-and-found": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "POST /public/assets/:id/lost-and-found",
+        "description": "Source: `routes/publicAssets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/public/assets/{id}/transfer-to-office": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "POST /public/assets/:id/transfer-to-office",
+        "description": "Source: `routes/publicAssets.js`\n\nGuards: none — unauthenticated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "GET /settings",
+        "description": "Source: `routes/settings.js`\n\nGuards: auth",
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/settings/{key}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "PUT /settings/:key",
+        "description": "Source: `routes/settings.js`\n\nGuards: admin, auth",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "description": "Admin privilege required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/activity": {
+      "get": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "GET /activity",
+        "description": "Source: `routes/activity.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/assets/scan-image": {
+      "post": {
+        "tags": [
+          "assets / scan-image"
+        ],
+        "summary": "POST /assets/scan-image",
+        "description": "Source: `routes/assetScan.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/labels/l7651": {
+      "post": {
+        "tags": [
+          "labels"
+        ],
+        "summary": "POST /labels/l7651",
+        "description": "Source: `routes/labels.js`\n\nGuards: none — unauthenticated",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/metrics/routes": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "GET /metrics/routes",
+        "description": "Source: `routes/metrics.js`\n\nGuards: token",
+        "security": [
+          {
+            "metricsToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Missing or invalid metrics token"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    }
+  }
+}

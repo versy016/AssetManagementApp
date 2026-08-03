@@ -128,6 +128,13 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded' }));
 
+// ---- Request metrics ------------------------------------------------------
+// Records method/route/status/duration per request for the API map's live view.
+// Must sit before the routers so `req.route` is populated by the time it reads it,
+// and after the body parsers so it measures the same work the handler does.
+const metrics = require('./lib/metrics');
+app.use(metrics.middleware());
+
 // ---- Routes ---------------------------------------------------------------
 const assetRoutes = require('./routes/assets');
 const usersRouter = require('./routes/users');
@@ -145,6 +152,7 @@ const assetScanRoutes      = require('./routes/assetScan');
 const tasksRoutes          = require('./routes/tasks');
 const settingsRoutes       = require('./routes/settings');
 const bookingsRoutes       = require('./routes/bookings');
+const metricsRoutes        = require('./routes/metrics');
 
 // Mount the vision scan route BEFORE the catch-all assetRoutes so the more
 // specific `/assets/scan-image` path wins.
@@ -165,6 +173,21 @@ app.use('/admin/users', adminUsersRoutes);
 app.use('/tasks', tasksRoutes);
 app.use('/settings', settingsRoutes);
 app.use('/bookings', bookingsRoutes);
+app.use('/metrics', metricsRoutes);
+
+// ---- API map (docs) -------------------------------------------------------
+// Serves inventory-api/public — the generated api-map.data.json + openapi.json and
+// the map UI that reads them. Regenerate with `npm run api:map`.
+//
+// Off by default in production: the map is an inventory of every endpoint and its
+// guard, which is a leg-up for anyone probing the API. Set DOCS_ENABLED=true to
+// turn it on there (pair it with METRICS_TOKEN so the live counts stay private).
+const DOCS_ENABLED = process.env.DOCS_ENABLED === 'true' || NODE_ENV !== 'production';
+if (DOCS_ENABLED) {
+  const docsDir = path.join(__dirname, 'public');
+  app.use('/docs', express.static(docsDir, { index: 'api-map.html', maxAge: 0 }));
+  console.log(`[server] API map served at /docs (from ${docsDir})`);
+}
 
 // ---- Static (QR Codes) ----------------------------------------------------
 // IMPORTANT: generator writes under project-root/utils/qrcodes (+ /sheets)
