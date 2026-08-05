@@ -19,7 +19,6 @@ const config = require('./config');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-// BoldSign removed — self-hosted signing is now handled in hireDisclaimer.js
 
 // ---- Prisma (singleton) ---------------------------------------------------
 const prisma = require('./lib/prisma');
@@ -62,6 +61,14 @@ app.use(cors());
 // the 'finish' event, after routing has run, so an early mount costs nothing.
 const metrics = require('./lib/metrics');
 app.use(metrics.middleware());
+
+// ---- Sentry actor context -------------------------------------------------
+// Attaches the acting user (uid + name) to Sentry events. Most routers have no
+// auth middleware and identify the caller by X-User-Id / ?uid, so this covers
+// them; middleware/auth.js overwrites it with verified: true where a token was
+// actually checked.
+const actorContext = require('./lib/actorContext');
+app.use(actorContext.middleware());
 
 // ---- Rate limiting --------------------------------------------------------
 // Only enforce rate limits in production — dev/test traffic is trusted localhost.

@@ -1,144 +1,143 @@
-# Deployment Guide
+# Deployment
 
-## Prerequisites
+GearOps runs on a single EC2 instance (Amazon Linux, user `ec2-user`) behind
+nginx. The API runs under PM2; the Expo web build is served as static files.
 
-1. Node.js (v16+ recommended)
-2. npm or yarn
-3. PostgreSQL (for production)
-4. PM2 (for process management)
-5. Nginx (as reverse proxy, optional but recommended)
-6. SSL certificate (Let's Encrypt recommended)
+```
+/home/ec2-user/deploy/AssetManagementApp/     ← git checkout, tracks origin/main
+├── inventory-api/                            ← the API (PM2 app: gearops-api)
+│   ├── .env                                  ← secrets, NOT in git, never deployed
+│   └── ecosystem.config.js                   ← PM2 process definition
+└── web-build/dist/                           ← Expo web build, served by nginx
+```
 
-## Server Setup
+| Thing | Value |
+|---|---|
+| PM2 app name | `gearops-api` (cluster mode, `instances: 'max'`) |
+| API port | 3000, proxied from `api.gearops.com.au` |
+| nginx config | `/etc/nginx/conf.d/gearops.conf` |
+| Web root | `/home/ec2-user/deploy/AssetManagementApp/web-build/dist` |
+| Database | PostgreSQL, connection string in `inventory-api/.env` |
 
-1. **Update system packages**
-   ```bash
-   sudo apt update && sudo apt upgrade -y
-   ```
+## Deploying
 
-2. **Install Node.js and npm**
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
-   sudo apt install -y nodejs
-   ```
+**Push to `main`.** That is the deployment. `.github/workflows/deploy-web.yml`
+builds the Expo web bundle on a GitHub runner, copies it to the instance, then
+over SSH: resets the checkout to `origin/main`, installs API dependencies,
+regenerates the Prisma client, runs `prisma migrate deploy`, reloads PM2 and
+nginx.
 
-3. **Install PostgreSQL**
-   ```bash
-   sudo apt install postgresql postgresql-contrib
-   sudo -u postgres createuser --interactive
-   sudo -u postgres createdb assetmanagement
-   ```
+To ship an API-only change without the (slow) web build, run the workflow
+manually from the Actions tab with **skip_web_build** ticked.
 
-4. **Install PM2**
-   ```bash
-   sudo npm install -g pm2
-   ```
+Required repository secrets: `EC2_HOST`, `EC2_SSH_KEY`,
+`EXPO_PUBLIC_GOOGLE_MAPS_WEB_KEY`.
 
-## Deployment Steps
+### If CI is unavailable
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/AssetManagementApp.git
-   cd AssetManagementApp
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   cd inventory-api
-   npm install
-   cd ..
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.production
-   # Edit .env.production with your production values
-   nano .env.production
-   ```
-
-4. **Build the application**
-   ```bash
-   npm run build
-   ```
-
-5. **Set up PM2**
-   ```bash
-   # Start the API server
-   cd inventory-api
-   pm2 start npm --name "asset-management-api" -- start
-   
-   # Start the frontend server (if needed)
-   cd ..
-   pm2 start npm --name "asset-management-web" -- start
-   
-   # Save PM2 process list
-   pm2 save
-   pm2 startup
-   ```
-
-6. **Set up Nginx (optional but recommended)**
-   ```bash
-   sudo apt install nginx
-   sudo cp nginx.conf /etc/nginx/sites-available/asset-management
-   sudo ln -s /etc/nginx/sites-available/asset-management /etc/nginx/sites-enabled/
-   sudo nginx -t
-   sudo systemctl restart nginx
-   ```
-
-## Database Migrations
+There is deliberately no second deploy script — a duplicate path drifts out of
+sync with the workflow and fails quietly. Run the same steps by hand on the
+instance instead:
 
 ```bash
+cd /home/ec2-user/deploy/AssetManagementApp
+git fetch origin main && git reset --hard FETCH_HEAD && git clean -fd
 cd inventory-api
+npm install --omit=dev --ignore-scripts
+npx prisma generate
+npx prisma migrate deploy
+pm2 restart gearops-api --update-env && pm2 save
+sudo nginx -s reload
+```
+
+That deploys the API only. The web bundle is built in CI; to rebuild it by hand,
+run `npx expo export --platform web` from the repo root and copy `dist/` into
+`web-build/dist/`.
+
+## Environment
+
+`inventory-api/.env` is gitignored and is **never** written by a deploy, so new
+variables must be added on the instance by hand before the release that needs
+them. After editing:
+
+```bash
+pm2 restart gearops-api --update-env
+```
+
+See `inventory-api/.env.example` for the full list. The ones a deploy commonly
+needs added:
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SENTRY_DSN` | Error reporting. Unset ⇒ reporting is silently disabled |
+| `SENTRY_ORG` | Org slug; lets the API map link a failing route to its issues |
+| `METRICS_TOKEN` | **Required in production** for `GET /metrics/routes`; without it the endpoint refuses to serve |
+| `DOCS_ENABLED` | `true` to serve the API map at `/docs`; off by default in production |
+| `AWS_*`, `S3_*` | Document, image and QR storage |
+| `SMTP_*` | Transactional email |
+| `GOOGLE_PLACES_API_KEY` | Location autocomplete |
+
+## Database migrations
+
+Applied automatically by the deploy (`npx prisma migrate deploy`). To run or
+inspect by hand on the instance:
+
+```bash
+cd /home/ec2-user/deploy/AssetManagementApp/inventory-api
+npx prisma migrate status
 npx prisma migrate deploy
 ```
 
-## Environment Variables
+Migrations are forward-only — Prisma has no `down`. Roll back the code, and
+leave additive schema changes in place.
 
-Create a `.env` file in the project root with the following variables:
+## Verifying a release
 
-```
-NODE_ENV=production
-PORT=3000
-DATABASE_URL=postgresql://user:password@localhost:5432/assetmanagement
-JWT_SECRET=your-jwt-secret
-API_URL=https://your-api-domain.com
-CORS_ORIGIN=https://your-frontend-domain.com
+```bash
+pm2 list                                    # gearops-api online, restart count sane
+pm2 logs gearops-api --lines 40 --nostream  # look for [sentry] Initialised
+curl -s https://api.gearops.com.au/         # {"status":"ok", ...}
 ```
 
-## Updating the Application
+With `METRICS_TOKEN` set, per-route traffic and error counts:
 
-1. Pull the latest changes
-   ```bash
-   git pull origin main
-   ```
+```bash
+curl -s "http://localhost:3000/metrics/routes?minutes=15" -H "X-Metrics-Token: $METRICS_TOKEN"
+```
 
-2. Install new dependencies
-   ```bash
-   npm install
-   cd inventory-api
-   npm install
-   cd ..
-   ```
+## The API map
 
-3. Rebuild and restart
-   ```bash
-   npm run build
-   pm2 restart all
-   ```
+`/docs` renders every route, its guard, and — when metrics are enabled — live
+request and error counts. It is an inventory of the whole API surface, so it is
+disabled in production unless `DOCS_ENABLED=true`, and `/docs` and `/metrics`
+should be denied at nginx.
+
+Reach it through a tunnel, which bypasses nginx entirely:
+
+```bash
+ssh -L 3000:localhost:3000 ec2-user@<host>   # then open http://localhost:3000/docs
+```
+
+## Rollback
+
+```bash
+cd /home/ec2-user/deploy/AssetManagementApp
+git reset --hard <known-good-sha>
+cd inventory-api && npm install --omit=dev --ignore-scripts && npx prisma generate
+pm2 restart gearops-api --update-env
+```
+
+Reverting the commit on `main` and letting CI redeploy is preferable when there
+is time — it keeps the instance and `origin/main` in agreement.
 
 ## Monitoring
 
-Check logs:
-```bash
-pm2 logs
-```
+- `pm2 logs gearops-api` — application logs
+- `pm2 monit` — live CPU and memory
+- Sentry — errors, grouped, with the acting user attached
+- `/docs` — per-route traffic and error rates
 
-Monitor processes:
-```bash
-pm2 monit
-```
+## Backups
 
-## Backup
-
-Set up regular database backups using `pg_dump` in a cron job.
+Database backups are not configured by this repo. Set up a `pg_dump` cron job.

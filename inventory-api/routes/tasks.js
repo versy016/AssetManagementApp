@@ -11,6 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
+const sentry = require('../lib/sentry');
 const { getLeadDays } = require('./settings');
 
 // ── Unified task-feed helpers (server-computed; mirrors the old client logic) ──
@@ -44,7 +45,18 @@ function rid() {
   return (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).toUpperCase();
 }
 function log(reqId, level, msg, extra = {}) {
-  console.log(JSON.stringify({ reqId, at: new Date().toISOString(), lvl: level, msg, ...extra }));
+  // See routes/bookings.js — same helper, same reasoning: `error` is kept out of
+  // the JSON line, and ERROR entries are reported because these handlers respond
+  // directly instead of calling next(err).
+  const { error, ...rest } = extra;
+  console.log(JSON.stringify({ reqId, at: new Date().toISOString(), lvl: level, msg, ...rest }));
+
+  if (level === 'ERROR') {
+    const err = error instanceof Error
+      ? error
+      : new Error(rest.message ? `${msg}: ${rest.message}` : msg);
+    sentry.captureError(err, { reqId, source: 'tasks', event: msg, ...rest });
+  }
 }
 function errJson(res, status, message, extra = {}) {
   if (!res.headersSent) res.status(status).json({ error: message, ...extra });
@@ -188,7 +200,7 @@ router.get('/', async (req, res) => {
     });
     res.json({ items: rows.map(shapeTask) });
   } catch (e) {
-    log(reqId, 'ERROR', 'tasks-list-failed', { message: e.message });
+    log(reqId, 'ERROR', 'tasks-list-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to load tasks');
   }
 });
@@ -384,7 +396,7 @@ router.get('/feed', async (req, res) => {
     log(reqId, 'INFO', 'tasks-feed-ok', { uid: actorId, isAdmin, count: deduped.length });
     res.json({ items: deduped, isAdmin });
   } catch (e) {
-    log(reqId, 'ERROR', 'tasks-feed-failed', { message: e.message });
+    log(reqId, 'ERROR', 'tasks-feed-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to load task feed');
   }
 });
@@ -470,7 +482,7 @@ router.post('/', async (req, res) => {
     log(reqId, 'INFO', 'task-created', { id: created.id, flag: flagKey || undefined });
     res.status(201).json(shapeTask(created));
   } catch (e) {
-    log(reqId, 'ERROR', 'task-create-failed', { message: e.message });
+    log(reqId, 'ERROR', 'task-create-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to create task');
   }
 });
@@ -535,7 +547,7 @@ router.patch('/:id', async (req, res) => {
     log(reqId, 'INFO', 'task-updated', { id });
     res.json(shapeTask(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'task-update-failed', { id, message: e.message });
+    log(reqId, 'ERROR', 'task-update-failed', { id, message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to update task');
   }
 });
@@ -635,7 +647,7 @@ async function closeTask(req, res, nextStatus) {
     log(reqId, 'INFO', 'task-closed', { id, status: nextStatus });
     res.json(shapeTask(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'task-close-failed', { id, status: nextStatus, message: e.message });
+    log(reqId, 'ERROR', 'task-close-failed', { id, status: nextStatus, message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to update task');
   }
 }
@@ -662,7 +674,7 @@ router.delete('/:id', async (req, res) => {
     log(reqId, 'INFO', 'task-deleted', { id });
     res.json({ ok: true, id });
   } catch (e) {
-    log(reqId, 'ERROR', 'task-delete-failed', { id, message: e.message });
+    log(reqId, 'ERROR', 'task-delete-failed', { id, message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to delete task');
   }
 });

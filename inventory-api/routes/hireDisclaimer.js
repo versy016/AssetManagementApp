@@ -30,7 +30,9 @@ function normalizeSignatureStatus(raw) {
   if (u === 'SIGNED')            return SIGNATURE_SIGNED;
   if (u === 'DECLINED')          return SIGNATURE_DECLINED;
   if (u === 'EXPIRED')           return SIGNATURE_EXPIRED;
-  // Legacy lowercase values from old BoldSign flow
+  // Legacy lowercase values written by the previous third-party e-signature
+  // provider. Kept because rows created before the self-hosted signing service
+  // still carry them.
   if (u === 'SIGNED_LEGACY' || raw === 'signed') return SIGNATURE_SIGNED;
   return SIGNATURE_PENDING;
 }

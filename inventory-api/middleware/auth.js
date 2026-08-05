@@ -2,6 +2,7 @@
 // Shared auth + admin-only middleware using DB users.role
 
 const prisma = require('../lib/prisma');
+const actorContext = require('../lib/actorContext');
 
 let admin = null;
 try {
@@ -68,6 +69,8 @@ async function authRequired(req, res, next) {
       if (!token) return res.status(401).json({ error: 'Missing Authorization Bearer token' });
       const decoded = await admin.auth().verifyIdToken(token);
       req.user = { uid: decoded.uid };
+      // Verified identity — overwrites anything the client-asserted fallback set.
+      await actorContext.attach(decoded.uid, { verified: true });
       return next();
     } catch (e) {
       return res.status(401).json({ error: 'Invalid or expired token' });

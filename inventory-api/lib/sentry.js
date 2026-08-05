@@ -72,6 +72,17 @@ function setupExpressErrorHandler(app) {
   Sentry.setupExpressErrorHandler(app);
 }
 
+/**
+ * Attach the acting user to the current request's Sentry scope. Since v8 the SDK
+ * keeps an isolation scope per request, so this applies only to events from the
+ * request that set it — no leakage between concurrent requests.
+ * @param {{id: string, username?: string, verified?: boolean}} user
+ */
+function setUser(user) {
+  if (!Sentry || !user || !user.id) return;
+  Sentry.setUser(user);
+}
+
 /** True when a DSN was configured and the SDK loaded — used by /metrics. */
 function isEnabled() {
   return Boolean(Sentry);
@@ -91,4 +102,4 @@ function orgProject() {
   return project ? { org, project } : { org };
 }
 
-module.exports = { init, captureError, setupExpressErrorHandler, isEnabled, orgProject };
+module.exports = { init, captureError, setUser, setupExpressErrorHandler, isEnabled, orgProject };

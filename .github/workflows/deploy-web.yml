@@ -125,6 +125,11 @@ jobs:
             npx prisma migrate deploy
 
             echo "=== Restarting API ==="
+            # Tag this release with the deployed commit so every Sentry event says
+            # which build it came from, making "when did this start?" answerable.
+            # --update-env makes PM2 re-read the environment of this shell, which
+            # is how the variable reaches the running process without touching .env.
+            export SENTRY_RELEASE=${{ github.sha }}
             pm2 restart gearops-api --update-env
             pm2 save
 

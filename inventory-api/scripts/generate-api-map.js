@@ -44,8 +44,6 @@ const REAL_GUARDS = ['admin', 'auth', 'token'];
 // `test` runs against the file source; `id` must match a node in EXTERNALS.
 const EXTERNAL_SIGNALS = [
   { id: 's3', test: /aws-sdk|new AWS\.S3|S3_BUCKET|s3\.upload|putObject/ },
-  { id: 'boldsign', test: /boldsign/i },
-  { id: 'docusign', test: /docusign/i },
   { id: 'smtp', test: /emailService|nodemailer|sendMail/ },
   { id: 'push', test: /sendExpoPush|expo\.host|exp\.host/ },
   { id: 'groq', test: /GROQ|groq/ },
@@ -56,8 +54,6 @@ const EXTERNAL_SIGNALS = [
 
 const EXTERNALS = {
   s3: { title: 'AWS S3', sub: 'documents · images · QR · PDFs' },
-  boldsign: { title: 'BoldSign', sub: 'hire agreement e-signing' },
-  docusign: { title: 'DocuSign', sub: 'alternate signing provider' },
   smtp: { title: 'SMTP', sub: 'nodemailer · transactional mail' },
   push: { title: 'Expo Push', sub: 'task & booking notifications' },
   groq: { title: 'Groq Vision', sub: 'photo → asset fields' },
@@ -125,6 +121,17 @@ function parseEndpoints(src) {
 }
 
 /**
+ * Strip comments before keyword scanning. Without this a comment is enough to
+ * invent a dependency: a single line reading "legacy values from the old BoldSign
+ * flow" put a BoldSign node on the map long after the integration was gone.
+ * Deliberately crude — it only needs to be good enough that prose stops counting
+ * as evidence of a call.
+ */
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+/**
  * Concatenate a route file's source with that of the local modules it requires,
  * following `services/`, `lib/`, `utils/`, `middleware/` and `controllers/` up to
  * `depth` levels. Without this, a router that talks to S3 via `services/…` looks
@@ -136,7 +143,7 @@ function sourceWithLocalDeps(absFile, depth = 2, seen = new Set()) {
   if (seen.has(real) || !fs.existsSync(real)) return '';
   seen.add(real);
 
-  const src = fs.readFileSync(real, 'utf8');
+  const src = stripComments(fs.readFileSync(real, 'utf8'));
   if (depth <= 0) return src;
 
   const dir = path.dirname(real);

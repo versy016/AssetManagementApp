@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-03T05:11:30.961Z",
+  "generatedAt": "2026-08-03T07:28:53.513Z",
   "generator": "scripts/generate-api-map.js",
   "totals": {
     "routers": 17,
     "endpoints": 120,
     "unguardedRouters": 11,
-    "externals": 8
+    "externals": 7
   },
   "routers": [
     {
@@ -1022,12 +1022,6 @@
   ],
   "externals": [
     {
-      "id": "boldsign",
-      "kind": "ext",
-      "title": "BoldSign",
-      "sub": "hire agreement e-signing"
-    },
-    {
       "id": "fbauth",
       "kind": "ext",
       "title": "Firebase Auth",
@@ -1126,10 +1120,6 @@
     [
       "r_hire_disclaimer",
       "s3"
-    ],
-    [
-      "r_hire_disclaimer",
-      "boldsign"
     ],
     [
       "r_hire_disclaimer",

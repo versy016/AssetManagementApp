@@ -13,6 +13,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
+const sentry = require('../lib/sentry');
 const { sendExpoPush } = require('../utils/push');
 const gcal = require('../services/googleCalendar');
 
@@ -26,7 +27,20 @@ function rid() {
   return (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).toUpperCase();
 }
 function log(reqId, level, msg, extra = {}) {
-  console.log(JSON.stringify({ reqId, at: new Date().toISOString(), lvl: level, msg, ...extra }));
+  // `error` is pulled out so the JSON line keeps its existing shape — an Error
+  // serialises to {} anyway, which would be noise in the log stream.
+  const { error, ...rest } = extra;
+  console.log(JSON.stringify({ reqId, at: new Date().toISOString(), lvl: level, msg, ...rest }));
+
+  // ERROR entries also go to Sentry. Handlers here respond via errJson() rather
+  // than calling next(err), so Express's error middleware never runs and nothing
+  // else would report these. Pass `error: e` at the call site to keep the stack.
+  if (level === 'ERROR') {
+    const err = error instanceof Error
+      ? error
+      : new Error(rest.message ? `${msg}: ${rest.message}` : msg);
+    sentry.captureError(err, { reqId, source: 'bookings', event: msg, ...rest });
+  }
 }
 function errJson(res, status, message, extra = {}) {
   if (!res.headersSent) res.status(status).json({ error: message, ...extra });
@@ -290,7 +304,7 @@ router.get('/', async (req, res) => {
     });
     res.json({ items: rows.map(shapeBooking), isAdmin });
   } catch (e) {
-    log(reqId, 'ERROR', 'bookings-list-failed', { message: e.message });
+    log(reqId, 'ERROR', 'bookings-list-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to load bookings');
   }
 });
@@ -315,7 +329,7 @@ router.get('/availability', async (req, res) => {
     const asset = a ? { maintenanceDue: !!a.maintenance_due, nextServiceDate: a.next_service_date ? new Date(a.next_service_date).toISOString().slice(0, 10) : null, status: a.status } : null;
     res.json({ windows: out, asset });
   } catch (e) {
-    log(reqId, 'ERROR', 'bookings-availability-failed', { message: e.message });
+    log(reqId, 'ERROR', 'bookings-availability-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to load availability');
   }
 });
@@ -331,7 +345,7 @@ router.get('/:id', async (req, res) => {
     if (!isAdmin && String(b.booked_by_id) !== String(actorId)) return errJson(res, 403, 'Not allowed');
     res.json(shapeBooking(b));
   } catch (e) {
-    log(reqId, 'ERROR', 'bookings-get-failed', { message: e.message });
+    log(reqId, 'ERROR', 'bookings-get-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to load booking');
   }
 });
@@ -394,7 +408,7 @@ router.post('/', async (req, res) => {
     log(reqId, 'INFO', 'booking-created', { id: created.id, needsApproval });
     res.status(201).json(sc);
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-create-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-create-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to create booking');
   }
 });
@@ -438,7 +452,7 @@ router.patch('/:id', async (req, res) => {
     log(reqId, 'INFO', 'booking-updated', { id: b.id });
     res.json(shapeBooking(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-update-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-update-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to update booking');
   }
 });
@@ -456,7 +470,7 @@ router.delete('/:id', async (req, res) => {
     log(reqId, 'INFO', 'booking-deleted', { id: ctx.b.id });
     res.json({ ok: true, id: ctx.b.id });
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-delete-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-delete-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to remove booking');
   }
 });
@@ -482,7 +496,7 @@ async function decide(req, res, decision) {
     log(reqId, 'INFO', 'booking-decided', { id: b.id, decision });
     res.json(shapeBooking(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-decide-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-decide-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to update booking');
   }
 }
@@ -504,7 +518,7 @@ router.post('/:id/checkout', async (req, res) => {
     syncGoogle(updated);
     res.json(shapeBooking(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-checkout-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-checkout-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to check out');
   }
 });
@@ -522,7 +536,7 @@ router.post('/:id/return', async (req, res) => {
     syncGoogle(updated);
     res.json(shapeBooking(updated));
   } catch (e) {
-    log(reqId, 'ERROR', 'booking-return-failed', { message: e.message });
+    log(reqId, 'ERROR', 'booking-return-failed', { message: e.message, error: e });
     errJson(res, 500, e.message || 'Failed to record return');
   }
 });
